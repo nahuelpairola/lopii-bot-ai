@@ -4,7 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"lopiibot.com/src/config"
 	controller "lopiibot.com/src/infrastructure/server/controllers"
-	"lopiibot.com/src/infrastructure/server/registry"
+	"lopiibot.com/src/registry"
 )
 
 type httpServer struct {
