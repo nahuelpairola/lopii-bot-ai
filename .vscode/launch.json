@@ -10,8 +10,7 @@
       "request": "launch",
       "mode": "auto",
       "program": "${workspaceFolder}/main.go",
-      "dlvFlags": ["--check-go-version=false"],
-      "envFile": "${workspaceFolder}/.env"
+      "dlvFlags": ["--check-go-version=false"]
     },
   ]
 }
