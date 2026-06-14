@@ -1,40 +1,32 @@
 package config
 
 import (
-	"errors"
+	"fmt"
 	"os"
 
-	"github.com/BurntSushi/toml"
+	"github.com/spf13/viper"
+	"lopiibot.com/src/constants"
 )
 
 type Config struct {
-	Env string `toml:"env"`
+	Env string `mapstructure:"env"`
 }
 
-var config Config
+func Initialize() (*Config, error) {
+	env := os.Getenv(constants.APP_ENV)
+	configFilePath := fmt.Sprintf("./config/%s.toml", env)
+	viper.SetConfigFile(configFilePath)
+	viper.SetConfigType("toml")
+	viper.AutomaticEnv()
 
-func LoadConfigFrom(tomlFilePath string) (*Config, error) {
-	if !fileExists(tomlFilePath) {
-		return nil, errors.New("file path does not exists to load the config, check it " + tomlFilePath)
-	}
-	content, err := os.ReadFile(tomlFilePath)
-	if err != nil {
+	if err := viper.ReadInConfig(); err != nil {
 		return nil, err
 	}
-	_, err = toml.Decode(string(content), &config)
-	if err != nil {
+
+	var cfg Config
+	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, err
 	}
-	return &config, nil
-}
 
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true
-	}
-	if os.IsNotExist(err) {
-		return false
-	}
-	return false
+	return &cfg, nil
 }
