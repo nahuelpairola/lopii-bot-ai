@@ -8,7 +8,8 @@ import (
 )
 
 func main() {
-	cfg, err := config.Initialize()
+	configFilePath := "./config/local.toml"
+	cfg, err := config.LoadConfigFrom(configFilePath)
 	if err != nil {
 		os.Exit(1)
 	}
