@@ -14,7 +14,7 @@ func NewHealthController() *healthController {
 }
 
 func (c *healthController) RegisterRoutes(engine *gin.Engine) {
-	engine.GET("health", c.HealthCheck)
+	engine.Any("health", c.HealthCheck)
 }
 
 func (c *healthController) HealthCheck(ctx *gin.Context) {
