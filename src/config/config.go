@@ -10,11 +10,12 @@ import (
 )
 
 type database struct {
-	Host     string `mapstructure:"host"`
-	Name     string `mapstructure:"name"`
-	Port     uint   `mapstructure:"port"`
-	User     string `mapstructure:"user"`
-	Password string `mapstructure:"password"`
+	Host          string `mapstructure:"host"`
+	Name          string `mapstructure:"name"`
+	Port          uint   `mapstructure:"port"`
+	User          string `mapstructure:"user"`
+	Password      string `mapstructure:"password"`
+	RunMigrations bool   `mapstructure:"runMigrations"`
 }
 
 type Config struct {

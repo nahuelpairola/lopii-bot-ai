@@ -6,3 +6,4 @@ name     = ""
 port     = 5432
 user     = ""
 password = ""
+runMigrations=true

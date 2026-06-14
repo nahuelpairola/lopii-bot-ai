@@ -23,6 +23,10 @@ func NewRegistry(cnf *config.Config) (*registry, error) {
 }
 
 func (r *registry) InitAppContainer() (*AppContainer, error) {
+	_, err := r.initDatabase()
+	if err != nil {
+		return nil, errors.Join(errors.New("database initialization failed"), err)
+	}
 	container := AppContainer{}
 	return &container, nil
 }
