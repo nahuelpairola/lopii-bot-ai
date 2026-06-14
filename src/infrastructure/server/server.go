@@ -40,7 +40,7 @@ func InitServer(conf *config.Config) error {
 func setupRouter(appContainer *registry.AppContainer) (*gin.Engine, error) {
 	router := gin.Default()
 
-	healthController := controller.NewHealthController()
+	healthController := controller.NewHealthController(appContainer)
 	healthController.RegisterRoutes(router)
 
 	return router, nil
