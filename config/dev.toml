@@ -1,1 +1,8 @@
 env="dev"
+
+[database]
+host     = ""
+name     = ""
+port     = 5432
+user     = ""
+password = ""

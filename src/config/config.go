@@ -3,13 +3,23 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 	"lopiibot.com/src/constants"
 )
 
+type database struct {
+	Host     string `mapstructure:"host"`
+	Name     string `mapstructure:"name"`
+	Port     uint   `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+}
+
 type Config struct {
-	Env string `mapstructure:"env"`
+	Env      string   `mapstructure:"env"`
+	Database database `mapstructure:"database"`
 }
 
 func Initialize() (*Config, error) {
@@ -18,6 +28,7 @@ func Initialize() (*Config, error) {
 	viper.SetConfigFile(configFilePath)
 	viper.SetConfigType("toml")
 	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err
