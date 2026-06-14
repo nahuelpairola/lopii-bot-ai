@@ -7,6 +7,7 @@ import (
 )
 
 type AppContainer struct {
+	HealthHandler healthHandler
 }
 
 type registry struct {
@@ -23,10 +24,13 @@ func NewRegistry(cnf *config.Config) (*registry, error) {
 }
 
 func (r *registry) InitAppContainer() (*AppContainer, error) {
-	_, err := r.initDatabase()
+	db, err := r.initDatabase()
 	if err != nil {
 		return nil, errors.Join(errors.New("database initialization failed"), err)
 	}
-	container := AppContainer{}
+	handlers := r.initHandlers(db)
+	container := AppContainer{
+		HealthHandler: handlers.health,
+	}
 	return &container, nil
 }

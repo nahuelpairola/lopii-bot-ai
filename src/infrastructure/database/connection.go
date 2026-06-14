@@ -18,13 +18,13 @@ type Creds struct {
 }
 
 type Connection struct {
-	db *gorm.DB
+	DB *gorm.DB
 }
 
 var conn = &Connection{}
 
 func Initialize(c Creds) (*Connection, error) {
-	if conn.db != nil {
+	if conn.DB != nil {
 		return conn, nil
 	}
 	dsn := fmt.Sprintf("host=%s port=%d dbname=%s user=%s password=%s",
@@ -34,15 +34,15 @@ func Initialize(c Creds) (*Connection, error) {
 	if err != nil {
 		return nil, err
 	}
-	conn.db = db
+	conn.DB = db
 	return conn, nil
 }
 
 func RunMigrations(migrationsDir string) error {
-	if conn == nil || conn.db == nil {
+	if conn == nil || conn.DB == nil {
 		return errors.New("database not initialized, call Initialize first")
 	}
-	sqlDB, err := conn.db.DB()
+	sqlDB, err := conn.DB.DB()
 	if err != nil {
 		return err
 	}
