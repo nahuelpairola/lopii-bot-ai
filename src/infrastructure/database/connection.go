@@ -47,9 +47,5 @@ func RunMigrations(migrationsDir string) error {
 		return err
 	}
 	goose.SetDialect("postgres")
-	err = goose.Up(sqlDB, migrationsDir)
-	if err != nil && err != goose.ErrNoMigrations {
-		return err
-	}
-	return nil
+	return goose.Up(sqlDB, migrationsDir)
 }
