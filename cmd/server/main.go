@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	"lopiibot.com/src/config"
-	"lopiibot.com/src/infrastructure/server"
+	"lopiibot.com/internal/config"
+	"lopiibot.com/internal/server"
 )
 
 func main() {
