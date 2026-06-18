@@ -49,21 +49,3 @@ func RunMigrations(migrationsDir string) error {
 	goose.SetDialect("postgres")
 	return goose.Up(sqlDB, migrationsDir)
 }
-
-type healthRepository struct {
-	db *Connection
-}
-
-func NewHealthRepository(db *Connection) *healthRepository {
-	return &healthRepository{
-		db: db,
-	}
-}
-
-func (r *healthRepository) IsHealthy() error {
-	sql, err := r.db.DB.DB()
-	if err != nil {
-		return err
-	}
-	return sql.Ping()
-}
