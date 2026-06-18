@@ -5,11 +5,11 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Run Local",
+      "name": "Run",
       "type": "go",
       "request": "launch",
       "mode": "auto",
-      "program": "${workspaceFolder}/main.go",
+      "program": "${workspaceFolder}/cmd/server/main.go",
       "dlvFlags": ["--check-go-version=false"],
       "envFile": "${workspaceFolder}/.env"
     },
