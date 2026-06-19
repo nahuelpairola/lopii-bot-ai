@@ -6,7 +6,13 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
-	"lopiibot.com/internal/constants"
+)
+
+const (
+	APP_ENV   = "env"
+	ENV_LOCAL = "local"
+	ENV_DEV   = "dev"
+	ENV_PRD   = "prd"
 )
 
 type database struct {
@@ -30,7 +36,7 @@ type Config struct {
 }
 
 func Initialize() (*Config, error) {
-	env := os.Getenv(constants.APP_ENV)
+	env := os.Getenv(APP_ENV)
 	configFilePath := fmt.Sprintf("../../config/%s.toml", env)
 	viper.SetConfigFile(configFilePath)
 	viper.SetConfigType("toml")
