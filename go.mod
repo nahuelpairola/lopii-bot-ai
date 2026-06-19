@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
+	github.com/go-telegram/bot v1.21.0
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/spf13/viper v1.21.0
 	gorm.io/driver/postgres v1.6.0

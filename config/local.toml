@@ -7,3 +7,7 @@ name     = "lopiibot"
 user     = "lopiibot"
 password = "lopiibot"
 runMigrations = true
+
+[telegram]
+username="LopiiPersonalFinancesBot"
+token=""

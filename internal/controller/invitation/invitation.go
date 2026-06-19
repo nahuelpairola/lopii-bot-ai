@@ -1,6 +1,7 @@
 package invitation
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,18 +9,20 @@ import (
 	"lopiibot.com/internal/middleware"
 )
 
-const botUsername = "tu_bot" // TODO: mover a config
-
-type InvitationRepository interface {
+type invitationRepository interface {
 	Create(createdBy uint64) (*invitation.Invitation, error)
 }
 
 type controller struct {
-	repo InvitationRepository
+	repo        invitationRepository
+	botUsername string
 }
 
-func NewController(repo InvitationRepository) *controller {
-	return &controller{repo: repo}
+func NewController(repo invitationRepository, telegramBotUsername string) (*controller, error) {
+	if telegramBotUsername == "" {
+		return nil, errors.New("telegram bot username must be provided")
+	}
+	return &controller{repo: repo, botUsername: telegramBotUsername}, nil
 }
 
 func (c *controller) RegisterRoutes(engine *gin.Engine) {
@@ -42,7 +45,7 @@ func (c *controller) Create(ctx *gin.Context) {
 		return
 	}
 
-	link := "https://t.me/" + botUsername + "?start=" + inv.Code
+	link := "https://t.me/" + c.botUsername + "?start=" + inv.Code
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"code":       inv.Code,

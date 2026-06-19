@@ -18,9 +18,15 @@ type database struct {
 	RunMigrations bool   `mapstructure:"runMigrations"`
 }
 
+type telegram struct {
+	Username string `mapstructure:"username"`
+	Token    string `mapstructure:"token"`
+}
+
 type Config struct {
 	Env      string   `mapstructure:"env"`
 	Database database `mapstructure:"database"`
+	Telegram telegram `mapstructure:"telegram"`
 }
 
 func Initialize() (*Config, error) {

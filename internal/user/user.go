@@ -9,7 +9,7 @@ import (
 type User struct {
 	ID         uint64    `gorm:"primaryKey"`
 	TelegramID string    `gorm:"column:telegram_id;uniqueIndex"`
-	Name       string    `gorm:"column:name"`
+	Username   string    `gorm:"column:username"`
 	IsAdmin    bool      `gorm:"column:is_admin"`
 	CreatedAt  time.Time `gorm:"column:created_at"`
 }
