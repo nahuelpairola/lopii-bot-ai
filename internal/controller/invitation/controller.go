@@ -9,6 +9,8 @@ import (
 	"lopiibot.com/internal/middleware"
 )
 
+var errBotUsernameMustBeProvided = errors.New("bot username must be provided")
+
 type invitationRepository interface {
 	Create(createdBy uint64) (*invitation.Invitation, error)
 }
@@ -18,11 +20,11 @@ type controller struct {
 	botUsername string
 }
 
-func NewController(repo invitationRepository, telegramBotUsername string) (*controller, error) {
-	if telegramBotUsername == "" {
-		return nil, errors.New("telegram bot username must be provided")
+func NewController(repo invitationRepository, botUsername string) (*controller, error) {
+	if botUsername == "" {
+		return nil, errBotUsernameMustBeProvided
 	}
-	return &controller{repo: repo, botUsername: telegramBotUsername}, nil
+	return &controller{repo: repo, botUsername: botUsername}, nil
 }
 
 func (c *controller) RegisterRoutes(engine *gin.Engine) {
