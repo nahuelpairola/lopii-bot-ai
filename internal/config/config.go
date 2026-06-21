@@ -6,7 +6,13 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
-	"lopiibot.com/internal/constants"
+)
+
+const (
+	APP_ENV   = "env"
+	ENV_LOCAL = "local"
+	ENV_DEV   = "dev"
+	ENV_PRD   = "prd"
 )
 
 type database struct {
@@ -18,13 +24,19 @@ type database struct {
 	RunMigrations bool   `mapstructure:"runMigrations"`
 }
 
+type telegram struct {
+	Username string `mapstructure:"username"`
+	Token    string `mapstructure:"token"`
+}
+
 type Config struct {
 	Env      string   `mapstructure:"env"`
 	Database database `mapstructure:"database"`
+	Telegram telegram `mapstructure:"telegram"`
 }
 
 func Initialize() (*Config, error) {
-	env := os.Getenv(constants.APP_ENV)
+	env := os.Getenv(APP_ENV)
 	configFilePath := fmt.Sprintf("../../config/%s.toml", env)
 	viper.SetConfigFile(configFilePath)
 	viper.SetConfigType("toml")

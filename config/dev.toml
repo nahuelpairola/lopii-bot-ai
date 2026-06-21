@@ -7,3 +7,7 @@ port     = 5432
 user     = ""
 password = ""
 runMigrations=true
+
+[telegram]
+username=""
+token=""
