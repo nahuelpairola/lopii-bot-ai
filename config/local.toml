@@ -9,5 +9,5 @@ password = "lopiibot"
 runMigrations = true
 
 [telegram]
-username="LopiiPersonalFinancesBot"
+username="Lopiipersonalfinanceslocalbot"
 token=""
