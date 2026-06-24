@@ -2,18 +2,14 @@ package messaging
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/invitation"
-	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
 
@@ -27,109 +23,34 @@ type invitationRepository interface {
 	MarkAsUsed(id uint64, userID uint64) error
 }
 
+type accountRepository interface {
+	Insert(*account.Account) error
+}
+
 type controller struct {
 	users       userRepository
 	invitations invitationRepository
+	accounts    accountRepository
 	engine      *conversation.Engine
 }
 
 func NewController(
 	users userRepository,
 	invitations invitationRepository,
+	accounts accountRepository,
 	engine *conversation.Engine,
 ) *controller {
 	return &controller{
 		users:       users,
 		invitations: invitations,
 		engine:      engine,
+		accounts:    accounts,
 	}
 }
 
 func (c *controller) RegisterHandlers(b *bot.Bot) {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypePrefix, c.handleStart)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/cuentas", bot.MatchTypeExact, c.handleCuentasCommand)
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/subcategorias", bot.MatchTypeExact, c.handleSubcategoriesCommand)
-	// Catch-all: cualquier texto libre (no comando) o callback se intenta
-	// despachar al motor de conversaciones, si el usuario tiene un flujo
-	// activo. Si no tiene ninguno, Handle devuelve found=false y no se
-	// hace nada — no es turno de este handler responder.
 	b.RegisterHandlerMatchFunc(c.hasIncomingInput, c.handleConversationInput)
-}
-
-func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
-	telegramID := fmt.Sprint(update.Message.From.ID)
-	code := extractStartCode(update.Message.Text)
-
-	if existing, err := c.users.FindByTelegramID(telegramID); err == nil {
-		c.reply(ctx, b, update, msgAlreadyHasAccount)
-		c.resumeOrStartAccountFlow(ctx, b, update.Message.Chat.ID, existing.ID)
-		return
-	}
-
-	if code == "" {
-		c.reply(ctx, b, update, msgPrivateBot)
-		return
-	}
-
-	inv, err := c.invitations.FindByCode(code)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		c.reply(ctx, b, update, msgInvalidInvitation)
-		return
-	}
-	if err != nil {
-		c.reply(ctx, b, update, msgInvitationError)
-		return
-	}
-	if inv.UsedAt != nil {
-		c.reply(ctx, b, update, msgInvitationUsed)
-		return
-	}
-	if time.Now().After(inv.ExpiresAt) {
-		c.reply(ctx, b, update, msgInvitationExpired)
-		return
-	}
-
-	newUser := &user.User{
-		TelegramID: telegramID,
-		Username:   update.Message.From.Username,
-		IsAdmin:    false,
-	}
-	if err := c.users.Insert(newUser); err != nil {
-		c.reply(ctx, b, update, msgUserCreationError)
-		return
-	}
-	if err := c.invitations.MarkAsUsed(inv.ID, newUser.ID); err != nil {
-		_ = err // no bloqueante, el user ya se creó
-	}
-
-	c.resumeOrStartAccountFlow(ctx, b, update.Message.Chat.ID, newUser.ID)
-}
-
-func (c *controller) handleCuentasCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	telegramID := fmt.Sprint(update.Message.From.ID)
-	u, err := c.users.FindByTelegramID(telegramID)
-	if err != nil {
-		c.reply(ctx, b, update, msgPrivateBot)
-		return
-	}
-	c.resumeOrStartAccountFlow(ctx, b, update.Message.Chat.ID, u.ID)
-}
-
-func (c *controller) handleSubcategoriesCommand(ctx context.Context, b *bot.Bot, update *models.Update) {
-	telegramID := fmt.Sprint(update.Message.From.ID)
-	u, err := c.users.FindByTelegramID(telegramID)
-	if err != nil {
-		c.reply(ctx, b, update, msgPrivateBot)
-		return
-	}
-	c.startFlowIfNotBusy(ctx, b, update.Message.Chat.ID, u.ID, subcategory.FlowName)
-}
-
-// resumeOrStartAccountFlow arranca el flujo de alta de cuentas si el
-// usuario no tiene ya uno en curso (de cualquier tipo). El Flow ya está
-// registrado en el Engine desde que arrancó el server.
-func (c *controller) resumeOrStartAccountFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
-	c.startFlowIfNotBusy(ctx, b, chatID, userID, account.FlowName)
 }
 
 // startFlowIfNotBusy arranca cualquier Flow ya registrado en el Engine
@@ -142,7 +63,6 @@ func (c *controller) startFlowIfNotBusy(ctx context.Context, b *bot.Bot, chatID 
 	if inProgress, err := c.engine.InProgress(userID); err == nil && inProgress {
 		return
 	}
-
 	prompt, err := c.engine.Start(userID, flowName)
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
@@ -191,21 +111,10 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		return
 	}
 	if result.Finished {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: c.flowFinishedMessage(result.FlowName)})
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "TO_REVIEW"})
 		return
 	}
 	c.sendPrompt(ctx, b, chatID, result.Prompt)
-}
-
-// flowFinishedMessage decide qué mensaje de cierre mostrar según qué
-// Flow terminó. Agregar un Flow nuevo solo necesita sumar un case acá.
-func (c *controller) flowFinishedMessage(flowName string) string {
-	switch flowName {
-	case subcategory.FlowName:
-		return msgSubcategorySetupFinished
-	default:
-		return msgAccountSetupFinished
-	}
 }
 
 // sendPrompt traduce un conversation.Prompt neutro al formato real de
@@ -228,14 +137,6 @@ func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, p
 
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
 	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text})
-}
-
-func extractStartCode(text string) string {
-	parts := strings.Fields(text)
-	if len(parts) < 2 {
-		return ""
-	}
-	return parts[1]
 }
 
 func toConversationInput(update *models.Update) conversation.Input {

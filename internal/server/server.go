@@ -45,7 +45,6 @@ func InitServer(conf *config.Config) error {
 
 	userRepo := user.NewRepository(conn)
 	accountRepo := account.NewRepository(conn)
-	// subcategoryRepo := subcategory.NewRepository(conn)
 	convoRepo := conversation.NewRepository(conn)
 
 	// El motor de conversaciones se arma una vez. Cada Flow se registra
@@ -54,23 +53,11 @@ func InitServer(conf *config.Config) error {
 	// si algún Step referencia un paso inexistente, el server no arranca.
 	convoEngine := conversation.NewEngine(convoRepo)
 
-	accountSetupFlow, err := account.NewSetupFlow(accountRepo, accountRepo)
-	if err != nil {
-		return err
-	}
-	convoEngine.Register(accountSetupFlow)
-
-	// subcategorySetupFlow, err := subcategory.NewSetupFlow(subcategoryRepo, subcategoryRepo)
-	// if err != nil {
-	// 	return err
-	// }
-	// convoEngine.Register(subcategorySetupFlow)
-
 	tgBot, err := bot.New(conf.Telegram.Token)
 	if err != nil {
 		return err
 	}
-	messagingController := messagingctrl.NewController(userRepo, invitationRepo, convoEngine)
+	messagingController := messagingctrl.NewController(userRepo, invitationRepo, accountRepo, convoEngine)
 	messagingController.RegisterHandlers(tgBot)
 	go tgBot.Start(context.Background())
 
