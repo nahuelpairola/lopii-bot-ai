@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"fmt"
+	"strings"
 
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/user"
@@ -29,12 +30,16 @@ const (
 )
 
 func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.Account) string {
-	currencies := ""
-	for _, c := range as {
-		if currencies != "" {
-			currencies = ", "
-		}
-		currencies += c.Currency.String()
+	accounts := make([]string, 0, len(as))
+
+	for _, a := range as {
+		accounts = append(accounts, fmt.Sprintf("%s (%s)", a.Name, a.Currency))
 	}
-	return fmt.Sprintf("%s, disponés de %d cuentas en %s que van a vincular tus movimientos.", u.Username, len(as), currencies)
+
+	return fmt.Sprintf(
+		"%s, disponés de %d cuentas: %s, donde se van a vincular todos tus movimientos.",
+		u.Username,
+		len(as),
+		strings.Join(accounts, ", "),
+	)
 }
