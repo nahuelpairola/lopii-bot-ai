@@ -31,7 +31,10 @@ const (
 func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.Account) string {
 	currencies := ""
 	for _, c := range as {
-		currencies = fmt.Sprintf("%s , ", currencies, c.Currency.String())
+		if currencies != "" {
+			currencies = ", "
+		}
+		currencies += c.Currency.String()
 	}
-	return fmt.Sprintf("%s, disponés de %d cuentas en %v que van a vincular tus movimientos.", u.Username, len(as), currencies)
+	return fmt.Sprintf("%s, disponés de %d cuentas en %s que van a vincular tus movimientos.", u.Username, len(as), currencies)
 }

@@ -61,15 +61,18 @@ func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models
 
 	c.reply(ctx, b, update, msgUserCreatedSuccessfully)
 	accounts := []account.Account{}
-	for i, cu := range account.SupportedCurrencies {
-		accounts[i].Currency = cu
-		accounts[i].IsDefault = true
-		accounts[i].Name = "Wallet"
-		accounts[i].UserID = newUser.ID
-		if err = c.accounts.Insert(&accounts[i]); err != nil {
+	for _, cu := range account.SupportedCurrencies {
+		acc := account.Account{
+			UserID:    newUser.ID,
+			Name:      "Wallet",
+			Currency:  cu,
+			IsDefault: true,
+		}
+		if err = c.accounts.Insert(&acc); err != nil {
 			c.reply(ctx, b, update, msgDefaultAccountCreationError)
 			return
 		}
+		accounts = append(accounts, acc)
 	}
 
 	c.reply(ctx, b, update, createMsgUserDefaultAccountsCreatedSuccessfully(newUser, accounts))
