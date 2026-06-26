@@ -2,20 +2,19 @@ package subcategory
 
 import (
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"gorm.io/gorm"
 	"lopiibot.com/internal/database"
 )
 
 type Subcategory struct {
-	ID          uint64    `gorm:"primaryKey"`
-	UserID      *uint64   `gorm:"column:user_id"` // NULL para globales
-	Category    string    `gorm:"column:category"`
-	Subcategory string    `gorm:"column:subcategory"`
-	Description string    `gorm:"column:description"`
-	IsGlobal    bool      `gorm:"column:is_global"`
-	CreatedAt   time.Time `gorm:"column:created_at"`
+	gorm.Model
+	UserID      *uint64 `gorm:"column:user_id"` // NULL para globales
+	Category    string  `gorm:"column:category"`
+	Subcategory string  `gorm:"column:subcategory"`
+	Description string  `gorm:"column:description"`
+	IsGlobal    bool    `gorm:"column:is_global"`
 }
 
 var ErrSubcategoryAlreadyExists = errors.New("a subcategory with that name already exists in this category")
