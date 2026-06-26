@@ -31,38 +31,32 @@ func InitServer(conf *config.Config) error {
 		return err
 	}
 
-	healthChecker := health.NewHealthChecker(conn)
-	healthController := healthctrl.NewController(healthChecker)
-	healthController.RegisterRoutes(ginEngine)
+	tgBot, err := inititalizeBot(conf, ginEngine)
+	if err != nil {
+		return err
+	}
 
+	healthChecker := health.NewHealthChecker(conn)
 	invitationRepo := invitation.NewRepository(conn)
+	userRepo := user.NewRepository(conn)
+	accountRepo := account.NewRepository(conn)
+	conversationRepo := conversation.NewRepository(conn)
+
+	conversationEngine := conversation.NewEngine(conversationRepo)
+
+	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)
 	if err != nil {
 		return err
 	}
+	messagingController := messagingctrl.NewController(userRepo, invitationRepo, accountRepo, conversationEngine)
 
+	healthController.RegisterRoutes(ginEngine)
 	invitationController.RegisterRoutes(ginEngine)
-
-	userRepo := user.NewRepository(conn)
-	accountRepo := account.NewRepository(conn)
-	convoRepo := conversation.NewRepository(conn)
-
-	// El motor de conversaciones se arma una vez. Cada Flow se registra
-	// acá también una sola vez (son estáticos, no dependen de ningún
-	// usuario en particular) y queda validado antes de levantar el bot:
-	// si algún Step referencia un paso inexistente, el server no arranca.
-	convoEngine := conversation.NewEngine(convoRepo)
-
-	tgBot, err := bot.New(conf.Telegram.Token)
-	if err != nil {
-		return err
-	}
-	messagingController := messagingctrl.NewController(userRepo, invitationRepo, accountRepo, convoEngine)
 	messagingController.RegisterHandlers(tgBot)
-	go tgBot.Start(context.Background())
 
 	server = httpServer{engine: ginEngine}
-	return server.engine.Run()
+	return server.engine.Run(":" + conf.Server.Port)
 }
 
 func initializeDatabase(conf *config.Config) (*database.Connection, error) {
@@ -82,4 +76,23 @@ func initializeDatabase(conf *config.Config) (*database.Connection, error) {
 	}
 
 	return conn, nil
+}
+
+func inititalizeBot(conf *config.Config, engine *gin.Engine) (*bot.Bot, error) {
+	tgBot, err := bot.New(conf.Telegram.Token)
+	if err != nil {
+		return nil, err
+	}
+
+	webhookBot := conf.Server.BaseHost + "/webhook/telegram"
+	_, err = tgBot.SetWebhook(context.Background(), &bot.SetWebhookParams{
+		URL: webhookBot,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	engine.POST("/webhook/telegram", gin.WrapH(tgBot.WebhookHandler()))
+	go tgBot.StartWebhook(context.Background())
+	return tgBot, nil
 }

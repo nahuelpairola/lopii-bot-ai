@@ -29,8 +29,14 @@ type telegram struct {
 	Token    string `mapstructure:"token"`
 }
 
+type server struct {
+	Port     string `mapstructure:"port"`
+	BaseHost string `mapstructure:"baseHost"`
+}
+
 type Config struct {
 	Env      string   `mapstructure:"env"`
+	Server   server   `mapstructure:"server"`
 	Database database `mapstructure:"database"`
 	Telegram telegram `mapstructure:"telegram"`
 }
@@ -42,6 +48,7 @@ func Initialize() (*Config, error) {
 	viper.SetConfigType("toml")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.SetDefault("Server.Port", "80")
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err
