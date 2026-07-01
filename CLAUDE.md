@@ -166,3 +166,65 @@ r.POST("/invitations", middleware.RequireAdmin(adminID), invitationController.Cr
 ```
 
 3. Telegram deep-links: `https://t.me/<bot_username>?start=<CODE>`
+
+## 4. Business Rules
+
+### Currencies
+- ARS and USD only. No implicit conversion between currencies.
+- Currency fields use `currency.Currency` (string alias), never raw strings.
+- Amount shorthands ("200k") → the LLM expands to 200000. The application code does not do this.
+
+### Movement types
+- `expense`: spending. `account_id = NULL`. Does not touch savings accounts.
+- `income`: earning. `account_id = NULL`. Does not touch savings accounts.
+- `transfer`: moves money into/out of a savings or investment account. `account_id NOT NULL`.
+- Monthly summaries: filter `WHERE type != 'transfer'` for clean cash flow.
+
+### Grouped transactions
+`transaction_id` (nullable UUID) groups N movements of one atomic operation:
+
+| Operation | Movements |
+|---|---|
+| USD purchase | `expense -100,000 ARS` (account_id=NULL) + `transfer +100 USD` (account_id=usd_wallet) |
+| FCI subscription | `transfer -2,500,000 ARS` (bank account) + `transfer +2,500,000 ARS` (FCI account) |
+| FCI redemption with gain | 2 transfers (redemption) + 1 `income` (subcategory: `Sistema \| Rendimiento inversión`, account_id=NULL) |
+
+### Accounts
+- Table: `id, user_id, name, currency (ARS|USD), is_default, deleted_at`
+- No `type` column (current migration has `type DEFAULT 'standard'` — legacy artifact to drop)
+- ARS and USD wallets are created automatically at `/start`
+- Additional accounts are created organically: first time the user records a transfer to a non-existent account, the bot asks whether to create it
+- Unique index: `(user_id, name, currency) WHERE deleted_at IS NULL`
+- Unique index: `(user_id, currency) WHERE is_default = TRUE AND deleted_at IS NULL`
+
+### Balances
+No `balance` column on accounts. Always computed:
+```sql
+SELECT SUM(amount) FROM movements
+WHERE account_id = $account_id AND deleted_at IS NULL
+```
+
+### Exchange rates
+- Daily: BNA, MEP, CCL, blue via `dolarapi.com`
+- Monthly CPI via `api.argentinadatos.com`
+- Denormalized snapshot on each movement INSERT: `bna_rate`, `mep_rate`, `ccl_rate`, `blue_rate`, `amount_usd`
+
+### Categories and subcategories
+- Strictly two-level tree: `category > subcategory`. Never deeper.
+- `user_id = NULL` → global (visible to all). `user_id NOT NULL` → user-created.
+- Only admin can create global subcategories (`is_global = TRUE`).
+- ~80 global subcategories seeded in migration `20260625234857`, across 14 categories.
+- Reserved: `PENDING_REVIEW | PENDING_REVIEW` (low LLM confidence), `Sistema | Saldo inicial`, `Sistema | Rendimiento inversión`
+
+### LLM classification
+- Intents: `CREATE | UPDATE | DELETE | QUERY` — classified via Groq
+- Tool calling: the LLM constructs action parameters, not just the intent type
+- Low confidence → `PENDING_REVIEW` subcategory, bot asks for confirmation
+- `UPDATE` = atomic `DELETE + INSERT` (never partial patch)
+- `lastTransaction` in memory per user to resolve implicit references
+
+### Bot interaction
+- No Telegram commands for end users. Everything is free text → LLM → flow or query handler.
+- Exceptions: `/start` (onboarding) and admin commands (e.g. `/new-invite`)
+- Timezone: `America/Argentina/Buenos_Aires`
+- Default payment method when LLM cannot infer: `transfer`
