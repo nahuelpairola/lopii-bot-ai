@@ -11,7 +11,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Two users (a couple
 
 - Go, Gin, GORM, Postgres (Neon)
 - Goose for migrations (run automatically at server startup)
-- go-telegram/bot in long-polling mode
+- go-telegram/bot in webhook mode
 - Viper for config (TOML per environment; env vars override)
 - shopspring/decimal for money
 - LLM orchestrator via Groq (not yet implemented)
@@ -48,7 +48,7 @@ Each controller defines its own local interfaces for the repositories it uses. N
 
 ```go
 type accountRepository interface {
-    FindDefaultByCurrency(ctx context.Context, userID uint, currency currency.Currency) (*account.Account, error)
+    Insert(*account.Account) error
 }
 ```
 
@@ -121,7 +121,11 @@ func NewAccountSetupFlow(repo accountRepository) *conversation.Flow {
         stepAskCurrency: conversation.NewChoiceStep(...),
         stepConfirm:     conversation.NewChoiceStep(...),
     }
-    return conversation.NewFlow("account_setup", steps, stepAskName)
+    flow, err := conversation.NewFlow("account_setup", stepAskName, steps)
+    if err != nil {
+        panic(err) // flow graph validation failed at startup
+    }
+    return flow
 }
 ```
 
@@ -132,7 +136,7 @@ conversationEngine.Register(NewAccountSetupFlow(accountRepo))
 
 4. Start from a Telegram handler:
 ```go
-engine.Start(ctx, userID, "account_setup")
+engine.Start(userID, "account_setup")
 ```
 
 5. Handle the result in `handleConversationFinished`:
@@ -157,7 +161,7 @@ Planned intents: `CREATE | UPDATE | DELETE | QUERY`
 
 1. Register the handler in `controller/messaging/controller.go` with a prefix match:
 ```go
-b.RegisterHandlerByCommand(bot.HandlerTypeMessageText, "/new-invite", handleNewInvite)
+b.RegisterHandler(bot.HandlerTypeMessageText, "/new-invite", bot.MatchTypePrefix, handleNewInvite)
 ```
 
 2. For HTTP admin endpoints, use the middleware:
@@ -207,7 +211,7 @@ WHERE account_id = $account_id AND deleted_at IS NULL
 ### Exchange rates
 - Daily: BNA, MEP, CCL, blue via `dolarapi.com`
 - Monthly CPI via `api.argentinadatos.com`
-- Denormalized snapshot on each movement INSERT: `bna_rate`, `mep_rate`, `ccl_rate`, `blue_rate`, `amount_usd`
+- Denormalized snapshot on each movement INSERT: `bna_rate`, `mep_rate`, `ccl_rate`, `blue_rate`, `amount_usd` (not yet implemented — planned addition to the movements table)
 
 ### Categories and subcategories
 - Strictly two-level tree: `category > subcategory`. Never deeper.
@@ -231,7 +235,7 @@ WHERE account_id = $account_id AND deleted_at IS NULL
 
 ## 5. Local Dev Setup
 
-**Prerequisites:** Go 1.21+, Docker (for local Postgres), devtunnel or ngrok (public HTTPS URL for Telegram webhooks).
+**Prerequisites:** Go 1.26+, Docker (for local Postgres), devtunnel or ngrok (public HTTPS URL for Telegram webhooks).
 
 ### Start Postgres
 ```bash
@@ -293,7 +297,7 @@ No tests yet. When adding the first one, mock the package's local repository int
 ### What's missing before the bot can record expenses
 
 1. **No conversation flows registered.** The engine exists but `conversationEngine.Register(...)` is never called. Implement and register: `account_setup`, `subcategory_setup`, `movement_record`, `movement_edit`
-2. **`handleConversationFinished` is a placeholder.** Currently sends the literal string `"TO_REVIEW"`. Needs to read `result.Data` and execute the appropriate action.
+2. **Flow completion handler is a placeholder.** Inside `handleConversationInput` (`controller/messaging/controller.go`), when `result.Finished == true`, the handler currently sends the literal string `"TO_REVIEW"`. Needs to read `result.Data` and execute the appropriate action (create account, insert movement, etc.).
 3. **`movement/repository.go` is a stub.** Only `InitRepository()` exists. Add: `Insert`, `FindByUser`, `FindByDateRange`, `SoftDelete`
 4. **LLM client + intent classifier** (Groq) — does not exist in v2 yet
 5. **Exchange rate fetching** (dolarapi.com, argentinadatos.com)
