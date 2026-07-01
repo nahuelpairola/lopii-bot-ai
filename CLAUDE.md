@@ -228,3 +228,80 @@ WHERE account_id = $account_id AND deleted_at IS NULL
 - Exceptions: `/start` (onboarding) and admin commands (e.g. `/new-invite`)
 - Timezone: `America/Argentina/Buenos_Aires`
 - Default payment method when LLM cannot infer: `transfer`
+
+## 5. Local Dev Setup
+
+**Prerequisites:** Go 1.21+, Docker (for local Postgres), devtunnel or ngrok (public HTTPS URL for Telegram webhooks).
+
+### Start Postgres
+```bash
+docker compose up -d
+```
+Postgres 16 on `:5432`. Credentials: DB=`lopiibot`, user=`lopiibot`, pass=`lopiibot`. Data stored in `./db-data/` (git-ignored).
+
+### Configure before first run
+
+**1. Secrets in `config/local.toml`:**
+```toml
+[server]
+baseHost = "https://<your-tunnel>.devtunnels.ms"  # public HTTPS URL for Telegram webhook
+
+[telegram]
+token = "<token from @BotFather>"
+```
+The DB config is already set to match Docker Compose — no changes needed.
+
+**2. Edit the admin migration (first time only):**
+`migrations/20260618230837_create_admin_user.sql` — replace `'TELEGRAM_ID'` with your numeric Telegram user ID.
+
+### Run
+```bash
+cd cmd/server && ENV=local go run .
+```
+Migrations run automatically at startup. Working directory must be `cmd/server/` — the config path resolves as `../../config/{ENV}.toml`.
+
+### Create a new migration
+```bash
+goose create <descriptive_name> sql -dir ./migrations
+```
+
+### Tests
+No tests yet. When adding the first one, mock the package's local repository interface — not the concrete type.
+
+## 6. Current State & Next Steps
+
+### DB tables
+
+| Table | Description |
+|---|---|
+| `users` | `telegram_id` UNIQUE, `username`, `is_admin`, soft-delete |
+| `invitations` | 6-char codes, 72h expiry. FK to `users` for `created_by`/`used_by` |
+| `accounts` | `user_id`, `name`, `currency`, `is_default`, soft-delete. Partial unique indexes. |
+| `conversation_states` | PK=`user_id`. `flow_name`, `step_name`, `data` JSONB |
+| `subcategories` | `user_id` nullable (NULL=global), `category`, `subcategory`, `is_global` |
+| `movements` | `transaction_id` UUID, `account_id` (nullable), `subcategory_id`, `type` ENUM, `amount` NUMERIC(15,2), `currency` ENUM |
+
+### What's implemented
+
+- Server bootstrap, health checks, DB + automatic migrations
+- Invitation system: `POST /invitations` (admin) → Telegram deep-link
+- Onboarding: `/start` validates invitation code, creates user, creates default ARS+USD wallets
+- Repositories: `user`, `invitation`, `account`, `subcategory` (complete); `movement` (stub)
+- ~80 global subcategories seeded across 14 categories
+- Conversation engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, state persisted in Postgres
+
+### What's missing before the bot can record expenses
+
+1. **No conversation flows registered.** The engine exists but `conversationEngine.Register(...)` is never called. Implement and register: `account_setup`, `subcategory_setup`, `movement_record`, `movement_edit`
+2. **`handleConversationFinished` is a placeholder.** Currently sends the literal string `"TO_REVIEW"`. Needs to read `result.Data` and execute the appropriate action.
+3. **`movement/repository.go` is a stub.** Only `InitRepository()` exists. Add: `Insert`, `FindByUser`, `FindByDateRange`, `SoftDelete`
+4. **LLM client + intent classifier** (Groq) — does not exist in v2 yet
+5. **Exchange rate fetching** (dolarapi.com, argentinadatos.com)
+6. **Real admin auth** — `middleware.RequireAdmin` is hardcoded to user ID 1
+7. **Cron jobs** — `daily_reminder`, `weekly_summary`, `usd_quotes`, `ipc`
+8. **Web panel** — technology TBD: SvelteKit+Recharts vs Templ+HTMX
+
+### Technical debt
+
+- `accounts` table has a `type DEFAULT 'standard'` column from a prior design. Drop with a migration.
+- Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
