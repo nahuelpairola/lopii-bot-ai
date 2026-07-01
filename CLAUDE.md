@@ -139,7 +139,7 @@ conversationEngine.Register(NewAccountSetupFlow(accountRepo))
 engine.Start(userID, "account_setup")
 ```
 
-5. Handle the result in `handleConversationFinished`:
+5. Handle the result inside `handleConversationInput` when `result.Finished == true`:
 ```go
 switch result.FlowName {
 case "account_setup":
