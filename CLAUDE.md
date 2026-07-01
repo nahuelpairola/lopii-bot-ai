@@ -73,3 +73,96 @@ DB-backed JSONB in the `conversation_states` table. Never access this table dire
 
 ### Admin IDs
 Loaded into memory at server startup. Zero extra queries per Telegram request.
+
+## 3. Recipes
+
+### Recipe 1: Add a DB migration
+
+File name: `migrations/YYYYMMDDHHMMSS_<descriptive_name>.sql`
+
+```sql
+-- +goose Up
+ALTER TABLE accounts ADD COLUMN alias TEXT;
+
+-- +goose Down
+ALTER TABLE accounts DROP COLUMN alias;
+```
+
+Create with:
+```bash
+goose create <descriptive_name> sql -dir ./migrations
+```
+
+Migrations run automatically at startup when `runMigrations = true` in the TOML. To run manually:
+```bash
+goose -dir ./migrations postgres "<connection_string>" up
+```
+
+### Recipe 2: Add a conversation flow
+
+A flow is a graph of steps that persists state in `conversation_states`. The graph is validated statically at construction — if a step references a non-existent next step, the server fails to start.
+
+**Steps:**
+
+1. Define step name constants in the target package:
+```go
+const (
+    stepAskName     = "ask_name"
+    stepAskCurrency = "ask_currency"
+    stepConfirm     = "confirm"
+)
+```
+
+2. Build the Flow:
+```go
+func NewAccountSetupFlow(repo accountRepository) *conversation.Flow {
+    steps := map[string]conversation.Step{
+        stepAskName:     conversation.NewTextStep(...),
+        stepAskCurrency: conversation.NewChoiceStep(...),
+        stepConfirm:     conversation.NewChoiceStep(...),
+    }
+    return conversation.NewFlow("account_setup", steps, stepAskName)
+}
+```
+
+3. Register in `server.go`:
+```go
+conversationEngine.Register(NewAccountSetupFlow(accountRepo))
+```
+
+4. Start from a Telegram handler:
+```go
+engine.Start(ctx, userID, "account_setup")
+```
+
+5. Handle the result in `handleConversationFinished`:
+```go
+switch result.FlowName {
+case "account_setup":
+    name := result.Data["account_name"].(string)
+    // INSERT into DB
+}
+```
+
+### Recipe 3: Add an LLM intent
+
+*(The LLM package does not exist yet — document here once implemented.)*
+
+Planned intents: `CREATE | UPDATE | DELETE | QUERY`
+- Tool calling: the LLM constructs action parameters, not just the intent type
+- `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
+- `lastTransaction` in memory per user to resolve implicit references ("actually it was 1200")
+
+### Recipe 4: Add an admin command
+
+1. Register the handler in `controller/messaging/controller.go` with a prefix match:
+```go
+b.RegisterHandlerByCommand(bot.HandlerTypeMessageText, "/new-invite", handleNewInvite)
+```
+
+2. For HTTP admin endpoints, use the middleware:
+```go
+r.POST("/invitations", middleware.RequireAdmin(adminID), invitationController.Create)
+```
+
+3. Telegram deep-links: `https://t.me/<bot_username>?start=<CODE>`
