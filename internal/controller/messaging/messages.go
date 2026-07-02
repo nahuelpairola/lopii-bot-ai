@@ -37,9 +37,17 @@ func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.
 	}
 
 	return fmt.Sprintf(
-		"%s, disponés de %d cuentas: %s, donde se van a vincular todos tus movimientos.",
+		"%s, disponés de %d cuentas: %s, donde se van a vincular todos tus movimientos por defecto.\n\n"+
+			"Para arrancar con el saldo correcto, contame cuánta plata tenés hoy en cada una.",
 		u.Username,
 		len(as),
 		strings.Join(accounts, ", "),
+	)
+}
+
+func msgConfirmInitialBalances(arsAmount, usdAmount string) string {
+	return fmt.Sprintf(
+		"Así quedarían tus saldos iniciales:\n• Wallet ARS: $%s\n• Wallet USD: US$%s\n\n¿Confirmás o querés corregir?",
+		arsAmount, usdAmount,
 	)
 }

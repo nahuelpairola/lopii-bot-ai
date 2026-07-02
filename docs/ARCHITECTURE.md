@@ -24,11 +24,11 @@
 | `internal/invitation/` | `repository.go` | `Invitation` model + repository (`Create`, `FindByCode`, `MarkAsUsed`) |
 | `internal/account/` | `repository.go`, `messages.go` | `Account` model + full repository + Spanish UI strings |
 | `internal/subcategory/` | `repository.go`, `messages.go` | `Subcategory` model + repository + Spanish UI strings |
-| `internal/movement/` | `repository.go` | `Movement` model + repository stub (no query methods yet) |
+| `internal/movement/` | `repository.go` | `Movement` model + repository (`InsertBatch` only — single-row query methods still pending) |
 | `internal/conversation/` | `flow.go`, `engine.go`, `repository.go`, `text_step.go`, `choice_step.go` | Conversation state-machine framework |
 | `internal/controller/health/` | `controller.go` | `GET /health/internal`, `HEAD /health/external` |
 | `internal/controller/invitation/` | `controller.go` | `POST /invitations` (admin-only) |
-| `internal/controller/messaging/` | `controller.go`, `start.go`, `messages.go` | Telegram handlers: `/start` + catch-all for free text and callbacks |
+| `internal/controller/messaging/` | `controller.go`, `start.go`, `messages.go`, `initial_balance_flow.go` | Telegram handlers: `/start` + catch-all for free text and callbacks; onboarding's mandatory `initial_balance_setup` flow |
 | `migrations/` | `*.sql` | Goose migrations — **authoritative DB schema** |
 | `config/` | `local.toml`, `dev.toml`, `prd.toml` | Environment configs (secrets go here, git-ignored for local) |
 
@@ -69,16 +69,18 @@
 - All 6 DB tables created and migrated
 - Invitation system: `POST /invitations` → 6-char code + Telegram deep-link (72h, single-use)
 - `/start` onboarding: validates invite code → creates user → creates default ARS + USD wallet accounts
+- Onboarding: mandatory `initial_balance_setup` conversation flow, auto-started right after `/start` creates the wallets — asks ARS then USD balance (TextStep, accepts 0, rejects negative/non-numeric), confirms with a ChoiceStep (Confirmar/Corregir), and on completion inserts one opening `transfer` movement per currency (subcategory `Sistema | Saldo inicial`) in a single DB transaction via `movement.InsertBatch`
 - Health endpoints: `GET /health/internal`, `HEAD /health/external`
 - Conversation engine: `Flow`, `TextStep`, `ChoiceStep`, state persisted in Postgres JSONB
 - Account repository: full CRUD + default management + unique violation detection
-- Subcategory repository: `FindAllForUser`, `DistinctCategoriesForUser`, `Insert` + unique violation detection
+- Subcategory repository: `FindAllForUser`, `DistinctCategoriesForUser`, `FindByCategoryAndSubcategory`, `Insert` + unique violation detection
 - ~90 global subcategories seeded across 15 categories (`migrations/20260625234857`)
-- Movement GORM model + `InitRepository` (model only — no query methods)
+- Movement GORM model + `InitRepository` + `InsertBatch` (transactional multi-row insert)
+- `handleConversationInput`'s flow-completion dispatch (`handleFlowFinished`, `switch result.FlowName`) — no longer a `"TO_REVIEW"` placeholder for registered flows
 
 ### 🚧 In progress
 
-- `internal/movement/repository.go` — model exists, query methods pending: `Insert`, `FindByUser`, `FindByDateRange`, `SoftDelete`  
+- `internal/movement/repository.go` — has `InsertBatch` only; single-row query methods still pending: `Insert`, `FindByUser`, `FindByDateRange`, `SoftDelete`  
   *(branch: `feat/add-movements`)*
 
 ### ❌ Not started
@@ -106,6 +108,7 @@
 - **Conversation state is DB-backed JSONB.** `conversation_states` table, one row per user. Do not move to in-memory without explicit discussion.
 - **UPDATE = atomic DELETE + INSERT.** Editing a movement means soft-deleting the old one and inserting a new one in a single transaction. Never partial patch.
 - **Taxonomy is closed.** LLM may only assign existing category/subcategory names. Unknown or low-confidence → `PENDING_REVIEW | PENDING_REVIEW`.
+- **Mandatory onboarding steps piggyback on the one-flow-at-a-time rule.** There's no `users.onboarding_completed` flag. A step is "mandatory" simply because it's auto-started (`engine.Start`/`startFlowIfNotBusy`) right after the previous one finishes, and `Engine.InProgress` (backed by `conversation_states`) blocks any other flow from starting until it's done. If the user disappears mid-flow, state persists in Postgres and resumes on their next message — no extra bookkeeping needed. See `initial_balance_setup` in `controller/messaging/initial_balance_flow.go` for the reference implementation.
 
 ---
 

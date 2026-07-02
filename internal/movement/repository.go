@@ -14,8 +14,9 @@ import (
 type movementType string
 
 const (
-	Expense movementType = constants.Expense
-	Income  movementType = constants.Income
+	Expense  movementType = constants.Expense
+	Income   movementType = constants.Income
+	Transfer movementType = constants.Transfer
 )
 
 type Movement struct {
@@ -43,4 +44,17 @@ type repository struct {
 
 func InitRepository(conn *database.Connection) *repository {
 	return &repository{db: conn}
+}
+
+// InsertBatch inserta todos los movements en una sola transacción: si
+// alguno falla, se revierten los que ya se hayan insertado.
+func (r *repository) InsertBatch(ms []Movement) error {
+	return r.db.DB.Transaction(func(tx *gorm.DB) error {
+		for i := range ms {
+			if err := tx.Create(&ms[i]).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

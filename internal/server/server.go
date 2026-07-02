@@ -14,6 +14,8 @@ import (
 	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/health"
 	"lopiibot.com/internal/invitation"
+	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
 
@@ -40,16 +42,21 @@ func InitServer(conf *config.Config) error {
 	invitationRepo := invitation.NewRepository(conn)
 	userRepo := user.NewRepository(conn)
 	accountRepo := account.NewRepository(conn)
+	movementRepo := movement.InitRepository(conn)
+	subcategoryRepo := subcategory.NewRepository(conn)
 	conversationRepo := conversation.NewRepository(conn)
 
 	conversationEngine := conversation.NewEngine(conversationRepo)
+	conversationEngine.Register(messagingctrl.NewInitialBalanceFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)
 	if err != nil {
 		return err
 	}
-	messagingController := messagingctrl.NewController(userRepo, invitationRepo, accountRepo, conversationEngine)
+	messagingController := messagingctrl.NewController(
+		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryRepo, conversationEngine,
+	)
 
 	healthController.RegisterRoutes(ginEngine)
 	invitationController.RegisterRoutes(ginEngine)

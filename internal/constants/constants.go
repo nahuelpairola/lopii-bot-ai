@@ -6,6 +6,7 @@ const (
 )
 
 const (
-	Expense = "expense"
-	Income  = "income"
+	Expense  = "expense"
+	Income   = "income"
+	Transfer = "transfer"
 )

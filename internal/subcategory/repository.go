@@ -18,6 +18,7 @@ type Subcategory struct {
 }
 
 var ErrSubcategoryAlreadyExists = errors.New("a subcategory with that name already exists in this category")
+var ErrSubcategoryNotFound = errors.New("subcategory not found")
 
 type repository struct {
 	conn *database.Connection
@@ -48,6 +49,22 @@ func (r *repository) DistinctCategoriesForUser(userID uint64) ([]string, error) 
 		Order("category").
 		Pluck("category", &categories).Error
 	return categories, err
+}
+
+// FindByCategoryAndSubcategory busca una subcategoría específica (global
+// o de usuario) por su par category+subcategory.
+func (r *repository) FindByCategoryAndSubcategory(category, subcategory string) (*Subcategory, error) {
+	var s Subcategory
+	err := r.conn.DB.
+		Where("category = ? AND subcategory = ?", category, subcategory).
+		First(&s).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrSubcategoryNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 func (r *repository) Insert(s *Subcategory) error {

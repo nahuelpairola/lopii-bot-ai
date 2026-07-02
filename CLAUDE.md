@@ -275,11 +275,10 @@ goose create <descriptive_name> sql -dir ./migrations
 ```
 
 ### Tests
-No tests yet. When adding the first one, mock the package's local repository interface — not the concrete type.
+First tests added in `internal/controller/messaging` (`initial_balance_flow_test.go`) — mocked local repository interfaces, no real Postgres. Follow the same pattern for new packages.
 
 ## 6. Technical Debt
 
 - `accounts` table has a `type DEFAULT 'standard'` column from a prior design — drop with a migration.
 - Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
 - `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
-- `handleConversationInput` in `controller/messaging/controller.go` sends `"TO_REVIEW"` when a flow finishes — needs to dispatch on `result.FlowName`.
