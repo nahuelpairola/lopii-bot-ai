@@ -64,11 +64,11 @@ func TestInitialBalanceFlow_HappyPath(t *testing.T) {
 	if err != nil || !found || !result.Finished {
 		t.Fatalf("confirm step: result=%+v found=%v err=%v", result, found, err)
 	}
-	if result.Data[dataKeyARSBalance] != "50000" {
-		t.Errorf("ars balance = %v, want 50000", result.Data[dataKeyARSBalance])
+	if result.Data[balanceDataKey(currency.ARS)] != "50000" {
+		t.Errorf("ars balance = %v, want 50000", result.Data[balanceDataKey(currency.ARS)])
 	}
-	if result.Data[dataKeyUSDBalance] != "100" {
-		t.Errorf("usd balance = %v, want 100", result.Data[dataKeyUSDBalance])
+	if result.Data[balanceDataKey(currency.USD)] != "100" {
+		t.Errorf("usd balance = %v, want 100", result.Data[balanceDataKey(currency.USD)])
 	}
 }
 
@@ -95,8 +95,8 @@ func TestInitialBalanceFlow_InvalidAmount_Retries(t *testing.T) {
 		if result.Finished {
 			t.Fatalf("Handle(%q) should not finish the flow", text)
 		}
-		if store.stepName != stepAskARSBalance {
-			t.Errorf("Handle(%q): expected to stay on %q, got %q", text, stepAskARSBalance, store.stepName)
+		if store.stepName != askBalanceStepName(currency.ARS) {
+			t.Errorf("Handle(%q): expected to stay on %q, got %q", text, askBalanceStepName(currency.ARS), store.stepName)
 		}
 	}
 }
@@ -113,8 +113,8 @@ func TestInitialBalanceFlow_Correct_RestartsFromARS(t *testing.T) {
 	if err != nil || result.Finished {
 		t.Fatalf("retry should not finish the flow: result=%+v err=%v", result, err)
 	}
-	if store.stepName != stepAskARSBalance {
-		t.Fatalf("expected to be back at %q, got %q", stepAskARSBalance, store.stepName)
+	if store.stepName != askBalanceStepName(currency.ARS) {
+		t.Fatalf("expected to be back at %q, got %q", askBalanceStepName(currency.ARS), store.stepName)
 	}
 
 	engine.Handle(userID, conversation.Input{Text: "999"})
@@ -123,8 +123,8 @@ func TestInitialBalanceFlow_Correct_RestartsFromARS(t *testing.T) {
 	if err != nil || !result.Finished {
 		t.Fatalf("expected finish on second pass: result=%+v err=%v", result, err)
 	}
-	if result.Data[dataKeyARSBalance] != "999" || result.Data[dataKeyUSDBalance] != "1" {
-		t.Errorf("stale values after correction: ars=%v usd=%v", result.Data[dataKeyARSBalance], result.Data[dataKeyUSDBalance])
+	if result.Data[balanceDataKey(currency.ARS)] != "999" || result.Data[balanceDataKey(currency.USD)] != "1" {
+		t.Errorf("stale values after correction: ars=%v usd=%v", result.Data[balanceDataKey(currency.ARS)], result.Data[balanceDataKey(currency.USD)])
 	}
 }
 
@@ -175,9 +175,9 @@ func (r *fakeMovementRepo) InsertBatch(ms []movement.Movement) error {
 
 func testData(userID uint64, ars, usd string) conversation.Data {
 	return conversation.Data{
-		conversation.UserIDKey: userID,
-		dataKeyARSBalance:      ars,
-		dataKeyUSDBalance:      usd,
+		conversation.UserIDKey:       userID,
+		balanceDataKey(currency.ARS): ars,
+		balanceDataKey(currency.USD): usd,
 	}
 }
 

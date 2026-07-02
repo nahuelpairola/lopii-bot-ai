@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
+	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/user"
 )
 
@@ -45,9 +48,14 @@ func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.
 	)
 }
 
-func msgConfirmInitialBalances(arsAmount, usdAmount string) string {
+func msgConfirmInitialBalances(data conversation.Data) string {
+	lines := make([]string, 0, len(currency.SupportedCurrencies))
+	for _, cu := range currency.SupportedCurrencies {
+		amount, _ := data[balanceDataKey(cu)].(string)
+		lines = append(lines, fmt.Sprintf("• %s %s: %s", constants.DefaultWalletName, cu.String(), amount))
+	}
 	return fmt.Sprintf(
-		"Así quedarían tus saldos iniciales:\n• Wallet ARS: $%s\n• Wallet USD: US$%s\n\n¿Confirmás o querés corregir?",
-		arsAmount, usdAmount,
+		"Así quedarían tus saldos iniciales:\n%s\n\n¿Confirmás o querés corregir?",
+		strings.Join(lines, "\n"),
 	)
 }

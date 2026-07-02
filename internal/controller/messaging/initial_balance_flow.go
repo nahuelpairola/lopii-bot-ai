@@ -16,50 +16,55 @@ import (
 const (
 	initialBalanceFlowName = "initial_balance_setup"
 
-	stepAskARSBalance   = "ask_ars_balance"
-	stepAskUSDBalance   = "ask_usd_balance"
 	stepConfirmBalances = "confirm_balances"
-
-	dataKeyARSBalance = "ars_balance"
-	dataKeyUSDBalance = "usd_balance"
 )
 
-// NewInitialBalanceFlow pide el saldo actual de las wallets ARS y USD
-// (creadas en /start) y lo confirma antes de terminar. Se arranca
-// automáticamente al final de /start (ver start.go).
+// askBalanceStepName y balanceDataKey derivan el nombre de step / data key
+// a partir de la moneda, en vez de tener un const fijo por moneda: agregar
+// una moneda a currency.SupportedCurrencies alcanza para que este flow la
+// contemple, sin tocar este archivo.
+func askBalanceStepName(cu currency.Currency) string {
+	return "ask_balance_" + cu.String()
+}
+
+func balanceDataKey(cu currency.Currency) string {
+	return "balance_" + cu.String()
+}
+
+// NewInitialBalanceFlow pide el saldo actual de cada wallet default (una
+// por moneda en currency.SupportedCurrencies, creadas en /start) y lo
+// confirma antes de terminar. Se arranca automáticamente al final de
+// /start (ver start.go).
 func NewInitialBalanceFlow() *conversation.Flow {
+	currencies := currency.SupportedCurrencies
+
 	steps := map[string]conversation.Step{
-		stepAskARSBalance: conversation.TextStep{
-			PromptText: func(data conversation.Data) string {
-				return account.MsgAskInitialBalance(constants.DefaultWalletName, "ARS")
-			},
-			DataKey:  dataKeyARSBalance,
-			Validate: validateBalanceAmount,
-			NextStep: stepAskUSDBalance,
-		},
-		stepAskUSDBalance: conversation.TextStep{
-			PromptText: func(data conversation.Data) string {
-				return account.MsgAskInitialBalance(constants.DefaultWalletName, "USD")
-			},
-			DataKey:  dataKeyUSDBalance,
-			Validate: validateBalanceAmount,
-			NextStep: stepConfirmBalances,
-		},
 		stepConfirmBalances: conversation.ChoiceStep{
-			PromptText: func(data conversation.Data) string {
-				ars, _ := data[dataKeyARSBalance].(string)
-				usd, _ := data[dataKeyUSDBalance].(string)
-				return msgConfirmInitialBalances(ars, usd)
-			},
+			PromptText: msgConfirmInitialBalances,
 			Options: []conversation.ChoiceOption{
 				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
-				{Label: "✏️ Corregir", Value: "retry", NextStep: stepAskARSBalance},
+				{Label: "✏️ Corregir", Value: "retry", NextStep: askBalanceStepName(currencies[0])},
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
 		},
 	}
 
-	flow, err := conversation.NewFlow(initialBalanceFlowName, stepAskARSBalance, steps)
+	for i, cu := range currencies {
+		next := stepConfirmBalances
+		if i+1 < len(currencies) {
+			next = askBalanceStepName(currencies[i+1])
+		}
+		steps[askBalanceStepName(cu)] = conversation.TextStep{
+			PromptText: func(data conversation.Data) string {
+				return account.MsgAskInitialBalance(constants.DefaultWalletName, cu.String())
+			},
+			DataKey:  balanceDataKey(cu),
+			Validate: validateBalanceAmount,
+			NextStep: next,
+		}
+	}
+
+	flow, err := conversation.NewFlow(initialBalanceFlowName, askBalanceStepName(currencies[0]), steps)
 	if err != nil {
 		panic(err)
 	}
@@ -93,8 +98,8 @@ func (c *controller) finishInitialBalanceFlow(ctx context.Context, b *bot.Bot, c
 func (c *controller) insertInitialBalanceMovements(data conversation.Data) error {
 	userID := data.UserID()
 
-	arsText, _ := data[dataKeyARSBalance].(string)
-	usdText, _ := data[dataKeyUSDBalance].(string)
+	arsText, _ := data[balanceDataKey(currency.ARS)].(string)
+	usdText, _ := data[balanceDataKey(currency.USD)].(string)
 
 	arsAmount, err := decimal.NewFromString(arsText)
 	if err != nil {
