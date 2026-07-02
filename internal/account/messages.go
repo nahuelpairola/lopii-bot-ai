@@ -4,9 +4,7 @@ const (
 	msgInvalidAccountName   = "Mandame un nombre válido para la cuenta."
 	msgAccountCreationError = "No se pudo crear la cuenta, probá de nuevo."
 
-	// msgInvalidAmount queda reservado para cuando se reactive el pedido
-	// de saldo inicial (ver setup_steps.go, función createAccount).
-	msgInvalidAmount = "Mandame un monto válido (ejemplo: 1500 o 1500.50)."
+	MsgInvalidAmount = "Mandame un monto válido (ejemplo: 1500 o 1500.50)."
 
 	btnReplaceYes         = "Sí, reemplazar"
 	btnReplaceNo          = "No, agregar como extra"
@@ -35,9 +33,7 @@ func msgConfirmReplaceDefault(currency, accountName string) string {
 		"\" la reemplace como principal, o la agregamos como una cuenta más sin que cambie tu cuenta principal actual?"
 }
 
-// msgAskInitialBalance queda reservado para cuando se reactive el saldo
-// inicial (ver setup_steps.go, función createAccount).
-func msgAskInitialBalance(accountName, currency string) string {
+func MsgAskInitialBalance(accountName, currency string) string {
 	return "¿Cuál es el saldo inicial de \"" + accountName + "\" en " + currency + "? Mandá el monto (ej: 50000)."
 }
 

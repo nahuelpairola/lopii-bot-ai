@@ -9,7 +9,10 @@ import (
 	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/invitation"
+	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
 
@@ -25,26 +28,41 @@ type invitationRepository interface {
 
 type accountRepository interface {
 	Insert(*account.Account) error
+	FindDefaultByCurrency(userID uint64, currency currency.Currency) (*account.Account, error)
+}
+
+type movementRepository interface {
+	InsertBatch([]movement.Movement) error
+}
+
+type subcategoryRepository interface {
+	FindByCategoryAndSubcategory(category, subcategory string) (*subcategory.Subcategory, error)
 }
 
 type controller struct {
-	users       userRepository
-	invitations invitationRepository
-	accounts    accountRepository
-	engine      *conversation.Engine
+	users         userRepository
+	invitations   invitationRepository
+	accounts      accountRepository
+	movements     movementRepository
+	subcategories subcategoryRepository
+	engine        *conversation.Engine
 }
 
 func NewController(
 	users userRepository,
 	invitations invitationRepository,
 	accounts accountRepository,
+	movements movementRepository,
+	subcategories subcategoryRepository,
 	engine *conversation.Engine,
 ) *controller {
 	return &controller{
-		users:       users,
-		invitations: invitations,
-		engine:      engine,
-		accounts:    accounts,
+		users:         users,
+		invitations:   invitations,
+		accounts:      accounts,
+		movements:     movements,
+		subcategories: subcategories,
+		engine:        engine,
 	}
 }
 
@@ -111,10 +129,22 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		return
 	}
 	if result.Finished {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: "TO_REVIEW"})
+		c.handleFlowFinished(ctx, b, chatID, result)
 		return
 	}
 	c.sendPrompt(ctx, b, chatID, result.Prompt)
+}
+
+// handleFlowFinished ejecuta la acción real correspondiente a un flow que
+// acaba de terminar (crear cuenta, insertar movimiento, etc.), según su
+// nombre. Agregar un flow nuevo implica agregar un case acá.
+func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID int64, result conversation.Result) {
+	switch result.FlowName {
+	case initialBalanceFlowName:
+		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
+	default:
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+	}
 }
 
 // sendPrompt traduce un conversation.Prompt neutro al formato real de

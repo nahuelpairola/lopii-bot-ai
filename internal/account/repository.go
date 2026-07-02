@@ -5,16 +5,17 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
 )
 
 type Account struct {
 	gorm.Model
-	UserID    uint64      `gorm:"column:user_id"`
-	Name      string      `gorm:"column:name"`
-	Type      accountType `gorm:"column:type"`
-	Currency  Currency    `gorm:"column:currency"`
-	IsDefault bool        `gorm:"column:is_default"`
+	UserID    uint64            `gorm:"column:user_id"`
+	Name      string            `gorm:"column:name"`
+	Type      accountType       `gorm:"column:type"`
+	Currency  currency.Currency `gorm:"column:currency"`
+	IsDefault bool              `gorm:"column:is_default"`
 }
 
 var ErrAccountAlreadyExists = errors.New("an account with that name and currency already exists")
@@ -30,19 +31,6 @@ func (c accountType) String() string {
 	return string(c)
 }
 
-type Currency string
-
-const (
-	ARS Currency = "ARS"
-	USD Currency = "USD"
-)
-
-func (c Currency) String() string {
-	return string(c)
-}
-
-var SupportedCurrencies = []Currency{ARS, USD}
-
 type repository struct {
 	conn *database.Connection
 }
@@ -57,7 +45,7 @@ func (r *repository) FindByUserID(userID uint64) ([]Account, error) {
 	return accounts, err
 }
 
-func (r *repository) FindDefaultByCurrency(userID uint64, currency Currency) (*Account, error) {
+func (r *repository) FindDefaultByCurrency(userID uint64, currency currency.Currency) (*Account, error) {
 	var a Account
 	err := r.conn.DB.
 		Where("user_id = ? AND currency = ? AND is_default = TRUE", userID, currency.String()).
@@ -70,7 +58,7 @@ func (r *repository) FindDefaultByCurrency(userID uint64, currency Currency) (*A
 
 // HasDefaultForCurrency indica si el usuario ya tiene una cuenta default
 // en la moneda dada.
-func (r *repository) HasDefaultForCurrency(userID uint64, currency Currency) bool {
+func (r *repository) HasDefaultForCurrency(userID uint64, currency currency.Currency) bool {
 	_, err := r.FindDefaultByCurrency(userID, currency)
 	return err == nil
 }
@@ -84,7 +72,7 @@ func (r *repository) CountByUserID(userID uint64) (int64, error) {
 
 // UnsetDefault saca el flag default de la cuenta que hoy lo tiene en esa
 // moneda, dejando lugar para que otra pase a ser la nueva default.
-func (r *repository) UnsetDefault(userID uint64, currency Currency) error {
+func (r *repository) UnsetDefault(userID uint64, currency currency.Currency) error {
 	return r.conn.DB.Model(&Account{}).
 		Where("user_id = ? AND currency = ? AND is_default = TRUE", userID, currency).
 		Update("is_default", false).Error
