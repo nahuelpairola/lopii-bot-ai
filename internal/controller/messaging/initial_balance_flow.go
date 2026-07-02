@@ -98,55 +98,36 @@ func (c *controller) finishInitialBalanceFlow(ctx context.Context, b *bot.Bot, c
 func (c *controller) insertInitialBalanceMovements(data conversation.Data) error {
 	userID := data.UserID()
 
-	arsText, _ := data[balanceDataKey(currency.ARS)].(string)
-	usdText, _ := data[balanceDataKey(currency.USD)].(string)
-
-	arsAmount, err := decimal.NewFromString(arsText)
-	if err != nil {
-		return err
-	}
-	usdAmount, err := decimal.NewFromString(usdText)
-	if err != nil {
-		return err
-	}
-
 	sub, err := c.subcategories.FindByCategoryAndSubcategory("Sistema", "Saldo inicial")
 	if err != nil {
 		return err
 	}
 	subcategoryID := uint64(sub.ID)
 
-	arsAccount, err := c.accounts.FindDefaultByCurrency(userID, currency.ARS)
-	if err != nil {
-		return err
-	}
-	usdAccount, err := c.accounts.FindDefaultByCurrency(userID, currency.USD)
-	if err != nil {
-		return err
-	}
-	arsAccountID := uint64(arsAccount.ID)
-	usdAccountID := uint64(usdAccount.ID)
-
 	today := time.Now()
-	movements := []movement.Movement{
-		{
+	movements := make([]movement.Movement, 0, len(currency.SupportedCurrencies))
+	for _, cu := range currency.SupportedCurrencies {
+		amountText, _ := data[balanceDataKey(cu)].(string)
+		amount, err := decimal.NewFromString(amountText)
+		if err != nil {
+			return err
+		}
+
+		acc, err := c.accounts.FindDefaultByCurrency(userID, cu)
+		if err != nil {
+			return err
+		}
+		accountID := uint64(acc.ID)
+
+		movements = append(movements, movement.Movement{
 			UserID:        userID,
-			AccountID:     &arsAccountID,
+			AccountID:     &accountID,
 			SubcategoryID: subcategoryID,
 			Date:          today,
 			Type:          movement.Transfer,
-			Amount:        arsAmount,
-			Currency:      currency.ARS,
-		},
-		{
-			UserID:        userID,
-			AccountID:     &usdAccountID,
-			SubcategoryID: subcategoryID,
-			Date:          today,
-			Type:          movement.Transfer,
-			Amount:        usdAmount,
-			Currency:      currency.USD,
-		},
+			Amount:        amount,
+			Currency:      cu,
+		})
 	}
 
 	return c.movements.InsertBatch(movements)
