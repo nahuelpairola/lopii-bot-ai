@@ -7,6 +7,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -30,7 +31,7 @@ func NewInitialBalanceFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepAskARSBalance: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return account.MsgAskInitialBalance("Wallet", "ARS")
+				return account.MsgAskInitialBalance(constants.DefaultWalletName, "ARS")
 			},
 			DataKey:  dataKeyARSBalance,
 			Validate: validateBalanceAmount,
@@ -38,7 +39,7 @@ func NewInitialBalanceFlow() *conversation.Flow {
 		},
 		stepAskUSDBalance: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return account.MsgAskInitialBalance("Wallet", "USD")
+				return account.MsgAskInitialBalance(constants.DefaultWalletName, "USD")
 			},
 			DataKey:  dataKeyUSDBalance,
 			Validate: validateBalanceAmount,

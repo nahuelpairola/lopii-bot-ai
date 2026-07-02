@@ -11,6 +11,7 @@ import (
 	"github.com/go-telegram/bot/models"
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/user"
 )
@@ -65,7 +66,7 @@ func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models
 	for _, cu := range currency.SupportedCurrencies {
 		acc := account.Account{
 			UserID:    newUser.ID,
-			Name:      "Wallet",
+			Name:      constants.DefaultWalletName,
 			Currency:  cu,
 			IsDefault: true,
 		}

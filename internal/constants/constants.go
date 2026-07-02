@@ -10,3 +10,5 @@ const (
 	Income   = "income"
 	Transfer = "transfer"
 )
+
+const DefaultWalletName = "Wallet"
