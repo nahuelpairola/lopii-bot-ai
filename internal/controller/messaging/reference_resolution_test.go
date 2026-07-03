@@ -76,6 +76,7 @@ func (r *fakeMovementRepoForResolve) FindSimilarForUser(userID uint64, query str
 	r.capturedSince = since
 	return r.result, r.err
 }
+func (r *fakeMovementRepoForResolve) SoftDeleteByIDs(ids []uint) error { return nil }
 
 func TestResolveCandidates_NoMentionedDate_UsesSevenDayCap(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Description: strPtr("Nafta YPF")}}}

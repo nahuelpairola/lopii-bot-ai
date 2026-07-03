@@ -72,6 +72,7 @@ type fakeMovementRepoFull struct {
 	balances       map[uint64]string
 	replacedOldIDs []uint
 	replaced       []movement.Movement
+	deletedIDs     []uint
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -93,6 +94,10 @@ func (r *fakeMovementRepoFull) ReplaceMovements(oldIDs []uint, newMovements []mo
 }
 func (r *fakeMovementRepoFull) FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error) {
 	return nil, nil
+}
+func (r *fakeMovementRepoFull) SoftDeleteByIDs(ids []uint) error {
+	r.deletedIDs = ids
+	return nil
 }
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {

@@ -41,6 +41,7 @@ type movementRepository interface {
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
 	ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error
 	FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error)
+	SoftDeleteByIDs(ids []uint) error
 }
 
 type subcategoryRepository interface {
@@ -177,6 +178,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
 	case movementUpdateConfirmFlowName:
 		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
+	case movementDeleteFlowName:
+		c.finishMovementDeleteFlow(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}

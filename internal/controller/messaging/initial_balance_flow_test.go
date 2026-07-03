@@ -203,6 +203,10 @@ func (r *fakeMovementRepo) FindSimilarForUser(userID uint64, query string, since
 	return nil, nil
 }
 
+func (r *fakeMovementRepo) SoftDeleteByIDs(ids []uint) error {
+	return nil
+}
+
 func testData(userID uint64, ars, usd string) conversation.Data {
 	return conversation.Data{
 		conversation.UserIDKey:       userID,

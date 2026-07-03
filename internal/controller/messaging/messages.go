@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"lopiibot.com/internal/account"
@@ -109,4 +110,27 @@ const (
 	msgUpdateApplied     = "✅ Corregido."
 	msgUpdateCancelled   = "Cancelado, no cambié nada."
 	msgNoCandidatesFound = "No encontré ningún movimiento que coincida. Contame un poco más (comercio, monto o fecha)."
+)
+
+func msgPickDeleteCandidate(data conversation.Data) string {
+	return "Encontré varios movimientos parecidos. ¿Cuál querés borrar?"
+}
+
+func msgConfirmDelete(data conversation.Data) string {
+	idx, _ := strconv.Atoi(stringOrEmpty(data["resolved_index"]))
+	candidates := decodeCandidateGroups(data)
+	if idx < 0 || idx >= len(candidates) {
+		return "¿Confirmás el borrado?"
+	}
+
+	lines := []string{"🗑️ Se borraría:"}
+	for _, row := range candidates[idx].Rows {
+		lines = append(lines, fmt.Sprintf("%s %s %s · %s", subcategory.IconFor(row.Category), row.Amount, row.Currency, row.Description))
+	}
+	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
+}
+
+const (
+	msgDeleteApplied   = "🗑️ Borrado."
+	msgDeleteCancelled = "Cancelado, no borré nada."
 )
