@@ -13,3 +13,19 @@ func IconForType(t movementType) string {
 		return "🏦"
 	}
 }
+
+// TypeFromString maps a plain string (as returned by the orchestrator's
+// MovementDraft.Type) to the package's movementType. Defaults to
+// Expense for anything unrecognized — the taxonomy/prompt already
+// constrains the LLM to "expense"/"income"/"transfer", so this is a
+// safety net, not the primary validation.
+func TypeFromString(s string) movementType {
+	switch s {
+	case string(Income):
+		return Income
+	case string(Transfer):
+		return Transfer
+	default:
+		return Expense
+	}
+}

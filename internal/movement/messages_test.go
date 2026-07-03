@@ -17,3 +17,12 @@ func TestIconForType(t *testing.T) {
 		}
 	}
 }
+
+func TestTypeFromString(t *testing.T) {
+	cases := map[string]movementType{"income": Income, "transfer": Transfer, "expense": Expense, "garbage": Expense}
+	for input, want := range cases {
+		if got := TypeFromString(input); got != want {
+			t.Errorf("TypeFromString(%q) = %v, want %v", input, got, want)
+		}
+	}
+}

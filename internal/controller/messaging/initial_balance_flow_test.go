@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -148,6 +149,10 @@ func (r *fakeAccountRepo) FindDefaultByCurrency(userID uint64, c currency.Curren
 	return a, nil
 }
 
+func (r *fakeAccountRepo) FindByUserID(userID uint64) ([]account.Account, error) {
+	return nil, nil
+}
+
 type fakeSubcategoryRepo struct {
 	sub *subcategory.Subcategory
 	err error
@@ -160,6 +165,14 @@ func (r *fakeSubcategoryRepo) FindByCategoryAndSubcategory(category, sub string)
 	return r.sub, nil
 }
 
+func (r *fakeSubcategoryRepo) FindAllForUser(userID uint64) ([]subcategory.Subcategory, error) {
+	return nil, nil
+}
+
+func (r *fakeSubcategoryRepo) DistinctCategoriesForUser(userID uint64) ([]string, error) {
+	return nil, nil
+}
+
 type fakeMovementRepo struct {
 	inserted []movement.Movement
 	err      error
@@ -170,6 +183,14 @@ func (r *fakeMovementRepo) InsertBatch(ms []movement.Movement) error {
 		return r.err
 	}
 	r.inserted = ms
+	return nil
+}
+
+func (r *fakeMovementRepo) SumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
+	return decimal.Zero, nil
+}
+
+func (r *fakeMovementRepo) ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error {
 	return nil
 }
 

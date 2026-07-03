@@ -8,6 +8,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/user"
 )
 
@@ -58,4 +59,28 @@ func msgConfirmInitialBalances(data conversation.Data) string {
 		"Así quedarían tus saldos iniciales:\n%s\n\n¿Confirmás o querés corregir?",
 		strings.Join(lines, "\n"),
 	)
+}
+
+func msgAskCategory(data conversation.Data) string {
+	return "¿A qué categoría pertenece este movimiento?"
+}
+
+func msgAskSubcategory(data conversation.Data) string {
+	return "¿Y la subcategoría?"
+}
+
+func msgAskAccount(data conversation.Data) string {
+	return "¿A qué cuenta corresponde este movimiento?"
+}
+
+func msgConfirmMovements(movements []movement.Movement) string {
+	lines := make([]string, 0, len(movements))
+	for _, m := range movements {
+		desc := ""
+		if m.Description != nil {
+			desc = *m.Description
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s · %s", movement.IconForType(m.Type), m.Amount.String(), m.Currency.String(), desc))
+	}
+	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
 }

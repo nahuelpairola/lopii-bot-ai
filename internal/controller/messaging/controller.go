@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -29,23 +30,38 @@ type invitationRepository interface {
 type accountRepository interface {
 	Insert(*account.Account) error
 	FindDefaultByCurrency(userID uint64, currency currency.Currency) (*account.Account, error)
+	FindByUserID(userID uint64) ([]account.Account, error)
 }
 
 type movementRepository interface {
 	InsertBatch([]movement.Movement) error
+	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
+	ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error
 }
 
 type subcategoryRepository interface {
 	FindByCategoryAndSubcategory(category, subcategory string) (*subcategory.Subcategory, error)
+	FindAllForUser(userID uint64) ([]subcategory.Subcategory, error)
+	DistinctCategoriesForUser(userID uint64) ([]string, error)
+}
+
+// lastTransactionStore is the local interface for movement.LastTransactionStore
+// — lets the controller resolve implicit references ("actually it was 1200")
+// without importing the concrete type.
+type lastTransactionStore interface {
+	Set(userID uint64, movements []movement.Movement)
+	Get(userID uint64) ([]movement.Movement, bool)
+	Clear(userID uint64)
 }
 
 type controller struct {
-	users         userRepository
-	invitations   invitationRepository
-	accounts      accountRepository
-	movements     movementRepository
-	subcategories subcategoryRepository
-	engine        *conversation.Engine
+	users            userRepository
+	invitations      invitationRepository
+	accounts         accountRepository
+	movements        movementRepository
+	subcategories    subcategoryRepository
+	engine           *conversation.Engine
+	lastTransactions lastTransactionStore
 }
 
 func NewController(
@@ -142,6 +158,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	switch result.FlowName {
 	case initialBalanceFlowName:
 		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
+	case movementCreateFlowName:
+		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}
