@@ -153,6 +153,10 @@ func (r *fakeAccountRepo) FindByUserID(userID uint64) ([]account.Account, error)
 	return nil, nil
 }
 
+func (r *fakeAccountRepo) GetAccount(id uint64) (*account.Account, error) {
+	return nil, errors.New("not found")
+}
+
 type fakeSubcategoryRepo struct {
 	sub *subcategory.Subcategory
 	err error

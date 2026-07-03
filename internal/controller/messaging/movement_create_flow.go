@@ -238,7 +238,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		}
 		date, err := time.Parse("2006-01-02", row.Date)
 		if err != nil {
-			date = time.Now()
+			return nil, err
 		}
 
 		var accountID *uint64
@@ -266,7 +266,11 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		movements = append(movements, m)
 	}
 
-	if gain, ok := fciRedemptionGain(c, movements); ok {
+	gain, ok, err := fciRedemptionGain(c, movements)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
 		movements = append(movements, gain)
 	}
 
@@ -288,13 +292,28 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	return movements, nil
 }
 
-// fciRedemptionGain detects an FCI-redemption outflow leg (a negative
-// transfer under Inversiones|FCI) among the movements about to be
-// inserted and, per the spec's deterministic rule, computes a gain
-// movement only when the redeemed amount is at least the account's
-// balance before this transaction. Never guesses a number the app
-// can't actually justify.
-func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.Movement, bool) {
+// fciRedemptionGain detects an FCI-redemption outflow leg among the
+// movements about to be inserted and, per the spec's deterministic
+// rule, computes a gain movement only when the redeemed amount is at
+// least the account's balance before this transaction. Never guesses a
+// number the app can't actually justify.
+//
+// A negative-amount transfer under Inversiones|FCI is NOT enough to
+// identify a redemption: an FCI *subscription* (money leaving the
+// wallet to invest) has the exact same shape (same type, same negative
+// sign, same subcategory — there's only one Inversiones|FCI
+// subcategory, no separate buy/sell). The disambiguator is
+// Account.IsDefault: an FCI account is almost never the user's default
+// (everyday) wallet, so a negative leg on the default account is a
+// subscription, never a redemption candidate.
+//
+// Repository errors on lookups that matter once a movement otherwise
+// looks like a genuine redemption candidate (subcategory resolution,
+// balance lookup, gain-subcategory resolution) are propagated instead
+// of silently treated as "not a candidate" — a config problem (e.g. a
+// missing reserved subcategory) or a transient DB failure should never
+// silently drop a real gain.
+func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.Movement, bool, error) {
 	for _, m := range movements {
 		if m.Type != movement.Transfer || m.AccountID == nil {
 			continue
@@ -302,14 +321,23 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 		if !m.Amount.IsNegative() {
 			continue
 		}
-		sub, err := c.subcategories.FindByCategoryAndSubcategory("Inversiones", "FCI")
-		if err != nil || m.SubcategoryID != uint64(sub.ID) {
+
+		fciSub, err := c.subcategories.FindByCategoryAndSubcategory("Inversiones", "FCI")
+		if err != nil {
+			return movement.Movement{}, false, err
+		}
+		if m.SubcategoryID != uint64(fciSub.ID) {
 			continue
+		}
+
+		acc, err := c.accounts.GetAccount(*m.AccountID)
+		if err != nil || acc.IsDefault {
+			continue // default (everyday) account: a subscription, not a redemption
 		}
 
 		balanceBefore, err := c.movements.SumAmountForAccount(*m.AccountID)
 		if err != nil {
-			continue
+			return movement.Movement{}, false, err
 		}
 		redeemed := m.Amount.Neg()
 		if redeemed.LessThan(balanceBefore) {
@@ -322,7 +350,7 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 
 		gainSub, err := c.subcategories.FindByCategoryAndSubcategory("Sistema", "Rendimiento inversión")
 		if err != nil {
-			continue
+			return movement.Movement{}, false, err
 		}
 		return movement.Movement{
 			TransactionID: m.TransactionID,
@@ -333,9 +361,9 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 			Type:          movement.Income,
 			Amount:        gain,
 			Currency:      m.Currency,
-		}, true
+		}, true, nil
 	}
-	return movement.Movement{}, false
+	return movement.Movement{}, false, nil
 }
 
 func optionalString(s string) *string {

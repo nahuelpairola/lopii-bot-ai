@@ -38,6 +38,7 @@ func (r *fakeSubcategoryRepoFull) DistinctCategoriesForUser(userID uint64) ([]st
 type fakeAccountRepoFull struct {
 	byCurrency map[currency.Currency]*account.Account
 	byUserID   []account.Account
+	byID       map[uint64]*account.Account
 	inserted   []account.Account
 	balances   map[uint64]string
 }
@@ -56,6 +57,13 @@ func (r *fakeAccountRepoFull) FindDefaultByCurrency(userID uint64, c currency.Cu
 }
 func (r *fakeAccountRepoFull) FindByUserID(userID uint64) ([]account.Account, error) {
 	return r.byUserID, nil
+}
+func (r *fakeAccountRepoFull) GetAccount(id uint64) (*account.Account, error) {
+	a, ok := r.byID[id]
+	if !ok {
+		return nil, errors.New("not found")
+	}
+	return a, nil
 }
 
 type fakeMovementRepoFull struct {
@@ -187,7 +195,9 @@ func TestResolveAndInsertMovements_FCIRedemption_GainAboveBalance(t *testing.T) 
 		"Inversiones|FCI":               newSubForTest(3, "Inversiones", "FCI"),
 		"Sistema|Rendimiento inversión": newSubForTest(9, "Sistema", "Rendimiento inversión"),
 	}}
-	accRepo := &fakeAccountRepoFull{}
+	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
+		7: {IsDefault: false}, // dedicated FCI account, not the everyday wallet — a redemption candidate
+	}}
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}} // fund has 80000 in it
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
@@ -221,11 +231,51 @@ func TestResolveAndInsertMovements_FCIRedemption_GainAboveBalance(t *testing.T) 
 	}
 }
 
+func TestResolveAndInsertMovements_FCISubscription_DefaultAccount_NoGain(t *testing.T) {
+	// Regression test: a subscription's negative leg has the exact same
+	// shape as a redemption's (Transfer, negative amount, Inversiones|FCI)
+	// — the old logic would have computed a bogus gain here (120000
+	// "redeemed" against an 80000 balance). Marking the account as the
+	// user's default (everyday wallet) must suppress the gain entirely.
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Inversiones|FCI":               newSubForTest(3, "Inversiones", "FCI"),
+		"Sistema|Rendimiento inversión": newSubForTest(9, "Sistema", "Rendimiento inversión"),
+	}}
+	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
+		7: {IsDefault: true}, // the everyday wallet — this is a subscription, not a redemption
+	}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}} // would trigger a false gain under the old logic
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "transfer", Amount: "-120000", Currency: "ARS", AccountID: "7", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: "10", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"mode":                  "create",
+		"old_movement_ids":      encodeStringSlice(nil),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+	}
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v", err)
+	}
+	if len(inserted) != 2 {
+		t.Fatalf("a subscription from the default account must never produce a gain leg, got %d movements", len(inserted))
+	}
+}
+
 func TestResolveAndInsertMovements_FCIRedemption_PartialNoGain(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Inversiones|FCI": newSubForTest(3, "Inversiones", "FCI"),
 	}}
-	accRepo := &fakeAccountRepoFull{}
+	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
+		7: {IsDefault: false},
+	}}
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "500000"}} // much more than being withdrawn
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
@@ -248,6 +298,65 @@ func TestResolveAndInsertMovements_FCIRedemption_PartialNoGain(t *testing.T) {
 	}
 	if len(inserted) != 2 {
 		t.Fatalf("a partial redemption should insert only the 2 transfer legs, got %d", len(inserted))
+	}
+}
+
+func TestResolveAndInsertMovements_InvalidDate_ReturnsError(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentación|Café": newSubForTest(1, "Alimentación", "Café"),
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "not-a-date"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"mode":                  "create",
+		"old_movement_ids":      encodeStringSlice(nil),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+	}
+
+	if _, err := c.resolveAndInsertMovements(data); err == nil {
+		t.Fatal("expected an error for a malformed date, not a silent fallback to time.Now()")
+	}
+	if movRepo.inserted != nil {
+		t.Error("a malformed date should prevent any insert")
+	}
+}
+
+func TestResolveAndInsertMovements_FCIRedemption_MissingGainSubcategory_ReturnsError(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Inversiones|FCI": newSubForTest(3, "Inversiones", "FCI"),
+		// "Sistema|Rendimiento inversión" deliberately absent — a
+		// misconfigured/missing reserved subcategory should surface as
+		// an error, never be swallowed into "no gain".
+	}}
+	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
+		7: {IsDefault: false},
+	}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"mode":                  "create",
+		"old_movement_ids":      encodeStringSlice(nil),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+	}
+
+	if _, err := c.resolveAndInsertMovements(data); err == nil {
+		t.Fatal("a missing 'Sistema|Rendimiento inversión' subcategory is a config problem and must surface as an error, not be silently swallowed")
 	}
 }
 

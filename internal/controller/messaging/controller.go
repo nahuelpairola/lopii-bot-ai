@@ -31,6 +31,7 @@ type accountRepository interface {
 	Insert(*account.Account) error
 	FindDefaultByCurrency(userID uint64, currency currency.Currency) (*account.Account, error)
 	FindByUserID(userID uint64) ([]account.Account, error)
+	GetAccount(id uint64) (*account.Account, error)
 }
 
 type movementRepository interface {
