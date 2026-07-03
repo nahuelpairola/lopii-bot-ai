@@ -46,6 +46,12 @@ type ChoiceStep struct {
 	// ninguna opción conocida (no debería pasar en uso normal vía
 	// botones, pero protege ante texto libre inesperado).
 	InvalidChoiceMessage string
+	// SkipIf, if set, is checked before showing this step's Prompt during
+	// a seeded/auto-advancing walk (see Engine.StartWithData). Returning
+	// ok=true skips this step; nextStep says where to continue (empty
+	// nextStep means the flow is complete). nil means never skip — every
+	// ChoiceStep that doesn't set this is unaffected.
+	SkipIf func(data Data) (nextStep string, ok bool)
 }
 
 func (s ChoiceStep) options(data Data) []ChoiceOption {
@@ -98,4 +104,11 @@ func (s ChoiceStep) PossibleNextSteps() []string {
 		steps = append(steps, opt.NextStep)
 	}
 	return steps
+}
+
+func (s ChoiceStep) Skip(data Data) (string, bool) {
+	if s.SkipIf == nil {
+		return "", false
+	}
+	return s.SkipIf(data)
 }

@@ -45,17 +45,37 @@ const UserIDKey = "_user_id"
 // Start arranca un flujo desde cero para un usuario y devuelve el primer
 // Prompt a mostrar.
 func (e *Engine) Start(userID uint64, flowName string) (Prompt, error) {
+	return e.StartWithData(userID, flowName, Data{})
+}
+
+// StartWithData arranca un flujo pre-cargado con datos ya conocidos
+// (por ejemplo, lo que devolvió una clasificación de LLM), saltando
+// automáticamente cualquier paso cuya información ya esté resuelta. Si
+// el seed no deja nada por preguntar, devuelve un error — quien llama
+// no debería arrancar un flujo cuando no hay ningún hueco real.
+func (e *Engine) StartWithData(userID uint64, flowName string, seed Data) (Prompt, error) {
 	f, ok := e.flows[flowName]
 	if !ok {
 		return Prompt{}, fmt.Errorf("conversation: flow %q is not registered", flowName)
 	}
 
 	data := Data{UserIDKey: userID}
-	if err := e.store.Set(userID, f.Name, f.InitialStep, data); err != nil {
-		return Prompt{}, err
+	for k, v := range seed {
+		data[k] = v
 	}
 
-	step, _ := f.step(f.InitialStep)
+	resolved, err := f.advanceThroughSkips(f.InitialStep, data)
+	if err != nil {
+		return Prompt{}, err
+	}
+	if resolved == "" {
+		return Prompt{}, fmt.Errorf("conversation: flow %q completed immediately with seed data, nothing to prompt", flowName)
+	}
+
+	step, _ := f.step(resolved)
+	if err := e.store.Set(userID, f.Name, resolved, data); err != nil {
+		return Prompt{}, err
+	}
 	return step.Prompt(data), nil
 }
 
@@ -98,11 +118,21 @@ func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, 
 		return Result{Finished: true, FlowName: flowName, Data: transition.data}, true, nil
 
 	default: // outcomeAdvance
-		nextStep, ok := f.step(transition.nextStep)
-		if !ok {
-			return Result{}, true, fmt.Errorf("conversation: step %q not found in flow %q", transition.nextStep, flowName)
+		resolved, err := f.advanceThroughSkips(transition.nextStep, transition.data)
+		if err != nil {
+			return Result{}, true, err
 		}
-		if err := e.store.Set(userID, flowName, transition.nextStep, transition.data); err != nil {
+		if resolved == "" {
+			if err := e.store.Clear(userID); err != nil {
+				return Result{}, true, err
+			}
+			return Result{Finished: true, FlowName: flowName, Data: transition.data}, true, nil
+		}
+		nextStep, ok := f.step(resolved)
+		if !ok {
+			return Result{}, true, fmt.Errorf("conversation: step %q not found in flow %q", resolved, flowName)
+		}
+		if err := e.store.Set(userID, flowName, resolved, transition.data); err != nil {
 			return Result{}, true, err
 		}
 		return Result{Prompt: nextStep.Prompt(transition.data), FlowName: flowName}, true, nil

@@ -78,6 +78,12 @@ type Step interface {
 	// saltar este Step. Se usa solo para validar el grafo al registrar
 	// el Flow, no participa en la decisión real en runtime.
 	PossibleNextSteps() []string
+
+	// Skip reports whether this step's data is already satisfied and, if
+	// so, where the walk should continue (see Flow.advanceThroughSkips).
+	// ok=false means "stop here, show this step's Prompt." ok=true with
+	// nextStep=="" means "the flow is complete, nothing left to ask."
+	Skip(data Data) (nextStep string, ok bool)
 }
 
 // Flow es un conjunto de Steps identificados por nombre, con un punto de
@@ -111,6 +117,31 @@ func NewFlow(name, initialStep string, steps map[string]Step) (*Flow, error) {
 func (f *Flow) step(name string) (Step, bool) {
 	s, ok := f.steps[name]
 	return s, ok
+}
+
+// advanceThroughSkips walks forward from `from`, following each step's
+// Skip(data) as long as it reports ok=true, until it lands on a step
+// that returns ok=false (that step's Prompt should be shown) or a step
+// signals completion by returning ok=true with an empty nextStep (the
+// flow is done, resolved=="" and err==nil). Guards against a
+// misconfigured Skip loop with a hop-count ceiling.
+func (f *Flow) advanceThroughSkips(from string, data Data) (string, error) {
+	current := from
+	for hops := 0; hops <= len(f.steps); hops++ {
+		step, ok := f.step(current)
+		if !ok {
+			return "", fmt.Errorf("conversation: step %q not found in flow %q", current, f.Name)
+		}
+		next, skip := step.Skip(data)
+		if !skip {
+			return current, nil
+		}
+		if next == "" {
+			return "", nil
+		}
+		current = next
+	}
+	return "", fmt.Errorf("conversation: flow %q: Skip loop exceeded %d hops, possible misconfiguration", f.Name, len(f.steps))
 }
 
 // UserID lee el userID guardado por el motor al arrancar el flujo (ver

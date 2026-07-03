@@ -14,6 +14,14 @@ type TextStep struct {
 	Validate func(text string, data Data) (errMsg string)
 	// NextStep es a dónde se avanza una vez que el input es válido.
 	NextStep string
+	// SkipIf, if set, is checked before showing this step's Prompt during
+	// a seeded/auto-advancing walk (see Engine.StartWithData). Returning
+	// ok=true skips this step; nextStep says where to continue (empty
+	// nextStep means the flow is complete). nil means never skip — same
+	// contract as ChoiceStep.SkipIf, and the default for every existing
+	// TextStep literal in the codebase, so initial_balance_setup is
+	// unaffected.
+	SkipIf func(data Data) (nextStep string, ok bool)
 }
 
 func (s TextStep) Prompt(data Data) Prompt {
@@ -40,4 +48,11 @@ func (s TextStep) Process(input Input, data Data) Transition {
 
 func (s TextStep) PossibleNextSteps() []string {
 	return []string{s.NextStep}
+}
+
+func (s TextStep) Skip(data Data) (string, bool) {
+	if s.SkipIf == nil {
+		return "", false
+	}
+	return s.SkipIf(data)
 }
