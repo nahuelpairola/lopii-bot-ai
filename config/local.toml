@@ -15,3 +15,12 @@ runMigrations = true
 [telegram]
 username="Lopiipersonalfinanceslocalbot"
 token=""
+
+[groq]
+apiKey = ""
+baseUrl = "https://api.groq.com/openai/v1"
+routerModel = "llama-3.3-70b-versatile"
+createModel = "openai/gpt-oss-120b"
+updateModel = "openai/gpt-oss-120b"
+deleteModel = "llama-3.1-8b-instant"
+timeoutSeconds = 10

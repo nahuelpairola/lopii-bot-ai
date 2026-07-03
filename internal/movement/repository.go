@@ -1,6 +1,7 @@
 package movement
 
 import (
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -57,4 +58,73 @@ func (r *repository) InsertBatch(ms []Movement) error {
 		}
 		return nil
 	})
+}
+
+var ErrMovementNotFound = errors.New("movement not found")
+
+// FindSimilarForUser busca movimientos del usuario cuya description o
+// merchant sean textualmente similares a query (vía pg_trgm), desde
+// since en adelante. Usada como fallback de búsqueda cuando lastTransaction
+// no resuelve una corrección/borrado (ver reference_resolution.go).
+func (r *repository) FindSimilarForUser(userID uint64, query string, since time.Time) ([]Movement, error) {
+	var ms []Movement
+	err := r.db.DB.
+		Where("user_id = ? AND date >= ? AND (similarity(description, ?) > 0.2 OR similarity(merchant, ?) > 0.2)",
+			userID, since, query, query).
+		Order("date DESC, id DESC").
+		Find(&ms).Error
+	return ms, err
+}
+
+// SoftDeleteByIDs borra (soft-delete vía deleted_at) todas las filas
+// listadas en un solo UPDATE. Devuelve ErrMovementNotFound si ninguna
+// coincide (0 filas afectadas).
+func (r *repository) SoftDeleteByIDs(ids []uint) error {
+	result := r.db.DB.Where("id IN ?", ids).Delete(&Movement{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrMovementNotFound
+	}
+	return nil
+}
+
+// ReplaceMovements implementa la regla de UPDATE (siempre DELETE+INSERT
+// atómico, nunca patch parcial): borra las filas viejas (por ID, cubre
+// tanto un movimiento suelto como un grupo entero) e inserta las nuevas
+// dentro de una sola transacción de DB, para que una falla parcial no
+// deje el grupo mitad borrado, mitad insertado.
+func (r *repository) ReplaceMovements(oldIDs []uint, newMovements []Movement) error {
+	return r.db.DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Where("id IN ?", oldIDs).Delete(&Movement{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrMovementNotFound
+		}
+		for i := range newMovements {
+			if err := tx.Create(&newMovements[i]).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+// SumAmountForAccount implementa la regla "el balance de una cuenta
+// nunca se guarda, siempre se computa": suma el amount de todos los
+// movimientos no borrados de esa cuenta. Usada por el cálculo de
+// ganancia de rescate de FCI (ver movement_create_flow.go).
+func (r *repository) SumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
+	var total decimal.NullDecimal
+	err := r.db.DB.Model(&Movement{}).
+		Where("account_id = ?", accountID).
+		Select("COALESCE(SUM(amount), 0)").
+		Scan(&total).Error
+	if err != nil {
+		return decimal.Zero, err
+	}
+	return total.Decimal, nil
 }

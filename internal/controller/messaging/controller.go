@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -29,23 +32,51 @@ type invitationRepository interface {
 type accountRepository interface {
 	Insert(*account.Account) error
 	FindDefaultByCurrency(userID uint64, currency currency.Currency) (*account.Account, error)
+	FindByUserID(userID uint64) ([]account.Account, error)
+	GetAccount(id uint64) (*account.Account, error)
 }
 
 type movementRepository interface {
 	InsertBatch([]movement.Movement) error
+	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
+	ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error
+	FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error)
+	SoftDeleteByIDs(ids []uint) error
 }
 
 type subcategoryRepository interface {
 	FindByCategoryAndSubcategory(category, subcategory string) (*subcategory.Subcategory, error)
+	FindAllForUser(userID uint64) ([]subcategory.Subcategory, error)
+	DistinctCategoriesForUser(userID uint64) ([]string, error)
+}
+
+// lastTransactionStore is the local interface for movement.LastTransactionStore
+// — lets the controller resolve implicit references ("actually it was 1200")
+// without importing the concrete type.
+type lastTransactionStore interface {
+	Set(userID uint64, movements []movement.Movement)
+	Get(userID uint64) ([]movement.Movement, bool)
+	Clear(userID uint64)
+}
+
+// movementOrchestrator is the local interface for orchestrator.Orchestrator
+// — only the methods this package's flows need.
+type movementOrchestrator interface {
+	ClassifyIntent(ctx context.Context, text string) (orchestrator.Intent, error)
+	ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error)
+	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
+	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 }
 
 type controller struct {
-	users         userRepository
-	invitations   invitationRepository
-	accounts      accountRepository
-	movements     movementRepository
-	subcategories subcategoryRepository
-	engine        *conversation.Engine
+	users            userRepository
+	invitations      invitationRepository
+	accounts         accountRepository
+	movements        movementRepository
+	subcategories    subcategoryRepository
+	engine           *conversation.Engine
+	lastTransactions lastTransactionStore
+	orchestrator     movementOrchestrator
 }
 
 func NewController(
@@ -55,14 +86,18 @@ func NewController(
 	movements movementRepository,
 	subcategories subcategoryRepository,
 	engine *conversation.Engine,
+	lastTransactions lastTransactionStore,
+	orch movementOrchestrator,
 ) *controller {
 	return &controller{
-		users:         users,
-		invitations:   invitations,
-		accounts:      accounts,
-		movements:     movements,
-		subcategories: subcategories,
-		engine:        engine,
+		users:            users,
+		invitations:      invitations,
+		accounts:         accounts,
+		movements:        movements,
+		subcategories:    subcategories,
+		engine:           engine,
+		lastTransactions: lastTransactions,
+		orchestrator:     orch,
 	}
 }
 
@@ -126,6 +161,9 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		return
 	}
 	if !found {
+		if input.Text != "" {
+			c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+		}
 		return
 	}
 	if result.Finished {
@@ -142,6 +180,14 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	switch result.FlowName {
 	case initialBalanceFlowName:
 		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
+	case movementCreateFlowName:
+		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
+	case movementUpdatePickFlowName:
+		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
+	case movementUpdateConfirmFlowName:
+		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
+	case movementDeleteFlowName:
+		c.finishMovementDeleteFlow(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}
@@ -150,7 +196,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 // sendPrompt traduce un conversation.Prompt neutro al formato real de
 // Telegram (botones inline).
 func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
-	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text}
+	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text, ParseMode: models.ParseModeHTML}
 
 	if len(prompt.Buttons) > 0 {
 		var row []models.InlineKeyboardButton

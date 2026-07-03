@@ -34,11 +34,22 @@ type server struct {
 	BaseHost string `mapstructure:"baseHost"`
 }
 
+type groq struct {
+	APIKey         string `mapstructure:"apiKey"`
+	BaseURL        string `mapstructure:"baseUrl"`
+	RouterModel    string `mapstructure:"routerModel"`
+	CreateModel    string `mapstructure:"createModel"`
+	UpdateModel    string `mapstructure:"updateModel"`
+	DeleteModel    string `mapstructure:"deleteModel"`
+	TimeoutSeconds int    `mapstructure:"timeoutSeconds"`
+}
+
 type Config struct {
 	Env      string   `mapstructure:"env"`
 	Server   server   `mapstructure:"server"`
 	Database database `mapstructure:"database"`
 	Telegram telegram `mapstructure:"telegram"`
+	Groq     groq     `mapstructure:"groq"`
 }
 
 func Initialize() (*Config, error) {

@@ -2,12 +2,15 @@ package messaging
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
 
@@ -24,6 +27,8 @@ const (
 	msgUserCreatedSuccessfully     = "Bienvenid@ a LopiiBot, tus clasificador de gastos personales "
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
+
+	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
 
 	msgAccountSetupFinished = "Listo, ya podés empezar a registrar tus gastos. " +
 		"Mandame algo como \"café 500\" o usá /cuentas si querés agregar otra cuenta más adelante."
@@ -59,3 +64,75 @@ func msgConfirmInitialBalances(data conversation.Data) string {
 		strings.Join(lines, "\n"),
 	)
 }
+
+func msgAskCategory(data conversation.Data) string {
+	return "¿A qué categoría pertenece este movimiento?"
+}
+
+func msgAskSubcategory(data conversation.Data) string {
+	return "¿Y la subcategoría?"
+}
+
+func msgAskAccount(data conversation.Data) string {
+	return "¿A qué cuenta corresponde este movimiento?"
+}
+
+func msgConfirmMovements(movements []movement.Movement) string {
+	lines := make([]string, 0, len(movements))
+	for _, m := range movements {
+		desc := ""
+		if m.Description != nil {
+			desc = *m.Description
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s · %s", movement.IconForType(m.Type), m.Amount.String(), m.Currency.String(), desc))
+	}
+	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
+}
+
+func msgPickUpdateCandidate(data conversation.Data) string {
+	return "Encontré varios movimientos parecidos. ¿Cuál es?"
+}
+
+func msgConfirmUpdateDiff(data conversation.Data) string {
+	before := decodeMovementRows(conversation.Data{"movements": data["before_movements"]})
+	after := decodeMovementRows(data)
+
+	lines := []string{"✏️ Se corregiría así:"}
+	for i, a := range after {
+		var b movementRow
+		if i < len(before) {
+			b = before[i]
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s (antes: %s %s)", subcategory.IconFor(a.Category), a.Amount, a.Currency, b.Amount, b.Currency))
+	}
+	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
+}
+
+const (
+	msgUpdateApplied     = "✅ Corregido."
+	msgUpdateCancelled   = "Cancelado, no cambié nada."
+	msgNoCandidatesFound = "No encontré ningún movimiento que coincida. Contame un poco más (comercio, monto o fecha)."
+)
+
+func msgPickDeleteCandidate(data conversation.Data) string {
+	return "Encontré varios movimientos parecidos. ¿Cuál querés borrar?"
+}
+
+func msgConfirmDelete(data conversation.Data) string {
+	idx, _ := strconv.Atoi(stringOrEmpty(data["resolved_index"]))
+	candidates := decodeCandidateGroups(data)
+	if idx < 0 || idx >= len(candidates) {
+		return "¿Confirmás el borrado?"
+	}
+
+	lines := []string{"🗑️ Se borraría:"}
+	for _, row := range candidates[idx].Rows {
+		lines = append(lines, fmt.Sprintf("%s %s %s · %s", subcategory.IconFor(row.Category), row.Amount, row.Currency, row.Description))
+	}
+	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
+}
+
+const (
+	msgDeleteApplied   = "🗑️ Borrado."
+	msgDeleteCancelled = "Cancelado, no borré nada."
+)
