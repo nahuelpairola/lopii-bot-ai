@@ -14,6 +14,7 @@ import (
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -57,6 +58,14 @@ type lastTransactionStore interface {
 	Clear(userID uint64)
 }
 
+// movementOrchestrator is the local interface for orchestrator.Orchestrator
+// — only the methods this package's flows need. NewController's parameter
+// list and every call site are finalized in Task 18, once orchestrator also
+// needs ClassifyIntent/ResolveDelete.
+type movementOrchestrator interface {
+	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
+}
+
 type controller struct {
 	users            userRepository
 	invitations      invitationRepository
@@ -65,6 +74,7 @@ type controller struct {
 	subcategories    subcategoryRepository
 	engine           *conversation.Engine
 	lastTransactions lastTransactionStore
+	orchestrator     movementOrchestrator
 }
 
 func NewController(
@@ -163,6 +173,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
+	case movementUpdatePickFlowName:
+		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
+	case movementUpdateConfirmFlowName:
+		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}

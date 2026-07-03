@@ -9,6 +9,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
 
@@ -84,3 +85,28 @@ func msgConfirmMovements(movements []movement.Movement) string {
 	}
 	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
 }
+
+func msgPickUpdateCandidate(data conversation.Data) string {
+	return "Encontré varios movimientos parecidos. ¿Cuál es?"
+}
+
+func msgConfirmUpdateDiff(data conversation.Data) string {
+	before := decodeMovementRows(conversation.Data{"movements": data["before_movements"]})
+	after := decodeMovementRows(data)
+
+	lines := []string{"✏️ Se corregiría así:"}
+	for i, a := range after {
+		var b movementRow
+		if i < len(before) {
+			b = before[i]
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s (antes: %s %s)", subcategory.IconFor(a.Category), a.Amount, a.Currency, b.Amount, b.Currency))
+	}
+	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
+}
+
+const (
+	msgUpdateApplied     = "✅ Corregido."
+	msgUpdateCancelled   = "Cancelado, no cambié nada."
+	msgNoCandidatesFound = "No encontré ningún movimiento que coincida. Contame un poco más (comercio, monto o fecha)."
+)
