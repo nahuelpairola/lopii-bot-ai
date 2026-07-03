@@ -45,10 +45,17 @@ func TestChoiceStep_Skip_DelegatesToSkipIf(t *testing.T) {
 type fakeStep struct {
 	nextStep string
 	skip     func(data Data) (string, bool)
+	// process, if set, overrides the default Process behavior (plain
+	// Advance(nextStep, data) with data untouched). Lets a specific test
+	// simulate a step that actually writes to data before advancing.
+	process func(input Input, data Data) Transition
 }
 
 func (s fakeStep) Prompt(data Data) Prompt { return Prompt{Text: "prompt:" + s.nextStep} }
 func (s fakeStep) Process(input Input, data Data) Transition {
+	if s.process != nil {
+		return s.process(input, data)
+	}
 	return Advance(s.nextStep, data)
 }
 func (s fakeStep) PossibleNextSteps() []string { return []string{s.nextStep} }

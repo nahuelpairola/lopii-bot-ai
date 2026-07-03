@@ -79,22 +79,63 @@ func TestStartWithData_NoGaps_ErrorsInsteadOfPromptingNothing(t *testing.T) {
 }
 
 func TestHandle_ChainsThroughMultipleResolvedGapsAfterAdvance(t *testing.T) {
+	// Dedicated flow (not gapFlow): step "a"'s process actually writes
+	// both data["a"] and data["b"] before advancing to "b" — simulating,
+	// e.g., an account-creation confirmation that clears two gap rows in
+	// one Advance. This proves Handle re-evaluates skippability on "b"
+	// after the advance (data["b"] is now present, so "b" is skippable
+	// and the flow reaches completion) rather than just showing "b"'s
+	// Prompt, which is what would happen without the post-advance
+	// advanceThroughSkips walk this task adds.
+	steps := map[string]Step{
+		"a": fakeStep{
+			nextStep: "b",
+			skip: func(data Data) (string, bool) {
+				if _, ok := data["a"]; ok {
+					return "b", true
+				}
+				return "", false
+			},
+			process: func(input Input, data Data) Transition {
+				next := Data{}
+				for k, v := range data {
+					next[k] = v
+				}
+				next["a"] = "x"
+				next["b"] = "y"
+				return Advance("b", next)
+			},
+		},
+		"b": fakeStep{
+			nextStep: "b",
+			skip: func(data Data) (string, bool) {
+				if _, ok := data["b"]; ok {
+					return "", true
+				}
+				return "", false
+			},
+		},
+	}
+	flow, err := NewFlow("chain_flow", "a", steps)
+	if err != nil {
+		t.Fatalf("NewFlow: %v", err)
+	}
+
 	store := &fakeStore{}
 	engine := NewEngine(store)
-	engine.Register(gapFlow())
+	engine.Register(flow)
 
-	// Start with only "a" unresolved; land on step "a".
-	if _, err := engine.StartWithData(1, "gap_flow", Data{}); err != nil {
+	// Start with nothing resolved; land on step "a".
+	if _, err := engine.StartWithData(1, "chain_flow", Data{}); err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
 
-	// Simulate step "a" resolving both "a" and "b" in one Advance (e.g.
-	// account-creation confirmation clearing two rows at once) — Handle
-	// must walk straight through to completion.
 	result, found, err := engine.Handle(1, Input{Text: "anything"})
-	_ = result
 	if err != nil || !found {
 		t.Fatalf("Handle: found=%v err=%v", found, err)
+	}
+	if !result.Finished {
+		t.Fatalf("expected Handle to walk through both resolved gaps and finish; got Finished=false (result=%+v)", result)
 	}
 }
 
