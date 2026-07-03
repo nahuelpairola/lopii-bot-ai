@@ -1,0 +1,65 @@
+package orchestrator
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+)
+
+const updateSystemPrompt = `Sos un asistente que corrige movimientos financieros ya registrados, a partir de un mensaje de corrección en lenguaje natural.
+Se te da un movimiento candidato (una o más filas de una misma transacción) y el mensaje del usuario.
+Si el mensaje claramente se refiere a este candidato, devolvé resolved=true y el set COMPLETO de movimientos corregido (todos los campos de todas las filas, no solo lo que cambia).
+Si el mensaje no parece hablar de este candidato (menciona otro comercio, monto o fecha que no coincide), devolvé resolved=false y dejá movements vacío.
+Si el mensaje menciona una fecha o día relativo ("el lunes pasado", "el 3 de enero", "ayer"), completá mentioned_date con esa fecha en formato YYYY-MM-DD, sea cual sea el valor de resolved.`
+
+var updateTool = toolSchema{
+	Name:        "resolve_and_correct",
+	Description: "Determina si el mensaje corrige el movimiento candidato dado y devuelve el set corregido",
+	Parameters: json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"resolved": {"type": "boolean"},
+			"mentioned_date": {"type": "string"},
+			"movements": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": {
+						"type": {"type": "string", "enum": ["expense", "income", "transfer"]},
+						"amount": {"type": "string"},
+						"currency": {"type": "string", "enum": ["ARS", "USD"]},
+						"account_id": {"type": "integer"},
+						"category": {"type": "string"},
+						"subcategory": {"type": "string"},
+						"payment_method": {"type": "string"},
+						"merchant": {"type": "string"},
+						"description": {"type": "string"},
+						"date": {"type": "string"}
+					},
+					"required": ["type", "amount", "currency", "category", "subcategory", "payment_method", "description", "date"]
+				}
+			}
+		},
+		"required": ["resolved", "movements"]
+	}`),
+}
+
+func buildCandidateBlock(candidate MovementCandidate) string {
+	b, _ := json.Marshal(candidate)
+	return string(b)
+}
+
+func (o *Orchestrator) ResolveUpdate(ctx context.Context, text string, candidate MovementCandidate) (UpdateResult, error) {
+	userMessage := fmt.Sprintf("Movimiento candidato:\n%s\n\nMensaje del usuario: %q", buildCandidateBlock(candidate), text)
+
+	raw, err := o.client.chatCompletion(ctx, o.updateModel, updateSystemPrompt, userMessage, updateTool)
+	if err != nil {
+		return UpdateResult{}, fmt.Errorf("orchestrator: resolve update: %w", err)
+	}
+
+	var result UpdateResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return UpdateResult{}, fmt.Errorf("orchestrator: parse update result: %w", err)
+	}
+	return result, nil
+}
