@@ -3,6 +3,7 @@ package messaging
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
@@ -196,6 +197,10 @@ func (r *fakeMovementRepo) SumAmountForAccount(accountID uint64) (decimal.Decima
 
 func (r *fakeMovementRepo) ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error {
 	return nil
+}
+
+func (r *fakeMovementRepo) FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error) {
+	return nil, nil
 }
 
 func testData(userID uint64, ars, usd string) conversation.Data {

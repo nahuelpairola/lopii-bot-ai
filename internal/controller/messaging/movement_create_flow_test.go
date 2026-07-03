@@ -3,6 +3,7 @@ package messaging
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
@@ -89,6 +90,9 @@ func (r *fakeMovementRepoFull) ReplaceMovements(oldIDs []uint, newMovements []mo
 	r.replacedOldIDs = oldIDs
 	r.replaced = newMovements
 	return nil
+}
+func (r *fakeMovementRepoFull) FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error) {
+	return nil, nil
 }
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {
