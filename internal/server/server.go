@@ -15,6 +15,7 @@ import (
 	"lopiibot.com/internal/health"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -45,9 +46,24 @@ func InitServer(conf *config.Config) error {
 	movementRepo := movement.InitRepository(conn)
 	subcategoryRepo := subcategory.NewRepository(conn)
 	conversationRepo := conversation.NewRepository(conn)
+	lastTransactions := movement.NewLastTransactionStore()
+
+	llmOrchestrator := orchestrator.New(orchestrator.Config{
+		APIKey:         conf.Groq.APIKey,
+		BaseURL:        conf.Groq.BaseURL,
+		RouterModel:    conf.Groq.RouterModel,
+		CreateModel:    conf.Groq.CreateModel,
+		UpdateModel:    conf.Groq.UpdateModel,
+		DeleteModel:    conf.Groq.DeleteModel,
+		TimeoutSeconds: conf.Groq.TimeoutSeconds,
+	})
 
 	conversationEngine := conversation.NewEngine(conversationRepo)
 	conversationEngine.Register(messagingctrl.NewInitialBalanceFlow())
+	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryRepo, accountRepo))
+	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
+	conversationEngine.Register(messagingctrl.NewMovementUpdateConfirmFlow())
+	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)
@@ -56,6 +72,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryRepo, conversationEngine,
+		lastTransactions, llmOrchestrator,
 	)
 
 	healthController.RegisterRoutes(ginEngine)
