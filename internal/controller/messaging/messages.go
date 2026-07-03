@@ -28,6 +28,8 @@ const (
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
 
+	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
+
 	msgAccountSetupFinished = "Listo, ya podés empezar a registrar tus gastos. " +
 		"Mandame algo como \"café 500\" o usá /cuentas si querés agregar otra cuenta más adelante."
 

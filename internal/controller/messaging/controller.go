@@ -60,11 +60,12 @@ type lastTransactionStore interface {
 }
 
 // movementOrchestrator is the local interface for orchestrator.Orchestrator
-// — only the methods this package's flows need. NewController's parameter
-// list and every call site are finalized in Task 18, once orchestrator also
-// needs ClassifyIntent/ResolveDelete.
+// — only the methods this package's flows need.
 type movementOrchestrator interface {
+	ClassifyIntent(ctx context.Context, text string) (orchestrator.Intent, error)
+	ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error)
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
+	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 }
 
 type controller struct {
@@ -85,14 +86,18 @@ func NewController(
 	movements movementRepository,
 	subcategories subcategoryRepository,
 	engine *conversation.Engine,
+	lastTransactions lastTransactionStore,
+	orch movementOrchestrator,
 ) *controller {
 	return &controller{
-		users:         users,
-		invitations:   invitations,
-		accounts:      accounts,
-		movements:     movements,
-		subcategories: subcategories,
-		engine:        engine,
+		users:            users,
+		invitations:      invitations,
+		accounts:         accounts,
+		movements:        movements,
+		subcategories:    subcategories,
+		engine:           engine,
+		lastTransactions: lastTransactions,
+		orchestrator:     orch,
 	}
 }
 
@@ -156,6 +161,9 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		return
 	}
 	if !found {
+		if input.Text != "" {
+			c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+		}
 		return
 	}
 	if result.Finished {
@@ -188,7 +196,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 // sendPrompt traduce un conversation.Prompt neutro al formato real de
 // Telegram (botones inline).
 func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
-	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text}
+	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text, ParseMode: models.ParseModeHTML}
 
 	if len(prompt.Buttons) > 0 {
 		var row []models.InlineKeyboardButton

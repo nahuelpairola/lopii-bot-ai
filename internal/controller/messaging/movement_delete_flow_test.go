@@ -11,11 +11,17 @@ import (
 type fakeLastTransactionStore struct {
 	cleared int
 	set     int
+	stored  []movement.Movement
 }
 
-func (s *fakeLastTransactionStore) Set(userID uint64, movements []movement.Movement) { s.set++ }
-func (s *fakeLastTransactionStore) Get(userID uint64) ([]movement.Movement, bool)    { return nil, false }
-func (s *fakeLastTransactionStore) Clear(userID uint64)                             { s.cleared++ }
+func (s *fakeLastTransactionStore) Set(userID uint64, movements []movement.Movement) {
+	s.set++
+	s.stored = movements
+}
+func (s *fakeLastTransactionStore) Get(userID uint64) ([]movement.Movement, bool) {
+	return s.stored, s.stored != nil
+}
+func (s *fakeLastTransactionStore) Clear(userID uint64) { s.cleared++ }
 
 func movementModelWithID(t *testing.T, id uint) (m gorm.Model) {
 	t.Helper()

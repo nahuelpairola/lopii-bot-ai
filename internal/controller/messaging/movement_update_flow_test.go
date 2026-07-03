@@ -16,8 +16,17 @@ type fakeOrchestrator struct {
 	updateErr    error
 }
 
+func (o *fakeOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.Intent, error) {
+	return "", nil
+}
+func (o *fakeOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
+	return orchestrator.CreateResult{}, nil
+}
 func (o *fakeOrchestrator) ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error) {
 	return o.updateResult, o.updateErr
+}
+func (o *fakeOrchestrator) ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error) {
+	return orchestrator.DeleteResult{}, nil
 }
 
 type fakeStoreForController struct {
