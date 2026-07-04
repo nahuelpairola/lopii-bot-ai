@@ -69,3 +69,19 @@ func TestClassifyIntent_ErrorsOnUnknownIntent(t *testing.T) {
 		t.Fatal("expected an error for an unrecognized intent value")
 	}
 }
+
+func TestClassifyIntent_ReturnsAccountCreate(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"intent\":\"ACCOUNT_CREATE\"}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{BaseURL: server.URL, RouterModel: "test-model", TimeoutSeconds: 5})
+	result, err := o.ClassifyIntent(context.Background(), "quiero crear una cuenta nueva")
+	if err != nil {
+		t.Fatalf("ClassifyIntent: %v", err)
+	}
+	if result.Intent != IntentAccountCreate {
+		t.Errorf("intent = %q, want %q", result.Intent, IntentAccountCreate)
+	}
+}

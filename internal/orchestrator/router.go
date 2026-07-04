@@ -7,11 +7,12 @@ import (
 )
 
 const routerSystemPrompt = `Sos un clasificador de intención para un bot de finanzas personales argentino.
-Clasificá el mensaje del usuario en una de estas 4 acciones:
+Clasificá el mensaje del usuario en una de estas 5 acciones:
 - CREATE: el mensaje reporta un movimiento nuevo. Típicamente tiene un verbo de acción (gasté, pagué, cobré, transferí, compré) o es un monto+categoría suelto sin verbo (ej. "20k", "nafta 5k").
 - UPDATE: el mensaje corrige el monto, categoría u otro dato de un movimiento YA registrado. Señal clave: verbo copulativo en pasado (era/eran/fue/fueron) describiendo un monto, CON o SIN marcador explícito de contraste — con marcador (ej. "el café en realidad era 3000", "eran 150 usd no 100") y también SIN ningún marcador (ej. "el café de hoy eran 5k", "el gasto de nafta fue 8000").
 - DELETE: el mensaje pide borrar o eliminar un movimiento ya registrado.
 - QUERY: el mensaje pregunta o pide un resumen/consulta sobre movimientos existentes, sin registrar ni corregir nada.
+- ACCOUNT_CREATE: el mensaje pide crear una cuenta nueva (no un movimiento) — billetera, cuenta de inversión, jubilación, ahorro, etc. Señal clave: menciona "cuenta"/"cuentas" sin montos ni verbos de movimiento (gasté, pagué, cobré, transferí). Ejemplos: "quiero crear una cuenta nueva", "nueva cuenta", "cuentas", "abrí una cuenta para mi jubilación", "quiero agregar una cuenta de inversión". Un mensaje con monto Y cuenta (ej. "transferí 50k a mi cuenta de inversión") sigue siendo CREATE, no ACCOUNT_CREATE — ahí ya existe un flujo que ofrece crear la cuenta si no existe.
 Ante duda entre CREATE y UPDATE por un verbo copulativo en pasado (era/eran/fue) sin verbo de acción, preferí UPDATE.
 Elegí siempre la que mejor describe la intención real del usuario.
 Además, si clasificaste CREATE, marcá needs_confirmation=true únicamente cuando
@@ -39,7 +40,7 @@ var routerTool = toolSchema{
 	Parameters: json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY"]},
+			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY", "ACCOUNT_CREATE"]},
 			"needs_confirmation": {"type": ["boolean", "string"]}
 		},
 		"required": ["intent"]
@@ -63,7 +64,7 @@ func (o *Orchestrator) ClassifyIntent(ctx context.Context, text string) (IntentR
 	}
 
 	switch args.Intent {
-	case IntentCreate, IntentUpdate, IntentDelete, IntentQuery:
+	case IntentCreate, IntentUpdate, IntentDelete, IntentQuery, IntentAccountCreate:
 		return IntentResult{Intent: args.Intent, NeedsConfirmation: bool(args.NeedsConfirmation)}, nil
 	default:
 		return IntentResult{}, fmt.Errorf("orchestrator: unknown intent %q", args.Intent)
