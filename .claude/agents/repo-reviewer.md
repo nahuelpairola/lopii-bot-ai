@@ -24,6 +24,7 @@ Caveman-ultra. Findings only. No "looks good", no "I'd suggest", no preamble.
 - Raw string literal for currency → must be `currency.ARS`/`currency.USD`.
 - Native Go number (not string) stored in `conversation.Data`.
 - New Telegram command for end users (only `/start` and admin commands are allowed).
+- Reading or reusing patterns from `app_scripts_v1/` → v1 GAS only, no patterns apply to v2.
 
 ## Severity
 
