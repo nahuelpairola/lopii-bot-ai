@@ -193,19 +193,37 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	}
 }
 
+// buttonsPerRow caps how many inline-keyboard buttons Telegram renders
+// per row — putting every option in a single row (the old behavior) is
+// what made category/subcategory/account buttons unreadably small.
+const buttonsPerRow = 2
+
+func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton {
+	if len(buttons) == 0 {
+		return nil
+	}
+	rows := make([][]models.InlineKeyboardButton, 0, (len(buttons)+buttonsPerRow-1)/buttonsPerRow)
+	for i := 0; i < len(buttons); i += buttonsPerRow {
+		end := i + buttonsPerRow
+		if end > len(buttons) {
+			end = len(buttons)
+		}
+		row := make([]models.InlineKeyboardButton, 0, end-i)
+		for _, btn := range buttons[i:end] {
+			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: btn.Data})
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
 // sendPrompt traduce un conversation.Prompt neutro al formato real de
-// Telegram (botones inline).
+// Telegram (botones inline, en grilla de buttonsPerRow por fila).
 func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
 	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text, ParseMode: models.ParseModeHTML}
 
-	if len(prompt.Buttons) > 0 {
-		var row []models.InlineKeyboardButton
-		for _, btn := range prompt.Buttons {
-			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: btn.Data})
-		}
-		params.ReplyMarkup = &models.InlineKeyboardMarkup{
-			InlineKeyboard: [][]models.InlineKeyboardButton{row},
-		}
+	if rows := chunkButtons(prompt.Buttons); len(rows) > 0 {
+		params.ReplyMarkup = &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 	}
 
 	b.SendMessage(ctx, params)
