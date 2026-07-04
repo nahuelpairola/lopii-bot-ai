@@ -41,8 +41,24 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		c.startMovementUpdate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentDelete:
 		c.startMovementDelete(ctx, b, chatID, userID, text)
+	case orchestrator.IntentAccountCreate:
+		c.startAccountCreate(ctx, b, chatID, userID)
 	default:
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
+	}
+}
+
+// startAccountCreate starts account_create fresh — unlike CREATE, there's
+// no gap-fill seed to compute: every field (name, currency, balance) is
+// unknown until the user answers the flow's first step.
+func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
+	prompt, err := c.engine.Start(userID, accountCreateFlowName)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
 	}
 }
 

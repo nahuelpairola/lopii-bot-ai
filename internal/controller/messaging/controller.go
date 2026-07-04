@@ -178,6 +178,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
 	case movementDeleteFlowName:
 		c.finishMovementDeleteFlow(ctx, b, chatID, result.Data)
+	case accountCreateFlowName:
+		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}

@@ -160,3 +160,21 @@ func TestStartMovementDelete_NoCandidates_SendsErrorNoFlow(t *testing.T) {
 		t.Error("with zero candidates, no flow should ever start")
 	}
 }
+
+func TestHandleFreeText_AccountCreate_StartsFlow(t *testing.T) {
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentAccountCreate}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store)
+	engine.Register(NewAccountCreateFlow())
+	c := &controller{orchestrator: orch, engine: engine}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "quiero crear una cuenta nueva")
+
+	if store.flowName != accountCreateFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, accountCreateFlowName)
+	}
+	if store.stepName != stepAccountCreateAskName {
+		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountCreateAskName)
+	}
+}
