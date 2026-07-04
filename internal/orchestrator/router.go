@@ -23,15 +23,15 @@ var routerTool = toolSchema{
 		"type": "object",
 		"properties": {
 			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY"]},
-			"needs_confirmation": {"type": "boolean"}
+			"needs_confirmation": {"type": ["boolean", "string"]}
 		},
 		"required": ["intent"]
 	}`),
 }
 
 type routerArgs struct {
-	Intent            Intent `json:"intent"`
-	NeedsConfirmation bool   `json:"needs_confirmation"`
+	Intent            Intent   `json:"intent"`
+	NeedsConfirmation flexBool `json:"needs_confirmation"`
 }
 
 func (o *Orchestrator) ClassifyIntent(ctx context.Context, text string) (IntentResult, error) {
@@ -47,7 +47,7 @@ func (o *Orchestrator) ClassifyIntent(ctx context.Context, text string) (IntentR
 
 	switch args.Intent {
 	case IntentCreate, IntentUpdate, IntentDelete, IntentQuery:
-		return IntentResult{Intent: args.Intent, NeedsConfirmation: args.NeedsConfirmation}, nil
+		return IntentResult{Intent: args.Intent, NeedsConfirmation: bool(args.NeedsConfirmation)}, nil
 	default:
 		return IntentResult{}, fmt.Errorf("orchestrator: unknown intent %q", args.Intent)
 	}

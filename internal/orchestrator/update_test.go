@@ -46,6 +46,24 @@ func TestResolveUpdate_Unresolved(t *testing.T) {
 	}
 }
 
+func TestResolveUpdate_AcceptsStringResolved(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":\"true\",\"movements\":[]}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{BaseURL: server.URL, UpdateModel: "test-model", TimeoutSeconds: 5})
+	candidate := MovementCandidate{Movements: []MovementDraft{{Amount: "100", Currency: "USD"}}}
+
+	result, err := o.ResolveUpdate(context.Background(), "en realidad fueron 150 usd", candidate)
+	if err != nil {
+		t.Fatalf("ResolveUpdate: %v", err)
+	}
+	if !result.Resolved {
+		t.Error("resolved = false, want true when the model sent it as the JSON string \"true\"")
+	}
+}
+
 func TestResolveUpdate_MentionedDateRange(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":false,\"mentioned_date_from\":\"2026-06-27\",\"mentioned_date_to\":\"2026-06-29\",\"movements\":[]}"}}]}}]}`))

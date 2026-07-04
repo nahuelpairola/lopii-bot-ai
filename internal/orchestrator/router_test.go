@@ -42,6 +42,22 @@ func TestClassifyIntent_ReturnsNeedsConfirmation(t *testing.T) {
 	}
 }
 
+func TestClassifyIntent_AcceptsStringNeedsConfirmation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"intent\":\"CREATE\",\"needs_confirmation\":\"true\"}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{BaseURL: server.URL, RouterModel: "test-model", TimeoutSeconds: 5})
+	result, err := o.ClassifyIntent(context.Background(), "20k")
+	if err != nil {
+		t.Fatalf("ClassifyIntent: %v", err)
+	}
+	if !result.NeedsConfirmation {
+		t.Error("needs_confirmation = false, want true when the model sent it as the JSON string \"true\"")
+	}
+}
+
 func TestClassifyIntent_ErrorsOnUnknownIntent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"intent\":\"NONSENSE\"}"}}]}}]}`))

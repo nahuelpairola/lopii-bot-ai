@@ -35,6 +35,35 @@ type toolSchema struct {
 	Parameters  json.RawMessage
 }
 
+// flexBool decodes a JSON boolean OR a JSON string "true"/"false". Groq's
+// tool-calling models occasionally emit a stringified boolean for a field
+// declared boolean in the schema; Groq validates arguments against the
+// schema server-side and 400s before this code ever sees the payload, so
+// the schema itself must declare the field as ["boolean","string"] for
+// this leniency to matter — see routerTool/updateTool/deleteTool.
+type flexBool bool
+
+func (b *flexBool) UnmarshalJSON(data []byte) error {
+	var v bool
+	if err := json.Unmarshal(data, &v); err == nil {
+		*b = flexBool(v)
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("flexBool: %s is neither a boolean nor a string", data)
+	}
+	switch s {
+	case "true":
+		*b = true
+	case "false":
+		*b = false
+	default:
+		return fmt.Errorf("flexBool: unrecognized string value %q", s)
+	}
+	return nil
+}
+
 type chatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`

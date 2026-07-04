@@ -18,12 +18,18 @@ var deleteTool = toolSchema{
 	Parameters: json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"resolved": {"type": "boolean"},
+			"resolved": {"type": ["boolean", "string"]},
 			"mentioned_date_from": {"type": "string"},
 			"mentioned_date_to": {"type": "string"}
 		},
 		"required": ["resolved"]
 	}`),
+}
+
+type deleteArgs struct {
+	Resolved          flexBool `json:"resolved"`
+	MentionedDateFrom string   `json:"mentioned_date_from,omitempty"`
+	MentionedDateTo   string   `json:"mentioned_date_to,omitempty"`
 }
 
 func (o *Orchestrator) ResolveDelete(ctx context.Context, text string, candidate MovementCandidate) (DeleteResult, error) {
@@ -34,9 +40,13 @@ func (o *Orchestrator) ResolveDelete(ctx context.Context, text string, candidate
 		return DeleteResult{}, fmt.Errorf("orchestrator: resolve delete: %w", err)
 	}
 
-	var result DeleteResult
-	if err := json.Unmarshal(raw, &result); err != nil {
+	var args deleteArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
 		return DeleteResult{}, fmt.Errorf("orchestrator: parse delete result: %w", err)
 	}
-	return result, nil
+	return DeleteResult{
+		Resolved:          bool(args.Resolved),
+		MentionedDateFrom: args.MentionedDateFrom,
+		MentionedDateTo:   args.MentionedDateTo,
+	}, nil
 }

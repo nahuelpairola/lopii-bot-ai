@@ -19,7 +19,7 @@ var updateTool = toolSchema{
 	Parameters: json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"resolved": {"type": "boolean"},
+			"resolved": {"type": ["boolean", "string"]},
 			"mentioned_date_from": {"type": "string"},
 			"mentioned_date_to": {"type": "string"},
 			"movements": {
@@ -51,6 +51,13 @@ func buildCandidateBlock(candidate MovementCandidate) string {
 	return string(b)
 }
 
+type updateArgs struct {
+	Resolved          flexBool        `json:"resolved"`
+	MentionedDateFrom string          `json:"mentioned_date_from,omitempty"`
+	MentionedDateTo   string          `json:"mentioned_date_to,omitempty"`
+	Movements         []MovementDraft `json:"movements"`
+}
+
 func (o *Orchestrator) ResolveUpdate(ctx context.Context, text string, candidate MovementCandidate) (UpdateResult, error) {
 	userMessage := fmt.Sprintf("Movimiento candidato:\n%s\n\nMensaje del usuario: %q", buildCandidateBlock(candidate), text)
 
@@ -59,9 +66,14 @@ func (o *Orchestrator) ResolveUpdate(ctx context.Context, text string, candidate
 		return UpdateResult{}, fmt.Errorf("orchestrator: resolve update: %w", err)
 	}
 
-	var result UpdateResult
-	if err := json.Unmarshal(raw, &result); err != nil {
+	var args updateArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
 		return UpdateResult{}, fmt.Errorf("orchestrator: parse update result: %w", err)
 	}
-	return result, nil
+	return UpdateResult{
+		Resolved:          bool(args.Resolved),
+		MentionedDateFrom: args.MentionedDateFrom,
+		MentionedDateTo:   args.MentionedDateTo,
+		Movements:         args.Movements,
+	}, nil
 }
