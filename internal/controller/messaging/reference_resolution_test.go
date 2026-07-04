@@ -9,8 +9,6 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-func strPtr(s string) *string { return &s }
-
 func mustParseUUID(t *testing.T, s string) uuid.UUID {
 	t.Helper()
 	u, err := uuid.Parse(s)

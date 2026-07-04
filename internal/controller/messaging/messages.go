@@ -80,13 +80,28 @@ func msgAskAccount(data conversation.Data) string {
 func msgConfirmMovements(movements []movement.Movement) string {
 	lines := make([]string, 0, len(movements))
 	for _, m := range movements {
-		desc := ""
-		if m.Description != nil {
-			desc = *m.Description
-		}
-		lines = append(lines, fmt.Sprintf("%s %s %s · %s", movement.IconForType(m.Type), m.Amount.String(), m.Currency.String(), desc))
+		lines = append(lines, movementReceiptLine(m))
 	}
 	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
+}
+
+// movementReceiptLine formats one movement for a receipt/confirmation
+// message: icon, category › subcategory, amount, currency, description,
+// and date — enough to tell movements apart at a glance when several
+// look similar. Category/subcategory come from Movement.Subcategory
+// (populated at construction time — see movement_create_flow.go — or via
+// Preload for DB-fetched candidates — see movement/repository.go).
+func movementReceiptLine(m movement.Movement) string {
+	category, sub := "", ""
+	if m.Subcategory != nil {
+		category, sub = m.Subcategory.Category, m.Subcategory.Subcategory
+	}
+	desc := ""
+	if m.Description != nil {
+		desc = *m.Description
+	}
+	return fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
+		movement.IconForType(m.Type), category, sub, m.Amount.String(), m.Currency.String(), desc, m.Date.Format("2006-01-02"))
 }
 
 func msgPickUpdateCandidate(data conversation.Data) string {
@@ -103,7 +118,8 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 		if i < len(before) {
 			b = before[i]
 		}
-		lines = append(lines, fmt.Sprintf("%s %s %s (antes: %s %s)", subcategory.IconFor(a.Category), a.Amount, a.Currency, b.Amount, b.Currency))
+		lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s) (antes: %s %s)",
+			subcategory.IconFor(a.Category), a.Category, a.Subcategory, a.Amount, a.Currency, a.Description, a.Date, b.Amount, b.Currency))
 	}
 	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
 }
@@ -127,7 +143,8 @@ func msgConfirmDelete(data conversation.Data) string {
 
 	lines := []string{"🗑️ Se borraría:"}
 	for _, row := range candidates[idx].Rows {
-		lines = append(lines, fmt.Sprintf("%s %s %s · %s", subcategory.IconFor(row.Category), row.Amount, row.Currency, row.Description))
+		lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
+			subcategory.IconFor(row.Category), row.Category, row.Subcategory, row.Amount, row.Currency, row.Description, row.Date))
 	}
 	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
 }

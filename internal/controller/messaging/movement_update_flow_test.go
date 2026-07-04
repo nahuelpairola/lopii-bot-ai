@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -146,13 +145,4 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	if store.flowName != movementUpdateConfirmFlowName {
 		t.Errorf("started flow = %q, want %q", store.flowName, movementUpdateConfirmFlowName)
 	}
-}
-
-func mustDecimal(t *testing.T, s string) decimal.Decimal {
-	t.Helper()
-	d, err := decimal.NewFromString(s)
-	if err != nil {
-		t.Fatalf("decimal.NewFromString(%q): %v", s, err)
-	}
-	return d
 }
