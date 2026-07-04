@@ -40,7 +40,7 @@ type movementRepository interface {
 	InsertBatch([]movement.Movement) error
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
 	ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error
-	FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error)
+	FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error)
 	SoftDeleteByIDs(ids []uint) error
 }
 
@@ -50,33 +50,23 @@ type subcategoryRepository interface {
 	DistinctCategoriesForUser(userID uint64) ([]string, error)
 }
 
-// lastTransactionStore is the local interface for movement.LastTransactionStore
-// — lets the controller resolve implicit references ("actually it was 1200")
-// without importing the concrete type.
-type lastTransactionStore interface {
-	Set(userID uint64, movements []movement.Movement)
-	Get(userID uint64) ([]movement.Movement, bool)
-	Clear(userID uint64)
-}
-
 // movementOrchestrator is the local interface for orchestrator.Orchestrator
 // — only the methods this package's flows need.
 type movementOrchestrator interface {
-	ClassifyIntent(ctx context.Context, text string) (orchestrator.Intent, error)
+	ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error)
 	ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error)
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 }
 
 type controller struct {
-	users            userRepository
-	invitations      invitationRepository
-	accounts         accountRepository
-	movements        movementRepository
-	subcategories    subcategoryRepository
-	engine           *conversation.Engine
-	lastTransactions lastTransactionStore
-	orchestrator     movementOrchestrator
+	users         userRepository
+	invitations   invitationRepository
+	accounts      accountRepository
+	movements     movementRepository
+	subcategories subcategoryRepository
+	engine        *conversation.Engine
+	orchestrator  movementOrchestrator
 }
 
 func NewController(
@@ -86,18 +76,16 @@ func NewController(
 	movements movementRepository,
 	subcategories subcategoryRepository,
 	engine *conversation.Engine,
-	lastTransactions lastTransactionStore,
 	orch movementOrchestrator,
 ) *controller {
 	return &controller{
-		users:            users,
-		invitations:      invitations,
-		accounts:         accounts,
-		movements:        movements,
-		subcategories:    subcategories,
-		engine:           engine,
-		lastTransactions: lastTransactions,
-		orchestrator:     orch,
+		users:         users,
+		invitations:   invitations,
+		accounts:      accounts,
+		movements:     movements,
+		subcategories: subcategories,
+		engine:        engine,
+		orchestrator:  orch,
 	}
 }
 
@@ -182,6 +170,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
+	case movementConfirmFlowName:
+		c.finishMovementConfirmFlow(ctx, b, chatID, result.Data)
 	case movementUpdatePickFlowName:
 		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
 	case movementUpdateConfirmFlowName:
@@ -193,19 +183,37 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	}
 }
 
+// buttonsPerRow caps how many inline-keyboard buttons Telegram renders
+// per row — putting every option in a single row (the old behavior) is
+// what made category/subcategory/account buttons unreadably small.
+const buttonsPerRow = 2
+
+func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton {
+	if len(buttons) == 0 {
+		return nil
+	}
+	rows := make([][]models.InlineKeyboardButton, 0, (len(buttons)+buttonsPerRow-1)/buttonsPerRow)
+	for i := 0; i < len(buttons); i += buttonsPerRow {
+		end := i + buttonsPerRow
+		if end > len(buttons) {
+			end = len(buttons)
+		}
+		row := make([]models.InlineKeyboardButton, 0, end-i)
+		for _, btn := range buttons[i:end] {
+			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: btn.Data})
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
 // sendPrompt traduce un conversation.Prompt neutro al formato real de
-// Telegram (botones inline).
+// Telegram (botones inline, en grilla de buttonsPerRow por fila).
 func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
 	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text, ParseMode: models.ParseModeHTML}
 
-	if len(prompt.Buttons) > 0 {
-		var row []models.InlineKeyboardButton
-		for _, btn := range prompt.Buttons {
-			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: btn.Data})
-		}
-		params.ReplyMarkup = &models.InlineKeyboardMarkup{
-			InlineKeyboard: [][]models.InlineKeyboardButton{row},
-		}
+	if rows := chunkButtons(prompt.Buttons); len(rows) > 0 {
+		params.ReplyMarkup = &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 	}
 
 	b.SendMessage(ctx, params)

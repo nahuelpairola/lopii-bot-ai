@@ -22,7 +22,18 @@ const (
 	stepResolveCategory    = "resolve_category"
 	stepResolveSubcategory = "resolve_subcategory"
 	stepResolveAccount     = "resolve_account"
+
+	// optionCancel is the escape hatch every gap-fill ChoiceStep offers:
+	// the user realizing mid-flow that the original message was a
+	// mistake, with nowhere else to bail out (see finishMovementCreateFlow).
+	optionCancel = "cancel"
 )
+
+// cancelOption is the "🚫 Cancelar" button appended to every gap-fill
+// step's options — same escape hatch the movement_confirm_intent gate
+// offers before the flow even starts, but for the case where the user
+// only realizes mid-flow that the message was wrong.
+var cancelOption = conversation.ChoiceOption{Label: "🚫 Cancelar", Value: optionCancel, Finish: true}
 
 // NewMovementCreateFlow builds the single registered flow used for
 // CREATE's gap-fill (and, per movement_update_flow.go, for reusing the
@@ -50,10 +61,16 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 						NextStep: stepResolveSubcategory,
 					})
 				}
+				opts = append(opts, cancelOption)
 				return opts
 			},
 			DeclaredNextSteps: []string{stepResolveSubcategory},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
+				if value == optionCancel {
+					next := copyData(data)
+					next["cancelled"] = "true"
+					return next
+				}
 				gaps := decodeStringSlice(data, "pending_category_gaps")
 				if len(gaps) == 0 {
 					return data
@@ -87,10 +104,16 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 						NextStep: stepResolveCategory,
 					})
 				}
+				opts = append(opts, cancelOption)
 				return opts
 			},
 			DeclaredNextSteps: []string{stepResolveCategory},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
+				if value == optionCancel {
+					next := copyData(data)
+					next["cancelled"] = "true"
+					return next
+				}
 				next := copyData(data)
 				gaps := decodeStringSlice(data, "pending_category_gaps")
 				rowIdx, _ := strconv.Atoi(stringOrEmpty(data["gap_active_row"]))
@@ -139,10 +162,16 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 					Value:    "create",
 					NextStep: stepResolveAccount,
 				})
+				opts = append(opts, cancelOption)
 				return opts
 			},
 			DeclaredNextSteps: []string{stepResolveAccount},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
+				if value == optionCancel {
+					next := copyData(data)
+					next["cancelled"] = "true"
+					return next
+				}
 				next := copyData(data)
 				gaps := decodeStringSlice(data, "pending_account_gaps")
 				if len(gaps) == 0 {
@@ -175,12 +204,16 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 // resolveAndInsertMovements — same split for testability as
 // finishInitialBalanceFlow/insertInitialBalanceMovements.
 func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	if stringOrEmpty(data["cancelled"]) == "true" {
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCreateCancelled})
+		return
+	}
+
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 		return
 	}
-	c.lastTransactions.Set(data.UserID(), inserted)
 	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
 }
 
@@ -255,6 +288,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 			UserID:        userID,
 			AccountID:     accountID,
 			SubcategoryID: uint64(sub.ID),
+			Subcategory:   sub,
 			Date:          date,
 			Type:          movement.TypeFromString(row.Type),
 			Amount:        amount,
@@ -357,6 +391,7 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 			UserID:        m.UserID,
 			AccountID:     nil,
 			SubcategoryID: uint64(gainSub.ID),
+			Subcategory:   gainSub,
 			Date:          m.Date,
 			Type:          movement.Income,
 			Amount:        gain,

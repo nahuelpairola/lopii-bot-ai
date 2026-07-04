@@ -10,7 +10,8 @@ const updateSystemPrompt = `Sos un asistente que corrige movimientos financieros
 Se te da un movimiento candidato (una o más filas de una misma transacción) y el mensaje del usuario.
 Si el mensaje claramente se refiere a este candidato, devolvé resolved=true y el set COMPLETO de movimientos corregido (todos los campos de todas las filas, no solo lo que cambia).
 Si el mensaje no parece hablar de este candidato (menciona otro comercio, monto o fecha que no coincide), devolvé resolved=false y dejá movements vacío.
-Si el mensaje menciona una fecha o día relativo ("el lunes pasado", "el 3 de enero", "ayer"), completá mentioned_date con esa fecha en formato YYYY-MM-DD, sea cual sea el valor de resolved.`
+Si el mensaje menciona una fecha puntual o día relativo ("el lunes pasado", "el 3 de enero", "ayer"), completá mentioned_date_from con esa fecha en formato YYYY-MM-DD y dejá mentioned_date_to vacío, sea cual sea el valor de resolved.
+Si el mensaje menciona un RANGO de fechas ("entre el 27 y el 29", "entre ayer y anteayer"), completá mentioned_date_from con el inicio del rango y mentioned_date_to con el fin, ambos en formato YYYY-MM-DD.`
 
 var updateTool = toolSchema{
 	Name:        "resolve_and_correct",
@@ -18,8 +19,9 @@ var updateTool = toolSchema{
 	Parameters: json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"resolved": {"type": "boolean"},
-			"mentioned_date": {"type": "string"},
+			"resolved": {"type": ["boolean", "string"]},
+			"mentioned_date_from": {"type": "string"},
+			"mentioned_date_to": {"type": "string"},
 			"movements": {
 				"type": "array",
 				"items": {
@@ -49,6 +51,13 @@ func buildCandidateBlock(candidate MovementCandidate) string {
 	return string(b)
 }
 
+type updateArgs struct {
+	Resolved          flexBool        `json:"resolved"`
+	MentionedDateFrom string          `json:"mentioned_date_from,omitempty"`
+	MentionedDateTo   string          `json:"mentioned_date_to,omitempty"`
+	Movements         []MovementDraft `json:"movements"`
+}
+
 func (o *Orchestrator) ResolveUpdate(ctx context.Context, text string, candidate MovementCandidate) (UpdateResult, error) {
 	userMessage := fmt.Sprintf("Movimiento candidato:\n%s\n\nMensaje del usuario: %q", buildCandidateBlock(candidate), text)
 
@@ -57,9 +66,14 @@ func (o *Orchestrator) ResolveUpdate(ctx context.Context, text string, candidate
 		return UpdateResult{}, fmt.Errorf("orchestrator: resolve update: %w", err)
 	}
 
-	var result UpdateResult
-	if err := json.Unmarshal(raw, &result); err != nil {
+	var args updateArgs
+	if err := json.Unmarshal(raw, &args); err != nil {
 		return UpdateResult{}, fmt.Errorf("orchestrator: parse update result: %w", err)
 	}
-	return result, nil
+	return UpdateResult{
+		Resolved:          bool(args.Resolved),
+		MentionedDateFrom: args.MentionedDateFrom,
+		MentionedDateTo:   args.MentionedDateTo,
+		Movements:         args.Movements,
+	}, nil
 }

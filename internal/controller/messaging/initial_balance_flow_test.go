@@ -199,7 +199,7 @@ func (r *fakeMovementRepo) ReplaceMovements(oldIDs []uint, newMovements []moveme
 	return nil
 }
 
-func (r *fakeMovementRepo) FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error) {
+func (r *fakeMovementRepo) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error) {
 	return nil, nil
 }
 

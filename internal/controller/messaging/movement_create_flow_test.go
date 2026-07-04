@@ -73,6 +73,7 @@ type fakeMovementRepoFull struct {
 	replacedOldIDs []uint
 	replaced       []movement.Movement
 	deletedIDs     []uint
+	similar        []movement.Movement
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -92,8 +93,8 @@ func (r *fakeMovementRepoFull) ReplaceMovements(oldIDs []uint, newMovements []mo
 	r.replaced = newMovements
 	return nil
 }
-func (r *fakeMovementRepoFull) FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error) {
-	return nil, nil
+func (r *fakeMovementRepoFull) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error) {
+	return r.similar, nil
 }
 func (r *fakeMovementRepoFull) SoftDeleteByIDs(ids []uint) error {
 	r.deletedIDs = ids
@@ -400,5 +401,62 @@ func TestResolveAndInsertMovements_UpdateMode_CallsReplaceMovements(t *testing.T
 	}
 	if len(movRepo.replaced) != 1 {
 		t.Fatalf("expected 1 replaced movement, got %d", len(movRepo.replaced))
+	}
+}
+
+func TestResolveAndInsertMovements_PopulatesSubcategoryAssociation(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Café")
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentación|Café": sub,
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
+		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
+	}}
+	data := buildCreateSeed(result)
+	data[conversation.UserIDKey] = uint64(1)
+
+	if _, err := c.resolveAndInsertMovements(data); err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v", err)
+	}
+	if movRepo.inserted[0].Subcategory == nil || movRepo.inserted[0].Subcategory.Category != "Alimentación" {
+		t.Errorf("inserted movement's Subcategory = %+v, want Category=Alimentación", movRepo.inserted[0].Subcategory)
+	}
+}
+
+func TestResolveAndInsertMovements_FCIRedemption_GainLegHasSubcategory(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Inversiones|FCI":               newSubForTest(3, "Inversiones", "FCI"),
+		"Sistema|Rendimiento inversión": newSubForTest(9, "Sistema", "Rendimiento inversión"),
+	}}
+	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
+		7: {IsDefault: false},
+	}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"mode":                  "create",
+		"old_movement_ids":      encodeStringSlice(nil),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+	}
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v", err)
+	}
+	gain := inserted[2]
+	if gain.Subcategory == nil || gain.Subcategory.Subcategory != "Rendimiento inversión" {
+		t.Errorf("gain leg's Subcategory = %+v, want Subcategory=Rendimiento inversión", gain.Subcategory)
 	}
 }

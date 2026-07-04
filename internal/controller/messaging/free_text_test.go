@@ -11,15 +11,16 @@ import (
 )
 
 type fakeFullOrchestrator struct {
-	intent       orchestrator.Intent
-	createResult orchestrator.CreateResult
-	updateResult orchestrator.UpdateResult
-	deleteResult orchestrator.DeleteResult
-	intentErr    error
+	intent            orchestrator.Intent
+	needsConfirmation bool
+	createResult      orchestrator.CreateResult
+	updateResult      orchestrator.UpdateResult
+	deleteResult      orchestrator.DeleteResult
+	intentErr         error
 }
 
-func (o *fakeFullOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.Intent, error) {
-	return o.intent, o.intentErr
+func (o *fakeFullOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
+	return orchestrator.IntentResult{Intent: o.intent, NeedsConfirmation: o.needsConfirmation}, o.intentErr
 }
 func (o *fakeFullOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
 	return o.createResult, nil
@@ -39,16 +40,15 @@ func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 	}
 	accRepo := &fakeAccountRepoFull{}
 	movRepo := &fakeMovementRepoFull{}
-	lastTx := &fakeLastTransactionStore{}
 	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
 	}}}
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store)
-	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, lastTransactions: lastTx, orchestrator: orch, engine: engine}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
 
-	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo")
+	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
 
 	if len(movRepo.inserted) != 1 {
 		t.Fatalf("expected a direct insert with no gaps, got %d movements inserted", len(movRepo.inserted))
@@ -56,8 +56,46 @@ func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 	if store.found {
 		t.Error("a gap-free CREATE should never touch the conversation engine")
 	}
-	if lastTx.set != 1 {
-		t.Error("lastTransactions.Set should be called after a successful CREATE")
+}
+
+func TestStartMovementCreate_DuplicateFound_StartsConfirmGate(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{similar: []movement.Movement{
+		{Description: strPtr("café"), Amount: mustDecimal(t, "5000"), Currency: "ARS"},
+	}}
+	orch := &fakeFullOrchestrator{}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store)
+	engine.Register(NewMovementConfirmFlow())
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
+
+	c.startMovementCreate(context.Background(), nil, 0, 1, "el café de hoy eran 5k", false)
+
+	if len(movRepo.inserted) != 0 {
+		t.Error("a duplicate-suspected CREATE should never insert before confirmation")
+	}
+	if store.flowName != movementConfirmFlowName {
+		t.Errorf("started flow = %q, want %q (duplicate-check should route to the confirm gate)", store.flowName, movementConfirmFlowName)
+	}
+}
+
+func TestStartMovementCreate_NeedsConfirmation_SkipsDuplicateCheck(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{}
+	orch := &fakeFullOrchestrator{}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store)
+	engine.Register(NewMovementConfirmFlow())
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
+
+	c.startMovementCreate(context.Background(), nil, 0, 1, "20k", true)
+
+	if store.flowName != movementConfirmFlowName {
+		t.Errorf("started flow = %q, want %q (router's needs_confirmation should route to the confirm gate)", store.flowName, movementConfirmFlowName)
 	}
 }
 
@@ -65,7 +103,6 @@ func TestStartMovementCreate_WithGaps_StartsEngine(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{categories: []string{"Alimentación"}}
 	accRepo := &fakeAccountRepoFull{}
 	movRepo := &fakeMovementRepoFull{}
-	lastTx := &fakeLastTransactionStore{}
 	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "PENDING_REVIEW", Subcategory: "PENDING_REVIEW", Date: "2026-07-02"},
 	}}}
@@ -73,9 +110,9 @@ func TestStartMovementCreate_WithGaps_StartsEngine(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store)
 	engine.Register(NewMovementCreateFlow(subRepo, accRepo))
-	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, lastTransactions: lastTx, orchestrator: orch, engine: engine}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
 
-	c.startMovementCreate(context.Background(), nil, 0, 1, "gasté 3000 en algo")
+	c.startMovementCreate(context.Background(), nil, 0, 1, "gasté 3000 en algo", false)
 
 	if len(movRepo.inserted) != 0 {
 		t.Error("a CREATE with a category gap should not insert until the gap is filled")
@@ -85,10 +122,10 @@ func TestStartMovementCreate_WithGaps_StartsEngine(t *testing.T) {
 	}
 }
 
-func TestStartMovementUpdate_LastTransactionResolves_NoDBSearch(t *testing.T) {
-	movRepo := &fakeMovementRepoFull{}
-	lastTx := &fakeLastTransactionStore{}
-	lastTx.stored = []movement.Movement{{SubcategoryID: 1, Amount: mustDecimal(t, "3000"), Currency: "ARS"}}
+func TestStartMovementUpdate_OneCandidate_ResolvesToConfirm(t *testing.T) {
+	movRepo := &fakeMovementRepoFull{similar: []movement.Movement{
+		{SubcategoryID: 1, Amount: mustDecimal(t, "3000"), Currency: "ARS", Description: strPtr("café")},
+	}}
 	orch := &fakeFullOrchestrator{updateResult: orchestrator.UpdateResult{
 		Resolved: true,
 		Movements: []orchestrator.MovementDraft{
@@ -99,24 +136,23 @@ func TestStartMovementUpdate_LastTransactionResolves_NoDBSearch(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store)
 	engine.Register(NewMovementUpdateConfirmFlow())
-	c := &controller{movements: movRepo, lastTransactions: lastTx, orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
+	c := &controller{movements: movRepo, orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
 
-	c.startMovementUpdate(context.Background(), nil, 0, 1, "en realidad fue 3500")
+	c.startMovementUpdate(context.Background(), nil, 0, 1, "el café en realidad fue 3500")
 
 	if store.flowName != movementUpdateConfirmFlowName {
-		t.Errorf("started flow = %q, want %q (lastTransaction should resolve directly)", store.flowName, movementUpdateConfirmFlowName)
+		t.Errorf("started flow = %q, want %q (single resolveCandidates match should resolve to confirm)", store.flowName, movementUpdateConfirmFlowName)
 	}
 }
 
 func TestStartMovementDelete_NoCandidates_SendsErrorNoFlow(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
-	lastTx := &fakeLastTransactionStore{}
 	orch := &fakeFullOrchestrator{deleteResult: orchestrator.DeleteResult{Resolved: false}}
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store)
 	engine.Register(NewMovementDeleteFlow())
-	c := &controller{movements: movRepo, lastTransactions: lastTx, orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
+	c := &controller{movements: movRepo, orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
 
 	c.startMovementDelete(context.Background(), nil, 0, 1, "borrá lo de ayer")
 

@@ -72,9 +72,7 @@ func NewMovementDeleteFlow() *conversation.Flow {
 }
 
 // finishMovementDeleteFlow applies (or discards) the delete depending
-// on which button the user pressed. On confirm, it clears
-// lastTransaction too — unlike UPDATE, the group no longer exists
-// after this, so there's nothing to keep pointing at.
+// on which button the user pressed.
 func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["confirmed"]) != "true" {
 		if b != nil {
@@ -107,7 +105,6 @@ func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, c
 		return
 	}
 
-	c.lastTransactions.Clear(data.UserID())
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgDeleteApplied})
 	}

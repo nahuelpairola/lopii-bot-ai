@@ -160,7 +160,7 @@ case "account_setup":
 Planned intents: `CREATE | UPDATE | DELETE | QUERY`
 - Tool calling: the LLM constructs action parameters, not just the intent type
 - `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
-- `lastTransaction` in memory per user to resolve implicit references ("actually it was 1200")
+- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (pg_trgm DB search), not an in-memory store
 
 ### Recipe 4: Add an admin command
 
@@ -226,11 +226,12 @@ WHERE account_id = $account_id AND deleted_at IS NULL
 - Reserved: `PENDING_REVIEW | PENDING_REVIEW` (low LLM confidence), `Sistema | Saldo inicial`, `Sistema | Rendimiento inversión`
 
 ### LLM classification
-- Intents: `CREATE | UPDATE | DELETE | QUERY` — classified via Groq
+- Intents: `CREATE | UPDATE | DELETE | QUERY` — classified via Groq (Call 1 router also returns `needs_confirmation`, meaningful only for CREATE)
 - Tool calling: the LLM constructs action parameters, not just the intent type
 - Low confidence → `PENDING_REVIEW` subcategory, bot asks for confirmation
+- A CREATE the router flags as ambiguous, or that matches an existing recent movement (`resolveCandidates`), stops at a reescribir/cancelar confirm gate instead of inserting — CREATE's frictionless default has this one exception
 - `UPDATE` = atomic `DELETE + INSERT` (never partial patch)
-- `lastTransaction` in memory per user to resolve implicit references
+- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (pg_trgm DB search) — no in-memory last-transaction store
 
 ### Bot interaction
 - No Telegram commands for end users. Everything is free text → LLM → flow or query handler.
@@ -282,3 +283,7 @@ First tests added in `internal/controller/messaging` (`initial_balance_flow_test
 - `accounts` table has a `type DEFAULT 'standard'` column from a prior design — drop with a migration.
 - Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
 - `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
+
+## 7. Claude Code Session Rules
+
+- **Subagents run on `haiku`.** Any `Agent` tool call spawned in this project (any `subagent_type`) must pass `model: "haiku"` explicitly, unless the user asks otherwise for a specific task. Exception: `subagent_type: "fork"` always inherits the parent session's model — a `model` override is ignored for forks, so this rule doesn't apply to them.
