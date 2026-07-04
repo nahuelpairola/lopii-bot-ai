@@ -108,7 +108,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 // otherwise fall back to resolveCandidates and branch on how many
 // candidates come back.
 func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
-	mentionedDate := ""
+	dateFrom, dateTo := "", ""
 	if last, ok := c.lastTransactions.Get(userID); ok {
 		oldIDs := make([]string, 0, len(last))
 		beforeRows := make([]movementRow, 0, len(last))
@@ -128,11 +128,11 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 			return
 		}
 		if err == nil {
-			mentionedDate = result.MentionedDate
+			dateFrom, dateTo = result.MentionedDateFrom, result.MentionedDateTo
 		}
 	}
 
-	candidates, err := c.resolveCandidates(userID, text, mentionedDate)
+	candidates, err := c.resolveCandidates(userID, text, dateFrom, dateTo)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
@@ -179,7 +179,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 // there's exactly one candidate, letting the flow's Skip mechanism
 // bypass the picker entirely.
 func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
-	mentionedDate := ""
+	dateFrom, dateTo := "", ""
 	if last, ok := c.lastTransactions.Get(userID); ok {
 		drafts := make([]orchestrator.MovementDraft, 0, len(last))
 		for _, m := range last {
@@ -191,11 +191,11 @@ func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID
 			return
 		}
 		if err == nil {
-			mentionedDate = result.MentionedDate
+			dateFrom, dateTo = result.MentionedDateFrom, result.MentionedDateTo
 		}
 	}
 
-	candidates, err := c.resolveCandidates(userID, text, mentionedDate)
+	candidates, err := c.resolveCandidates(userID, text, dateFrom, dateTo)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return

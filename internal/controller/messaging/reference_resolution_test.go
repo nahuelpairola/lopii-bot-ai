@@ -53,13 +53,14 @@ func TestMatchesMessage_NoOverlap(t *testing.T) {
 }
 
 // fakeMovementRepoForResolve implements movementRepository just to drive
-// resolveCandidates in isolation: it records the (query, since) it was
+// resolveCandidates in isolation: it records the (query, since, until) it was
 // called with and returns a canned result set.
 type fakeMovementRepoForResolve struct {
 	result        []movement.Movement
 	err           error
 	capturedQuery string
 	capturedSince time.Time
+	capturedUntil *time.Time
 }
 
 func (r *fakeMovementRepoForResolve) InsertBatch(ms []movement.Movement) error { return nil }
@@ -72,6 +73,7 @@ func (r *fakeMovementRepoForResolve) ReplaceMovements(oldIDs []uint, newMovement
 func (r *fakeMovementRepoForResolve) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error) {
 	r.capturedQuery = query
 	r.capturedSince = since
+	r.capturedUntil = until
 	return r.result, r.err
 }
 func (r *fakeMovementRepoForResolve) SoftDeleteByIDs(ids []uint) error { return nil }
@@ -80,7 +82,7 @@ func TestResolveCandidates_NoMentionedDate_UsesSevenDayCap(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Description: strPtr("Nafta YPF")}}}
 	c := &controller{movements: fake}
 
-	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", "")
+	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,14 +95,17 @@ func TestResolveCandidates_NoMentionedDate_UsesSevenDayCap(t *testing.T) {
 	if delta < -5*time.Second || delta > 5*time.Second {
 		t.Errorf("since = %v, want close to %v (delta %v)", fake.capturedSince, wantSince, delta)
 	}
+	if fake.capturedUntil != nil {
+		t.Errorf("until = %v, want nil (no dateTo mentioned)", fake.capturedUntil)
+	}
 }
 
 func TestResolveCandidates_MentionedDate_AnchorsNoCap(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Description: strPtr("Nafta YPF")}}}
 	c := &controller{movements: fake}
 
-	mentionedDate := "2026-06-01" // well outside the default 7-day window
-	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", mentionedDate)
+	dateFrom := "2026-06-01" // well outside the default 7-day window
+	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", dateFrom, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -108,7 +113,7 @@ func TestResolveCandidates_MentionedDate_AnchorsNoCap(t *testing.T) {
 		t.Fatalf("got %d candidates, want 1", len(candidates))
 	}
 
-	anchor, err := time.Parse("2006-01-02", mentionedDate)
+	anchor, err := time.Parse("2006-01-02", dateFrom)
 	if err != nil {
 		t.Fatalf("parse anchor date: %v", err)
 	}
@@ -120,5 +125,34 @@ func TestResolveCandidates_MentionedDate_AnchorsNoCap(t *testing.T) {
 	sevenDaysAgo := time.Now().Add(-7 * 24 * time.Hour)
 	if !fake.capturedSince.Before(sevenDaysAgo) {
 		t.Errorf("since = %v is not before the 7-day cap (%v) — the cap was not lifted", fake.capturedSince, sevenDaysAgo)
+	}
+	if fake.capturedUntil != nil {
+		t.Errorf("until = %v, want nil (single date, no dateTo)", fake.capturedUntil)
+	}
+}
+
+func TestResolveCandidates_DateRange_BoundsBothEnds(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Description: strPtr("Nafta YPF")}}}
+	c := &controller{movements: fake}
+
+	dateFrom, dateTo := "2026-06-27", "2026-06-29"
+	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", dateFrom, dateTo)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("got %d candidates, want 1", len(candidates))
+	}
+
+	fromAnchor, _ := time.Parse("2006-01-02", dateFrom)
+	toAnchor, _ := time.Parse("2006-01-02", dateTo)
+	wantSince := fromAnchor.Add(-24 * time.Hour)
+	wantUntil := toAnchor.Add(24 * time.Hour)
+
+	if !fake.capturedSince.Equal(wantSince) {
+		t.Errorf("since = %v, want %v", fake.capturedSince, wantSince)
+	}
+	if fake.capturedUntil == nil || !fake.capturedUntil.Equal(wantUntil) {
+		t.Errorf("until = %v, want %v", fake.capturedUntil, wantUntil)
 	}
 }
