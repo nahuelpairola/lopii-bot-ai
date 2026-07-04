@@ -163,3 +163,31 @@ const (
 	msgConfirmIntentCancelled = "🚫 Cancelado, no hice nada."
 	msgCreateCancelled        = "🚫 Cancelado, no registré nada."
 )
+
+const (
+	msgInvalidAccountCreateName = "Mandame un nombre válido para la cuenta."
+	msgAccountCreateCancelled   = "🚫 Cancelado, no se creó ninguna cuenta."
+)
+
+func msgAskAccountCreateName(data conversation.Data) string {
+	return "¿Cómo querés llamar la cuenta nueva? (ej: Jubilación, Inversiones FCI)"
+}
+
+func msgAskAccountCreateCurrency(data conversation.Data) string {
+	return "¿En qué moneda es la cuenta nueva?"
+}
+
+func msgConfirmAccountCreate(data conversation.Data) string {
+	name := stringOrEmpty(data["account_name"])
+	cur := stringOrEmpty(data["account_currency"])
+	balance := stringOrEmpty(data["account_balance"])
+	return "Confirmá la cuenta nueva:\n\n" +
+		"📛 Nombre: " + name + "\n" +
+		"💱 Moneda: " + cur + "\n" +
+		"💰 Saldo inicial: " + balance + "\n\n" +
+		"¿Confirmamos?"
+}
+
+func msgAccountCreateSuccess(name, cur, balance string) string {
+	return "✅ Cuenta \"" + name + "\" creada en " + cur + " con saldo inicial " + balance + "."
+}
