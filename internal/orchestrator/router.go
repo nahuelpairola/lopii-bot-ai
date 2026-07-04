@@ -14,7 +14,24 @@ Clasificá el mensaje del usuario en una de estas 4 acciones:
 - QUERY: el mensaje pregunta o pide un resumen/consulta sobre movimientos existentes, sin registrar ni corregir nada.
 Ante duda entre CREATE y UPDATE por un verbo copulativo en pasado (era/eran/fue) sin verbo de acción, preferí UPDATE.
 Elegí siempre la que mejor describe la intención real del usuario.
-Además, si clasificaste CREATE, marcá needs_confirmation=true cuando el mensaje sea demasiado corto o ambiguo para confiar en él (ej. un monto pelado sin categoría ni verbo, tipo "20k"). En cualquier otro caso (incluido cualquier intent que no sea CREATE), needs_confirmation debe ser false.`
+Además, si clasificaste CREATE, marcá needs_confirmation=true únicamente cuando
+el mensaje sea un monto aislado sin ningún otro dato que lo acompañe — ni verbo,
+ni comercio, ni ítem, ni categoría (ej. "20k", "15000"). Si el mensaje tiene
+CUALQUIER palabra además del monto (verbo de acción, nombre de comercio, ítem
+comprado, categoría), needs_confirmation debe ser false, incluso sin verbo
+explícito.
+
+Ejemplos:
+- "20k" → needs_confirmation=true (monto aislado, sin verbo ni ítem)
+- "15000" → needs_confirmation=true (monto aislado)
+- "nafta 5k" → needs_confirmation=false (tiene ítem/categoría)
+- "panadería 10k" → needs_confirmation=false (tiene comercio)
+- "compré pan 10k" → needs_confirmation=false (tiene verbo e ítem)
+- "transferencia 50k" → needs_confirmation=false (tiene categoría)
+
+Este criterio aplica solo si clasificaste CREATE. En cualquier otro caso
+(incluido cualquier intent que no sea CREATE), needs_confirmation debe ser
+false.`
 
 var routerTool = toolSchema{
 	Name:        "classify_intent",
