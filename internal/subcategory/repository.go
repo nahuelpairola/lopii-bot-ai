@@ -67,6 +67,15 @@ func (r *repository) FindByCategoryAndSubcategory(category, subcategory string) 
 	return &s, nil
 }
 
+// FindAllGlobal devuelve únicamente las subcategorías globales — usada
+// para poblar Cache una sola vez al arrancar el server, no en cada
+// request (ver cache.go).
+func (r *repository) FindAllGlobal() ([]Subcategory, error) {
+	var subs []Subcategory
+	err := r.conn.DB.Where("is_global = TRUE").Find(&subs).Error
+	return subs, err
+}
+
 func (r *repository) Insert(s *Subcategory) error {
 	err := r.conn.DB.Create(s).Error
 	if isUniqueViolation(err) {

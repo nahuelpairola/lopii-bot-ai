@@ -45,6 +45,10 @@ func InitServer(conf *config.Config) error {
 	accountRepo := account.NewRepository(conn)
 	movementRepo := movement.InitRepository(conn)
 	subcategoryRepo := subcategory.NewRepository(conn)
+	subcategoryCache, err := subcategory.NewCache(subcategoryRepo)
+	if err != nil {
+		return err
+	}
 	conversationRepo := conversation.NewRepository(conn)
 	lastTransactions := movement.NewLastTransactionStore()
 
@@ -60,7 +64,7 @@ func InitServer(conf *config.Config) error {
 
 	conversationEngine := conversation.NewEngine(conversationRepo)
 	conversationEngine.Register(messagingctrl.NewInitialBalanceFlow())
-	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryRepo, accountRepo))
+	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
 	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
 	conversationEngine.Register(messagingctrl.NewMovementUpdateConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())
@@ -71,7 +75,7 @@ func InitServer(conf *config.Config) error {
 		return err
 	}
 	messagingController := messagingctrl.NewController(
-		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryRepo, conversationEngine,
+		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
 		lastTransactions, llmOrchestrator,
 	)
 
