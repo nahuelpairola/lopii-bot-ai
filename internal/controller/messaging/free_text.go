@@ -26,17 +26,17 @@ func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, tex
 // already in progress: Call 1 (router) decides which of the four
 // intents it is, and every other function in this file handles one.
 func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
-	intent, err := c.orchestrator.ClassifyIntent(ctx, text)
+	result, err := c.orchestrator.ClassifyIntent(ctx, text)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
 
-	switch intent {
+	switch result.Intent {
 	case orchestrator.IntentQuery:
 		c.sendText(ctx, b, chatID, msgQueryNotSupported)
 	case orchestrator.IntentCreate:
-		c.startMovementCreate(ctx, b, chatID, userID, text)
+		c.startMovementCreate(ctx, b, chatID, userID, text, result.NeedsConfirmation)
 	case orchestrator.IntentUpdate:
 		c.startMovementUpdate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentDelete:
@@ -46,10 +46,30 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	}
 }
 
-// startMovementCreate runs Call 2 CREATE and either inserts directly
-// (no gaps — the frictionless default) or starts movement_create
-// seeded with whatever was resolved, landing on the first real gap.
-func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+// startMovementCreate first checks whether this CREATE is trustworthy
+// enough to act on frictionlessly: the router may have already flagged
+// it (needsConfirmation), or — even when it didn't — resolveCandidates
+// (the same pg_trgm mechanism UPDATE/DELETE use) may turn up a
+// plausible existing movement this message could actually be
+// correcting. Either signal routes to the confirm gate instead of
+// running Call 2 CREATE. Only once neither fires does it run Call 2
+// CREATE and either insert directly (no gaps — the frictionless
+// default) or start movement_create seeded with whatever was resolved,
+// landing on the first real gap.
+func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, needsConfirmation bool) {
+	if !needsConfirmation {
+		candidates, err := c.resolveCandidates(userID, text, "", "")
+		if err != nil {
+			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			return
+		}
+		needsConfirmation = len(candidates) > 0
+	}
+	if needsConfirmation {
+		c.startMovementConfirm(ctx, b, chatID, userID)
+		return
+	}
+
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)

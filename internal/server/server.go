@@ -65,6 +65,7 @@ func InitServer(conf *config.Config) error {
 	conversationEngine := conversation.NewEngine(conversationRepo)
 	conversationEngine.Register(messagingctrl.NewInitialBalanceFlow())
 	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
+	conversationEngine.Register(messagingctrl.NewMovementConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
 	conversationEngine.Register(messagingctrl.NewMovementUpdateConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())

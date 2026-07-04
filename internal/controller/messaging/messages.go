@@ -153,3 +153,13 @@ const (
 	msgDeleteApplied   = "🗑️ Borrado."
 	msgDeleteCancelled = "Cancelado, no borré nada."
 )
+
+func msgConfirmIntentUnclear(data conversation.Data) string {
+	return "🤔 No estoy seguro de qué es este mensaje. ¿Qué preferís?"
+}
+
+const (
+	msgAskRewrite             = "✍️ Dale, mandalo de nuevo con más detalle (monto, categoría, y si es un movimiento nuevo)."
+	msgConfirmIntentCancelled = "🚫 Cancelado, no hice nada."
+	msgCreateCancelled        = "🚫 Cancelado, no registré nada."
+)

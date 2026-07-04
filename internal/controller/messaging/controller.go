@@ -62,7 +62,7 @@ type lastTransactionStore interface {
 // movementOrchestrator is the local interface for orchestrator.Orchestrator
 // — only the methods this package's flows need.
 type movementOrchestrator interface {
-	ClassifyIntent(ctx context.Context, text string) (orchestrator.Intent, error)
+	ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error)
 	ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error)
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
@@ -182,6 +182,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
+	case movementConfirmFlowName:
+		c.finishMovementConfirmFlow(ctx, b, chatID, result.Data)
 	case movementUpdatePickFlowName:
 		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
 	case movementUpdateConfirmFlowName:
