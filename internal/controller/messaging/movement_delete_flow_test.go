@@ -8,21 +8,6 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-type fakeLastTransactionStore struct {
-	cleared int
-	set     int
-	stored  []movement.Movement
-}
-
-func (s *fakeLastTransactionStore) Set(userID uint64, movements []movement.Movement) {
-	s.set++
-	s.stored = movements
-}
-func (s *fakeLastTransactionStore) Get(userID uint64) ([]movement.Movement, bool) {
-	return s.stored, s.stored != nil
-}
-func (s *fakeLastTransactionStore) Clear(userID uint64) { s.cleared++ }
-
 func movementModelWithID(t *testing.T, id uint) (m gorm.Model) {
 	t.Helper()
 	m.ID = id
@@ -75,10 +60,9 @@ func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
 	}
 }
 
-func TestFinishMovementDeleteFlow_Confirmed_DeletesAndClears(t *testing.T) {
+func TestFinishMovementDeleteFlow_Confirmed_Deletes(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
-	lastTx := &fakeLastTransactionStore{}
-	c := &controller{movements: movRepo, lastTransactions: lastTx}
+	c := &controller{movements: movRepo}
 
 	data := conversation.Data{
 		conversation.UserIDKey: uint64(1),
@@ -91,15 +75,14 @@ func TestFinishMovementDeleteFlow_Confirmed_DeletesAndClears(t *testing.T) {
 
 	c.finishMovementDeleteFlow(nil, nil, 0, data)
 
-	if lastTx.cleared != 1 {
-		t.Errorf("lastTransactions.Clear called for user %d, want 1", lastTx.cleared)
+	if len(movRepo.deletedIDs) != 1 || movRepo.deletedIDs[0] != 42 {
+		t.Errorf("deletedIDs = %v, want [42]", movRepo.deletedIDs)
 	}
 }
 
 func TestFinishMovementDeleteFlow_Cancelled_NoDelete(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
-	lastTx := &fakeLastTransactionStore{}
-	c := &controller{movements: movRepo, lastTransactions: lastTx}
+	c := &controller{movements: movRepo}
 
 	data := conversation.Data{
 		conversation.UserIDKey: uint64(1),
@@ -108,7 +91,7 @@ func TestFinishMovementDeleteFlow_Cancelled_NoDelete(t *testing.T) {
 
 	c.finishMovementDeleteFlow(nil, nil, 0, data)
 
-	if lastTx.cleared != 0 {
-		t.Error("cancelling should never clear lastTransactions")
+	if len(movRepo.deletedIDs) != 0 {
+		t.Error("cancelling should never delete anything")
 	}
 }

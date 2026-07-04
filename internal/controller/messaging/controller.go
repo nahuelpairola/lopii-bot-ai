@@ -50,15 +50,6 @@ type subcategoryRepository interface {
 	DistinctCategoriesForUser(userID uint64) ([]string, error)
 }
 
-// lastTransactionStore is the local interface for movement.LastTransactionStore
-// — lets the controller resolve implicit references ("actually it was 1200")
-// without importing the concrete type.
-type lastTransactionStore interface {
-	Set(userID uint64, movements []movement.Movement)
-	Get(userID uint64) ([]movement.Movement, bool)
-	Clear(userID uint64)
-}
-
 // movementOrchestrator is the local interface for orchestrator.Orchestrator
 // — only the methods this package's flows need.
 type movementOrchestrator interface {
@@ -69,14 +60,13 @@ type movementOrchestrator interface {
 }
 
 type controller struct {
-	users            userRepository
-	invitations      invitationRepository
-	accounts         accountRepository
-	movements        movementRepository
-	subcategories    subcategoryRepository
-	engine           *conversation.Engine
-	lastTransactions lastTransactionStore
-	orchestrator     movementOrchestrator
+	users         userRepository
+	invitations   invitationRepository
+	accounts      accountRepository
+	movements     movementRepository
+	subcategories subcategoryRepository
+	engine        *conversation.Engine
+	orchestrator  movementOrchestrator
 }
 
 func NewController(
@@ -86,18 +76,16 @@ func NewController(
 	movements movementRepository,
 	subcategories subcategoryRepository,
 	engine *conversation.Engine,
-	lastTransactions lastTransactionStore,
 	orch movementOrchestrator,
 ) *controller {
 	return &controller{
-		users:            users,
-		invitations:      invitations,
-		accounts:         accounts,
-		movements:        movements,
-		subcategories:    subcategories,
-		engine:           engine,
-		lastTransactions: lastTransactions,
-		orchestrator:     orch,
+		users:         users,
+		invitations:   invitations,
+		accounts:      accounts,
+		movements:     movements,
+		subcategories: subcategories,
+		engine:        engine,
+		orchestrator:  orch,
 	}
 }
 

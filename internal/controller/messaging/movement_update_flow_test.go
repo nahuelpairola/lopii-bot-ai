@@ -14,8 +14,8 @@ type fakeOrchestrator struct {
 	updateErr    error
 }
 
-func (o *fakeOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.Intent, error) {
-	return "", nil
+func (o *fakeOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
+	return orchestrator.IntentResult{}, nil
 }
 func (o *fakeOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
 	return orchestrator.CreateResult{}, nil

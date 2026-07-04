@@ -66,10 +66,11 @@ var ErrMovementNotFound = errors.New("movement not found")
 
 // FindSimilarForUser busca movimientos del usuario cuya description o
 // merchant sean textualmente similares a query (vía pg_trgm), entre since
-// y until (until nil = sin tope superior). Usada como fallback de
-// búsqueda cuando lastTransaction no resuelve una corrección/borrado
-// (ver reference_resolution.go). Preload("Subcategory") evita que cada
-// caller tenga que resolver subcategory_id → nombre a mano.
+// y until (until nil = sin tope superior). Es el único mecanismo de
+// resolución de referencias del bot: UPDATE/DELETE (ver
+// reference_resolution.go) y el chequeo de duplicados de CREATE (ver
+// startMovementCreate) lo usan por igual. Preload("Subcategory") evita
+// que cada caller tenga que resolver subcategory_id → nombre a mano.
 func (r *repository) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]Movement, error) {
 	var ms []Movement
 	q := r.db.DB.Preload("Subcategory").

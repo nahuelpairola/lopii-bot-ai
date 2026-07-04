@@ -50,7 +50,6 @@ func InitServer(conf *config.Config) error {
 		return err
 	}
 	conversationRepo := conversation.NewRepository(conn)
-	lastTransactions := movement.NewLastTransactionStore()
 
 	llmOrchestrator := orchestrator.New(orchestrator.Config{
 		APIKey:         conf.Groq.APIKey,
@@ -77,7 +76,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		lastTransactions, llmOrchestrator,
+		llmOrchestrator,
 	)
 
 	healthController.RegisterRoutes(ginEngine)

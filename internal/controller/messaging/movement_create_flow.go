@@ -214,7 +214,6 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 		return
 	}
-	c.lastTransactions.Set(data.UserID(), inserted)
 	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
 }
 

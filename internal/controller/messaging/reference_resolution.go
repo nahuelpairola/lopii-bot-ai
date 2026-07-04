@@ -69,13 +69,13 @@ func matchesMessage(group transactionGroup, message string) bool {
 	return false
 }
 
-// resolveCandidates finds the transaction group(s) an UPDATE/DELETE
-// message could refer to, once the lastTransaction check has already
-// come back unresolved (or there was no lastTransaction to check).
-// dateFrom/dateTo are whatever the orchestrator's resolve call extracted
-// from the message — a single mentioned date sets only dateFrom; a range
-// sets both. Either anchors the search window instead of the default
-// 7-day cap.
+// resolveCandidates finds the transaction group(s) a message could
+// refer to — used for UPDATE/DELETE reference resolution and, with an
+// empty dateFrom/dateTo, as CREATE's pre-insert duplicate check (see
+// startMovementCreate). dateFrom/dateTo are whatever the orchestrator's
+// resolve call extracted from the message — a single mentioned date
+// sets only dateFrom; a range sets both. Either anchors the search
+// window instead of the default 7-day cap.
 func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo string) ([]transactionGroup, error) {
 	since := time.Now().Add(-referenceSearchWindow)
 	if dateFrom != "" {

@@ -106,7 +106,6 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 			c.sendText(ctx, b, chatID, msgGenericFlowError)
 			return
 		}
-		c.lastTransactions.Set(userID, inserted)
 		c.sendText(ctx, b, chatID, msgConfirmMovements(inserted))
 		return
 	}
@@ -121,38 +120,11 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 	}
 }
 
-// startMovementUpdate implements the spec's reference-resolution
-// pipeline: check lastTransaction first (this check IS Call 2 UPDATE's
-// call #1 — if it resolves, its result is already the corrected set,
-// so seedAndStartUpdateConfirm is called directly, no second call);
-// otherwise fall back to resolveCandidates and branch on how many
-// candidates come back.
+// startMovementUpdate resolves which existing movement(s) the message
+// refers to via resolveCandidates (pg_trgm search, default 7-day
+// window) and branches on how many candidates come back.
 func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
-	dateFrom, dateTo := "", ""
-	if last, ok := c.lastTransactions.Get(userID); ok {
-		oldIDs := make([]string, 0, len(last))
-		beforeRows := make([]movementRow, 0, len(last))
-		drafts := make([]orchestrator.MovementDraft, 0, len(last))
-		for _, m := range last {
-			row := movementToRow(m)
-			oldIDs = append(oldIDs, strconv.FormatUint(uint64(m.ID), 10))
-			beforeRows = append(beforeRows, row)
-			drafts = append(drafts, rowToDraft(row))
-		}
-
-		result, err := c.orchestrator.ResolveUpdate(ctx, text, orchestrator.MovementCandidate{Movements: drafts})
-		if err == nil && result.Resolved {
-			if err := c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows, result); err != nil {
-				c.sendText(ctx, b, chatID, msgGenericFlowError)
-			}
-			return
-		}
-		if err == nil {
-			dateFrom, dateTo = result.MentionedDateFrom, result.MentionedDateTo
-		}
-	}
-
-	candidates, err := c.resolveCandidates(userID, text, dateFrom, dateTo)
+	candidates, err := c.resolveCandidates(userID, text, "", "")
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
@@ -193,29 +165,13 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 }
 
 // startMovementDelete mirrors startMovementUpdate's reference
-// resolution, but — since deleting needs no second LLM call once a
-// candidate is known (see movement_delete_flow.go) — it seeds
-// movement_delete directly with resolved_index already set whenever
-// there's exactly one candidate, letting the flow's Skip mechanism
-// bypass the picker entirely.
+// resolution — since deleting needs no second LLM call once a candidate
+// is known (see movement_delete_flow.go), it seeds movement_delete
+// directly with resolved_index already set whenever there's exactly one
+// candidate, letting the flow's Skip mechanism bypass the picker
+// entirely.
 func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
-	dateFrom, dateTo := "", ""
-	if last, ok := c.lastTransactions.Get(userID); ok {
-		drafts := make([]orchestrator.MovementDraft, 0, len(last))
-		for _, m := range last {
-			drafts = append(drafts, rowToDraft(movementToRow(m)))
-		}
-		result, err := c.orchestrator.ResolveDelete(ctx, text, orchestrator.MovementCandidate{Movements: drafts})
-		if err == nil && result.Resolved {
-			c.startMovementDeleteFlowFor(ctx, b, chatID, userID, []transactionGroup{{Movements: last}}, 0)
-			return
-		}
-		if err == nil {
-			dateFrom, dateTo = result.MentionedDateFrom, result.MentionedDateTo
-		}
-	}
-
-	candidates, err := c.resolveCandidates(userID, text, dateFrom, dateTo)
+	candidates, err := c.resolveCandidates(userID, text, "", "")
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return

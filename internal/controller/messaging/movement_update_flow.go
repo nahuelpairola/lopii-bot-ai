@@ -55,9 +55,8 @@ func NewMovementUpdatePickFlow() *conversation.Flow {
 }
 
 // NewMovementUpdateConfirmFlow is a single confirm/cancel gate — always
-// reached before an UPDATE touches the DB, whether the candidate was
-// resolved directly (lastTransaction or one unambiguous DB match) or
-// picked from a list.
+// reached before an UPDATE touches the DB, whether the candidate was a
+// single unambiguous resolveCandidates match or picked from a list.
 func NewMovementUpdateConfirmFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepConfirmUpdate: conversation.ChoiceStep{
@@ -193,15 +192,9 @@ func decodeCandidateGroups(data conversation.Data) []candidateGroup {
 	return groups
 }
 
-// proceedToUpdateConfirm is used for a candidate that still needs
-// Call 2 UPDATE run against it — the DB-search-single-match path and
-// the post-picker path both funnel through here, since for them this
-// genuinely is a fresh resolution (spec's "call #2"). It is NOT used
-// for the lastTransaction check (free_text.go, Task 18): that check
-// IS Call 2 UPDATE's call #1, and if it resolves, its own result
-// already is the corrected set — calling ResolveUpdate a second time
-// on the same candidate would waste a request. That path calls
-// seedAndStartUpdateConfirm directly with the call #1 result instead.
+// proceedToUpdateConfirm runs Call 2 UPDATE against a candidate found
+// via resolveCandidates — both the single-match path and the
+// post-picker path funnel through here.
 func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movementRow) error {
 	drafts := make([]orchestrator.MovementDraft, 0, len(beforeRows))
 	for _, row := range beforeRows {
@@ -227,8 +220,8 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 
 // seedAndStartUpdateConfirm builds the confirm flow's seed from an
 // already-resolved UpdateResult (never calls the orchestrator itself)
-// and starts it. Shared by proceedToUpdateConfirm and, directly, by
-// free_text.go's lastTransaction check.
+// and starts it. Called by proceedToUpdateConfirm once Call 2 UPDATE
+// resolves.
 func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, oldIDs []string, beforeRows []movementRow, result orchestrator.UpdateResult) error {
 	afterRows := make([]movementRow, 0, len(result.Movements))
 	for _, d := range result.Movements {
@@ -288,11 +281,9 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 		return
 	}
 
-	inserted, err := c.resolveAndInsertMovements(data)
-	if err != nil {
+	if _, err := c.resolveAndInsertMovements(data); err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 		return
 	}
-	c.lastTransactions.Set(data.UserID(), inserted)
 	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateApplied})
 }
