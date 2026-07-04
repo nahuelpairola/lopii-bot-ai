@@ -31,7 +31,7 @@ const (
 	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
 
 	msgAccountSetupFinished = "Listo, ya podés empezar a registrar tus gastos. " +
-		"Mandame algo como \"café 500\" o usá /cuentas si querés agregar otra cuenta más adelante."
+		"Mandame algo como \"café 500\" o \"quiero crear una cuenta nueva\" si querés agregar otra cuenta más adelante."
 
 	msgSubcategorySetupFinished = "Listo, tus subcategorías están guardadas. " +
 		"Usá /subcategorias cuando quieras agregar más."
