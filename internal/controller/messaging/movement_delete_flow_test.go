@@ -38,7 +38,6 @@ func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 		"resolved_index": "0",
 		"candidate_groups": encodeCandidateGroups(
 			[]transactionGroup{{Movements: []movement.Movement{{}}}},
-			nil,
 		),
 	}
 
@@ -64,7 +63,6 @@ func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
 				{Movements: []movement.Movement{{}}},
 				{Movements: []movement.Movement{{}}},
 			},
-			nil,
 		),
 	}
 
@@ -88,7 +86,6 @@ func TestFinishMovementDeleteFlow_Confirmed_DeletesAndClears(t *testing.T) {
 		"resolved_index":       "0",
 		"candidate_groups": encodeCandidateGroups(
 			[]transactionGroup{{Movements: []movement.Movement{{Model: movementModelWithID(t, 42)}}}},
-			nil,
 		),
 	}
 

@@ -8,7 +8,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/subcategory"
 )
 
 const (
@@ -83,27 +82,16 @@ func NewMovementUpdateConfirmFlow() *conversation.Flow {
 	return flow
 }
 
-// buildSubcategoryIndex lets movementToRow resolve a Movement's bare
-// SubcategoryID back to its category/subcategory names — the
-// subcategory package has no FindByID, and fetching the user's full
-// list once (small, ~90 rows) is simpler than adding one.
-func buildSubcategoryIndex(subs []subcategory.Subcategory) map[uint64]subcategory.Subcategory {
-	idx := make(map[uint64]subcategory.Subcategory, len(subs))
-	for _, s := range subs {
-		idx[uint64(s.ID)] = s
-	}
-	return idx
-}
-
-func movementToRow(m movement.Movement, subsByID map[uint64]subcategory.Subcategory) movementRow {
-	sub := subsByID[m.SubcategoryID]
+func movementToRow(m movement.Movement) movementRow {
 	row := movementRow{
-		Type:        string(m.Type),
-		Amount:      m.Amount.String(),
-		Currency:    m.Currency.String(),
-		Category:    sub.Category,
-		Subcategory: sub.Subcategory,
-		Date:        m.Date.Format("2006-01-02"),
+		Type:     string(m.Type),
+		Amount:   m.Amount.String(),
+		Currency: m.Currency.String(),
+		Date:     m.Date.Format("2006-01-02"),
+	}
+	if m.Subcategory != nil {
+		row.Category = m.Subcategory.Category
+		row.Subcategory = m.Subcategory.Subcategory
 	}
 	if m.AccountID != nil {
 		row.AccountID = strconv.FormatUint(*m.AccountID, 10)
@@ -173,13 +161,13 @@ type candidateGroup struct {
 // into their row-based Data shape, so the ambiguous-candidate picker
 // (movement_update_pick) can carry full "before" state for whichever
 // one the user ends up choosing, without a second DB round-trip.
-func encodeCandidateGroups(groups []transactionGroup, subsByID map[uint64]subcategory.Subcategory) []interface{} {
+func encodeCandidateGroups(groups []transactionGroup) []interface{} {
 	encoded := make([]interface{}, 0, len(groups))
 	for _, g := range groups {
 		rows := make([]movementRow, 0, len(g.Movements))
 		ids := make([]string, 0, len(g.Movements))
 		for _, m := range g.Movements {
-			rows = append(rows, movementToRow(m, subsByID))
+			rows = append(rows, movementToRow(m))
 			ids = append(ids, strconv.FormatUint(uint64(m.ID), 10))
 		}
 		encoded = append(encoded, map[string]interface{}{

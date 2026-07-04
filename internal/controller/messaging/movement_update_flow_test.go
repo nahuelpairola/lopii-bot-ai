@@ -8,7 +8,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/subcategory"
 )
 
 type fakeOrchestrator struct {
@@ -47,20 +46,11 @@ func (s *fakeStoreForController) Clear(userID uint64) error {
 	return nil
 }
 
-func TestBuildSubcategoryIndex(t *testing.T) {
-	sub := newSubForTest(7, "Alimentación", "Café")
-	idx := buildSubcategoryIndex([]subcategory.Subcategory{*sub})
-	if idx[7].Category != "Alimentación" {
-		t.Errorf("index[7].Category = %q, want Alimentación", idx[7].Category)
-	}
-}
-
-func TestMovementToRow_ResolvesCategoryFromIndex(t *testing.T) {
+func TestMovementToRow_ResolvesCategoryFromSubcategory(t *testing.T) {
 	sub := newSubForTest(3, "Transporte", "Nafta")
-	idx := buildSubcategoryIndex([]subcategory.Subcategory{*sub})
-	m := movement.Movement{SubcategoryID: 3, Type: movement.Expense, Amount: mustDecimal(t, "15000"), Currency: "ARS"}
+	m := movement.Movement{SubcategoryID: 3, Subcategory: sub, Type: movement.Expense, Amount: mustDecimal(t, "15000"), Currency: "ARS"}
 
-	row := movementToRow(m, idx)
+	row := movementToRow(m)
 	if row.Category != "Transporte" || row.Subcategory != "Nafta" {
 		t.Errorf("row category/subcategory = %q/%q, want Transporte/Nafta", row.Category, row.Subcategory)
 	}
@@ -87,12 +77,11 @@ func TestDraftToRow_RoundTripsAccountID(t *testing.T) {
 
 func TestEncodeDecodeCandidateGroups_RoundTrip(t *testing.T) {
 	sub := newSubForTest(1, "Alimentación", "Nafta")
-	idx := buildSubcategoryIndex([]subcategory.Subcategory{*sub})
 	groups := []transactionGroup{
-		{TransactionID: "", Movements: []movement.Movement{{SubcategoryID: 1, Amount: mustDecimal(t, "3000"), Currency: "ARS"}}},
+		{TransactionID: "", Movements: []movement.Movement{{SubcategoryID: 1, Subcategory: sub, Amount: mustDecimal(t, "3000"), Currency: "ARS"}}},
 	}
 
-	encoded := encodeCandidateGroups(groups, idx)
+	encoded := encodeCandidateGroups(groups)
 	decoded := decodeCandidateGroups(conversation.Data{"candidate_groups": encoded})
 
 	if len(decoded) != 1 {

@@ -9,7 +9,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/subcategory"
 )
 
 // sendText is a small helper that guards every b.SendMessage call with a
@@ -109,20 +108,13 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 // otherwise fall back to resolveCandidates and branch on how many
 // candidates come back.
 func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
-	subs, err := c.subcategories.FindAllForUser(userID)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
-		return
-	}
-	subsByID := buildSubcategoryIndex(subs)
-
 	mentionedDate := ""
 	if last, ok := c.lastTransactions.Get(userID); ok {
 		oldIDs := make([]string, 0, len(last))
 		beforeRows := make([]movementRow, 0, len(last))
 		drafts := make([]orchestrator.MovementDraft, 0, len(last))
 		for _, m := range last {
-			row := movementToRow(m, subsByID)
+			row := movementToRow(m)
 			oldIDs = append(oldIDs, strconv.FormatUint(uint64(m.ID), 10))
 			beforeRows = append(beforeRows, row)
 			drafts = append(drafts, rowToDraft(row))
@@ -153,7 +145,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 		rows := make([]movementRow, 0, len(candidates[0].Movements))
 		oldIDs := make([]string, 0, len(candidates[0].Movements))
 		for _, m := range candidates[0].Movements {
-			rows = append(rows, movementToRow(m, subsByID))
+			rows = append(rows, movementToRow(m))
 			oldIDs = append(oldIDs, strconv.FormatUint(uint64(m.ID), 10))
 		}
 		if err := c.proceedToUpdateConfirm(ctx, b, chatID, userID, text, candidates[0].TransactionID, oldIDs, rows); err != nil {
@@ -162,12 +154,12 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 	default:
 		labels := make([]string, 0, len(candidates))
 		for _, g := range candidates {
-			labels = append(labels, candidateLabel(g, subsByID))
+			labels = append(labels, candidateLabel(g))
 		}
 		seed := conversation.Data{
 			"message":          text,
 			"candidate_labels": encodeStringSlice(labels),
-			"candidate_groups": encodeCandidateGroups(candidates, subsByID),
+			"candidate_groups": encodeCandidateGroups(candidates),
 		}
 		prompt, err := c.engine.StartWithData(userID, movementUpdatePickFlowName, seed)
 		if err != nil {
@@ -187,22 +179,15 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 // there's exactly one candidate, letting the flow's Skip mechanism
 // bypass the picker entirely.
 func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
-	subs, err := c.subcategories.FindAllForUser(userID)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
-		return
-	}
-	subsByID := buildSubcategoryIndex(subs)
-
 	mentionedDate := ""
 	if last, ok := c.lastTransactions.Get(userID); ok {
 		drafts := make([]orchestrator.MovementDraft, 0, len(last))
 		for _, m := range last {
-			drafts = append(drafts, rowToDraft(movementToRow(m, subsByID)))
+			drafts = append(drafts, rowToDraft(movementToRow(m)))
 		}
 		result, err := c.orchestrator.ResolveDelete(ctx, text, orchestrator.MovementCandidate{Movements: drafts})
 		if err == nil && result.Resolved {
-			c.startMovementDeleteFlowFor(ctx, b, chatID, userID, []transactionGroup{{Movements: last}}, 0, subsByID)
+			c.startMovementDeleteFlowFor(ctx, b, chatID, userID, []transactionGroup{{Movements: last}}, 0)
 			return
 		}
 		if err == nil {
@@ -220,9 +205,9 @@ func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID
 	case 0:
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:
-		c.startMovementDeleteFlowFor(ctx, b, chatID, userID, candidates, 0, subsByID)
+		c.startMovementDeleteFlowFor(ctx, b, chatID, userID, candidates, 0)
 	default:
-		c.startMovementDeleteFlowFor(ctx, b, chatID, userID, candidates, -1, subsByID)
+		c.startMovementDeleteFlowFor(ctx, b, chatID, userID, candidates, -1)
 	}
 }
 
@@ -230,15 +215,15 @@ func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID
 // resolvedIndex >= 0 means exactly one candidate is already known (lets
 // the flow skip its picker step); -1 means show the picker over every
 // candidate.
-func (c *controller) startMovementDeleteFlowFor(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, candidates []transactionGroup, resolvedIndex int, subsByID map[uint64]subcategory.Subcategory) {
+func (c *controller) startMovementDeleteFlowFor(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, candidates []transactionGroup, resolvedIndex int) {
 	labels := make([]string, 0, len(candidates))
 	for _, g := range candidates {
-		labels = append(labels, candidateLabel(g, subsByID))
+		labels = append(labels, candidateLabel(g))
 	}
 
 	seed := conversation.Data{
 		"candidate_labels": encodeStringSlice(labels),
-		"candidate_groups": encodeCandidateGroups(candidates, subsByID),
+		"candidate_groups": encodeCandidateGroups(candidates),
 	}
 	if resolvedIndex >= 0 {
 		seed["resolved_index"] = strconv.Itoa(resolvedIndex)
@@ -256,12 +241,12 @@ func (c *controller) startMovementDeleteFlowFor(ctx context.Context, b *bot.Bot,
 
 // candidateLabel builds the short display line shown per option in
 // both UPDATE's and DELETE's ambiguous-candidate pickers.
-func candidateLabel(g transactionGroup, subsByID map[uint64]subcategory.Subcategory) string {
+func candidateLabel(g transactionGroup) string {
 	if len(g.Movements) == 0 {
 		return "?"
 	}
 	m := g.Movements[0]
-	row := movementToRow(m, subsByID)
+	row := movementToRow(m)
 	desc := row.Description
 	if desc == "" {
 		desc = row.Merchant
