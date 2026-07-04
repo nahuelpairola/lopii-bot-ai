@@ -71,7 +71,7 @@ func (r *fakeMovementRepoForResolve) SumAmountForAccount(accountID uint64) (deci
 func (r *fakeMovementRepoForResolve) ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error {
 	return nil
 }
-func (r *fakeMovementRepoForResolve) FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error) {
+func (r *fakeMovementRepoForResolve) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error) {
 	r.capturedQuery = query
 	r.capturedSince = since
 	return r.result, r.err

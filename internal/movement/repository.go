@@ -10,6 +10,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
+	"lopiibot.com/internal/subcategory"
 )
 
 type movementType string
@@ -22,17 +23,18 @@ const (
 
 type Movement struct {
 	gorm.Model
-	TransactionID *uuid.UUID        `gorm:"column:transaction_id"`
-	UserID        uint64            `gorm:"column:user_id;not null"`
-	AccountID     *uint64           `gorm:"column:account_id"`
-	SubcategoryID uint64            `gorm:"column:subcategory_id;not null"`
-	Date          time.Time         `gorm:"column:date;not null"`
-	Type          movementType      `gorm:"column:type;type:movement_type;not null"`
-	Amount        decimal.Decimal   `gorm:"column:amount;type:numeric(15,2);not null"`
-	Currency      currency.Currency `gorm:"column:currency;type:currency_type;not null"`
-	PaymentMethod *string           `gorm:"column:payment_method"`
-	Merchant      *string           `gorm:"column:merchant"`
-	Description   *string           `gorm:"column:description"`
+	TransactionID *uuid.UUID                 `gorm:"column:transaction_id"`
+	UserID        uint64                     `gorm:"column:user_id;not null"`
+	AccountID     *uint64                    `gorm:"column:account_id"`
+	SubcategoryID uint64                     `gorm:"column:subcategory_id;not null"`
+	Subcategory   *subcategory.Subcategory   `gorm:"foreignKey:SubcategoryID"`
+	Date          time.Time                  `gorm:"column:date;not null"`
+	Type          movementType               `gorm:"column:type;type:movement_type;not null"`
+	Amount        decimal.Decimal            `gorm:"column:amount;type:numeric(15,2);not null"`
+	Currency      currency.Currency          `gorm:"column:currency;type:currency_type;not null"`
+	PaymentMethod *string                    `gorm:"column:payment_method"`
+	Merchant      *string                    `gorm:"column:merchant"`
+	Description   *string                    `gorm:"column:description"`
 }
 
 func (Movement) TableName() string {
@@ -52,7 +54,7 @@ func InitRepository(conn *database.Connection) *repository {
 func (r *repository) InsertBatch(ms []Movement) error {
 	return r.db.DB.Transaction(func(tx *gorm.DB) error {
 		for i := range ms {
-			if err := tx.Create(&ms[i]).Error; err != nil {
+			if err := tx.Omit("Subcategory").Create(&ms[i]).Error; err != nil {
 				return err
 			}
 		}
@@ -63,16 +65,20 @@ func (r *repository) InsertBatch(ms []Movement) error {
 var ErrMovementNotFound = errors.New("movement not found")
 
 // FindSimilarForUser busca movimientos del usuario cuya description o
-// merchant sean textualmente similares a query (vía pg_trgm), desde
-// since en adelante. Usada como fallback de búsqueda cuando lastTransaction
-// no resuelve una corrección/borrado (ver reference_resolution.go).
-func (r *repository) FindSimilarForUser(userID uint64, query string, since time.Time) ([]Movement, error) {
+// merchant sean textualmente similares a query (vía pg_trgm), entre since
+// y until (until nil = sin tope superior). Usada como fallback de
+// búsqueda cuando lastTransaction no resuelve una corrección/borrado
+// (ver reference_resolution.go). Preload("Subcategory") evita que cada
+// caller tenga que resolver subcategory_id → nombre a mano.
+func (r *repository) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]Movement, error) {
 	var ms []Movement
-	err := r.db.DB.
+	q := r.db.DB.Preload("Subcategory").
 		Where("user_id = ? AND date >= ? AND (similarity(description, ?) > 0.2 OR similarity(merchant, ?) > 0.2)",
-			userID, since, query, query).
-		Order("date DESC, id DESC").
-		Find(&ms).Error
+			userID, since, query, query)
+	if until != nil {
+		q = q.Where("date <= ?", *until)
+	}
+	err := q.Order("date DESC, id DESC").Find(&ms).Error
 	return ms, err
 }
 
@@ -105,7 +111,7 @@ func (r *repository) ReplaceMovements(oldIDs []uint, newMovements []Movement) er
 			return ErrMovementNotFound
 		}
 		for i := range newMovements {
-			if err := tx.Create(&newMovements[i]).Error; err != nil {
+			if err := tx.Omit("Subcategory").Create(&newMovements[i]).Error; err != nil {
 				return err
 			}
 		}

@@ -83,7 +83,7 @@ func (c *controller) resolveCandidates(userID uint64, message, mentionedDate str
 		}
 	}
 
-	matches, err := c.movements.FindSimilarForUser(userID, message, since)
+	matches, err := c.movements.FindSimilarForUser(userID, message, since, nil)
 	if err != nil {
 		return nil, err
 	}

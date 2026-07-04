@@ -40,7 +40,7 @@ type movementRepository interface {
 	InsertBatch([]movement.Movement) error
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
 	ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error
-	FindSimilarForUser(userID uint64, query string, since time.Time) ([]movement.Movement, error)
+	FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error)
 	SoftDeleteByIDs(ids []uint) error
 }
 
