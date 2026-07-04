@@ -282,3 +282,7 @@ First tests added in `internal/controller/messaging` (`initial_balance_flow_test
 - `accounts` table has a `type DEFAULT 'standard'` column from a prior design — drop with a migration.
 - Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
 - `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
+
+## 7. Claude Code Session Rules
+
+- **Subagents run on `haiku`.** Any `Agent` tool call spawned in this project (any `subagent_type`) must pass `model: "haiku"` explicitly, unless the user asks otherwise for a specific task. Exception: `subagent_type: "fork"` always inherits the parent session's model — a `model` override is ignored for forks, so this rule doesn't apply to them.
