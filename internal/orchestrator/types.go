@@ -64,20 +64,23 @@ type MovementCandidate struct {
 	Movements     []MovementDraft `json:"movements"`
 }
 
-// UpdateResult is Call 2 UPDATE's output. MentionedDate is populated
-// whenever the LLM recognizes a date or relative-day reference in the
-// message, regardless of Resolved — the reference-resolution DB search
-// fallback (reference_resolution.go) uses it to anchor its search
-// window instead of the default 7-day cap.
+// UpdateResult is Call 2 UPDATE's output. MentionedDateFrom/MentionedDateTo
+// are populated whenever the LLM recognizes a date, relative-day, or date
+// range reference in the message, regardless of Resolved — the reference-
+// resolution DB search fallback (reference_resolution.go) uses them to
+// anchor/bound its search window instead of the default 7-day cap. A
+// single mentioned date sets only MentionedDateFrom.
 type UpdateResult struct {
-	Resolved      bool            `json:"resolved"`
-	MentionedDate string          `json:"mentioned_date,omitempty"`
-	Movements     []MovementDraft `json:"movements"`
+	Resolved          bool            `json:"resolved"`
+	MentionedDateFrom string          `json:"mentioned_date_from,omitempty"`
+	MentionedDateTo   string          `json:"mentioned_date_to,omitempty"`
+	Movements         []MovementDraft `json:"movements"`
 }
 
 // DeleteResult is Call 2 DELETE's output — it never rebuilds movement
 // rows, just confirms whether the candidate is the one meant.
 type DeleteResult struct {
-	Resolved      bool   `json:"resolved"`
-	MentionedDate string `json:"mentioned_date,omitempty"`
+	Resolved          bool   `json:"resolved"`
+	MentionedDateFrom string `json:"mentioned_date_from,omitempty"`
+	MentionedDateTo   string `json:"mentioned_date_to,omitempty"`
 }

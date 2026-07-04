@@ -45,3 +45,21 @@ func TestResolveUpdate_Unresolved(t *testing.T) {
 		t.Error("expected resolved=false")
 	}
 }
+
+func TestResolveUpdate_MentionedDateRange(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":false,\"mentioned_date_from\":\"2026-06-27\",\"mentioned_date_to\":\"2026-06-29\",\"movements\":[]}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{BaseURL: server.URL, UpdateModel: "test-model", TimeoutSeconds: 5})
+	candidate := MovementCandidate{Movements: []MovementDraft{{Amount: "100", Currency: "USD"}}}
+
+	result, err := o.ResolveUpdate(context.Background(), "fue entre el 27 y el 29", candidate)
+	if err != nil {
+		t.Fatalf("ResolveUpdate: %v", err)
+	}
+	if result.MentionedDateFrom != "2026-06-27" || result.MentionedDateTo != "2026-06-29" {
+		t.Errorf("date range = %q..%q, want 2026-06-27..2026-06-29", result.MentionedDateFrom, result.MentionedDateTo)
+	}
+}
