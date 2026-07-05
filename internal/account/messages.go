@@ -37,6 +37,6 @@ func MsgAskInitialBalance(accountName, currency string) string {
 	return "¿Cuál es el saldo inicial de \"" + accountName + "\" en " + currency + "? Mandá el monto (ej: 50000)."
 }
 
-func msgAccountAlreadyExists(name, currency string) string {
+func MsgAccountAlreadyExists(name, currency string) string {
 	return "Ya tenés una cuenta llamada \"" + name + "\" en " + currency + ". Probá con otro nombre."
 }

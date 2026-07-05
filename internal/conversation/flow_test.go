@@ -119,3 +119,117 @@ func TestFlow_AdvanceThroughSkips_CycleGuard(t *testing.T) {
 		t.Fatal("expected an error from an infinite Skip loop, got nil")
 	}
 }
+
+func TestTextStep_Process_EscapeOption_Advances(t *testing.T) {
+	step := TextStep{
+		DataKey:  "name",
+		NextStep: "next",
+		EscapeOptions: []ChoiceOption{
+			{Label: "Atrás", Value: "back", NextStep: "previous"},
+		},
+	}
+	transition := step.Process(Input{CallbackData: "back"}, Data{"untouched": "yes"})
+	if transition.kind != outcomeAdvance || transition.nextStep != "previous" {
+		t.Fatalf("transition = %+v, want Advance to %q", transition, "previous")
+	}
+	if transition.data["untouched"] != "yes" {
+		t.Errorf("data should pass through unchanged when OnEscape is nil, got %+v", transition.data)
+	}
+}
+
+func TestTextStep_Process_EscapeOption_Finish(t *testing.T) {
+	step := TextStep{
+		DataKey:  "name",
+		NextStep: "next",
+		EscapeOptions: []ChoiceOption{
+			{Label: "Cancelar", Value: "cancel", Finish: true},
+		},
+	}
+	transition := step.Process(Input{CallbackData: "cancel"}, Data{})
+	if transition.kind != outcomeComplete {
+		t.Fatalf("transition.kind = %v, want outcomeComplete", transition.kind)
+	}
+}
+
+func TestTextStep_Process_EscapeOption_CallsOnEscape(t *testing.T) {
+	step := TextStep{
+		DataKey:  "name",
+		NextStep: "next",
+		EscapeOptions: []ChoiceOption{
+			{Label: "Cancelar", Value: "cancel", Finish: true},
+		},
+		OnEscape: func(value string, data Data) Data {
+			next := Data{}
+			for k, v := range data {
+				next[k] = v
+			}
+			next["cancelled"] = "true"
+			return next
+		},
+	}
+	transition := step.Process(Input{CallbackData: "cancel"}, Data{})
+	if transition.data["cancelled"] != "true" {
+		t.Errorf("OnEscape should have set cancelled=true, got %+v", transition.data)
+	}
+}
+
+func TestTextStep_Process_NonEscapeCallback_FallsThroughToTextValidation(t *testing.T) {
+	step := TextStep{
+		DataKey:  "name",
+		NextStep: "next",
+		Validate: func(text string, _ Data) string {
+			if text == "" {
+				return "empty not allowed"
+			}
+			return ""
+		},
+		EscapeOptions: []ChoiceOption{
+			{Label: "Cancelar", Value: "cancel", Finish: true},
+		},
+	}
+	transition := step.Process(Input{CallbackData: "some_other_button"}, Data{})
+	if transition.kind != outcomeRetry {
+		t.Fatalf("transition.kind = %v, want outcomeRetry (empty text should fail Validate)", transition.kind)
+	}
+}
+
+func TestTextStep_Prompt_IncludesEscapeButtons(t *testing.T) {
+	step := TextStep{
+		PromptText: func(Data) string { return "¿Nombre?" },
+		EscapeOptions: []ChoiceOption{
+			{Label: "🚫 Cancelar", Value: "cancel", Finish: true},
+		},
+	}
+	prompt := step.Prompt(Data{})
+	if len(prompt.Buttons) != 1 || prompt.Buttons[0].Data != "cancel" {
+		t.Errorf("prompt.Buttons = %+v, want one button with Data=\"cancel\"", prompt.Buttons)
+	}
+}
+
+func TestTextStep_Prompt_NoEscapeOptions_NoButtons(t *testing.T) {
+	step := TextStep{PromptText: func(Data) string { return "¿Nombre?" }}
+	prompt := step.Prompt(Data{})
+	if len(prompt.Buttons) != 0 {
+		t.Errorf("prompt.Buttons = %+v, want none when EscapeOptions is nil", prompt.Buttons)
+	}
+}
+
+func TestTextStep_PossibleNextSteps_IncludesEscapeDestinations(t *testing.T) {
+	step := TextStep{
+		NextStep: "next",
+		EscapeOptions: []ChoiceOption{
+			{Label: "Atrás", Value: "back", NextStep: "previous"},
+			{Label: "Cancelar", Value: "cancel", Finish: true},
+		},
+	}
+	steps := step.PossibleNextSteps()
+	want := map[string]bool{"next": true, "previous": true}
+	if len(steps) != 2 {
+		t.Fatalf("PossibleNextSteps() = %v, want exactly 2 entries (Finish options excluded)", steps)
+	}
+	for _, s := range steps {
+		if !want[s] {
+			t.Errorf("unexpected step %q in %v", s, steps)
+		}
+	}
+}

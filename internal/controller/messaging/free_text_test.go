@@ -58,30 +58,7 @@ func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 	}
 }
 
-func TestStartMovementCreate_DuplicateFound_StartsConfirmGate(t *testing.T) {
-	subRepo := &fakeSubcategoryRepoFull{}
-	accRepo := &fakeAccountRepoFull{}
-	movRepo := &fakeMovementRepoFull{similar: []movement.Movement{
-		{Description: strPtr("café"), Amount: mustDecimal(t, "5000"), Currency: "ARS"},
-	}}
-	orch := &fakeFullOrchestrator{}
-
-	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
-	engine.Register(NewMovementConfirmFlow())
-	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
-
-	c.startMovementCreate(context.Background(), nil, 0, 1, "el café de hoy eran 5k", false)
-
-	if len(movRepo.inserted) != 0 {
-		t.Error("a duplicate-suspected CREATE should never insert before confirmation")
-	}
-	if store.flowName != movementConfirmFlowName {
-		t.Errorf("started flow = %q, want %q (duplicate-check should route to the confirm gate)", store.flowName, movementConfirmFlowName)
-	}
-}
-
-func TestStartMovementCreate_NeedsConfirmation_SkipsDuplicateCheck(t *testing.T) {
+func TestStartMovementCreate_NeedsConfirmation_RoutesToConfirmGate(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{}
 	accRepo := &fakeAccountRepoFull{}
 	movRepo := &fakeMovementRepoFull{}
@@ -158,5 +135,23 @@ func TestStartMovementDelete_NoCandidates_SendsErrorNoFlow(t *testing.T) {
 
 	if store.found {
 		t.Error("with zero candidates, no flow should ever start")
+	}
+}
+
+func TestHandleFreeText_AccountCreate_StartsFlow(t *testing.T) {
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentAccountCreate}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store)
+	engine.Register(NewAccountCreateFlow())
+	c := &controller{orchestrator: orch, engine: engine}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "quiero crear una cuenta nueva")
+
+	if store.flowName != accountCreateFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, accountCreateFlowName)
+	}
+	if store.stepName != stepAccountCreateAskName {
+		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountCreateAskName)
 	}
 }

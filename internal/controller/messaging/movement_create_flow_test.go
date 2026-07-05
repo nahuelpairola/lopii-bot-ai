@@ -42,9 +42,13 @@ type fakeAccountRepoFull struct {
 	byID       map[uint64]*account.Account
 	inserted   []account.Account
 	balances   map[uint64]string
+	insertErr  error
 }
 
 func (r *fakeAccountRepoFull) Insert(a *account.Account) error {
+	if r.insertErr != nil {
+		return r.insertErr
+	}
 	a.ID = uint(len(r.inserted) + 100)
 	r.inserted = append(r.inserted, *a)
 	return nil
@@ -74,9 +78,13 @@ type fakeMovementRepoFull struct {
 	replaced       []movement.Movement
 	deletedIDs     []uint
 	similar        []movement.Movement
+	insertErr      error
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
+	if r.insertErr != nil {
+		return r.insertErr
+	}
 	r.inserted = ms
 	return nil
 }

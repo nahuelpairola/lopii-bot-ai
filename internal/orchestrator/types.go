@@ -4,10 +4,11 @@ package orchestrator
 type Intent string
 
 const (
-	IntentCreate Intent = "CREATE"
-	IntentUpdate Intent = "UPDATE"
-	IntentDelete Intent = "DELETE"
-	IntentQuery  Intent = "QUERY"
+	IntentCreate        Intent = "CREATE"
+	IntentUpdate        Intent = "UPDATE"
+	IntentDelete        Intent = "DELETE"
+	IntentQuery         Intent = "QUERY"
+	IntentAccountCreate Intent = "ACCOUNT_CREATE"
 )
 
 // IntentResult is Call 1 router's output: the classified intent, plus
