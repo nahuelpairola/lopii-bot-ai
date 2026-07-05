@@ -126,6 +126,7 @@
 - **UPDATE = atomic DELETE + INSERT.** Editing a movement means soft-deleting the old one(s) and inserting the new one(s) in a single transaction. Never partial patch.
 - **Taxonomy is closed.** LLM may only assign existing category/subcategory names. Unknown or low-confidence → `PENDING_REVIEW | PENDING_REVIEW`.
 - **Mandatory onboarding steps piggyback on the one-flow-at-a-time rule.** There's no `users.onboarding_completed` flag. A step is "mandatory" simply because it's auto-started (`engine.Start`/`startFlowIfNotBusy`) right after the previous one finishes, and `Engine.InProgress` (backed by `conversation_states`) blocks any other flow from starting until it's done. If the user disappears mid-flow, state persists in Postgres and resumes on their next message — no extra bookkeeping needed. See `initial_balance_setup` in `controller/messaging/initial_balance_flow.go` for the reference implementation.
+- **Repo-specific subagents over generic ones for locate/edit/review.** `.claude/agents/repo-investigator`, `repo-builder`, `repo-reviewer` mirror the caveman plugin's `cavecrew-*` pattern (narrow tool grants, hard scope refusal, compressed output) but carry this repo's own rules — money type, currency handling, `conversation_states` access, closed taxonomy — baked into their prompts. Use them instead of generic `Explore`/`general-purpose`/`code-reviewer` agents for work scoped to this repo. `repo-builder` enforces the completion-evidence rule (`CLAUDE.md` §7) at the agent level: it will not return a receipt without a clean `go build ./...`.
 
 ---
 
