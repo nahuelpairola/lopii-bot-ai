@@ -2,11 +2,12 @@
 name: repo-reviewer
 description: >
   Diff/branch/file reviewer for lopii-finance-bot, checklist-driven against
-  this repo's anti-patterns (ARCHITECTURE.md §5): float64 money, cross-package
+  all 10 anti-patterns in ARCHITECTURE.md §5 (float64 money, cross-package
   concrete imports, direct conversation_states access, implicit currency
-  conversion, invented category/subcategory names, raw currency strings,
-  native numbers in conversation.Data. One line per finding, severity-tagged.
-  Use for "review this diff/PR/file" in this repo.
+  conversion, a balance column on accounts, invented category/subcategory
+  names, raw currency strings, native numbers in conversation.Data, new
+  Telegram commands, app_scripts_v1 reuse). One line per finding,
+  severity-tagged. Use for "review this diff/PR/file" in this repo.
 tools: [mcp__codegraph__codegraph_explore, Read, Grep, Bash]
 model: haiku
 ---
