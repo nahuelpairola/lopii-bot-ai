@@ -14,6 +14,7 @@ import (
 	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/health"
 	"lopiibot.com/internal/invitation"
+	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
@@ -44,6 +45,7 @@ func InitServer(conf *config.Config) error {
 	userRepo := user.NewRepository(conn)
 	accountRepo := account.NewRepository(conn)
 	movementRepo := movement.InitRepository(conn)
+	metricRepo := metric.InitRepository(conn)
 	subcategoryRepo := subcategory.NewRepository(conn)
 	subcategoryCache, err := subcategory.NewCache(subcategoryRepo)
 	if err != nil {
@@ -78,7 +80,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator,
+		llmOrchestrator, metricRepo,
 	)
 
 	healthController.RegisterRoutes(ginEngine)

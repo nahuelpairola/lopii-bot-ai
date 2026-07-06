@@ -62,6 +62,11 @@ type movementOrchestrator interface {
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 }
 
+type metricRepository interface {
+	Log(userID uint64, rawMessage, intent string, needsConfirmation bool, outcome string) error
+	Resolve(userID uint64, outcome string) error
+}
+
 type controller struct {
 	users         userRepository
 	invitations   invitationRepository
@@ -70,6 +75,7 @@ type controller struct {
 	subcategories subcategoryRepository
 	engine        *conversation.Engine
 	orchestrator  movementOrchestrator
+	metrics       metricRepository
 }
 
 func NewController(
@@ -80,6 +86,7 @@ func NewController(
 	subcategories subcategoryRepository,
 	engine *conversation.Engine,
 	orch movementOrchestrator,
+	metrics metricRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -89,6 +96,7 @@ func NewController(
 		subcategories: subcategories,
 		engine:        engine,
 		orchestrator:  orch,
+		metrics:       metrics,
 	}
 }
 

@@ -173,3 +173,161 @@ func TestHandleFreeText_CreateCategory_StartsFlow(t *testing.T) {
 		t.Errorf("stepName = %q, want %q", store.stepName, stepChooseMode)
 	}
 }
+
+func TestHandleFreeText_LogsPendingForCreate(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreate, needsConfirmation: true}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewMovementConfirmFlow())
+	c := &controller{orchestrator: orch, engine: engine, metrics: metrics}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "20k")
+
+	if len(metrics.logged) != 1 {
+		t.Fatalf("expected one router log, got %d", len(metrics.logged))
+	}
+	if metrics.logged[0].outcome != outcomePending {
+		t.Errorf("CREATE log outcome = %q, want %q", metrics.logged[0].outcome, outcomePending)
+	}
+}
+
+func TestHandleFreeText_LogsTerminalForQuery(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	c := &controller{orchestrator: orch, engine: engine, metrics: metrics}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "cuánto gasté este mes")
+
+	if len(metrics.logged) != 1 || metrics.logged[0].outcome != outcomeQueryUnsupported {
+		t.Fatalf("expected one query_unsupported log, got %+v", metrics.logged)
+	}
+}
+
+func TestStartMovementCreate_NoGaps_ResolvesInserted(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Café")
+	subRepo := &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
+		all:              []subcategory.Subcategory{*sub},
+	}
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
+		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
+	}}}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{}, movements: &fakeMovementRepoFull{}, orchestrator: orch, engine: engine, metrics: metrics}
+
+	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateInserted {
+		t.Fatalf("expected resolve create_inserted, got %+v", metrics.resolved)
+	}
+}
+
+func TestFinishMovementConfirmFlow_Rewrite_ResolvesRewrite(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	c := &controller{metrics: metrics}
+
+	c.finishMovementConfirmFlow(context.Background(), nil, 0, conversation.Data{"choice": "rewrite"})
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateRewrite {
+		t.Fatalf("expected resolve create_rewrite, got %+v", metrics.resolved)
+	}
+}
+
+func TestFinishMovementCreateFlow_Cancelled_ResolvesCancelled(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	c := &controller{metrics: metrics}
+
+	c.finishMovementCreateFlow(context.Background(), nil, 0, conversation.Data{"cancelled": "true"})
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateCancelled {
+		t.Fatalf("expected resolve create_cancelled, got %+v", metrics.resolved)
+	}
+}
+
+func TestFinishMovementUpdateConfirmFlow_Cancelled_ResolvesCancelled(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	c := &controller{metrics: metrics}
+
+	c.finishMovementUpdateConfirmFlow(context.Background(), nil, 0, conversation.Data{"confirmed": "false"})
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeUpdateCancelled {
+		t.Fatalf("expected resolve update_cancelled, got %+v", metrics.resolved)
+	}
+}
+
+func TestFinishMovementUpdateConfirmFlow_Error_NilBotNoPanic(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Café")
+	movRepo := &fakeMovementRepoFull{}
+	metrics := &fakeMetricRepo{}
+	c := &controller{movements: movRepo, subcategories: &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
+	}, metrics: metrics}
+
+	data := conversation.Data{
+		conversation.UserIDKey: uint64(1),
+		"confirmed":            "true",
+		"movements": encodeMovementRows([]movementRow{
+			{Type: "expense", Amount: "1000", Currency: "ARS", Category: "Alimentación", Subcategory: "NoExiste", Date: "2026-07-02"},
+		}),
+		"old_movement_ids": encodeStringSlice([]string{"42"}),
+	}
+
+	// Must not panic with b == nil, even though resolveAndInsertMovements fails
+	c.finishMovementUpdateConfirmFlow(context.Background(), nil, 123, data)
+}
+
+func TestFinishMovementUpdateConfirmFlow_Success_NilBotNoPanic(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Café")
+	movRepo := &fakeMovementRepoFull{}
+	metrics := &fakeMetricRepo{}
+	c := &controller{movements: movRepo, subcategories: &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
+	}, metrics: metrics}
+
+	data := conversation.Data{
+		conversation.UserIDKey: uint64(1),
+		"confirmed":            "true",
+		"movements": encodeMovementRows([]movementRow{
+			{Type: "expense", Amount: "1000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},
+		}),
+		"old_movement_ids": encodeStringSlice([]string{"42"}),
+	}
+
+	// Must not panic with b == nil, even though resolveAndInsertMovements succeeds and tries to send a message
+	c.finishMovementUpdateConfirmFlow(context.Background(), nil, 123, data)
+}
+
+func TestFinishMovementDeleteFlow_Cancelled_ResolvesCancelled(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	c := &controller{metrics: metrics}
+
+	c.finishMovementDeleteFlow(context.Background(), nil, 0, conversation.Data{"confirmed": "false"})
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeDeleteCancelled {
+		t.Fatalf("expected resolve delete_cancelled, got %+v", metrics.resolved)
+	}
+}
+
+func TestStartMovementDelete_NoCandidates_ResolvesNoCandidates(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{deleteResult: orchestrator.DeleteResult{Resolved: false}}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewMovementDeleteFlow())
+	c := &controller{movements: &fakeMovementRepoFull{}, orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, metrics: metrics}
+
+	c.startMovementDelete(context.Background(), nil, 0, 1, "borrá lo de ayer")
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeNoCandidates {
+		t.Fatalf("expected resolve no_candidates, got %+v", metrics.resolved)
+	}
+}

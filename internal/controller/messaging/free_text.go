@@ -32,6 +32,8 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		return
 	}
 
+	c.logIntent(userID, text, result.Intent, result.NeedsConfirmation)
+
 	switch result.Intent {
 	case orchestrator.IntentQuery:
 		c.sendText(ctx, b, chatID, msgQueryNotSupported)
@@ -126,6 +128,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 			c.sendText(ctx, b, chatID, msgGenericFlowError)
 			return
 		}
+		c.resolveMetric(userID, outcomeCreateInserted)
 		c.sendText(ctx, b, chatID, msgConfirmMovements(inserted))
 		return
 	}
@@ -152,6 +155,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 
 	switch len(candidates) {
 	case 0:
+		c.resolveMetric(userID, outcomeNoCandidates)
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:
 		rows := make([]movementRow, 0, len(candidates[0].Movements))
@@ -199,6 +203,7 @@ func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID
 
 	switch len(candidates) {
 	case 0:
+		c.resolveMetric(userID, outcomeNoCandidates)
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:
 		c.startMovementDeleteFlowFor(ctx, b, chatID, userID, candidates, 0)
