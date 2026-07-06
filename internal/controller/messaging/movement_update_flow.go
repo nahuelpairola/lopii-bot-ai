@@ -210,6 +210,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		return err
 	}
 	if !result.Resolved {
+		c.resolveMetric(userID, outcomeNoCandidates)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgNoCandidatesFound})
 		}
@@ -282,7 +283,10 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 // to one of "true"/"false".
 func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["confirmed"]) != "true" {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateCancelled})
+		c.resolveMetric(data.UserID(), outcomeUpdateCancelled)
+		if b != nil {
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateCancelled})
+		}
 		return
 	}
 
@@ -290,5 +294,6 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 		return
 	}
+	c.resolveMetric(data.UserID(), outcomeUpdateConfirmed)
 	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateApplied})
 }

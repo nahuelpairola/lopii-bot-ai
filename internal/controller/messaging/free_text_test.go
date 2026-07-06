@@ -251,3 +251,41 @@ func TestFinishMovementCreateFlow_Cancelled_ResolvesCancelled(t *testing.T) {
 		t.Fatalf("expected resolve create_cancelled, got %+v", metrics.resolved)
 	}
 }
+
+func TestFinishMovementUpdateConfirmFlow_Cancelled_ResolvesCancelled(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	c := &controller{metrics: metrics}
+
+	c.finishMovementUpdateConfirmFlow(context.Background(), nil, 0, conversation.Data{"confirmed": "false"})
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeUpdateCancelled {
+		t.Fatalf("expected resolve update_cancelled, got %+v", metrics.resolved)
+	}
+}
+
+func TestFinishMovementDeleteFlow_Cancelled_ResolvesCancelled(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	c := &controller{metrics: metrics}
+
+	c.finishMovementDeleteFlow(context.Background(), nil, 0, conversation.Data{"confirmed": "false"})
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeDeleteCancelled {
+		t.Fatalf("expected resolve delete_cancelled, got %+v", metrics.resolved)
+	}
+}
+
+func TestStartMovementDelete_NoCandidates_ResolvesNoCandidates(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{deleteResult: orchestrator.DeleteResult{Resolved: false}}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewMovementDeleteFlow())
+	c := &controller{movements: &fakeMovementRepoFull{}, orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, metrics: metrics}
+
+	c.startMovementDelete(context.Background(), nil, 0, 1, "borrá lo de ayer")
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeNoCandidates {
+		t.Fatalf("expected resolve no_candidates, got %+v", metrics.resolved)
+	}
+}

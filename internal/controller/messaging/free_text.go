@@ -155,6 +155,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 
 	switch len(candidates) {
 	case 0:
+		c.resolveMetric(userID, outcomeNoCandidates)
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:
 		rows := make([]movementRow, 0, len(candidates[0].Movements))
@@ -202,6 +203,7 @@ func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID
 
 	switch len(candidates) {
 	case 0:
+		c.resolveMetric(userID, outcomeNoCandidates)
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:
 		c.startMovementDeleteFlowFor(ctx, b, chatID, userID, candidates, 0)
