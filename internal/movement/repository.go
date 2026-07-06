@@ -64,18 +64,21 @@ func (r *repository) InsertBatch(ms []Movement) error {
 
 var ErrMovementNotFound = errors.New("movement not found")
 
-// FindSimilarForUser busca movimientos del usuario cuya description o
-// merchant sean textualmente similares a query (vía pg_trgm), entre since
-// y until (until nil = sin tope superior). Es el único mecanismo de
-// resolución de referencias del bot: UPDATE/DELETE (ver
-// reference_resolution.go) y el chequeo de duplicados de CREATE (ver
-// startMovementCreate) lo usan por igual. Preload("Subcategory") evita
-// que cada caller tenga que resolver subcategory_id → nombre a mano.
+// FindSimilarForUser returns the user's non-deleted movements in the
+// [since, until] date window (until nil = no upper bound), ordered most
+// recent first, with the subcategory preloaded. Despite the name it no
+// longer does a pg_trgm similarity filter: that DB-side filter dropped
+// short-description-in-long-message matches (see the humane-reference-
+// resolution spec). Textual relevance is now decided in-process by
+// matchesMessage (see reference_resolution.go), so `query` is unused here.
+// The window is already narrow (one day by default, per user), so a plain
+// scan is cheap.
+// ponytail: `query` param + the name are legacy; a rename is a safe
+// follow-up but would ripple through the interface and three test mocks.
 func (r *repository) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]Movement, error) {
 	var ms []Movement
 	q := r.db.DB.Preload("Subcategory").
-		Where("user_id = ? AND date >= ? AND (similarity(description, ?) > 0.2 OR similarity(merchant, ?) > 0.2)",
-			userID, since, query, query)
+		Where("user_id = ? AND date >= ?", userID, since)
 	if until != nil {
 		q = q.Where("date <= ?", *until)
 	}

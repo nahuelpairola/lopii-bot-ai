@@ -125,7 +125,9 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 const (
 	msgUpdateApplied     = "✅ Corregido."
 	msgUpdateCancelled   = "Cancelado, no cambié nada."
-	msgNoCandidatesFound = "No encontré ningún movimiento que coincida. Contame un poco más (comercio, monto o fecha)."
+	// Shown only when the window (today, or the mentioned day) has no
+	// movements at all — the fallback picker covers every other case.
+	msgNoCandidatesFound = "No tengo movimientos de ese día para tocar. ¿De qué fecha era?"
 )
 
 func msgPickDeleteCandidate(data conversation.Data) string {
