@@ -8,10 +8,22 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
+// argentinaZone is fixed UTC-3. Argentina observes no DST, so a fixed
+// offset avoids depending on the IANA tz database being present on the
+// host (Alpine/scratch images ship without it).
+// ponytail: fixed -3; if Argentina ever restores DST, switch to
+// time.LoadLocation + embedded time/tzdata.
+var argentinaZone = time.FixedZone("ART", -3*60*60)
+
+func startOfTodayArgentina() time.Time {
+	now := time.Now().In(argentinaZone)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, argentinaZone)
+}
+
 const (
-	referenceSearchWindow = 7 * 24 * time.Hour
-	dateAnchorMargin      = 24 * time.Hour
-	minMatchTokenLen      = 4
+	dateAnchorMargin  = 24 * time.Hour
+	minMatchTokenLen  = 4
+	fallbackRecentCap = 5
 )
 
 // transactionGroup is a set of movements sharing one transaction_id (or
@@ -92,15 +104,16 @@ func descOrMerchantTokenInMessage(field *string, lowerMessage string) bool {
 	return false
 }
 
-// resolveCandidates finds the transaction group(s) a message could
-// refer to — used for UPDATE/DELETE reference resolution and, with an
-// empty dateFrom/dateTo, as CREATE's pre-insert duplicate check (see
-// startMovementCreate). dateFrom/dateTo are whatever the orchestrator's
-// resolve call extracted from the message — a single mentioned date
-// sets only dateFrom; a range sets both. Either anchors the search
-// window instead of the default 7-day cap.
+// resolveCandidates finds the transaction group(s) a message could refer
+// to for UPDATE/DELETE. Default window is today (America/Argentina/
+// Buenos_Aires); a mentioned dateFrom/dateTo anchors it instead. It fetches
+// the whole window (see FindSimilarForUser) and matches in-process via
+// matchesMessage. When nothing matches textually it does NOT dead-end —
+// it returns the window's most-recent groups (capped) so the caller can
+// ask "¿cuál?". It never auto-picks: the caller still confirms (1) or
+// shows a picker (2+).
 func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo string) ([]transactionGroup, error) {
-	since := time.Now().Add(-referenceSearchWindow)
+	since := startOfTodayArgentina()
 	if dateFrom != "" {
 		if anchor, err := time.Parse("2006-01-02", dateFrom); err == nil {
 			since = anchor.Add(-dateAnchorMargin)
@@ -120,11 +133,23 @@ func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo 
 		return nil, err
 	}
 
+	groups := groupByTransaction(matches)
+
 	var candidates []transactionGroup
-	for _, g := range groupByTransaction(matches) {
+	for _, g := range groups {
 		if matchesMessage(g, message) {
 			candidates = append(candidates, g)
 		}
 	}
-	return candidates, nil
+	if len(candidates) > 0 {
+		return candidates, nil
+	}
+
+	// Nothing matched textually. Rather than dead-end, offer the most
+	// recent movements in the window as a picker. groups is already ordered
+	// date DESC, id DESC by FindSimilarForUser.
+	if len(groups) > fallbackRecentCap {
+		groups = groups[:fallbackRecentCap]
+	}
+	return groups, nil
 }
