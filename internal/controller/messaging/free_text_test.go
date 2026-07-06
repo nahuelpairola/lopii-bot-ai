@@ -263,6 +263,48 @@ func TestFinishMovementUpdateConfirmFlow_Cancelled_ResolvesCancelled(t *testing.
 	}
 }
 
+func TestFinishMovementUpdateConfirmFlow_Error_NilBotNoPanic(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Café")
+	movRepo := &fakeMovementRepoFull{}
+	metrics := &fakeMetricRepo{}
+	c := &controller{movements: movRepo, subcategories: &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
+	}, metrics: metrics}
+
+	data := conversation.Data{
+		conversation.UserIDKey: uint64(1),
+		"confirmed":            "true",
+		"movements": encodeMovementRows([]movementRow{
+			{Type: "expense", Amount: "1000", Currency: "ARS", Category: "Alimentación", Subcategory: "NoExiste", Date: "2026-07-02"},
+		}),
+		"old_movement_ids": encodeStringSlice([]string{"42"}),
+	}
+
+	// Must not panic with b == nil, even though resolveAndInsertMovements fails
+	c.finishMovementUpdateConfirmFlow(context.Background(), nil, 123, data)
+}
+
+func TestFinishMovementUpdateConfirmFlow_Success_NilBotNoPanic(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Café")
+	movRepo := &fakeMovementRepoFull{}
+	metrics := &fakeMetricRepo{}
+	c := &controller{movements: movRepo, subcategories: &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
+	}, metrics: metrics}
+
+	data := conversation.Data{
+		conversation.UserIDKey: uint64(1),
+		"confirmed":            "true",
+		"movements": encodeMovementRows([]movementRow{
+			{Type: "expense", Amount: "1000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},
+		}),
+		"old_movement_ids": encodeStringSlice([]string{"42"}),
+	}
+
+	// Must not panic with b == nil, even though resolveAndInsertMovements succeeds and tries to send a message
+	c.finishMovementUpdateConfirmFlow(context.Background(), nil, 123, data)
+}
+
 func TestFinishMovementDeleteFlow_Cancelled_ResolvesCancelled(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	c := &controller{metrics: metrics}
