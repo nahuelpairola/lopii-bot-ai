@@ -98,7 +98,7 @@ func (c *controller) finishInitialBalanceFlow(ctx context.Context, b *bot.Bot, c
 func (c *controller) insertInitialBalanceMovements(data conversation.Data) error {
 	userID := data.UserID()
 
-	sub, err := c.subcategories.FindByCategoryAndSubcategory("Sistema", "Saldo inicial")
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, "Sistema", "Saldo inicial")
 	if err != nil {
 		return err
 	}

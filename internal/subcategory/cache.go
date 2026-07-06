@@ -3,10 +3,13 @@ package subcategory
 import "sort"
 
 // allLoader is the local interface Cache needs from the DB-backed
-// repository — every row (global + user-created), loaded once at server
-// startup and again on Reload() after an Insert.
+// repository: FindAll loads every row (global + user-created) at server
+// startup and again on Reload() after an Insert; Insert writes a new
+// user-created row straight through to Postgres — Cache is read-through
+// for lookups but never mutates its own in-memory slices directly.
 type allLoader interface {
 	FindAll() ([]Subcategory, error)
+	Insert(s *Subcategory) error
 }
 
 // Cache holds every subcategory in memory: global is the shared ~90-row
@@ -112,6 +115,13 @@ func (c *Cache) IconForCategory(userID uint64, category string) string {
 		}
 	}
 	return "📂"
+}
+
+// Insert writes a new subcategory straight through to the DB — callers
+// must follow up with Reload() to make it visible in the cache (see
+// internal/controller/messaging/subcategory_setup_finish.go).
+func (c *Cache) Insert(s *Subcategory) error {
+	return c.loader.Insert(s)
 }
 
 func iconOrFallback(icon string) string {

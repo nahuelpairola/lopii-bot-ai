@@ -13,7 +13,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/subcategory"
 )
 
 const (
@@ -56,7 +55,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				opts := make([]conversation.ChoiceOption, 0, len(cats))
 				for _, cat := range cats {
 					opts = append(opts, conversation.ChoiceOption{
-						Label:    subcategory.IconFor(cat) + " " + cat,
+						Label:    subcategories.IconForCategory(data.UserID(), cat) + " " + cat,
 						Value:    cat,
 						NextStep: stepResolveSubcategory,
 					})
@@ -261,7 +260,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	}
 
 	for _, row := range rows {
-		sub, err := c.subcategories.FindByCategoryAndSubcategory(row.Category, row.Subcategory)
+		sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, row.Category, row.Subcategory)
 		if err != nil {
 			return nil, err
 		}
@@ -356,7 +355,7 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 			continue
 		}
 
-		fciSub, err := c.subcategories.FindByCategoryAndSubcategory("Inversiones", "FCI")
+		fciSub, err := c.subcategories.FindByCategoryAndSubcategory(m.UserID, "Inversiones", "FCI")
 		if err != nil {
 			return movement.Movement{}, false, err
 		}
@@ -382,7 +381,7 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 			continue
 		}
 
-		gainSub, err := c.subcategories.FindByCategoryAndSubcategory("Sistema", "Rendimiento inversión")
+		gainSub, err := c.subcategories.FindByCategoryAndSubcategory(m.UserID, "Sistema", "Rendimiento inversión")
 		if err != nil {
 			return movement.Movement{}, false, err
 		}

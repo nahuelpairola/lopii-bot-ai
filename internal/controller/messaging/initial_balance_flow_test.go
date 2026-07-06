@@ -163,7 +163,7 @@ type fakeSubcategoryRepo struct {
 	err error
 }
 
-func (r *fakeSubcategoryRepo) FindByCategoryAndSubcategory(category, sub string) (*subcategory.Subcategory, error) {
+func (r *fakeSubcategoryRepo) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -177,6 +177,10 @@ func (r *fakeSubcategoryRepo) FindAllForUser(userID uint64) ([]subcategory.Subca
 func (r *fakeSubcategoryRepo) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	return nil, nil
 }
+
+func (r *fakeSubcategoryRepo) IconForCategory(userID uint64, category string) string { return "📂" }
+func (r *fakeSubcategoryRepo) Insert(s *subcategory.Subcategory) error               { return nil }
+func (r *fakeSubcategoryRepo) Reload() error                                        { return nil }
 
 type fakeMovementRepo struct {
 	inserted []movement.Movement

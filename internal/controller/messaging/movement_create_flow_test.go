@@ -22,7 +22,7 @@ type fakeSubcategoryRepoFull struct {
 	categories       []string
 }
 
-func (r *fakeSubcategoryRepoFull) FindByCategoryAndSubcategory(category, sub string) (*subcategory.Subcategory, error) {
+func (r *fakeSubcategoryRepoFull) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
 	s, ok := r.byCategoryAndSub[category+"|"+sub]
 	if !ok {
 		return nil, subcategory.ErrSubcategoryNotFound
@@ -35,6 +35,9 @@ func (r *fakeSubcategoryRepoFull) FindAllForUser(userID uint64) ([]subcategory.S
 func (r *fakeSubcategoryRepoFull) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	return r.categories, nil
 }
+func (r *fakeSubcategoryRepoFull) IconForCategory(userID uint64, category string) string { return "📂" }
+func (r *fakeSubcategoryRepoFull) Insert(s *subcategory.Subcategory) error               { return nil }
+func (r *fakeSubcategoryRepoFull) Reload() error                                        { return nil }
 
 type fakeAccountRepoFull struct {
 	byCurrency map[currency.Currency]*account.Account

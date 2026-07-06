@@ -45,9 +45,12 @@ type movementRepository interface {
 }
 
 type subcategoryRepository interface {
-	FindByCategoryAndSubcategory(category, subcategory string) (*subcategory.Subcategory, error)
+	FindByCategoryAndSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error)
 	FindAllForUser(userID uint64) ([]subcategory.Subcategory, error)
 	DistinctCategoriesForUser(userID uint64) ([]string, error)
+	IconForCategory(userID uint64, category string) string
+	Insert(s *subcategory.Subcategory) error
+	Reload() error
 }
 
 // movementOrchestrator is the local interface for orchestrator.Orchestrator

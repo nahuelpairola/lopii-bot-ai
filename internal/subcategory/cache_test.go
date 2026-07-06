@@ -11,6 +11,10 @@ type fakeLoader struct {
 }
 
 func (f *fakeLoader) FindAll() ([]Subcategory, error) { return f.subs, f.err }
+func (f *fakeLoader) Insert(s *Subcategory) error {
+	f.subs = append(f.subs, *s)
+	return nil
+}
 
 func u(id uint64) *uint64 { return &id }
 

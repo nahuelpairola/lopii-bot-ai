@@ -103,7 +103,7 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	engine := conversation.NewEngine(store)
 	engine.Register(NewMovementUpdateConfirmFlow())
 
-	c := &controller{orchestrator: orch, engine: engine}
+	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
 
 	beforeRows := []movementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
 	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows); err != nil {
@@ -134,7 +134,7 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store)
 	engine.Register(NewMovementUpdateConfirmFlow())
-	c := &controller{engine: engine}
+	c := &controller{engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
 
 	result := orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3500", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},

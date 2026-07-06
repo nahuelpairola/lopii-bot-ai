@@ -10,7 +10,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
 
@@ -119,7 +118,7 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 			b = before[i]
 		}
 		lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s) (antes: %s %s)",
-			subcategory.IconFor(a.Category), a.Category, a.Subcategory, a.Amount, a.Currency, a.Description, a.Date, b.Amount, b.Currency))
+			iconOrDefault(a.Icon), a.Category, a.Subcategory, a.Amount, a.Currency, a.Description, a.Date, b.Amount, b.Currency))
 	}
 	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
 }
@@ -144,9 +143,19 @@ func msgConfirmDelete(data conversation.Data) string {
 	lines := []string{"🗑️ Se borraría:"}
 	for _, row := range candidates[idx].Rows {
 		lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
-			subcategory.IconFor(row.Category), row.Category, row.Subcategory, row.Amount, row.Currency, row.Description, row.Date))
+			iconOrDefault(row.Icon), row.Category, row.Subcategory, row.Amount, row.Currency, row.Description, row.Date))
 	}
 	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
+}
+
+// iconOrDefault falls back to the generic folder icon for any row whose
+// Icon never got populated (shouldn't happen post-backfill, but a
+// defensive default costs nothing — same fallback subcategory.Cache uses).
+func iconOrDefault(icon string) string {
+	if icon == "" {
+		return "📂"
+	}
+	return icon
 }
 
 const (
