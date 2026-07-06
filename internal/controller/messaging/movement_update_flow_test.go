@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"testing"
+	"time"
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
@@ -30,14 +31,16 @@ func (o *fakeOrchestrator) ResolveDelete(ctx context.Context, text string, candi
 type fakeStoreForController struct {
 	flowName, stepName string
 	data               conversation.Data
+	updatedAt          time.Time
 	found              bool
 }
 
-func (s *fakeStoreForController) Get(userID uint64) (string, string, conversation.Data, bool, error) {
-	return s.flowName, s.stepName, s.data, s.found, nil
+func (s *fakeStoreForController) Get(userID uint64) (string, string, conversation.Data, time.Time, bool, error) {
+	return s.flowName, s.stepName, s.data, s.updatedAt, s.found, nil
 }
 func (s *fakeStoreForController) Set(userID uint64, flowName, stepName string, data conversation.Data) error {
 	s.flowName, s.stepName, s.data, s.found = flowName, stepName, data, true
+	s.updatedAt = time.Now()
 	return nil
 }
 func (s *fakeStoreForController) Clear(userID uint64) error {
@@ -100,7 +103,7 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	}}
 
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementUpdateConfirmFlow())
 
 	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
@@ -117,7 +120,7 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	orch := &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: false}}
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementUpdateConfirmFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
@@ -132,7 +135,7 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	// orchestrator is deliberately nil — this function must not call it.
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementUpdateConfirmFlow())
 	c := &controller{engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
 

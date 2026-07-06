@@ -200,3 +200,11 @@ func msgConfirmAccountCreate(data conversation.Data) string {
 func msgAccountCreateSuccess(name, cur, balance string) string {
 	return "✅ Cuenta \"" + name + "\" creada en " + cur + " con saldo inicial " + balance + "."
 }
+
+// msgAskSubcategoryDescription is deliberately short and concrete: the
+// answer feeds orchestrator.TaxonomyEntry.Description, Call 2 CREATE's
+// classification hint, so it must tell the LLM when/what this
+// subcategory refers to — not just be a decorative label.
+func msgAskSubcategoryDescription(sub string) string {
+	return "En una frase: ¿cuándo se usa \"" + sub + "\"? (ej: \"gastos de comida y snacks en la calle\")"
+}

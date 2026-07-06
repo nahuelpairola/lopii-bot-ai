@@ -9,7 +9,7 @@ import (
 
 func newAccountCreateTestEngine() (*conversation.Engine, *fakeStateStore) {
 	store := &fakeStateStore{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewAccountCreateFlow())
 	return engine, store
 }

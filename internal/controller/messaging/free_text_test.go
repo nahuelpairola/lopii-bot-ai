@@ -45,7 +45,7 @@ func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 	}}}
 
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
 
 	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
@@ -65,7 +65,7 @@ func TestStartMovementCreate_NeedsConfirmation_RoutesToConfirmGate(t *testing.T)
 	orch := &fakeFullOrchestrator{}
 
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementConfirmFlow())
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
 
@@ -85,7 +85,7 @@ func TestStartMovementCreate_WithGaps_StartsEngine(t *testing.T) {
 	}}}
 
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementCreateFlow(subRepo, accRepo))
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
 
@@ -111,7 +111,7 @@ func TestStartMovementUpdate_OneCandidate_ResolvesToConfirm(t *testing.T) {
 	}}
 
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementUpdateConfirmFlow())
 	c := &controller{movements: movRepo, orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
 
@@ -127,7 +127,7 @@ func TestStartMovementDelete_NoCandidates_SendsErrorNoFlow(t *testing.T) {
 	orch := &fakeFullOrchestrator{deleteResult: orchestrator.DeleteResult{Resolved: false}}
 
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementDeleteFlow())
 	c := &controller{movements: movRepo, orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
 
@@ -142,7 +142,7 @@ func TestHandleFreeText_AccountCreate_StartsFlow(t *testing.T) {
 	orch := &fakeFullOrchestrator{intent: orchestrator.IntentAccountCreate}
 
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
