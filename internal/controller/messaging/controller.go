@@ -168,6 +168,10 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 // acaba de terminar (crear cuenta, insertar movimiento, etc.), según su
 // nombre. Agregar un flow nuevo implica agregar un case acá.
 func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID int64, result conversation.Result) {
+	if stringOrEmpty(result.Data["_resume_cancelled"]) == "true" {
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgResumeCancelled})
+		return
+	}
 	switch result.FlowName {
 	case initialBalanceFlowName:
 		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
@@ -183,6 +187,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishMovementDeleteFlow(ctx, b, chatID, result.Data)
 	case accountCreateFlowName:
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
+	case subcategorySetupFlowName:
+		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}

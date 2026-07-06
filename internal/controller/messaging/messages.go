@@ -208,3 +208,28 @@ func msgAccountCreateSuccess(name, cur, balance string) string {
 func msgAskSubcategoryDescription(sub string) string {
 	return "En una frase: ¿cuándo se usa \"" + sub + "\"? (ej: \"gastos de comida y snacks en la calle\")"
 }
+
+const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
+
+// FlowResumeLabel gives the resume gate (conversation.Engine) a short,
+// per-flow description of what the user was doing, for its "¿retomamos o
+// cancelamos?" prompt. One entry per registered flow; an unregistered or
+// unrecognized name falls back to a generic phrase.
+func FlowResumeLabel(flowName string) string {
+	switch flowName {
+	case movementCreateFlowName, movementConfirmFlowName:
+		return "estabas registrando un movimiento"
+	case movementUpdatePickFlowName, movementUpdateConfirmFlowName:
+		return "estabas corrigiendo un movimiento"
+	case movementDeleteFlowName:
+		return "estabas borrando un movimiento"
+	case accountCreateFlowName:
+		return "estabas creando una cuenta"
+	case subcategorySetupFlowName:
+		return "estabas creando una subcategoría"
+	case initialBalanceFlowName:
+		return "estabas cargando tus saldos iniciales"
+	default:
+		return "una conversación anterior"
+	}
+}
