@@ -155,3 +155,21 @@ func TestHandleFreeText_AccountCreate_StartsFlow(t *testing.T) {
 		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountCreateAskName)
 	}
 }
+
+func TestHandleFreeText_CreateCategory_StartsFlow(t *testing.T) {
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreateCategory}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewSubcategorySetupFlow(&fakeSubcategoryRepoFull{}))
+	c := &controller{orchestrator: orch, engine: engine}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "quiero crear una categoría nueva")
+
+	if store.flowName != subcategorySetupFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, subcategorySetupFlowName)
+	}
+	if store.stepName != stepChooseMode {
+		t.Errorf("stepName = %q, want %q", store.stepName, stepChooseMode)
+	}
+}
