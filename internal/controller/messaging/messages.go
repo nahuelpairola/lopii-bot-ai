@@ -23,33 +23,32 @@ const (
 	msgInvitationExpired           = "Esa invitación expiró, pedí una nueva."
 	msgUserCreationError           = "No pude crear tu cuenta, probá de nuevo."
 	msgDefaultAccountCreationError = "No se pudieron crear las cuentas por defecto"
-	msgUserCreatedSuccessfully     = "Bienvenid@ a LopiiBot, tus clasificador de gastos personales "
+	msgUserCreatedSuccessfully     = "¡Bienvenido/a! 👋 Soy Lopii, tu bot de finanzas.\n\n" +
+		"Acá no hay formularios ni comandos: me hablás normal y yo entiendo. " +
+		"A buen entendedor, pocas palabras 😉 Dame un segundo que te dejo todo listo."
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
 
 	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
 
-	msgAccountSetupFinished = "Listo, ya podés empezar a registrar tus gastos. " +
-		"Mandame algo como \"café 500\" o \"quiero crear una cuenta nueva\" si querés agregar otra cuenta más adelante."
+	msgAccountSetupFinished = "Listo, ya está 😎\n\n" +
+		"Conmigo escribís lo justo. Tirás «café 500» y ya sé el resto: qué fue, cuánto y cuándo.\n\n" +
+		"Así de fácil todo:\n" +
+		"   «super 45mil con débito»\n" +
+		"   «me equivoqué, eran 700»\n" +
+		"   «cuánto gasté esta semana»\n\n" +
+		"Poquito vos, el resto yo."
 
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 )
 
 func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.Account) string {
-	accounts := make([]string, 0, len(as))
-
-	for _, a := range as {
-		accounts = append(accounts, fmt.Sprintf("%s (%s)", a.Name, a.Currency))
-	}
-
-	return fmt.Sprintf(
-		"%s, disponés de %d cuentas: %s, donde se van a vincular todos tus movimientos por defecto.\n\n"+
-			"Para arrancar con el saldo correcto, contame cuánta plata tenés hoy en cada una.",
-		u.Username,
-		len(as),
-		strings.Join(accounts, ", "),
-	)
+	return "Te armé dos cuentas para arrancar: una en pesos 🇦🇷 y una en dólares 🇺🇸.\n\n" +
+		"Una cuenta es simplemente dónde tenés tu plata. Estas son tus principales: " +
+		"cuando cargues un gasto, va acá solo, sin que me digas nada. " +
+		"Más adelante sumás las que quieras (una inversión, ahorros, lo que sea).\n\n" +
+		"Para arrancar con tus números reales, decime cuánta plata tenés hoy en cada una."
 }
 
 func msgConfirmInitialBalances(data conversation.Data) string {

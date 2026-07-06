@@ -34,7 +34,7 @@ func msgConfirmReplaceDefault(currency, accountName string) string {
 }
 
 func MsgAskInitialBalance(accountName, currency string) string {
-	return "¿Cuál es el saldo inicial de \"" + accountName + "\" en " + currency + "? Mandá el monto (ej: 50000)."
+	return "¿Cuánto tenés hoy en \"" + accountName + "\" (" + currency + ")? Tirame el número (ej: 50000)."
 }
 
 func MsgAccountAlreadyExists(name, currency string) string {
