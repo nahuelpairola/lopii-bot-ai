@@ -32,8 +32,8 @@ const (
 	msgAccountSetupFinished = "Listo, ya podés empezar a registrar tus gastos. " +
 		"Mandame algo como \"café 500\" o \"quiero crear una cuenta nueva\" si querés agregar otra cuenta más adelante."
 
-	msgSubcategorySetupFinished = "Listo, tus subcategorías están guardadas. " +
-		"Usá /subcategorias cuando quieras agregar más."
+	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
+		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 )
 
 func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.Account) string {
