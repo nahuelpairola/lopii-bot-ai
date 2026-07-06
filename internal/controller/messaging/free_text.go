@@ -128,6 +128,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 			c.sendText(ctx, b, chatID, msgGenericFlowError)
 			return
 		}
+		c.resolveMetric(userID, outcomeCreateInserted)
 		c.sendText(ctx, b, chatID, msgConfirmMovements(inserted))
 		return
 	}

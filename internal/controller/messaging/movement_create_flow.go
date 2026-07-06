@@ -204,16 +204,24 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 // finishInitialBalanceFlow/insertInitialBalanceMovements.
 func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["cancelled"]) == "true" {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCreateCancelled})
+		c.resolveMetric(data.UserID(), outcomeCreateCancelled)
+		if b != nil {
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCreateCancelled})
+		}
 		return
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+		if b != nil {
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+		}
 		return
 	}
-	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
+	c.resolveMetric(data.UserID(), outcomeCreateInserted)
+	if b != nil {
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
+	}
 }
 
 // resolveAndInsertMovements does the real work: creates any

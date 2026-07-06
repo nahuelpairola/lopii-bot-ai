@@ -207,3 +207,47 @@ func TestHandleFreeText_LogsTerminalForQuery(t *testing.T) {
 		t.Fatalf("expected one query_unsupported log, got %+v", metrics.logged)
 	}
 }
+
+func TestStartMovementCreate_NoGaps_ResolvesInserted(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Café")
+	subRepo := &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
+		all:              []subcategory.Subcategory{*sub},
+	}
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
+		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
+	}}}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{}, movements: &fakeMovementRepoFull{}, orchestrator: orch, engine: engine, metrics: metrics}
+
+	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateInserted {
+		t.Fatalf("expected resolve create_inserted, got %+v", metrics.resolved)
+	}
+}
+
+func TestFinishMovementConfirmFlow_Rewrite_ResolvesRewrite(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	c := &controller{metrics: metrics}
+
+	c.finishMovementConfirmFlow(context.Background(), nil, 0, conversation.Data{"choice": "rewrite"})
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateRewrite {
+		t.Fatalf("expected resolve create_rewrite, got %+v", metrics.resolved)
+	}
+}
+
+func TestFinishMovementCreateFlow_Cancelled_ResolvesCancelled(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	c := &controller{metrics: metrics}
+
+	c.finishMovementCreateFlow(context.Background(), nil, 0, conversation.Data{"cancelled": "true"})
+
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateCancelled {
+		t.Fatalf("expected resolve create_cancelled, got %+v", metrics.resolved)
+	}
+}
