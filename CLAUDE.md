@@ -36,6 +36,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `account` | Model + full repository + messages for flows |
 | `subcategory` | Model + repository + messages for flows |
 | `movement` | Model + repository (stub — no query methods yet) |
+| `metric` | Model + repository: `Log`, `Resolve` — métricas de asertividad LLM (tabla `intent_events`) |
 | `middleware` | `RequireAdmin(adminID)` |
 | `conversation` | Engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, `repository` |
 | `controller/health` | HTTP: `/health/internal`, `/health/external` |
