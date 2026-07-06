@@ -5,37 +5,43 @@ import (
 	"testing"
 )
 
-type fakeGlobalLoader struct {
+type fakeLoader struct {
 	subs []Subcategory
 	err  error
 }
 
-func (f *fakeGlobalLoader) FindAllGlobal() ([]Subcategory, error) { return f.subs, f.err }
+func (f *fakeLoader) FindAll() ([]Subcategory, error) { return f.subs, f.err }
+
+func u(id uint64) *uint64 { return &id }
 
 func TestNewCache_PropagatesLoaderError(t *testing.T) {
 	wantErr := errors.New("db down")
-	if _, err := NewCache(&fakeGlobalLoader{err: wantErr}); !errors.Is(err, wantErr) {
+	if _, err := NewCache(&fakeLoader{err: wantErr}); !errors.Is(err, wantErr) {
 		t.Errorf("err = %v, want %v", err, wantErr)
 	}
 }
 
-func TestCache_FindAllForUser_ReturnsLoadedGlobals(t *testing.T) {
-	loader := &fakeGlobalLoader{subs: []Subcategory{{Category: "Alimentación", Subcategory: "Café"}}}
+func TestCache_FindAllForUser_IncludesGlobalAndOwnRowsOnly(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Alimentación", Subcategory: "Café", IsGlobal: true},
+		{Category: "Mascotas", Subcategory: "Veterinario", UserID: u(1)},
+		{Category: "Mascotas", Subcategory: "Otro user", UserID: u(2)},
+	}}
 	cache, err := NewCache(loader)
 	if err != nil {
 		t.Fatalf("NewCache: %v", err)
 	}
 	got, _ := cache.FindAllForUser(1)
-	if len(got) != 1 || got[0].Subcategory != "Café" {
-		t.Errorf("FindAllForUser = %+v, want 1 row Café", got)
+	if len(got) != 2 {
+		t.Fatalf("FindAllForUser(1) = %d rows, want 2 (1 global + 1 own)", len(got))
 	}
 }
 
 func TestCache_DistinctCategoriesForUser_SortedUnique(t *testing.T) {
-	loader := &fakeGlobalLoader{subs: []Subcategory{
-		{Category: "Transporte", Subcategory: "Nafta"},
-		{Category: "Alimentación", Subcategory: "Café"},
-		{Category: "Alimentación", Subcategory: "Supermercado"},
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Transporte", Subcategory: "Nafta", IsGlobal: true},
+		{Category: "Alimentación", Subcategory: "Café", IsGlobal: true},
+		{Category: "Alimentación", Subcategory: "Supermercado", IsGlobal: true},
 	}}
 	cache, err := NewCache(loader)
 	if err != nil {
@@ -47,27 +53,82 @@ func TestCache_DistinctCategoriesForUser_SortedUnique(t *testing.T) {
 	}
 }
 
-func TestCache_FindByCategoryAndSubcategory_Found(t *testing.T) {
-	loader := &fakeGlobalLoader{subs: []Subcategory{{Category: "Transporte", Subcategory: "Nafta"}}}
+func TestCache_FindByCategoryAndSubcategory_PerUserIsolation(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Mascotas", Subcategory: "Veterinario", UserID: u(1), Icon: "🐶"},
+		{Category: "Mascotas", Subcategory: "Veterinario", UserID: u(2), Icon: "🐱"},
+	}}
 	cache, err := NewCache(loader)
 	if err != nil {
 		t.Fatalf("NewCache: %v", err)
 	}
-	s, err := cache.FindByCategoryAndSubcategory("Transporte", "Nafta")
-	if err != nil {
-		t.Fatalf("FindByCategoryAndSubcategory: %v", err)
+	s1, err := cache.FindByCategoryAndSubcategory(1, "Mascotas", "Veterinario")
+	if err != nil || s1.Icon != "🐶" {
+		t.Errorf("user 1: got %+v, err %v, want icon 🐶", s1, err)
 	}
-	if s.Category != "Transporte" {
-		t.Errorf("got category %q, want Transporte", s.Category)
+	s2, err := cache.FindByCategoryAndSubcategory(2, "Mascotas", "Veterinario")
+	if err != nil || s2.Icon != "🐱" {
+		t.Errorf("user 2: got %+v, err %v, want icon 🐱", s2, err)
+	}
+}
+
+func TestCache_FindByCategoryAndSubcategory_FallsBackToGlobal(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{{Category: "Transporte", Subcategory: "Nafta", IsGlobal: true}}}
+	cache, err := NewCache(loader)
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	s, err := cache.FindByCategoryAndSubcategory(1, "Transporte", "Nafta")
+	if err != nil || s.Category != "Transporte" {
+		t.Errorf("got %+v, err %v, want the global row", s, err)
 	}
 }
 
 func TestCache_FindByCategoryAndSubcategory_NotFound(t *testing.T) {
-	cache, err := NewCache(&fakeGlobalLoader{})
+	cache, err := NewCache(&fakeLoader{})
 	if err != nil {
 		t.Fatalf("NewCache: %v", err)
 	}
-	if _, err := cache.FindByCategoryAndSubcategory("X", "Y"); !errors.Is(err, ErrSubcategoryNotFound) {
+	if _, err := cache.FindByCategoryAndSubcategory(1, "X", "Y"); !errors.Is(err, ErrSubcategoryNotFound) {
 		t.Errorf("err = %v, want ErrSubcategoryNotFound", err)
+	}
+}
+
+func TestCache_IconForCategory_OwnBeforeGlobal(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Mascotas", Subcategory: "Veterinario", IsGlobal: true, Icon: "🗂️"},
+		{Category: "Mascotas", Subcategory: "Comida", UserID: u(1), Icon: "🐶"},
+	}}
+	cache, err := NewCache(loader)
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	if got := cache.IconForCategory(1, "Mascotas"); got != "🐶" {
+		t.Errorf("IconForCategory = %q, want the user's own row's icon 🐶", got)
+	}
+}
+
+func TestCache_IconForCategory_FallbackWhenUnknown(t *testing.T) {
+	cache, err := NewCache(&fakeLoader{})
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	if got := cache.IconForCategory(1, "Inventada"); got != "📂" {
+		t.Errorf("IconForCategory = %q, want fallback 📂", got)
+	}
+}
+
+func TestCache_Reload_PicksUpNewRow(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{{Category: "Transporte", Subcategory: "Nafta", IsGlobal: true}}}
+	cache, err := NewCache(loader)
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	loader.subs = append(loader.subs, Subcategory{Category: "Mascotas", Subcategory: "Veterinario", UserID: u(1)})
+	if err := cache.Reload(); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+	if _, err := cache.FindByCategoryAndSubcategory(1, "Mascotas", "Veterinario"); err != nil {
+		t.Errorf("after Reload, expected the new row to be found, got err %v", err)
 	}
 }
