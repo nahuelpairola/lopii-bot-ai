@@ -32,21 +32,21 @@ func NewRepository(conn *database.Connection) *repository {
 	return &repository{conn: conn}
 }
 
-func (r *repository) Get(userID uint64) (flowName, stepName string, data Data, found bool, err error) {
+func (r *repository) Get(userID uint64) (flowName, stepName string, data Data, updatedAt time.Time, found bool, err error) {
 	var s state
 	err = r.conn.DB.First(&s, "user_id = ?", userID).Error
 	if err == gorm.ErrRecordNotFound {
-		return "", "", nil, false, nil
+		return "", "", nil, time.Time{}, false, nil
 	}
 	if err != nil {
-		return "", "", nil, false, err
+		return "", "", nil, time.Time{}, false, err
 	}
 
 	var d Data
 	if err := json.Unmarshal(s.Data, &d); err != nil {
-		return "", "", nil, false, err
+		return "", "", nil, time.Time{}, false, err
 	}
-	return s.FlowName, s.StepName, d, true, nil
+	return s.FlowName, s.StepName, d, s.UpdatedAt, true, nil
 }
 
 func (r *repository) Set(userID uint64, flowName, stepName string, data Data) error {

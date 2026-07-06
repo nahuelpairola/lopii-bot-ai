@@ -16,7 +16,7 @@ func movementModelWithID(t *testing.T, id uint) (m gorm.Model) {
 
 func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementDeleteFlow())
 
 	seed := conversation.Data{
@@ -38,7 +38,7 @@ func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 
 func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementDeleteFlow())
 
 	seed := conversation.Data{

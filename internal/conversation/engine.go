@@ -1,6 +1,9 @@
 package conversation
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Result es lo que el motor le devuelve a un adaptador (messaging, web,
 // etc) después de procesar un input: qué mostrarle al usuario, y si el
@@ -15,19 +18,36 @@ type Result struct {
 // stateStore persiste en qué flujo/paso/datos está cada usuario. La
 // implementación real vive en repository.go, contra conversation_states.
 type stateStore interface {
-	Get(userID uint64) (flowName, stepName string, data Data, found bool, err error)
+	Get(userID uint64) (flowName, stepName string, data Data, updatedAt time.Time, found bool, err error)
 	Set(userID uint64, flowName, stepName string, data Data) error
 	Clear(userID uint64) error
 }
 
+// idleThreshold is how long a user can leave a flow untouched before the
+// next interaction shows the resume gate instead of the step's own
+// validation error.
+const idleThreshold = 10 * time.Minute
+
+// retryCountKey tracks consecutive Retry outcomes on the current step,
+// reset to absent on any successful Advance/Complete. A first mismatch
+// shows the step's own plain error (avoids interrupting a simple typo); a
+// second consecutive one escalates to the resume gate.
+const retryCountKey = "_retry_count"
+
+const (
+	resumeContinue = "_resume_continue"
+	resumeCancel   = "_resume_cancel"
+)
+
 // Engine orquesta Flows registrados contra la persistencia de estado.
 type Engine struct {
-	flows map[string]*Flow
-	store stateStore
+	flows       map[string]*Flow
+	store       stateStore
+	resumeLabel func(flowName string) string
 }
 
-func NewEngine(store stateStore) *Engine {
-	return &Engine{flows: make(map[string]*Flow), store: store}
+func NewEngine(store stateStore, resumeLabel func(flowName string) string) *Engine {
+	return &Engine{flows: make(map[string]*Flow), store: store, resumeLabel: resumeLabel}
 }
 
 // Register agrega un Flow ya validado (ver NewFlow) al motor.
@@ -81,17 +101,39 @@ func (e *Engine) StartWithData(userID uint64, flowName string, seed Data) (Promp
 
 // InProgress indica si el usuario tiene un flujo activo ahora mismo.
 func (e *Engine) InProgress(userID uint64) (bool, error) {
-	_, _, _, found, err := e.store.Get(userID)
+	_, _, _, _, found, err := e.store.Get(userID)
 	return found, err
 }
 
 // Handle procesa un input para el flujo en curso del usuario. Devuelve
 // found=false si el usuario no tiene ningún flujo activo (el adaptador
-// decide qué hacer en ese caso, el motor no opina).
+// decide qué hacer en ese caso, el motor no opina). Antes de despachar al
+// Step actual, chequea los sentinels del resume gate y el umbral de
+// inactividad — ver resumeGateResult.
 func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, err error) {
-	flowName, stepName, data, found, err := e.store.Get(userID)
+	flowName, stepName, data, updatedAt, found, err := e.store.Get(userID)
 	if err != nil || !found {
 		return Result{}, found, err
+	}
+
+	if input.CallbackData == resumeContinue {
+		next := cloneData(data)
+		delete(next, retryCountKey)
+		if err := e.store.Set(userID, flowName, stepName, next); err != nil {
+			return Result{}, true, err
+		}
+		step, _ := e.flows[flowName].step(stepName)
+		return Result{Prompt: step.Prompt(next), FlowName: flowName}, true, nil
+	}
+	if input.CallbackData == resumeCancel {
+		if err := e.store.Clear(userID); err != nil {
+			return Result{}, true, err
+		}
+		return Result{Finished: true, FlowName: flowName, Data: Data{"_resume_cancelled": "true"}}, true, nil
+	}
+
+	if time.Since(updatedAt) > idleThreshold {
+		return e.resumeGateResult(flowName), true, nil
 	}
 
 	f, ok := e.flows[flowName]
@@ -107,7 +149,16 @@ func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, 
 
 	switch transition.kind {
 	case outcomeRetry:
-		prompt := step.Prompt(data)
+		count := retryCount(data) + 1
+		next := cloneData(data)
+		next[retryCountKey] = count
+		if err := e.store.Set(userID, flowName, stepName, next); err != nil {
+			return Result{}, true, err
+		}
+		if count >= 2 {
+			return e.resumeGateResult(flowName), true, nil
+		}
+		prompt := step.Prompt(next)
 		prompt.Text = transition.message + "\n\n" + prompt.Text
 		return Result{Prompt: prompt, FlowName: flowName}, true, nil
 
@@ -118,6 +169,7 @@ func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, 
 		return Result{Finished: true, FlowName: flowName, Data: transition.data}, true, nil
 
 	default: // outcomeAdvance
+		delete(transition.data, retryCountKey)
 		resolved, err := f.advanceThroughSkips(transition.nextStep, transition.data)
 		if err != nil {
 			return Result{}, true, err
@@ -137,4 +189,42 @@ func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, 
 		}
 		return Result{Prompt: nextStep.Prompt(transition.data), FlowName: flowName}, true, nil
 	}
+}
+
+// resumeGateResult builds the "¿retomamos o cancelamos?" prompt shown by
+// both gate triggers (idle timeout, 2nd consecutive Retry). label comes
+// from the Engine's resumeLabel resolver, injected at construction time
+// — conversation cannot import the messaging package that defines the
+// actual per-flow copy (see messaging.FlowResumeLabel).
+func (e *Engine) resumeGateResult(flowName string) Result {
+	label := e.resumeLabel(flowName)
+	return Result{
+		Prompt: Prompt{
+			Text: "Che, veo que quedamos a mitad de " + label + " — ¿retomamos o cancelamos?",
+			Buttons: []Button{
+				{Label: "🔄 Retomar", Data: resumeContinue},
+				{Label: "🚫 Cancelar", Data: resumeCancel},
+			},
+		},
+		FlowName: flowName,
+	}
+}
+
+func retryCount(data Data) int {
+	switch v := data[retryCountKey].(type) {
+	case int:
+		return v
+	case float64: // post-JSONB-round-trip shape
+		return int(v)
+	default:
+		return 0
+	}
+}
+
+func cloneData(data Data) Data {
+	next := make(Data, len(data)+1)
+	for k, v := range data {
+		next[k] = v
+	}
+	return next
 }

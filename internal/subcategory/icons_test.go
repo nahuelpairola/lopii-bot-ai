@@ -2,20 +2,32 @@ package subcategory
 
 import "testing"
 
-func TestIconFor_KnownCategory(t *testing.T) {
-	if got := IconFor("Alimentación"); got != "🍔" {
-		t.Errorf("IconFor(Alimentación) = %q, want 🍔", got)
+func TestValidIcon_AcceptsEmoji(t *testing.T) {
+	if !ValidIcon("🐶") {
+		t.Error("ValidIcon(🐶) = false, want true")
 	}
 }
 
-func TestIconFor_UnknownCategory_Fallback(t *testing.T) {
-	if got := IconFor("Categoría inventada"); got != "📂" {
-		t.Errorf("IconFor(unknown) = %q, want fallback 📂", got)
+func TestValidIcon_RejectsEmpty(t *testing.T) {
+	if ValidIcon("") {
+		t.Error("ValidIcon(\"\") = true, want false")
 	}
 }
 
-func TestCategoryIcon_HasExactly16Entries(t *testing.T) {
-	if len(CategoryIcon) != 16 {
-		t.Errorf("len(CategoryIcon) = %d, want 16 (14 real categories + PENDING_REVIEW + Sistema)", len(CategoryIcon))
+func TestValidIcon_RejectsPlainWord(t *testing.T) {
+	if ValidIcon("perro") {
+		t.Error("ValidIcon(perro) = true, want false")
+	}
+}
+
+func TestValidIcon_RejectsSentence(t *testing.T) {
+	if ValidIcon("mi categoria nueva") {
+		t.Error("ValidIcon(sentence) = true, want false")
+	}
+}
+
+func TestValidIcon_RejectsTooLong(t *testing.T) {
+	if ValidIcon("🐶🐱🐭🐹🐰") {
+		t.Error("ValidIcon(5 emoji) = true, want false (too long)")
 	}
 }

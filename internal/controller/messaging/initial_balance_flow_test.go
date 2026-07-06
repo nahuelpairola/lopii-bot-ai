@@ -17,18 +17,20 @@ import (
 // (no exportada) que espera conversation.NewEngine, para poder ejercitar
 // el flow real de punta a punta sin tocar Postgres.
 type fakeStateStore struct {
-	flowName string
-	stepName string
-	data     conversation.Data
-	found    bool
+	flowName  string
+	stepName  string
+	data      conversation.Data
+	updatedAt time.Time
+	found     bool
 }
 
-func (s *fakeStateStore) Get(userID uint64) (string, string, conversation.Data, bool, error) {
-	return s.flowName, s.stepName, s.data, s.found, nil
+func (s *fakeStateStore) Get(userID uint64) (string, string, conversation.Data, time.Time, bool, error) {
+	return s.flowName, s.stepName, s.data, s.updatedAt, s.found, nil
 }
 
 func (s *fakeStateStore) Set(userID uint64, flowName, stepName string, data conversation.Data) error {
 	s.flowName, s.stepName, s.data, s.found = flowName, stepName, data, true
+	s.updatedAt = time.Now()
 	return nil
 }
 
@@ -39,7 +41,7 @@ func (s *fakeStateStore) Clear(userID uint64) error {
 
 func newTestEngine() (*conversation.Engine, *fakeStateStore) {
 	store := &fakeStateStore{}
-	engine := conversation.NewEngine(store)
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewInitialBalanceFlow())
 	return engine, store
 }
@@ -163,7 +165,7 @@ type fakeSubcategoryRepo struct {
 	err error
 }
 
-func (r *fakeSubcategoryRepo) FindByCategoryAndSubcategory(category, sub string) (*subcategory.Subcategory, error) {
+func (r *fakeSubcategoryRepo) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -177,6 +179,10 @@ func (r *fakeSubcategoryRepo) FindAllForUser(userID uint64) ([]subcategory.Subca
 func (r *fakeSubcategoryRepo) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	return nil, nil
 }
+
+func (r *fakeSubcategoryRepo) IconForCategory(userID uint64, category string) string { return "📂" }
+func (r *fakeSubcategoryRepo) Insert(s *subcategory.Subcategory) error               { return nil }
+func (r *fakeSubcategoryRepo) Reload() error                                        { return nil }
 
 type fakeMovementRepo struct {
 	inserted []movement.Movement

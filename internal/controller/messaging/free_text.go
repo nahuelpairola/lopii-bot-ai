@@ -43,8 +43,24 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		c.startMovementDelete(ctx, b, chatID, userID, text)
 	case orchestrator.IntentAccountCreate:
 		c.startAccountCreate(ctx, b, chatID, userID)
+	case orchestrator.IntentCreateCategory:
+		c.startSubcategorySetup(ctx, b, chatID, userID)
 	default:
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
+	}
+}
+
+// startSubcategorySetup starts subcategory_setup fresh — like
+// startAccountCreate, every field is unknown until the user answers the
+// flow's first step, so there's no gap-fill seed to compute.
+func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
+	prompt, err := c.engine.Start(userID, subcategorySetupFlowName)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
 	}
 }
 

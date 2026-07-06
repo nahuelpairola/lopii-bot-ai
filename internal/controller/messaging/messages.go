@@ -10,7 +10,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
 
@@ -33,8 +32,8 @@ const (
 	msgAccountSetupFinished = "Listo, ya podés empezar a registrar tus gastos. " +
 		"Mandame algo como \"café 500\" o \"quiero crear una cuenta nueva\" si querés agregar otra cuenta más adelante."
 
-	msgSubcategorySetupFinished = "Listo, tus subcategorías están guardadas. " +
-		"Usá /subcategorias cuando quieras agregar más."
+	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
+		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 )
 
 func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.Account) string {
@@ -119,7 +118,7 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 			b = before[i]
 		}
 		lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s) (antes: %s %s)",
-			subcategory.IconFor(a.Category), a.Category, a.Subcategory, a.Amount, a.Currency, a.Description, a.Date, b.Amount, b.Currency))
+			iconOrDefault(a.Icon), a.Category, a.Subcategory, a.Amount, a.Currency, a.Description, a.Date, b.Amount, b.Currency))
 	}
 	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
 }
@@ -144,9 +143,19 @@ func msgConfirmDelete(data conversation.Data) string {
 	lines := []string{"🗑️ Se borraría:"}
 	for _, row := range candidates[idx].Rows {
 		lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
-			subcategory.IconFor(row.Category), row.Category, row.Subcategory, row.Amount, row.Currency, row.Description, row.Date))
+			iconOrDefault(row.Icon), row.Category, row.Subcategory, row.Amount, row.Currency, row.Description, row.Date))
 	}
 	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
+}
+
+// iconOrDefault falls back to the generic folder icon for any row whose
+// Icon never got populated (shouldn't happen post-backfill, but a
+// defensive default costs nothing — same fallback subcategory.Cache uses).
+func iconOrDefault(icon string) string {
+	if icon == "" {
+		return "📂"
+	}
+	return icon
 }
 
 const (
@@ -190,4 +199,37 @@ func msgConfirmAccountCreate(data conversation.Data) string {
 
 func msgAccountCreateSuccess(name, cur, balance string) string {
 	return "✅ Cuenta \"" + name + "\" creada en " + cur + " con saldo inicial " + balance + "."
+}
+
+// msgAskSubcategoryDescription is deliberately short and concrete: the
+// answer feeds orchestrator.TaxonomyEntry.Description, Call 2 CREATE's
+// classification hint, so it must tell the LLM when/what this
+// subcategory refers to — not just be a decorative label.
+func msgAskSubcategoryDescription(sub string) string {
+	return "En una frase: ¿cuándo se usa \"" + sub + "\"? (ej: \"gastos de comida y snacks en la calle\")"
+}
+
+const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
+
+// FlowResumeLabel gives the resume gate (conversation.Engine) a short,
+// per-flow description of what the user was doing, for its "¿retomamos o
+// cancelamos?" prompt. One entry per registered flow; an unregistered or
+// unrecognized name falls back to a generic phrase.
+func FlowResumeLabel(flowName string) string {
+	switch flowName {
+	case movementCreateFlowName, movementConfirmFlowName:
+		return "estabas registrando un movimiento"
+	case movementUpdatePickFlowName, movementUpdateConfirmFlowName:
+		return "estabas corrigiendo un movimiento"
+	case movementDeleteFlowName:
+		return "estabas borrando un movimiento"
+	case accountCreateFlowName:
+		return "estabas creando una cuenta"
+	case subcategorySetupFlowName:
+		return "estabas creando una subcategoría"
+	case initialBalanceFlowName:
+		return "estabas cargando tus saldos iniciales"
+	default:
+		return "una conversación anterior"
+	}
 }

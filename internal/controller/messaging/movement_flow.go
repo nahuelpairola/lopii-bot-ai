@@ -30,6 +30,7 @@ type movementRow struct {
 	Merchant         string
 	Description      string
 	Date             string
+	Icon             string
 }
 
 func stringOrEmpty(v any) string {
@@ -62,6 +63,7 @@ func decodeMovementRows(data conversation.Data) []movementRow {
 			Merchant:         stringOrEmpty(m["merchant"]),
 			Description:      stringOrEmpty(m["description"]),
 			Date:             stringOrEmpty(m["date"]),
+			Icon:             stringOrEmpty(m["icon"]),
 		})
 	}
 	return rows
@@ -82,6 +84,7 @@ func encodeMovementRows(rows []movementRow) []interface{} {
 			"merchant":           r.Merchant,
 			"description":        r.Description,
 			"date":               r.Date,
+			"icon":               r.Icon,
 		})
 	}
 	return encoded

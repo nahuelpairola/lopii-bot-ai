@@ -153,14 +153,15 @@ case "account_setup":
 }
 ```
 
+**Cancelar/Atrás on a free-text step:** `conversation.TextStep` has `EscapeOptions []ChoiceOption` + `OnEscape func(value string, data Data) Data` — buttons rendered alongside the free-text prompt, checked before text validation. This is the existing mechanism, not something to reinvent per flow; see `account_create_flow.go`'s `onAccountCreateEscape` (shared across an entire flow's steps) and `subcategory_setup_flow.go` for reference implementations.
+
 ### Recipe 3: Add an LLM intent
 
-*(The LLM package does not exist yet — document here once implemented.)*
-
-Planned intents: `CREATE | UPDATE | DELETE | QUERY`
+Intents (`internal/orchestrator/types.go`): `CREATE | UPDATE | DELETE | QUERY | ACCOUNT_CREATE | CREATE_CATEGORY`
 - Tool calling: the LLM constructs action parameters, not just the intent type
 - `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
 - Implicit references ("actually it was 1200") resolve via `resolveCandidates` (pg_trgm DB search), not an in-memory store
+- `CREATE_CATEGORY`: the message asks to create a category/subcategory, not to register/correct/delete a movement. No Call 2 — the flow itself (`subcategory_setup`) asks everything it needs via `ChoiceStep`/`TextStep`, unlike CREATE/UPDATE/DELETE which extract structured data from the message via a second LLM call.
 
 ### Recipe 4: Add an admin command
 
@@ -224,6 +225,7 @@ WHERE account_id = $account_id AND deleted_at IS NULL
 - Only admin can create global subcategories (`is_global = TRUE`).
 - ~80 global subcategories seeded in migration `20260625234857`, across 14 categories.
 - Reserved: `PENDING_REVIEW | PENDING_REVIEW` (low LLM confidence), `Sistema | Saldo inicial`, `Sistema | Rendimiento inversión`
+- Reserved category names (`PENDING_REVIEW`, `Sistema`, case-insensitive) apply to user-created categories too, not just the seeded taxonomy — checked at creation time in `subcategory_setup_flow.go`.
 
 ### LLM classification
 - Intents: `CREATE | UPDATE | DELETE | QUERY` — classified via Groq (Call 1 router also returns `needs_confirmation`, meaningful only for CREATE)

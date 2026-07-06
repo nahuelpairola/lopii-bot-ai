@@ -61,7 +61,7 @@ func InitServer(conf *config.Config) error {
 		TimeoutSeconds: conf.Groq.TimeoutSeconds,
 	})
 
-	conversationEngine := conversation.NewEngine(conversationRepo)
+	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
 	conversationEngine.Register(messagingctrl.NewInitialBalanceFlow())
 	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
 	conversationEngine.Register(messagingctrl.NewMovementConfirmFlow())
@@ -69,6 +69,7 @@ func InitServer(conf *config.Config) error {
 	conversationEngine.Register(messagingctrl.NewMovementUpdateConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())
 	conversationEngine.Register(messagingctrl.NewAccountCreateFlow())
+	conversationEngine.Register(messagingctrl.NewSubcategorySetupFlow(subcategoryCache))
 
 	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)

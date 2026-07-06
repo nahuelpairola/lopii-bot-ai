@@ -15,6 +15,7 @@ type Subcategory struct {
 	Subcategory string  `gorm:"column:subcategory"`
 	Description string  `gorm:"column:description"`
 	IsGlobal    bool    `gorm:"column:is_global"`
+	Icon        string  `gorm:"column:icon"`
 }
 
 var ErrSubcategoryAlreadyExists = errors.New("a subcategory with that name already exists in this category")
@@ -67,12 +68,12 @@ func (r *repository) FindByCategoryAndSubcategory(category, subcategory string) 
 	return &s, nil
 }
 
-// FindAllGlobal devuelve únicamente las subcategorías globales — usada
-// para poblar Cache una sola vez al arrancar el server, no en cada
-// request (ver cache.go).
-func (r *repository) FindAllGlobal() ([]Subcategory, error) {
+// FindAll devuelve absolutamente todas las subcategorías (globales y de
+// usuario) — usada para poblar Cache una sola vez al arrancar el server,
+// y de nuevo en cada Cache.Reload() tras un Insert (ver cache.go).
+func (r *repository) FindAll() ([]Subcategory, error) {
 	var subs []Subcategory
-	err := r.conn.DB.Where("is_global = TRUE").Find(&subs).Error
+	err := r.conn.DB.Find(&subs).Error
 	return subs, err
 }
 
