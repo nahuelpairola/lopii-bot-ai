@@ -13,6 +13,7 @@ Clasificá el mensaje del usuario en una de estas 5 acciones:
 - DELETE: el mensaje pide borrar o eliminar un movimiento ya registrado.
 - QUERY: el mensaje pregunta o pide un resumen/consulta sobre movimientos existentes, sin registrar ni corregir nada.
 - ACCOUNT_CREATE: el mensaje pide crear una cuenta nueva (no un movimiento) — billetera, cuenta de inversión, jubilación, ahorro, etc. Señal clave: menciona "cuenta"/"cuentas" sin montos ni verbos de movimiento (gasté, pagué, cobré, transferí). Ejemplos: "quiero crear una cuenta nueva", "nueva cuenta", "cuentas", "abrí una cuenta para mi jubilación", "quiero agregar una cuenta de inversión". Un mensaje con monto Y cuenta (ej. "transferí 50k a mi cuenta de inversión") sigue siendo CREATE, no ACCOUNT_CREATE — ahí ya existe un flujo que ofrece crear la cuenta si no existe.
+- CREATE_CATEGORY: el mensaje pide crear una categoría o subcategoría nueva, no registrar/corregir/borrar un movimiento ni consultar. Señal clave: menciona "categoría"/"subcategoría" en el sentido de crear una clasificación nueva, no de elegir una existente para un movimiento. Ejemplos: "quiero crear una categoría nueva", "quiero agregar una subcategoría", "necesito una categoría para mis gastos de mascotas".
 Ante duda entre CREATE y UPDATE por un verbo copulativo en pasado (era/eran/fue) sin verbo de acción, preferí UPDATE.
 Elegí siempre la que mejor describe la intención real del usuario.
 Además, si clasificaste CREATE, marcá needs_confirmation=true únicamente cuando
@@ -40,7 +41,7 @@ var routerTool = toolSchema{
 	Parameters: json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY", "ACCOUNT_CREATE"]},
+			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY", "ACCOUNT_CREATE", "CREATE_CATEGORY"]},
 			"needs_confirmation": {"type": ["boolean", "string"]}
 		},
 		"required": ["intent"]
@@ -64,7 +65,7 @@ func (o *Orchestrator) ClassifyIntent(ctx context.Context, text string) (IntentR
 	}
 
 	switch args.Intent {
-	case IntentCreate, IntentUpdate, IntentDelete, IntentQuery, IntentAccountCreate:
+	case IntentCreate, IntentUpdate, IntentDelete, IntentQuery, IntentAccountCreate, IntentCreateCategory:
 		return IntentResult{Intent: args.Intent, NeedsConfirmation: bool(args.NeedsConfirmation)}, nil
 	default:
 		return IntentResult{}, fmt.Errorf("orchestrator: unknown intent %q", args.Intent)
