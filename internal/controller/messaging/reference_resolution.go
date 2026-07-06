@@ -11,6 +11,7 @@ import (
 const (
 	referenceSearchWindow = 7 * 24 * time.Hour
 	dateAnchorMargin      = 24 * time.Hour
+	minMatchTokenLen      = 4
 )
 
 // transactionGroup is a set of movements sharing one transaction_id (or
@@ -48,22 +49,44 @@ func groupByTransaction(ms []movement.Movement) []transactionGroup {
 }
 
 // matchesMessage is a cheap, dependency-free relevance filter over one
-// candidate group: case-insensitive substring match against
-// description/merchant, or the message literally containing one of the
-// group's amounts. It's deliberately loose — pg_trgm has already
-// narrowed the DB-side search (see resolveCandidates); this is a final
-// in-process pass, not the primary filter.
+// candidate group: it matches when any description/merchant TOKEN of
+// length >= 4 appears (case-insensitively) in the message, or the
+// message literally contains one of the group's amounts. Token-level (not
+// whole-phrase) so a verbose LLM description like "gasto en trabas"
+// matches a message that shares only "trabas". The DB layer no longer
+// pre-filters by similarity (see FindSimilarForUser / resolveCandidates),
+// so this is the primary textual relevance check.
 func matchesMessage(group transactionGroup, message string) bool {
 	lower := strings.ToLower(message)
 	for _, m := range group.Movements {
-		if m.Description != nil && *m.Description != "" && strings.Contains(lower, strings.ToLower(*m.Description)) {
+		if descOrMerchantTokenInMessage(m.Description, lower) {
 			return true
 		}
-		if m.Merchant != nil && *m.Merchant != "" && strings.Contains(lower, strings.ToLower(*m.Merchant)) {
+		if descOrMerchantTokenInMessage(m.Merchant, lower) {
 			return true
 		}
 		if !m.Amount.IsZero() && strings.Contains(message, m.Amount.String()) {
 			return true
+		}
+	}
+	return false
+}
+
+// descOrMerchantTokenInMessage reports whether any whitespace-separated
+// token of `field` with length >= minMatchTokenLen is a substring of the
+// already-lowercased message.
+func descOrMerchantTokenInMessage(field *string, lowerMessage string) bool {
+	if field == nil || *field == "" {
+		return false
+	}
+	for _, tok := range strings.Fields(strings.ToLower(*field)) {
+		// ponytail: length>=4 skips es stopwords (de/en/el/con/por) without a
+		// stopword list; standalone <=3-char descriptions like "pan"/"ypf"
+		// won't match as tokens — revisit if that bites.
+		if len([]rune(tok)) >= minMatchTokenLen {
+			if strings.Contains(lowerMessage, tok) {
+				return true
+			}
 		}
 	}
 	return false
