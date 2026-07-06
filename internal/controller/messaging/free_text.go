@@ -32,6 +32,8 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		return
 	}
 
+	c.logIntent(userID, text, result.Intent, result.NeedsConfirmation)
+
 	switch result.Intent {
 	case orchestrator.IntentQuery:
 		c.sendText(ctx, b, chatID, msgQueryNotSupported)

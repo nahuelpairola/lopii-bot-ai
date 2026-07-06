@@ -173,3 +173,37 @@ func TestHandleFreeText_CreateCategory_StartsFlow(t *testing.T) {
 		t.Errorf("stepName = %q, want %q", store.stepName, stepChooseMode)
 	}
 }
+
+func TestHandleFreeText_LogsPendingForCreate(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreate, needsConfirmation: true}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewMovementConfirmFlow())
+	c := &controller{orchestrator: orch, engine: engine, metrics: metrics}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "20k")
+
+	if len(metrics.logged) != 1 {
+		t.Fatalf("expected one router log, got %d", len(metrics.logged))
+	}
+	if metrics.logged[0].outcome != outcomePending {
+		t.Errorf("CREATE log outcome = %q, want %q", metrics.logged[0].outcome, outcomePending)
+	}
+}
+
+func TestHandleFreeText_LogsTerminalForQuery(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	c := &controller{orchestrator: orch, engine: engine, metrics: metrics}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "cuánto gasté este mes")
+
+	if len(metrics.logged) != 1 || metrics.logged[0].outcome != outcomeQueryUnsupported {
+		t.Fatalf("expected one query_unsupported log, got %+v", metrics.logged)
+	}
+}
