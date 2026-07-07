@@ -287,7 +287,7 @@ goose create <descriptive_name> sql -dir ./migrations
 ```
 
 ### Tests
-First tests added in `internal/controller/messaging` (`initial_balance_flow_test.go`) — mocked local repository interfaces, no real Postgres. Follow the same pattern for new packages.
+First tests added in `internal/controller/messaging` (`onboarding_flow_test.go`) — mocked local repository interfaces, no real Postgres. Follow the same pattern for new packages.
 
 ## 6. Technical Debt
 
