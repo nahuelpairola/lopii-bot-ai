@@ -42,6 +42,7 @@ type movementRepository interface {
 	ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error
 	FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error)
 	SoftDeleteByIDs(ids []uint) error
+	InsertAccountsWithOpenings(items []movement.AccountOpening) error
 }
 
 type subcategoryRepository interface {
@@ -60,6 +61,7 @@ type movementOrchestrator interface {
 	ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error)
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
+	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
 }
 
 type metricRepository interface {
@@ -181,6 +183,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		return
 	}
 	switch result.FlowName {
+	case onboardingCollectFlowName:
+		c.finishOnboardingCollectFlow(ctx, b, chatID, result.Data)
+	case onboardingConfirmFlowName:
+		c.finishOnboardingConfirmFlow(ctx, b, chatID, result.Data)
 	case initialBalanceFlowName:
 		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
 	case movementCreateFlowName:

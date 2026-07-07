@@ -31,6 +31,9 @@ func (o *fakeFullOrchestrator) ResolveUpdate(ctx context.Context, text string, c
 func (o *fakeFullOrchestrator) ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error) {
 	return o.deleteResult, nil
 }
+func (o *fakeFullOrchestrator) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
+	return orchestrator.OnboardingResult{}, nil
+}
 
 func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 	sub := newSubForTest(1, "Alimentación", "Café")

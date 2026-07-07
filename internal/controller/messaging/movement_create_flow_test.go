@@ -82,6 +82,7 @@ type fakeMovementRepoFull struct {
 	deletedIDs     []uint
 	similar        []movement.Movement
 	insertErr      error
+	openings       []movement.AccountOpening
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -109,6 +110,10 @@ func (r *fakeMovementRepoFull) FindSimilarForUser(userID uint64, query string, s
 }
 func (r *fakeMovementRepoFull) SoftDeleteByIDs(ids []uint) error {
 	r.deletedIDs = ids
+	return nil
+}
+func (r *fakeMovementRepoFull) InsertAccountsWithOpenings(items []movement.AccountOpening) error {
+	r.openings = items
 	return nil
 }
 

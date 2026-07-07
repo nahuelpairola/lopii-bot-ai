@@ -1,9 +1,15 @@
 package messaging
 
 import (
+	"context"
+	"time"
+
+	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -153,4 +159,76 @@ func NewOnboardingConfirmFlow() *conversation.Flow {
 		panic(err)
 	}
 	return flow
+}
+
+// finishOnboardingCollectFlow runs Call 2 on the captured free text. Zero
+// parsed accounts → re-prompt (don't show an empty confirmation). Otherwise
+// start the confirm flow seeded with the parsed rows, defaults marked.
+func (c *controller) finishOnboardingCollectFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	userID := data.UserID()
+	result, err := c.orchestrator.ClassifyOnboarding(ctx, stringOrEmpty(data["distribution_text"]))
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	rows := markDefaults(onboardingRowsFromDrafts(result.Accounts))
+	if len(rows) == 0 {
+		c.sendText(ctx, b, chatID, msgOnboardingNotUnderstood)
+		c.startFlowIfNotBusy(ctx, b, chatID, userID, onboardingCollectFlowName)
+		return
+	}
+	seed := conversation.Data{"accounts": encodeOnboardingRows(rows)}
+	prompt, err := c.engine.StartWithData(userID, onboardingConfirmFlowName, seed)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+}
+
+// finishOnboardingConfirmFlow either restarts collection (Reescribir) or does
+// the atomic insert + receipt + capabilities showcase (Confirmar).
+func (c *controller) finishOnboardingConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	if stringOrEmpty(data["reescribir"]) == "true" {
+		c.startFlowIfNotBusy(ctx, b, chatID, data.UserID(), onboardingCollectFlowName)
+		return
+	}
+	rows := decodeOnboardingRows(data)
+	if err := c.insertOnboardingAccounts(data.UserID(), rows); err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	c.sendText(ctx, b, chatID, msgOnboardingReceipt(rows))
+	c.sendText(ctx, b, chatID, msgCapabilitiesShowcase)
+}
+
+// insertOnboardingAccounts builds one AccountOpening per row (opening
+// transfer, Sistema | Saldo inicial) and inserts them all in one tx.
+func (c *controller) insertOnboardingAccounts(userID uint64, rows []onboardingRow) error {
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, "Sistema", "Saldo inicial")
+	if err != nil {
+		return err
+	}
+	items := make([]movement.AccountOpening, 0, len(rows))
+	for _, row := range rows {
+		amount, err := decimal.NewFromString(row.Balance)
+		if err != nil {
+			return err
+		}
+		cur := currency.Currency(row.Currency)
+		items = append(items, movement.AccountOpening{
+			Account: &account.Account{UserID: userID, Name: row.Name, Currency: cur, IsDefault: row.IsDefault == "true"},
+			Movement: movement.Movement{
+				UserID:        userID,
+				SubcategoryID: uint64(sub.ID),
+				Date:          time.Now(),
+				Type:          movement.Transfer,
+				Amount:        amount,
+				Currency:      cur,
+			},
+		})
+	}
+	return c.movements.InsertAccountsWithOpenings(items)
 }

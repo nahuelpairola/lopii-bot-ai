@@ -27,6 +27,9 @@ func (o *fakeOrchestrator) ResolveUpdate(ctx context.Context, text string, candi
 func (o *fakeOrchestrator) ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error) {
 	return orchestrator.DeleteResult{}, nil
 }
+func (o *fakeOrchestrator) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
+	return orchestrator.OnboardingResult{}, nil
+}
 
 type fakeStoreForController struct {
 	flowName, stepName string

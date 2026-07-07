@@ -115,6 +115,10 @@ func (r *fakeMovementRepoForResolve) SoftDeleteByIDs(ids []uint) error {
 	return nil
 }
 
+func (r *fakeMovementRepoForResolve) InsertAccountsWithOpenings(items []movement.AccountOpening) error {
+	return nil
+}
+
 func TestResolveCandidates_NoMentionedDate_UsesStartOfTodayArgentina(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("Nafta YPF")}}}
 	c := &controller{movements: fake}
