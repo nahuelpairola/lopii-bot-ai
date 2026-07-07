@@ -139,7 +139,7 @@ func NewOnboardingCollectFlow() *conversation.Flow {
 // ClassifyOnboarding parsed at least one account. On Confirmar the flow
 // completes with no marker → finishOnboardingConfirmFlow inserts; on
 // Reescribir it completes with reescribir=true → the collect flow restarts.
-// (Editar is added in Task 9.)
+// (Editar is added in Task 11.)
 func NewOnboardingConfirmFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepOnboardingConfirm: conversation.ChoiceStep{
