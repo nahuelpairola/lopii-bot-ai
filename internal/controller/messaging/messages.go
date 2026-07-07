@@ -5,12 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
-	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/user"
 )
 
 // Mensajes estáticos, sin variables.
@@ -21,23 +17,14 @@ const (
 	msgInvitationError             = "Hubo un error procesando tu invitación, probá de nuevo en un momento."
 	msgInvitationUsed              = "Esa invitación ya fue utilizada."
 	msgInvitationExpired           = "Esa invitación expiró, pedí una nueva."
-	msgUserCreationError           = "No pude crear tu cuenta, probá de nuevo."
-	msgDefaultAccountCreationError = "No se pudieron crear las cuentas por defecto"
-	msgUserCreatedSuccessfully     = "¡Bienvenido/a! 👋 Soy Lopii, tu bot de finanzas.\n\n" +
+	msgUserCreationError       = "No pude crear tu cuenta, probá de nuevo."
+	msgUserCreatedSuccessfully = "¡Bienvenido/a! 👋 Soy Lopii, tu bot de finanzas.\n\n" +
 		"Acá no hay formularios ni comandos: me hablás normal y yo entiendo. " +
 		"A buen entendedor, pocas palabras 😉 Dame un segundo que te dejo todo listo."
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
 
 	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
-
-	msgAccountSetupFinished = "Listo, ya está 😎\n\n" +
-		"Conmigo escribís lo justo. Tirás «café 500» y ya sé el resto: qué fue, cuánto y cuándo.\n\n" +
-		"Así de fácil todo:\n" +
-		"   «super 45mil con débito»\n" +
-		"   «me equivoqué, eran 700»\n" +
-		"   «cuánto gasté esta semana»\n\n" +
-		"Poquito vos, el resto yo."
 
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
@@ -56,25 +43,6 @@ const (
 		"Poquito vos, el resto yo."
 )
 
-func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.Account) string {
-	return "Te armé dos cuentas para arrancar: una en pesos 🇦🇷 y una en dólares 🇺🇸.\n\n" +
-		"Una cuenta es simplemente dónde tenés tu plata. Estas son tus principales: " +
-		"cuando cargues un gasto, va acá solo, sin que me digas nada. " +
-		"Más adelante sumás las que quieras (una inversión, ahorros, lo que sea).\n\n" +
-		"Para arrancar con tus números reales, decime cuánta plata tenés hoy en cada una."
-}
-
-func msgConfirmInitialBalances(data conversation.Data) string {
-	lines := make([]string, 0, len(currency.SupportedCurrencies))
-	for _, cu := range currency.SupportedCurrencies {
-		amount, _ := data[balanceDataKey(cu)].(string)
-		lines = append(lines, fmt.Sprintf("• %s %s: %s", constants.DefaultWalletName, cu.String(), amount))
-	}
-	return fmt.Sprintf(
-		"Así quedarían tus saldos iniciales:\n%s\n\n¿Confirmás o querés corregir?",
-		strings.Join(lines, "\n"),
-	)
-}
 
 func msgAskCategory(data conversation.Data) string {
 	return "¿A qué categoría pertenece este movimiento?"

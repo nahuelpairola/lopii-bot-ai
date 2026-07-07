@@ -187,8 +187,6 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishOnboardingCollectFlow(ctx, b, chatID, result.Data)
 	case onboardingConfirmFlowName:
 		c.finishOnboardingConfirmFlow(ctx, b, chatID, result.Data)
-	case initialBalanceFlowName:
-		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
 	case movementConfirmFlowName:
