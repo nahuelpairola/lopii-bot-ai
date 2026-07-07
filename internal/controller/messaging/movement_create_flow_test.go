@@ -471,3 +471,44 @@ func TestResolveAndInsertMovements_FCIRedemption_GainLegHasSubcategory(t *testin
 		t.Errorf("gain leg's Subcategory = %+v, want Subcategory=Rendimiento inversión", gain.Subcategory)
 	}
 }
+
+func TestResolveAndInsertMovements_CreatesBothPendingAccounts(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Inversiones|FCI": newSubForTest(3, "Inversiones", "FCI"),
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "transfer", Amount: "-50000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "Banco", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
+		{Type: "transfer", Amount: "50000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "Mercado Pago", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"mode":                  "create",
+		"old_movement_ids":      encodeStringSlice(nil),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice([]string{"0", "1"}),
+	}
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v", err)
+	}
+	if len(accRepo.inserted) != 2 {
+		t.Errorf("accounts created = %d, want 2 (Banco + Mercado Pago)", len(accRepo.inserted))
+	}
+	if len(inserted) != 2 {
+		t.Fatalf("inserted %d movements, want 2", len(inserted))
+	}
+	if inserted[0].TransactionID == nil || inserted[1].TransactionID == nil || *inserted[0].TransactionID != *inserted[1].TransactionID {
+		t.Errorf("both legs must share one transaction_id")
+	}
+	for i, m := range inserted {
+		if m.AccountID == nil {
+			t.Errorf("transfer leg %d has nil account_id", i)
+		}
+	}
+}
