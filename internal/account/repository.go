@@ -86,6 +86,14 @@ func (r *repository) Insert(a *Account) error {
 	return err
 }
 
+// SoftDeleteByUserID soft-deletes (sets deleted_at) every account of the
+// user. Balances/lookups already filter deleted_at IS NULL, and the partial
+// unique indexes are scoped … WHERE deleted_at IS NULL, so a fresh onboarding
+// can re-create same-named defaults without colliding.
+func (r *repository) SoftDeleteByUserID(userID uint64) error {
+	return r.conn.DB.Where("user_id = ?", userID).Delete(&Account{}).Error
+}
+
 // GetForUser devuelve todas las cuentas del usuario (alias para FindByUserID).
 func (r *repository) GetForUser(userID uint64) ([]Account, error) {
 	return r.FindByUserID(userID)

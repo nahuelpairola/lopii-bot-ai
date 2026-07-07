@@ -139,6 +139,13 @@ func (r *repository) SoftDeleteByIDs(ids []uint) error {
 	return nil
 }
 
+// SoftDeleteByUserID soft-deletes every movement of the user (reset). Unlike
+// SoftDeleteByIDs it does not error on zero rows — a user with no movements is
+// a valid reset target.
+func (r *repository) SoftDeleteByUserID(userID uint64) error {
+	return r.db.DB.Where("user_id = ?", userID).Delete(&Movement{}).Error
+}
+
 // ReplaceMovements implementa la regla de UPDATE (siempre DELETE+INSERT
 // atómico, nunca patch parcial): borra las filas viejas (por ID, cubre
 // tanto un movimiento suelto como un grupo entero) e inserta las nuevas

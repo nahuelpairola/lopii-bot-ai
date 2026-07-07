@@ -105,6 +105,12 @@ func (e *Engine) InProgress(userID uint64) (bool, error) {
 	return found, err
 }
 
+// Clear removes the user's in-progress flow state, if any. Used by the admin
+// reset endpoint before re-firing onboarding.
+func (e *Engine) Clear(userID uint64) error {
+	return e.store.Clear(userID)
+}
+
 // Handle procesa un input para el flujo en curso del usuario. Devuelve
 // found=false si el usuario no tiene ningún flujo activo (el adaptador
 // decide qué hacer en ese caso, el motor no opina). Antes de despachar al
