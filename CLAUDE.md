@@ -201,12 +201,19 @@ r.POST("/invitations", middleware.RequireAdmin(adminID), invitationController.Cr
 | FCI subscription | `transfer -2,500,000 ARS` (bank account) + `transfer +2,500,000 ARS` (FCI account) |
 | FCI redemption with gain | 2 transfers (redemption) + 1 `income` (subcategory: `Sistema \| Rendimiento inversión`, account_id=NULL) |
 
+### Accounts hold a fixed monetary amount, not asset positions
+- An account's balance is always a single ARS or USD number — the current value. The bot does not model stocks/ETFs/cedears/FCI cuotapartes as units × price, does not auto-revalue, and does not accrue interest.
+- An "investment account" is just an account whose current value the user states as a fixed amount.
+- Gains are recorded as `income` movements (`Sistema | Rendimiento inversión`), never a silent balance bump.
+- `ClassifyOnboarding` extracts a monetary balance only — never units/shares/tickers.
+
 ### Accounts
 - Table: `id, user_id, name, currency (ARS|USD), is_default, deleted_at`
 - No `type` column (current migration has `type DEFAULT 'standard'` — legacy artifact to drop)
-- ARS and USD wallets are created automatically at `/start`
-- Additional accounts are created organically: first time the user records a transfer to a non-existent account, the bot asks whether to create it
-- Unique index: `(user_id, name, currency) WHERE deleted_at IS NULL`
+- Accounts are created via the onboarding free-text flow: user describes N accounts (name + currency + opening balance), the bot calls `ClassifyOnboarding`, inserts them atomically via `InsertAccountsWithOpenings` with opening `transfer` movements (subcategory `Sistema | Saldo inicial`).
+- The first account per currency is flagged `IsDefault=true` — a throwaway seed that satisfies the partial unique index `(user_id, currency) WHERE is_default = TRUE AND deleted_at IS NULL`. This default may be reset to `false` later by the user if they create additional accounts in that currency.
+- Additional accounts beyond the onboarding flow are created organically via ACCOUNT_CREATE intent (user explicitly asks to create an account, never `IsDefault=true`).
+- Unique index: `(user_id, name, currency) WHERE deleted_at IS NULL` (case-insensitive)
 - Unique index: `(user_id, currency) WHERE is_default = TRUE AND deleted_at IS NULL`
 
 ### Balances
