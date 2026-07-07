@@ -75,12 +75,21 @@ var ErrMovementNotFound = errors.New("movement not found")
 // scan is cheap.
 // ponytail: `query` param + the name are legacy; a rename is a safe
 // follow-up but would ripple through the interface and three test mocks.
+//
+// since/until are formatted to "YYYY-MM-DD" before binding: movements.date
+// is a plain DATE column (no timezone), while since/until are ART-offset
+// timestamps. Comparing a DATE column directly against a timestamptz
+// parameter makes Postgres cast the column to timestamptz using the
+// session's own timezone (UTC on this server), not the ART offset carried
+// by the parameter — every "today" row's midnight-UTC cast then falls
+// before an ART-anchored `since`, silently excluding it. Binding a date
+// string instead is a plain DATE-to-DATE comparison with no cast involved.
 func (r *repository) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]Movement, error) {
 	var ms []Movement
 	q := r.db.DB.Preload("Subcategory").
-		Where("user_id = ? AND date >= ?", userID, since)
+		Where("user_id = ? AND date >= ?", userID, since.Format("2006-01-02"))
 	if until != nil {
-		q = q.Where("date <= ?", *until)
+		q = q.Where("date <= ?", until.Format("2006-01-02"))
 	}
 	err := q.Order("date DESC, id DESC").Find(&ms).Error
 	return ms, err
