@@ -9,7 +9,7 @@ import (
 const routerSystemPrompt = `Sos un clasificador de intención para un bot de finanzas personales argentino.
 Clasificá el mensaje del usuario en una de estas 5 acciones:
 - CREATE: el mensaje reporta un movimiento nuevo. Típicamente tiene un verbo de acción (gasté, pagué, cobré, transferí, compré) o es un monto+categoría suelto sin verbo (ej. "20k", "nafta 5k").
-- UPDATE: el mensaje corrige el monto, categoría u otro dato de un movimiento YA registrado. Señal clave: verbo copulativo en pasado (era/eran/fue/fueron) describiendo un monto, CON o SIN marcador explícito de contraste — con marcador (ej. "el café en realidad era 3000", "eran 150 usd no 100") y también SIN ningún marcador (ej. "el café de hoy eran 5k", "el gasto de nafta fue 8000").
+- UPDATE: el mensaje corrige un movimiento YA registrado, o reporta un REINTEGRO/DEVOLUCIÓN de plata sobre una compra ya registrada. Señales: verbo copulativo en pasado (era/eran/fue/fueron) describiendo un monto ("el café en realidad era 3000", "el café de hoy eran 5k"); o un reintegro que alude a un ítem existente ("me devolvió 100 por el café", "me dieron 500 del asado", "reintegro del super"). Un reintegro NO es un income nuevo: se resuelve corrigiendo el movimiento aludido.
 - DELETE: el mensaje pide borrar o eliminar un movimiento ya registrado.
 - QUERY: el mensaje pregunta o pide un resumen/consulta sobre movimientos existentes, sin registrar ni corregir nada.
 - ACCOUNT_CREATE: el mensaje pide crear una cuenta nueva (no un movimiento) — billetera, cuenta de inversión, jubilación, ahorro, etc. Señal clave: menciona "cuenta"/"cuentas" sin montos ni verbos de movimiento (gasté, pagué, cobré, transferí). Ejemplos: "quiero crear una cuenta nueva", "nueva cuenta", "cuentas", "abrí una cuenta para mi jubilación", "quiero agregar una cuenta de inversión". Un mensaje con monto Y cuenta (ej. "transferí 50k a mi cuenta de inversión") sigue siendo CREATE, no ACCOUNT_CREATE — ahí ya existe un flujo que ofrece crear la cuenta si no existe.
@@ -30,6 +30,9 @@ Ejemplos:
 - "panadería 10k" → needs_confirmation=false (tiene comercio)
 - "compré pan 10k" → needs_confirmation=false (tiene verbo e ítem)
 - "transferencia 50k" → needs_confirmation=false (tiene categoría)
+- "me devolvió 100 por el café" → UPDATE (reintegro sobre un movimiento existente)
+- "me dieron 500 del asado" → UPDATE (reintegro)
+- "me dieron 500 de aguinaldo" → CREATE (income nuevo, no alude a una compra previa)
 
 Este criterio aplica solo si clasificaste CREATE. En cualquier otro caso
 (incluido cualquier intent que no sea CREATE), needs_confirmation debe ser
