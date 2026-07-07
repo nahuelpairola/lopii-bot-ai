@@ -11,7 +11,8 @@ Se te da un movimiento candidato (una o más filas de una misma transacción) y 
 Si el mensaje claramente se refiere a este candidato, devolvé resolved=true y el set COMPLETO de movimientos corregido (todos los campos de todas las filas, no solo lo que cambia).
 Si el mensaje no parece hablar de este candidato (menciona otro comercio, monto o fecha que no coincide), devolvé resolved=false y dejá movements vacío.
 Si el mensaje menciona una fecha puntual o día relativo ("el lunes pasado", "el 3 de enero", "ayer"), completá mentioned_date_from con esa fecha en formato YYYY-MM-DD y dejá mentioned_date_to vacío, sea cual sea el valor de resolved.
-Si el mensaje menciona un RANGO de fechas ("entre el 27 y el 29", "entre ayer y anteayer"), completá mentioned_date_from con el inicio del rango y mentioned_date_to con el fin, ambos en formato YYYY-MM-DD.`
+Si el mensaje menciona un RANGO de fechas ("entre el 27 y el 29", "entre ayer y anteayer"), completá mentioned_date_from con el inicio del rango y mentioned_date_to con el fin, ambos en formato YYYY-MM-DD.
+Si el mensaje es un REINTEGRO o DEVOLUCIÓN ("me devolvió 100 por el café", "me dieron 500 del asado"), el movimiento corregido conserva type/subcategory/currency/fecha del candidato y su amount es el amount original MENOS lo devuelto (café 700, reintegro 100 → 600). Nunca dejes el amount en el monto devuelto; siempre restá del original.`
 
 var updateTool = toolSchema{
 	Name:        "resolve_and_correct",
