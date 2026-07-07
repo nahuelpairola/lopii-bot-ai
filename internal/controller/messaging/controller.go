@@ -233,6 +233,9 @@ func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton
 // sendPrompt traduce un conversation.Prompt neutro al formato real de
 // Telegram (botones inline, en grilla de buttonsPerRow por fila).
 func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
+	if b == nil {
+		return
+	}
 	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text, ParseMode: models.ParseModeHTML}
 
 	if rows := chunkButtons(prompt.Buttons); len(rows) > 0 {
@@ -243,6 +246,9 @@ func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, p
 }
 
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
+	if b == nil {
+		return
+	}
 	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text})
 }
 
