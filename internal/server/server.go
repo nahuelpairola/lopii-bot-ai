@@ -7,6 +7,7 @@ import (
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/config"
+	adminctrl "lopiibot.com/internal/controller/admin"
 	healthctrl "lopiibot.com/internal/controller/health"
 	invitationctrl "lopiibot.com/internal/controller/invitation"
 	messagingctrl "lopiibot.com/internal/controller/messaging"
@@ -83,9 +84,11 @@ func InitServer(conf *config.Config) error {
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
 		llmOrchestrator, metricRepo,
 	)
+	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 
 	healthController.RegisterRoutes(ginEngine)
 	invitationController.RegisterRoutes(ginEngine)
+	adminController.RegisterRoutes(ginEngine)
 	messagingController.RegisterHandlers(tgBot)
 
 	server = httpServer{engine: ginEngine}
