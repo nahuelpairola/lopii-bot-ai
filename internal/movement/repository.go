@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
@@ -47,6 +48,35 @@ type repository struct {
 
 func InitRepository(conn *database.Connection) *repository {
 	return &repository{db: conn}
+}
+
+// AccountOpening pairs an account to create with its opening movement. The
+// movement's AccountID is filled in by InsertAccountsWithOpenings after the
+// account is created (its ID isn't known until then).
+type AccountOpening struct {
+	Account  *account.Account
+	Movement Movement
+}
+
+// InsertAccountsWithOpenings creates every account and its opening movement
+// in one transaction: a mid-insert failure rolls back all of them, so
+// onboarding never leaves a user with half their accounts. Cross-repo on
+// purpose — both accounts and movements wrap the same *database.Connection,
+// so one db.Transaction covers both.
+func (r *repository) InsertAccountsWithOpenings(items []AccountOpening) error {
+	return r.db.DB.Transaction(func(tx *gorm.DB) error {
+		for i := range items {
+			if err := tx.Create(items[i].Account).Error; err != nil {
+				return err
+			}
+			id := uint64(items[i].Account.ID)
+			items[i].Movement.AccountID = &id
+			if err := tx.Omit("Subcategory").Create(&items[i].Movement).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // InsertBatch inserta todos los movements en una sola transacción: si
