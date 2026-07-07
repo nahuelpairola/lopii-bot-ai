@@ -41,6 +41,19 @@ const (
 
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
+
+	msgOnboardingAskDistribution = "¿Cómo tenés hoy tu dinero distribuido? Contámelo como quieras, por ejemplo: «100.000 pesos en el banco HSBC, 10 mil en Mercado Pago, 1 millón en Naranja X y 3 mil dólares también en el banco»."
+
+	msgOnboardingNotUnderstood = "No te entendí 🤔 Probá de nuevo."
+
+	msgCapabilitiesShowcase = "Conmigo es fácil. Escribime así:\n\n" +
+		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil», «café 700»\n" +
+		"✏️ Corregir: «el súper eran 600 en realidad»\n" +
+		"🗑️ Borrar: «borrá el último gasto»\n" +
+		"🔄 Transferir: «pasé 50 mil del banco a Mercado Pago»\n" +
+		"🏦 Nueva cuenta: «quiero una cuenta para mis inversiones»\n" +
+		"📂 Nueva categoría: «creá una categoría para mascotas»\n\n" +
+		"Poquito vos, el resto yo."
 )
 
 func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.Account) string {
@@ -81,6 +94,23 @@ func msgConfirmMovements(movements []movement.Movement) string {
 		lines = append(lines, movementReceiptLine(m))
 	}
 	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
+}
+
+func msgOnboardingConfirm(data conversation.Data) string {
+	rows := decodeOnboardingRows(data)
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		lines = append(lines, fmt.Sprintf("• %s — %s %s", r.Name, r.Balance, r.Currency))
+	}
+	return "Entendí:\n" + strings.Join(lines, "\n") + "\n\n¿Está bien?"
+}
+
+func msgOnboardingReceipt(rows []onboardingRow) string {
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		lines = append(lines, fmt.Sprintf("• %s — %s %s", r.Name, r.Balance, r.Currency))
+	}
+	return "Listo. Tus cuentas:\n" + strings.Join(lines, "\n")
 }
 
 // movementReceiptLine formats one movement for a receipt/confirmation
@@ -228,8 +258,8 @@ func FlowResumeLabel(flowName string) string {
 		return "estabas creando una cuenta"
 	case subcategorySetupFlowName:
 		return "estabas creando una subcategoría"
-	case initialBalanceFlowName:
-		return "estabas cargando tus saldos iniciales"
+	case onboardingCollectFlowName, onboardingConfirmFlowName:
+		return "estabas cargando tus cuentas"
 	default:
 		return "una conversación anterior"
 	}

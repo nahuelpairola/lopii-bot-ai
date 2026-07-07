@@ -79,3 +79,78 @@ func markDefaults(rows []onboardingRow) []onboardingRow {
 	}
 	return rows
 }
+
+const (
+	onboardingCollectFlowName = "onboarding_collect"
+	// OnboardingCollectFlowName is the exported name so the admin reset
+	// endpoint (controller/admin) can re-fire onboarding without importing
+	// unexported symbols.
+	OnboardingCollectFlowName = onboardingCollectFlowName
+	onboardingConfirmFlowName = "onboarding_confirm"
+
+	stepOnboardingAsk     = "onboarding_ask_distribution"
+	stepOnboardingDone    = "onboarding_collect_done"
+	stepOnboardingConfirm = "onboarding_confirm_accounts"
+)
+
+// NewOnboardingCollectFlow is a single free-text step: capture how the user
+// describes their money, then complete (the trailing step Skips straight to
+// completion — a TextStep can't Complete on the text path, so it Advances to
+// a terminal skip step, the same idiom stepResolveAccount uses). The captured
+// text is classified by ClassifyOnboarding in finishOnboardingCollectFlow —
+// a Step can't make an LLM call, hence the two-flow chain.
+func NewOnboardingCollectFlow() *conversation.Flow {
+	steps := map[string]conversation.Step{
+		stepOnboardingAsk: conversation.TextStep{
+			PromptText: func(conversation.Data) string { return msgOnboardingAskDistribution },
+			DataKey:    "distribution_text",
+			Validate: func(text string, _ conversation.Data) string {
+				if text == "" {
+					return msgOnboardingNotUnderstood
+				}
+				return ""
+			},
+			NextStep: stepOnboardingDone,
+		},
+		stepOnboardingDone: conversation.ChoiceStep{
+			PromptText: func(conversation.Data) string { return "" }, // never rendered
+			SkipIf:     func(conversation.Data) (string, bool) { return "", true },
+		},
+	}
+	flow, err := conversation.NewFlow(onboardingCollectFlowName, stepOnboardingAsk, steps)
+	if err != nil {
+		panic(err)
+	}
+	return flow
+}
+
+// NewOnboardingConfirmFlow shows the parsed accounts and offers Confirmar /
+// Reescribir. Started (via StartWithData, seeded with "accounts") only after
+// ClassifyOnboarding parsed at least one account. On Confirmar the flow
+// completes with no marker → finishOnboardingConfirmFlow inserts; on
+// Reescribir it completes with reescribir=true → the collect flow restarts.
+// (Editar is added in Task 9.)
+func NewOnboardingConfirmFlow() *conversation.Flow {
+	steps := map[string]conversation.Step{
+		stepOnboardingConfirm: conversation.ChoiceStep{
+			PromptText: msgOnboardingConfirm,
+			Options: []conversation.ChoiceOption{
+				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✍️ Reescribir", Value: "rewrite", Finish: true},
+			},
+			OnChoice: func(value string, data conversation.Data) conversation.Data {
+				next := copyData(data)
+				if value == "rewrite" {
+					next["reescribir"] = "true"
+				}
+				return next
+			},
+			InvalidChoiceMessage: msgGenericFlowError,
+		},
+	}
+	flow, err := conversation.NewFlow(onboardingConfirmFlowName, stepOnboardingConfirm, steps)
+	if err != nil {
+		panic(err)
+	}
+	return flow
+}

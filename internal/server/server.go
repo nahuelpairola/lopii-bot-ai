@@ -64,7 +64,8 @@ func InitServer(conf *config.Config) error {
 	})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
-	conversationEngine.Register(messagingctrl.NewInitialBalanceFlow())
+	conversationEngine.Register(messagingctrl.NewOnboardingCollectFlow())
+	conversationEngine.Register(messagingctrl.NewOnboardingConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
 	conversationEngine.Register(messagingctrl.NewMovementConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
