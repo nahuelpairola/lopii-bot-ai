@@ -196,7 +196,8 @@ r.POST("/invitations", middleware.RequireAdmin(adminID), invitationController.Cr
 
 | Operation | Movements |
 |---|---|
-| USD purchase | `expense -100,000 ARS` (account_id=NULL) + `transfer +100 USD` (account_id=usd_wallet) |
+| USD purchase | `transfer -150,000 ARS` (account_id=ars_account) + `transfer +100 USD` (account_id=usd_account), subcategory `Inversiones \| Dólares` |
+| Same-currency transfer | `transfer -X` (source account) + `transfer +X` (dest account), same currency, subcategory `Sistema \| Transferencia` |
 | FCI subscription | `transfer -2,500,000 ARS` (bank account) + `transfer +2,500,000 ARS` (FCI account) |
 | FCI redemption with gain | 2 transfers (redemption) + 1 `income` (subcategory: `Sistema \| Rendimiento inversión`, account_id=NULL) |
 
