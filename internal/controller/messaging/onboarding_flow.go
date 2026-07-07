@@ -51,11 +51,15 @@ func decodeOnboardingRows(data conversation.Data) []onboardingRow {
 // onboardingRowsFromDrafts applies the same defaults the prompt requests
 // (unnamed → "Efectivo", unstated currency → ARS) defensively, and drops any
 // draft whose balance doesn't parse as a decimal (e.g. an unwanted asset
-// position that slipped through as text).
+// position that slipped through as text) or whose balance is negative.
 func onboardingRowsFromDrafts(drafts []orchestrator.OnboardingAccountDraft) []onboardingRow {
 	rows := make([]onboardingRow, 0, len(drafts))
 	for _, d := range drafts {
-		if _, err := decimal.NewFromString(d.Balance); err != nil {
+		amt, err := decimal.NewFromString(d.Balance)
+		if err != nil {
+			continue
+		}
+		if amt.IsNegative() {
 			continue
 		}
 		name := d.Name

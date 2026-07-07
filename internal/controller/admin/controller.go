@@ -25,11 +25,11 @@ type onboardingEngine interface {
 }
 
 type controller struct {
-	users    userReader
-	accounts resetter
+	users     userReader
+	accounts  resetter
 	movements resetter
-	engine   onboardingEngine
-	bot      *bot.Bot
+	engine    onboardingEngine
+	bot       *bot.Bot
 }
 
 func NewController(users userReader, accounts, movements resetter, engine onboardingEngine, b *bot.Bot) *controller {
