@@ -227,11 +227,12 @@ Non-negotiable rules:
 - Monthly cash-flow summaries: filter `WHERE type != 'transfer'`; report `abs(amount)`
   by type/subcategory (the sign is a storage detail, not a reporting one).
 
-> **Enforcement status:** the signed/attributed model + guard is specified in
-> `docs/superpowers/specs/2026-07-07-signed-account-attributed-movements-design.md` and
-> lands via that plan. Until it ships, `resolveAndInsertMovements` does **not** yet
-> validate LLM output and older rows may still carry the legacy `account_id = NULL`
-> shape. Treat the rules above as authoritative for all new money code regardless.
+> **Enforcement status:** the signed/attributed model is enforced. `resolveAndInsertMovements`
+> validates every CREATE/UPDATE through `normalizeMovements` (the guard) before insert —
+> sign, currency/account agreement, transfer-group shape, and account attribution are all
+> checked, never trusted from the LLM. Rows written before this shipped may still carry the
+> legacy `account_id = NULL` shape; the fix is `POST /admin/users/:telegramID/reset`, not a
+> retroactive migration.
 
 ### Grouped transactions
 `transaction_id` (nullable UUID) groups N movements of one atomic operation. **Grouping
