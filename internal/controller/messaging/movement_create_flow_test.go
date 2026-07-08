@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -515,5 +516,39 @@ func TestResolveAndInsertMovements_CreatesBothPendingAccounts(t *testing.T) {
 		if m.AccountID == nil {
 			t.Errorf("transfer leg %d has nil account_id", i)
 		}
+	}
+}
+
+func TestFciRedemptionGain_AttributedToFciAccount(t *testing.T) {
+	fciAccID := uint64(9)
+	subs := &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{
+			"Inversiones|FCI":                  newSubForTest(3, "Inversiones", "FCI"),
+			"Sistema|Rendimiento inversión":    newSubForTest(4, "Sistema", "Rendimiento inversión"),
+		},
+	}
+	accts := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
+		fciAccID: {Model: gorm.Model{ID: uint(fciAccID)}, IsDefault: false, Currency: currency.ARS},
+	}}
+	movs := &fakeMovementRepoFull{balances: map[uint64]string{fciAccID: "100000"}}
+	c := &controller{subcategories: subs, accounts: accts, movements: movs}
+
+	redemption := []movement.Movement{{
+		Type:          movement.Transfer,
+		AccountID:     &fciAccID,
+		SubcategoryID: 3,
+		Amount:        decimal.NewFromInt(-120000),
+		Currency:      currency.ARS,
+		UserID:        1,
+	}}
+	gain, ok, err := fciRedemptionGain(c, redemption)
+	if err != nil || !ok {
+		t.Fatalf("expected a gain, got ok=%v err=%v", ok, err)
+	}
+	if gain.AccountID == nil || *gain.AccountID != fciAccID {
+		t.Errorf("gain account = %v, want FCI account %d", gain.AccountID, fciAccID)
+	}
+	if !gain.Amount.Equal(decimal.NewFromInt(20000)) {
+		t.Errorf("gain = %s, want 20000", gain.Amount)
 	}
 }

@@ -396,7 +396,7 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 		return movement.Movement{
 			TransactionID: m.TransactionID,
 			UserID:        m.UserID,
-			AccountID:     nil,
+			AccountID:     m.AccountID,
 			SubcategoryID: uint64(gainSub.ID),
 			Subcategory:   gainSub,
 			Date:          m.Date,
