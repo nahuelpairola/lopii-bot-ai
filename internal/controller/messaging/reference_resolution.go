@@ -24,6 +24,9 @@ const (
 	dateAnchorMargin  = 24 * time.Hour
 	minMatchTokenLen  = 4
 	fallbackRecentCap = 5
+	// ponytail: 48h covers same-session + "recorded last night, fixing this
+	// morning" without naming a date; widen if corrections routinely lag longer.
+	recencyWindow = 48 * time.Hour
 )
 
 // transactionGroup is a set of movements sharing one transaction_id (or
@@ -113,22 +116,29 @@ func descOrMerchantTokenInMessage(field *string, lowerMessage string) bool {
 // ask "¿cuál?". It never auto-picks: the caller still confirms (1) or
 // shows a picker (2+).
 func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo string) ([]transactionGroup, error) {
-	since := startOfTodayArgentina()
-	if dateFrom != "" {
-		if anchor, err := time.Parse("2006-01-02", dateFrom); err == nil {
-			since = anchor.Add(-dateAnchorMargin)
+	var matches []movement.Movement
+	var err error
+	if dateFrom == "" && dateTo == "" {
+		// No date named → "what did I just do": recency of ENTRY (created_at),
+		// not business date. A movement entered now but dated in the past
+		// ("le pagué el asado de ayer") must still be a candidate.
+		matches, err = c.movements.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow))
+	} else {
+		since := startOfTodayArgentina()
+		if dateFrom != "" {
+			if anchor, perr := time.Parse("2006-01-02", dateFrom); perr == nil {
+				since = anchor.Add(-dateAnchorMargin)
+			}
 		}
-	}
-
-	var until *time.Time
-	if dateTo != "" {
-		if anchor, err := time.Parse("2006-01-02", dateTo); err == nil {
-			u := anchor.Add(dateAnchorMargin)
-			until = &u
+		var until *time.Time
+		if dateTo != "" {
+			if anchor, perr := time.Parse("2006-01-02", dateTo); perr == nil {
+				u := anchor.Add(dateAnchorMargin)
+				until = &u
+			}
 		}
+		matches, err = c.movements.FindSimilarForUser(userID, message, since, until)
 	}
-
-	matches, err := c.movements.FindSimilarForUser(userID, message, since, until)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +157,8 @@ func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo 
 
 	// Nothing matched textually. Rather than dead-end, offer the most
 	// recent movements in the window as a picker. groups is already ordered
-	// date DESC, id DESC by FindSimilarForUser.
+	// newest-first by the window query (created_at DESC in the default
+	// no-date path, date DESC when a date was mentioned).
 	if len(groups) > fallbackRecentCap {
 		groups = groups[:fallbackRecentCap]
 	}

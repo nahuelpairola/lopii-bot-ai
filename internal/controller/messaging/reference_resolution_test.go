@@ -86,11 +86,13 @@ func TestMatchesMessage_TransferWithAccount(t *testing.T) {
 	}
 }
 
-// fakeMovementRepoForResolve captures the since/until arguments to FindSimilarForUser.
+// fakeMovementRepoForResolve captures the arguments to the window queries.
 type fakeMovementRepoForResolve struct {
-	result          []movement.Movement
-	capturedSince   time.Time
-	capturedUntil   *time.Time
+	result               []movement.Movement
+	capturedSince        time.Time
+	capturedUntil        *time.Time
+	capturedRecencySince time.Time
+	recencyCalled        bool
 }
 
 func (r *fakeMovementRepoForResolve) InsertBatch(ms []movement.Movement) error {
@@ -111,6 +113,12 @@ func (r *fakeMovementRepoForResolve) FindSimilarForUser(userID uint64, query str
 	return r.result, nil
 }
 
+func (r *fakeMovementRepoForResolve) FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]movement.Movement, error) {
+	r.recencyCalled = true
+	r.capturedRecencySince = since
+	return r.result, nil
+}
+
 func (r *fakeMovementRepoForResolve) SoftDeleteByIDs(ids []uint) error {
 	return nil
 }
@@ -119,7 +127,7 @@ func (r *fakeMovementRepoForResolve) InsertAccountsWithOpenings(items []movement
 	return nil
 }
 
-func TestResolveCandidates_NoMentionedDate_UsesStartOfTodayArgentina(t *testing.T) {
+func TestResolveCandidates_NoDate_UsesCreatedAtRecencyWindow(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("Nafta YPF")}}}
 	c := &controller{movements: fake}
 
@@ -130,15 +138,30 @@ func TestResolveCandidates_NoMentionedDate_UsesStartOfTodayArgentina(t *testing.
 	if len(candidates) != 1 {
 		t.Fatalf("got %d candidates, want 1", len(candidates))
 	}
-
-	arg := time.FixedZone("ART", -3*60*60)
-	now := time.Now().In(arg)
-	wantSince := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, arg)
-	if !fake.capturedSince.Equal(wantSince) {
-		t.Errorf("since = %v, want start of today ART %v", fake.capturedSince, wantSince)
+	if !fake.recencyCalled {
+		t.Fatal("expected FindRecentlyCreatedForUser to be used when no date is mentioned")
 	}
-	if fake.capturedUntil != nil {
-		t.Errorf("until = %v, want nil (no dateTo mentioned)", fake.capturedUntil)
+	want := time.Now().Add(-recencyWindow)
+	if diff := fake.capturedRecencySince.Sub(want); diff > 2*time.Second || diff < -2*time.Second {
+		t.Errorf("recency since = %v, want ~%v", fake.capturedRecencySince, want)
+	}
+}
+
+func TestResolveCandidates_PastDatedButRecentlyCreated_Resolves(t *testing.T) {
+	// The reported bug: movement entered today, dated "ayer". The created_at
+	// window includes it; token "asado" matches → exactly 1 candidate.
+	yesterday := time.Now().AddDate(0, 0, -1)
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
+		{Model: gorm.Model{ID: 71}, Date: yesterday, Description: strPtr("Pago a Pablo por asado")},
+	}}
+	c := &controller{movements: fake}
+
+	candidates, err := c.resolveCandidates(2, "Perdon, el asado eran 15 mil", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("got %d candidates, want 1 (token 'asado' matched)", len(candidates))
 	}
 }
 
