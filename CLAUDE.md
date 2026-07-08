@@ -185,26 +185,73 @@ r.POST("/invitations", middleware.RequireAdmin(adminID), invitationController.Cr
 - Currency fields use `currency.Currency` (string alias), never raw strings.
 - Amount shorthands ("200k") → the LLM expands to 200000. The application code does not do this.
 
-### Movement types
-- `expense`: spending. `account_id = NULL`. Does not touch savings accounts.
-- `income`: earning. `account_id = NULL`. Does not touch savings accounts.
-- `transfer`: moves money into/out of a savings or investment account. `account_id NOT NULL`.
-- Monthly summaries: filter `WHERE type != 'transfer'` for clean cash flow.
+### The accounting model (money precision — READ THIS before touching any money path)
+
+**Every movement is signed and attributed to a real account. No exceptions.** Accounts
+hold the user's actual money (bank, Mercado Pago, broker); a balance is *always*
+`SUM(amount)` over its movements, so the stored sign IS the accounting. Getting a sign
+or an `account_id` wrong silently corrupts a balance — this is the one place in the
+codebase where a small mistake is a financial bug, not a cosmetic one.
+
+| Type | `account_id` | Stored sign | Meaning |
+|---|---|---|---|
+| `expense` | source account (required) | **negative** (`-amount.Abs()`) | money leaves an account |
+| `income` | destination account (required) | **positive** (`+amount.Abs()`) | money enters an account |
+| `transfer` | both legs (required) | negative out / positive in | money moves between two own accounts |
+
+Non-negotiable rules:
+- **The app owns the sign, never the LLM.** Normalization forces `expense`→negative,
+  `income`→positive on write. The LLM emits positive magnitudes; app code applies the sign.
+- **The sign is internal to storage.** It never escapes: both the user (receipts,
+  diffs, pickers) and the LLM (UPDATE/DELETE candidates) always see `amount.Abs()`.
+  Direction is conveyed by the movement type, never a `-`. Feeding a signed amount to
+  either audience is a bug (it was the cause of a real `0.00` corruption).
+- **Account resolution is app-side, deterministic** (the account list shown to the LLM
+  does not mark the default, so the LLM structurally cannot pick it): LLM-matched
+  account → it; nil → currency default (`FindDefaultByCurrency`); no account in that
+  currency → gap-fill asks. Applies uniformly to expense, income, and transfer legs.
+- **Insert-time invariants (the guard), enforced for CREATE and UPDATE alike:**
+  sign matches type; `amount != 0`; movement currency == attributed account currency; a
+  transfer's two legs reference *different* accounts and (same currency) sum to 0;
+  expense/income never trigger counterparty-named account creation. Malformed → reject
+  + reword (typed sentinel errors mapped to specific copy).
+- **Anomaly detection — the insufficient-funds gate.** A well-formed movement that
+  drives an account *into or deeper into* negative (`after < 0 && after < before`, per
+  account) is neither silently inserted nor rejected: it stops at a confirm gate
+  showing the shortfall — **Registrar igual / Reescribir / Falta registrar algo** (the
+  last aborts stateless with a hint to log the missing movement first). Reuses the
+  existing `ChoiceStep` confirm pattern; friction only on the anomaly path (CREATE
+  stays frictionless otherwise). This is the point of the model: correct numbers, and a
+  suspicious result surfaced for the user to resolve, never buried.
+- **Never `float64`.** Always `shopspring/decimal` — see the Money convention above.
+- Monthly cash-flow summaries: filter `WHERE type != 'transfer'`; report `abs(amount)`
+  by type/subcategory (the sign is a storage detail, not a reporting one).
+
+> **Enforcement status:** the signed/attributed model + guard is specified in
+> `docs/superpowers/specs/2026-07-07-signed-account-attributed-movements-design.md` and
+> lands via that plan. Until it ships, `resolveAndInsertMovements` does **not** yet
+> validate LLM output and older rows may still carry the legacy `account_id = NULL`
+> shape. Treat the rules above as authoritative for all new money code regardless.
 
 ### Grouped transactions
-`transaction_id` (nullable UUID) groups N movements of one atomic operation:
+`transaction_id` (nullable UUID) groups N movements of one atomic operation. **Grouping
+is signaled by the LLM (a `group` field), never inferred from movement count** — a single
+message with several *independent* movements ("compré pan, medicamentos y carne") produces
+several movements each with `transaction_id = NULL`, so UPDATE/DELETE touches one without
+touching the others. Only the legs of a genuinely atomic operation (below) share a
+`transaction_id`; card itemization is **independent** expenses, not a group.
 
 | Operation | Movements |
 |---|---|
 | USD purchase | `transfer -150,000 ARS` (account_id=ars_account) + `transfer +100 USD` (account_id=usd_account), subcategory `Inversiones \| Dólares` |
 | Same-currency transfer | `transfer -X` (source account) + `transfer +X` (dest account), same currency, subcategory `Sistema \| Transferencia` |
 | FCI subscription | `transfer -2,500,000 ARS` (bank account) + `transfer +2,500,000 ARS` (FCI account) |
-| FCI redemption with gain | 2 transfers (redemption) + 1 `income` (subcategory: `Sistema \| Rendimiento inversión`, account_id=NULL) |
+| FCI redemption with gain | 2 transfers (redemption) + 1 `income` (subcategory: `Sistema \| Rendimiento inversión`, `account_id` = the FCI account, so it ends at balance 0) |
 
 ### Accounts hold a fixed monetary amount, not asset positions
 - An account's balance is always a single ARS or USD number — the current value. The bot does not model stocks/ETFs/cedears/FCI cuotapartes as units × price, does not auto-revalue, and does not accrue interest.
 - An "investment account" is just an account whose current value the user states as a fixed amount.
-- Gains are recorded as `income` movements (`Sistema | Rendimiento inversión`), never a silent balance bump.
+- Gains (rendimiento) belong to the **account** that earned them, not to any instrument. A gain is an `income` (`Sistema | Rendimiento inversión`) **attributed to that account**, growing its balance — never a silent bump. Any account can have its own. Stated explicitly ("el broker rindió 10 mil") it's a plain attributed income; on a redemption of more than the balance the app back-computes it (currently FCI only — see the money model).
 - `ClassifyOnboarding` extracts a monetary balance only — never units/shares/tickers.
 
 ### Accounts
@@ -217,11 +264,14 @@ r.POST("/invitations", middleware.RequireAdmin(adminID), invitationController.Cr
 - Unique index: `(user_id, currency) WHERE is_default = TRUE AND deleted_at IS NULL`
 
 ### Balances
-No `balance` column on accounts. Always computed:
+No `balance` column on accounts. Always computed as a plain sum of **signed** amounts —
+this is why the sign convention above is load-bearing, not stylistic:
 ```sql
 SELECT SUM(amount) FROM movements
 WHERE account_id = $account_id AND deleted_at IS NULL
 ```
+Negative balances are allowed (a mis-entry or overdraft) — corrected via UPDATE, never
+floored silently.
 
 ### Exchange rates
 - Daily: BNA, MEP, CCL, blue via `dolarapi.com`
