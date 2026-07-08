@@ -153,3 +153,31 @@ func TestAssignTransactionIDs_TwoDistinctGroups(t *testing.T) {
 		t.Error("distinct groups must get distinct transaction_ids")
 	}
 }
+
+func TestCheckBalances_OutflowIntoNegativeFires(t *testing.T) {
+	byID, _ := accountsMap(acct(1, currency.ARS, true))
+	id := uint64(1)
+	movs := []movement.Movement{{Type: movement.Transfer, Amount: decimal.NewFromInt(-1000000), Currency: currency.ARS, AccountID: &id}}
+	short := checkResultingBalances(movs, map[uint64]decimal.Decimal{1: decimal.NewFromInt(200000)}, byID)
+	if len(short) != 1 || !short[0].After.Equal(decimal.NewFromInt(-800000)) {
+		t.Fatalf("shortfalls = %+v, want one with After=-800000", short)
+	}
+}
+
+func TestCheckBalances_InflowIntoNegativeDoesNotFire(t *testing.T) {
+	byID, _ := accountsMap(acct(1, currency.ARS, true))
+	id := uint64(1)
+	movs := []movement.Movement{{Type: movement.Income, Amount: decimal.NewFromInt(5000), Currency: currency.ARS, AccountID: &id}}
+	if s := checkResultingBalances(movs, map[uint64]decimal.Decimal{1: decimal.NewFromInt(-1000)}, byID); len(s) != 0 {
+		t.Fatalf("inflow into a negative account must not fire; got %+v", s)
+	}
+}
+
+func TestCheckBalances_StaysNonNegativeDoesNotFire(t *testing.T) {
+	byID, _ := accountsMap(acct(1, currency.ARS, true))
+	id := uint64(1)
+	movs := []movement.Movement{{Type: movement.Expense, Amount: decimal.NewFromInt(-500), Currency: currency.ARS, AccountID: &id}}
+	if s := checkResultingBalances(movs, map[uint64]decimal.Decimal{1: decimal.NewFromInt(1000)}, byID); len(s) != 0 {
+		t.Fatalf("outflow staying >= 0 must not fire; got %+v", s)
+	}
+}

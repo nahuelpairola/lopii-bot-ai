@@ -136,3 +136,35 @@ func assignTransactionIDs(movs []movement.Movement, groups []string) {
 		movs[i].TransactionID = ids[g]
 	}
 }
+
+// checkResultingBalances returns the accounts a movement set would drive into
+// or deeper into negative: after = before + Σdeltas, firing only when
+// after < 0 AND after < before (a net outflow that leaves it negative — an
+// inflow, or an outflow that stays >= 0, never fires; an already-negative
+// account isn't nagged unless the movement makes it worse).
+func checkResultingBalances(movs []movement.Movement, balances map[uint64]decimal.Decimal, accountsByID map[uint64]account.Account) []accountShortfall {
+	deltas := map[uint64]decimal.Decimal{}
+	for _, m := range movs {
+		if m.AccountID == nil {
+			continue
+		}
+		d, ok := deltas[*m.AccountID]
+		if !ok {
+			d = decimal.Zero
+		}
+		deltas[*m.AccountID] = d.Add(m.Amount)
+	}
+	var out []accountShortfall
+	for id, delta := range deltas {
+		before, ok := balances[id]
+		if !ok {
+			before = decimal.Zero
+		}
+		after := before.Add(delta)
+		if after.IsNegative() && after.LessThan(before) {
+			acc := accountsByID[id]
+			out = append(out, accountShortfall{AccountID: id, Name: acc.Name, Currency: acc.Currency.String(), After: after})
+		}
+	}
+	return out
+}
