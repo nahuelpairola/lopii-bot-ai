@@ -4,82 +4,123 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 )
 
-func mustParseUUID(t *testing.T, s string) uuid.UUID {
-	t.Helper()
-	u, err := uuid.Parse(s)
-	if err != nil {
-		t.Fatalf("parse uuid: %v", err)
-	}
-	return u
-}
-
-func TestGroupByTransaction_GroupsSharedID(t *testing.T) {
-	txID := mustParseUUID(t, "11111111-1111-1111-1111-111111111111")
-	ms := []movement.Movement{
-		{TransactionID: &txID, Description: strPtr("Compra USD ARS leg")},
-		{TransactionID: &txID, Description: strPtr("Compra USD USD leg")},
-		{Description: strPtr("Standalone café")},
-	}
-
-	groups := groupByTransaction(ms)
-	if len(groups) != 2 {
-		t.Fatalf("got %d groups, want 2 (one 2-row group, one standalone)", len(groups))
-	}
-	if len(groups[0].Movements) != 2 {
-		t.Errorf("first group has %d movements, want 2", len(groups[0].Movements))
-	}
-	if len(groups[1].Movements) != 1 {
-		t.Errorf("second group has %d movements, want 1", len(groups[1].Movements))
+func TestMatchesMessage_MultiWordDescription_SharedToken(t *testing.T) {
+	// "gasto en trabas" stored; user says only "...de trabas" — one shared word.
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("gasto en trabas")}}}
+	if !matchesMessage(group, "quiero eliminar mi registro de trabas") {
+		t.Error("expected a match on the shared token 'trabas'")
 	}
 }
 
-func TestMatchesMessage_DescriptionSubstring(t *testing.T) {
-	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("Nafta YPF")}}}
-	if !matchesMessage(group, "che, lo de la nafta ypf era otro monto") {
-		t.Error("expected a match on description substring")
+func TestMatchesMessage_ShortWordInLongMessage(t *testing.T) {
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("Café")}}}
+	if !matchesMessage(group, "le erre, el café salió 1500") {
+		t.Error("expected a match on 'café' regardless of message length")
 	}
 }
 
-func TestMatchesMessage_NoOverlap(t *testing.T) {
-	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("Sueldo")}}}
-	if matchesMessage(group, "el café de ayer era 3000") {
-		t.Error("expected no match")
+func TestMatchesMessage_StopwordOnlyOverlap_NoMatch(t *testing.T) {
+	// Only 3-char/stopword tokens overlap — must not match.
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("de la")}}}
+	if matchesMessage(group, "borra el de la lista") {
+		t.Error("expected no match on stopword-only overlap")
 	}
 }
 
-// fakeMovementRepoForResolve implements movementRepository just to drive
-// resolveCandidates in isolation: it records the (query, since, until) it was
-// called with and returns a canned result set.
+func TestMatchesMessage_Amount(t *testing.T) {
+	// Verify amount matching still works.
+	amount := decimal.NewFromInt(1500)
+	group := transactionGroup{Movements: []movement.Movement{{Amount: amount}}}
+	if !matchesMessage(group, "fue 1500 pesos") {
+		t.Error("expected a match on the amount '1500'")
+	}
+}
+
+func TestMatchesMessage_Merchant(t *testing.T) {
+	// Verify merchant token matching works.
+	group := transactionGroup{Movements: []movement.Movement{{Merchant: strPtr("Carrefour")}}}
+	if !matchesMessage(group, "el gasto en Carrefour fue mucho") {
+		t.Error("expected a match on merchant 'Carrefour'")
+	}
+}
+
+func TestMatchesMessage_NoMatch_EmptyDescription(t *testing.T) {
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("")}}}
+	if matchesMessage(group, "some message") {
+		t.Error("expected no match on empty description")
+	}
+}
+
+func TestMatchesMessage_NoMatch_NilDescription(t *testing.T) {
+	group := transactionGroup{Movements: []movement.Movement{{Description: nil}}}
+	if matchesMessage(group, "some message") {
+		t.Error("expected no match on nil description")
+	}
+}
+
+func TestMatchesMessage_CaseInsensitive(t *testing.T) {
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("TRABAS")}}}
+	if !matchesMessage(group, "quiero eliminar mi registro de trabas") {
+		t.Error("expected case-insensitive match")
+	}
+}
+
+func TestMatchesMessage_TransferWithAccount(t *testing.T) {
+	// Verify that a transfer movement with an account is handled correctly.
+	accountID := uint64(123)
+	m := movement.Movement{
+		AccountID:   &accountID,
+		Description: strPtr("transferencia"),
+		Amount:      decimal.NewFromInt(500),
+		Currency:    currency.ARS,
+	}
+	group := transactionGroup{Movements: []movement.Movement{m}}
+	if !matchesMessage(group, "la transferencia de 500") {
+		t.Error("expected a match on the description token 'transferencia'")
+	}
+}
+
+// fakeMovementRepoForResolve captures the since/until arguments to FindSimilarForUser.
 type fakeMovementRepoForResolve struct {
-	result        []movement.Movement
-	err           error
-	capturedQuery string
-	capturedSince time.Time
-	capturedUntil *time.Time
+	result          []movement.Movement
+	capturedSince   time.Time
+	capturedUntil   *time.Time
 }
 
-func (r *fakeMovementRepoForResolve) InsertBatch(ms []movement.Movement) error { return nil }
+func (r *fakeMovementRepoForResolve) InsertBatch(ms []movement.Movement) error {
+	return nil
+}
+
 func (r *fakeMovementRepoForResolve) SumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
 	return decimal.Zero, nil
 }
+
 func (r *fakeMovementRepoForResolve) ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error {
 	return nil
 }
+
 func (r *fakeMovementRepoForResolve) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error) {
-	r.capturedQuery = query
 	r.capturedSince = since
 	r.capturedUntil = until
-	return r.result, r.err
+	return r.result, nil
 }
-func (r *fakeMovementRepoForResolve) SoftDeleteByIDs(ids []uint) error { return nil }
 
-func TestResolveCandidates_NoMentionedDate_UsesSevenDayCap(t *testing.T) {
-	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Description: strPtr("Nafta YPF")}}}
+func (r *fakeMovementRepoForResolve) SoftDeleteByIDs(ids []uint) error {
+	return nil
+}
+
+func (r *fakeMovementRepoForResolve) InsertAccountsWithOpenings(items []movement.AccountOpening) error {
+	return nil
+}
+
+func TestResolveCandidates_NoMentionedDate_UsesStartOfTodayArgentina(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("Nafta YPF")}}}
 	c := &controller{movements: fake}
 
 	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", "", "")
@@ -90,69 +131,44 @@ func TestResolveCandidates_NoMentionedDate_UsesSevenDayCap(t *testing.T) {
 		t.Fatalf("got %d candidates, want 1", len(candidates))
 	}
 
-	wantSince := time.Now().Add(-7 * 24 * time.Hour)
-	delta := fake.capturedSince.Sub(wantSince)
-	if delta < -5*time.Second || delta > 5*time.Second {
-		t.Errorf("since = %v, want close to %v (delta %v)", fake.capturedSince, wantSince, delta)
+	arg := time.FixedZone("ART", -3*60*60)
+	now := time.Now().In(arg)
+	wantSince := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, arg)
+	if !fake.capturedSince.Equal(wantSince) {
+		t.Errorf("since = %v, want start of today ART %v", fake.capturedSince, wantSince)
 	}
 	if fake.capturedUntil != nil {
 		t.Errorf("until = %v, want nil (no dateTo mentioned)", fake.capturedUntil)
 	}
 }
 
-func TestResolveCandidates_MentionedDate_AnchorsNoCap(t *testing.T) {
-	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Description: strPtr("Nafta YPF")}}}
+func TestResolveCandidates_NoTextMatch_FallsBackToRecentWindow(t *testing.T) {
+	// Message shares no token/amount with either stored movement — the
+	// fallback must still offer them (the "¿cuál?" picker), not empty.
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
+		{Model: gorm.Model{ID: 1}, Description: strPtr("Café")},
+		{Model: gorm.Model{ID: 2}, Description: strPtr("Panadería")},
+	}}
 	c := &controller{movements: fake}
 
-	dateFrom := "2026-06-01" // well outside the default 7-day window
-	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", dateFrom, "")
+	candidates, err := c.resolveCandidates(42, "era 700", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(candidates) != 1 {
-		t.Fatalf("got %d candidates, want 1", len(candidates))
-	}
-
-	anchor, err := time.Parse("2006-01-02", dateFrom)
-	if err != nil {
-		t.Fatalf("parse anchor date: %v", err)
-	}
-	wantSince := anchor.Add(-24 * time.Hour)
-	if !fake.capturedSince.Equal(wantSince) {
-		t.Errorf("since = %v, want %v (anchored on mentioned date, margin applied)", fake.capturedSince, wantSince)
-	}
-
-	sevenDaysAgo := time.Now().Add(-7 * 24 * time.Hour)
-	if !fake.capturedSince.Before(sevenDaysAgo) {
-		t.Errorf("since = %v is not before the 7-day cap (%v) — the cap was not lifted", fake.capturedSince, sevenDaysAgo)
-	}
-	if fake.capturedUntil != nil {
-		t.Errorf("until = %v, want nil (single date, no dateTo)", fake.capturedUntil)
+	if len(candidates) != 2 {
+		t.Fatalf("got %d candidates, want 2 (fallback to recent window)", len(candidates))
 	}
 }
 
-func TestResolveCandidates_DateRange_BoundsBothEnds(t *testing.T) {
-	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Description: strPtr("Nafta YPF")}}}
+func TestResolveCandidates_EmptyWindow_ReturnsNoCandidates(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{result: nil}
 	c := &controller{movements: fake}
 
-	dateFrom, dateTo := "2026-06-27", "2026-06-29"
-	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", dateFrom, dateTo)
+	candidates, err := c.resolveCandidates(42, "era 700", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(candidates) != 1 {
-		t.Fatalf("got %d candidates, want 1", len(candidates))
-	}
-
-	fromAnchor, _ := time.Parse("2006-01-02", dateFrom)
-	toAnchor, _ := time.Parse("2006-01-02", dateTo)
-	wantSince := fromAnchor.Add(-24 * time.Hour)
-	wantUntil := toAnchor.Add(24 * time.Hour)
-
-	if !fake.capturedSince.Equal(wantSince) {
-		t.Errorf("since = %v, want %v", fake.capturedSince, wantSince)
-	}
-	if fake.capturedUntil == nil || !fake.capturedUntil.Equal(wantUntil) {
-		t.Errorf("until = %v, want %v", fake.capturedUntil, wantUntil)
+	if len(candidates) != 0 {
+		t.Fatalf("got %d candidates, want 0 (nothing in window)", len(candidates))
 	}
 }

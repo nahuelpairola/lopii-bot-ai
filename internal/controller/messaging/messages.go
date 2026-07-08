@@ -5,12 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/constants"
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
-	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/user"
 )
 
 // Mensajes estáticos, sin variables.
@@ -21,47 +18,37 @@ const (
 	msgInvitationError             = "Hubo un error procesando tu invitación, probá de nuevo en un momento."
 	msgInvitationUsed              = "Esa invitación ya fue utilizada."
 	msgInvitationExpired           = "Esa invitación expiró, pedí una nueva."
-	msgUserCreationError           = "No pude crear tu cuenta, probá de nuevo."
-	msgDefaultAccountCreationError = "No se pudieron crear las cuentas por defecto"
-	msgUserCreatedSuccessfully     = "¡Bienvenido/a! 👋 Soy Lopii, tu bot de finanzas.\n\n" +
+	msgUserCreationError       = "No pude crear tu cuenta, probá de nuevo."
+	msgUserCreatedSuccessfully = "¡Bienvenido/a! 👋 Soy Lopii, tu bot de finanzas.\n\n" +
 		"Acá no hay formularios ni comandos: me hablás normal y yo entiendo. " +
 		"A buen entendedor, pocas palabras 😉 Dame un segundo que te dejo todo listo."
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
 
-	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
+	msgAmountUnclear     = "No entendí el monto 🤔 ¿Lo reescribís?"
+	msgCurrencyMismatch  = "Esa cuenta es de otra moneda. Reescribí el movimiento."
+	msgNoAccountCurrency = "No tenés una cuenta en esa moneda. Creá una primero."
+	msgMovementMalformed = "No pude armar ese movimiento. Reescribilo, porfa."
 
-	msgAccountSetupFinished = "Listo, ya está 😎\n\n" +
-		"Conmigo escribís lo justo. Tirás «café 500» y ya sé el resto: qué fue, cuánto y cuándo.\n\n" +
-		"Así de fácil todo:\n" +
-		"   «super 45mil con débito»\n" +
-		"   «me equivoqué, eran 700»\n" +
-		"   «cuánto gasté esta semana»\n\n" +
-		"Poquito vos, el resto yo."
+	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
 
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
+
+	msgOnboardingAskDistribution = "¿Cómo tenés hoy tu dinero distribuido? Contámelo como quieras, por ejemplo: «100.000 pesos en el banco HSBC, 10 mil en Mercado Pago, 1 millón en Naranja X y 3 mil dólares también en el banco»."
+
+	msgOnboardingNotUnderstood = "No te entendí 🤔 Probá de nuevo."
+
+	msgCapabilitiesShowcase = "Conmigo es fácil. Escribime así:\n\n" +
+		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil», «café 700»\n" +
+		"✏️ Corregir: «el súper eran 600 en realidad»\n" +
+		"🗑️ Borrar: «borrá el último gasto»\n" +
+		"🔄 Transferir: «pasé 50 mil del banco a Mercado Pago»\n" +
+		"🏦 Nueva cuenta: «quiero una cuenta para mis inversiones»\n" +
+		"📂 Nueva categoría: «creá una categoría para mascotas»\n\n" +
+		"Poquito vos, el resto yo."
 )
 
-func createMsgUserDefaultAccountsCreatedSuccessfully(u *user.User, as []account.Account) string {
-	return "Te armé dos cuentas para arrancar: una en pesos 🇦🇷 y una en dólares 🇺🇸.\n\n" +
-		"Una cuenta es simplemente dónde tenés tu plata. Estas son tus principales: " +
-		"cuando cargues un gasto, va acá solo, sin que me digas nada. " +
-		"Más adelante sumás las que quieras (una inversión, ahorros, lo que sea).\n\n" +
-		"Para arrancar con tus números reales, decime cuánta plata tenés hoy en cada una."
-}
-
-func msgConfirmInitialBalances(data conversation.Data) string {
-	lines := make([]string, 0, len(currency.SupportedCurrencies))
-	for _, cu := range currency.SupportedCurrencies {
-		amount, _ := data[balanceDataKey(cu)].(string)
-		lines = append(lines, fmt.Sprintf("• %s %s: %s", constants.DefaultWalletName, cu.String(), amount))
-	}
-	return fmt.Sprintf(
-		"Así quedarían tus saldos iniciales:\n%s\n\n¿Confirmás o querés corregir?",
-		strings.Join(lines, "\n"),
-	)
-}
 
 func msgAskCategory(data conversation.Data) string {
 	return "¿A qué categoría pertenece este movimiento?"
@@ -83,6 +70,23 @@ func msgConfirmMovements(movements []movement.Movement) string {
 	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
 }
 
+func msgOnboardingConfirm(data conversation.Data) string {
+	rows := decodeOnboardingRows(data)
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		lines = append(lines, fmt.Sprintf("• %s — %s %s", r.Name, r.Balance, r.Currency))
+	}
+	return "Entendí:\n" + strings.Join(lines, "\n") + "\n\n¿Está bien?"
+}
+
+func msgOnboardingReceipt(rows []onboardingRow) string {
+	lines := make([]string, 0, len(rows))
+	for _, r := range rows {
+		lines = append(lines, fmt.Sprintf("• %s — %s %s", r.Name, r.Balance, r.Currency))
+	}
+	return "Listo. Tus cuentas:\n" + strings.Join(lines, "\n")
+}
+
 // movementReceiptLine formats one movement for a receipt/confirmation
 // message: icon, category › subcategory, amount, currency, description,
 // and date — enough to tell movements apart at a glance when several
@@ -99,7 +103,14 @@ func movementReceiptLine(m movement.Movement) string {
 		desc = *m.Description
 	}
 	return fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
-		movement.IconForType(m.Type), category, sub, m.Amount.String(), m.Currency.String(), desc, m.Date.Format("2006-01-02"))
+		movement.IconForType(m.Type), category, sub, displayAmount(m.Amount), m.Currency.String(), desc, m.Date.Format("2006-01-02"))
+}
+
+// displayAmount renders a movement amount for any audience outside storage —
+// the user and the LLM (as an UPDATE/DELETE candidate). The stored sign is
+// internal; everyone sees the magnitude, direction comes from the type.
+func displayAmount(d decimal.Decimal) string {
+	return d.Abs().String()
 }
 
 func msgPickUpdateCandidate(data conversation.Data) string {
@@ -125,7 +136,9 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 const (
 	msgUpdateApplied     = "✅ Corregido."
 	msgUpdateCancelled   = "Cancelado, no cambié nada."
-	msgNoCandidatesFound = "No encontré ningún movimiento que coincida. Contame un poco más (comercio, monto o fecha)."
+	// Shown only when the window (today, or the mentioned day) has no
+	// movements at all — the fallback picker covers every other case.
+	msgNoCandidatesFound = "No tengo movimientos de ese día para tocar. ¿De qué fecha era?"
 )
 
 func msgPickDeleteCandidate(data conversation.Data) string {
@@ -210,6 +223,15 @@ func msgAskSubcategoryDescription(sub string) string {
 
 const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 
+func msgInsufficientFunds(short []accountShortfall) string {
+	s := short[0]
+	falta := s.After.Abs().String()
+	return fmt.Sprintf("⚠️ Ojo: %s quedaría en −%s %s (te faltan %s %s). ¿Cómo lo registro?",
+		s.Name, s.After.Abs().String(), s.Currency, falta, s.Currency)
+}
+
+const msgLogMissingFirst = "Dale, registrá primero lo que falta y volvé a mandarme esto."
+
 // FlowResumeLabel gives the resume gate (conversation.Engine) a short,
 // per-flow description of what the user was doing, for its "¿retomamos o
 // cancelamos?" prompt. One entry per registered flow; an unregistered or
@@ -226,8 +248,10 @@ func FlowResumeLabel(flowName string) string {
 		return "estabas creando una cuenta"
 	case subcategorySetupFlowName:
 		return "estabas creando una subcategoría"
-	case initialBalanceFlowName:
-		return "estabas cargando tus saldos iniciales"
+	case onboardingCollectFlowName, onboardingConfirmFlowName:
+		return "estabas cargando tus cuentas"
+	case movementNegativeConfirmFlowName:
+		return "estabas confirmando un movimiento"
 	default:
 		return "una conversación anterior"
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/config"
+	adminctrl "lopiibot.com/internal/controller/admin"
 	healthctrl "lopiibot.com/internal/controller/health"
 	invitationctrl "lopiibot.com/internal/controller/invitation"
 	messagingctrl "lopiibot.com/internal/controller/messaging"
@@ -64,7 +65,8 @@ func InitServer(conf *config.Config) error {
 	})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
-	conversationEngine.Register(messagingctrl.NewInitialBalanceFlow())
+	conversationEngine.Register(messagingctrl.NewOnboardingCollectFlow())
+	conversationEngine.Register(messagingctrl.NewOnboardingConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
 	conversationEngine.Register(messagingctrl.NewMovementConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
@@ -72,6 +74,7 @@ func InitServer(conf *config.Config) error {
 	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())
 	conversationEngine.Register(messagingctrl.NewAccountCreateFlow())
 	conversationEngine.Register(messagingctrl.NewSubcategorySetupFlow(subcategoryCache))
+	conversationEngine.Register(messagingctrl.NewMovementNegativeConfirmFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)
@@ -82,9 +85,11 @@ func InitServer(conf *config.Config) error {
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
 		llmOrchestrator, metricRepo,
 	)
+	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 
 	healthController.RegisterRoutes(ginEngine)
 	invitationController.RegisterRoutes(ginEngine)
+	adminController.RegisterRoutes(ginEngine)
 	messagingController.RegisterHandlers(tgBot)
 
 	server = httpServer{engine: ginEngine}

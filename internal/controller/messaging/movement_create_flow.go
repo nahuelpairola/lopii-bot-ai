@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
-	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
@@ -237,9 +236,30 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	userID := data.UserID()
 	rows := decodeMovementRows(data)
 
+	// Account maps (one fetch): id->account for currency checks, currency->default
+	// account id for nil-account resolution.
+	accs, err := c.accounts.FindByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	accountsByID := make(map[uint64]account.Account, len(accs))
+	defaultByCurrency := make(map[string]uint64)
+	for _, a := range accs {
+		accountsByID[uint64(a.ID)] = a
+		if a.IsDefault {
+			defaultByCurrency[a.Currency.String()] = uint64(a.ID)
+		}
+	}
+
+	// Counterparty-named account creation is for TRANSFER legs only — an
+	// expense/income never creates an account named after a person.
 	createdAccounts := make(map[string]uint64) // "name|currency" -> new account id
 	for i, row := range rows {
 		if row.AccountID != accountPendingCreate {
+			continue
+		}
+		if movement.TypeFromString(row.Type) != movement.Transfer {
+			rows[i].AccountID = "" // let normalize resolve to the currency default
 			continue
 		}
 		key := row.AccountNameGuess + "|" + row.Currency
@@ -257,16 +277,12 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		}
 		id := uint64(newAccount.ID)
 		createdAccounts[key] = id
+		accountsByID[id] = *newAccount
 		rows[i].AccountID = strconv.FormatUint(id, 10)
 	}
 
 	movements := make([]movement.Movement, 0, len(rows)+1)
-	var transactionID *uuid.UUID
-	if len(rows) > 1 {
-		id := uuid.New()
-		transactionID = &id
-	}
-
+	groups := make([]string, 0, len(rows)+1)
 	for _, row := range rows {
 		sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, row.Category, row.Subcategory)
 		if err != nil {
@@ -291,7 +307,6 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		}
 
 		m := movement.Movement{
-			TransactionID: transactionID,
 			UserID:        userID,
 			AccountID:     accountID,
 			SubcategoryID: uint64(sub.ID),
@@ -305,8 +320,12 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 			Description:   optionalString(row.Description),
 		}
 		movements = append(movements, m)
+		groups = append(groups, row.Group)
 	}
 
+	// Group by the LLM tag, compute the FCI gain (inherits the leg's
+	// transaction_id), then enforce the invariants on the complete set.
+	assignTransactionIDs(movements, groups)
 	gain, ok, err := fciRedemptionGain(c, movements)
 	if err != nil {
 		return nil, err
@@ -314,9 +333,12 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	if ok {
 		movements = append(movements, gain)
 	}
+	movements, err = normalizeMovements(movements, accountsByID, defaultByCurrency)
+	if err != nil {
+		return nil, err
+	}
 
-	mode := stringOrEmpty(data["mode"])
-	if mode == "update" {
+	if stringOrEmpty(data["mode"]) == "update" {
 		oldIDs, err := parseUintSlice(decodeStringSlice(data, "old_movement_ids"))
 		if err != nil {
 			return nil, err
@@ -325,6 +347,20 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 			return nil, err
 		}
 		return movements, nil
+	}
+
+	if stringOrEmpty(data["_skip_balance_check"]) != "true" {
+		balances := make(map[uint64]decimal.Decimal, len(accountsByID))
+		for id := range accountsByID {
+			bal, err := c.movements.SumAmountForAccount(id)
+			if err != nil {
+				return nil, err
+			}
+			balances[id] = bal
+		}
+		if short := checkResultingBalances(movements, balances, accountsByID); len(short) > 0 {
+			return nil, &insufficientFunds{shortfalls: short}
+		}
 	}
 
 	if err := c.movements.InsertBatch(movements); err != nil {
@@ -396,7 +432,7 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 		return movement.Movement{
 			TransactionID: m.TransactionID,
 			UserID:        m.UserID,
-			AccountID:     nil,
+			AccountID:     m.AccountID,
 			SubcategoryID: uint64(gainSub.ID),
 			Subcategory:   gainSub,
 			Date:          m.Date,

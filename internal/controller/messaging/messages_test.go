@@ -64,3 +64,34 @@ func TestMsgConfirmDelete_IncludesSubcategoryDescriptionDate(t *testing.T) {
 		}
 	}
 }
+
+func TestCapabilitiesShowcase_NoQueryExample(t *testing.T) {
+	// QUERY isn't supported yet — no "¿cuánto gasté?"-style example may appear.
+	for _, banned := range []string{"cuánto", "gasté esta", "cuanto"} {
+		if strings.Contains(strings.ToLower(msgCapabilitiesShowcase), strings.ToLower(banned)) {
+			t.Errorf("capabilities showcase must not contain a QUERY example (%q)", banned)
+		}
+	}
+	// All six supported intents present.
+	for _, want := range []string{"Anotar", "Corregir", "Borrar", "Transferir", "Nueva cuenta", "Nueva categoría"} {
+		if !strings.Contains(msgCapabilitiesShowcase, want) {
+			t.Errorf("capabilities showcase missing %q", want)
+		}
+	}
+	// Natural number words, never "k".
+	if strings.Contains(msgCapabilitiesShowcase, "10k") || strings.Contains(msgCapabilitiesShowcase, "50k") {
+		t.Errorf("capabilities showcase uses \"k\" — must use natural words (mil/millón)")
+	}
+}
+
+func TestOnboardingReceipt_ListsEachAccount(t *testing.T) {
+	got := msgOnboardingReceipt([]onboardingRow{
+		{Name: "Banco", Currency: "ARS", Balance: "20000"},
+		{Name: "Bróker", Currency: "USD", Balance: "100"},
+	})
+	for _, want := range []string{"Banco", "20000", "ARS", "Bróker", "100", "USD"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("receipt missing %q; got:\n%s", want, got)
+		}
+	}
+}

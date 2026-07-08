@@ -4,7 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
@@ -31,6 +33,9 @@ func (o *fakeFullOrchestrator) ResolveUpdate(ctx context.Context, text string, c
 func (o *fakeFullOrchestrator) ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error) {
 	return o.deleteResult, nil
 }
+func (o *fakeFullOrchestrator) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
+	return orchestrator.OnboardingResult{}, nil
+}
 
 func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 	sub := newSubForTest(1, "Alimentación", "Café")
@@ -38,8 +43,8 @@ func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
 		all:              []subcategory.Subcategory{*sub},
 	}
-	accRepo := &fakeAccountRepoFull{}
-	movRepo := &fakeMovementRepoFull{}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
 	}}}
@@ -221,7 +226,7 @@ func TestStartMovementCreate_NoGaps_ResolvesInserted(t *testing.T) {
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{}, movements: &fakeMovementRepoFull{}, orchestrator: orch, engine: engine, metrics: metrics}
+	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}, movements: &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}, orchestrator: orch, engine: engine, metrics: metrics}
 
 	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
 
@@ -267,7 +272,7 @@ func TestFinishMovementUpdateConfirmFlow_Error_NilBotNoPanic(t *testing.T) {
 	sub := newSubForTest(1, "Alimentación", "Café")
 	movRepo := &fakeMovementRepoFull{}
 	metrics := &fakeMetricRepo{}
-	c := &controller{movements: movRepo, subcategories: &fakeSubcategoryRepoFull{
+	c := &controller{movements: movRepo, accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{
 		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
 	}, metrics: metrics}
 
@@ -288,7 +293,7 @@ func TestFinishMovementUpdateConfirmFlow_Success_NilBotNoPanic(t *testing.T) {
 	sub := newSubForTest(1, "Alimentación", "Café")
 	movRepo := &fakeMovementRepoFull{}
 	metrics := &fakeMetricRepo{}
-	c := &controller{movements: movRepo, subcategories: &fakeSubcategoryRepoFull{
+	c := &controller{movements: movRepo, accounts: &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}, subcategories: &fakeSubcategoryRepoFull{
 		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
 	}, metrics: metrics}
 

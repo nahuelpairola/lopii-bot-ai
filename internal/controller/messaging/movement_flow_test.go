@@ -104,3 +104,12 @@ func TestParseUintSlice_ErrorsOnGarbage(t *testing.T) {
 		t.Fatal("expected an error for a non-numeric id")
 	}
 }
+
+func TestMovementRow_GroupRoundTrip(t *testing.T) {
+	rows := []movementRow{{Type: "transfer", Amount: "100", Currency: "ARS", Group: "g1"}}
+	data := conversation.Data{"movements": encodeMovementRows(rows)}
+	got := decodeMovementRows(data)
+	if len(got) != 1 || got[0].Group != "g1" {
+		t.Fatalf("group round trip = %+v, want Group=g1", got)
+	}
+}

@@ -10,9 +10,6 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"gorm.io/gorm"
-	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/constants"
-	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/user"
 )
 
@@ -62,23 +59,7 @@ func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models
 	}
 
 	c.reply(ctx, b, update, msgUserCreatedSuccessfully)
-	accounts := []account.Account{}
-	for _, cu := range currency.SupportedCurrencies {
-		acc := account.Account{
-			UserID:    newUser.ID,
-			Name:      constants.DefaultWalletName,
-			Currency:  cu,
-			IsDefault: true,
-		}
-		if err = c.accounts.Insert(&acc); err != nil {
-			c.reply(ctx, b, update, msgDefaultAccountCreationError)
-			return
-		}
-		accounts = append(accounts, acc)
-	}
-
-	c.reply(ctx, b, update, createMsgUserDefaultAccountsCreatedSuccessfully(newUser, accounts))
-	c.startFlowIfNotBusy(ctx, b, update.Message.Chat.ID, newUser.ID, initialBalanceFlowName)
+	c.startFlowIfNotBusy(ctx, b, update.Message.Chat.ID, newUser.ID, OnboardingCollectFlowName)
 }
 
 func extractStartCode(text string) string {

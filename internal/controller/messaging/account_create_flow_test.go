@@ -2,10 +2,37 @@ package messaging
 
 import (
 	"testing"
+	"time"
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 )
+
+// fakeStateStore es una implementación mínima en memoria de la interfaz
+// (no exportada) que espera conversation.NewEngine, para poder ejercitar
+// el flow real de punta a punta sin tocar Postgres.
+type fakeStateStore struct {
+	flowName  string
+	stepName  string
+	data      conversation.Data
+	updatedAt time.Time
+	found     bool
+}
+
+func (s *fakeStateStore) Get(userID uint64) (string, string, conversation.Data, time.Time, bool, error) {
+	return s.flowName, s.stepName, s.data, s.updatedAt, s.found, nil
+}
+
+func (s *fakeStateStore) Set(userID uint64, flowName, stepName string, data conversation.Data) error {
+	s.flowName, s.stepName, s.data, s.found = flowName, stepName, data, true
+	s.updatedAt = time.Now()
+	return nil
+}
+
+func (s *fakeStateStore) Clear(userID uint64) error {
+	s.found = false
+	return nil
+}
 
 func newAccountCreateTestEngine() (*conversation.Engine, *fakeStateStore) {
 	store := &fakeStateStore{}

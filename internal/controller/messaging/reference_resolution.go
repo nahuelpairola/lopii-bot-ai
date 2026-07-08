@@ -8,9 +8,22 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
+// argentinaZone is fixed UTC-3. Argentina observes no DST, so a fixed
+// offset avoids depending on the IANA tz database being present on the
+// host (Alpine/scratch images ship without it).
+// ponytail: fixed -3; if Argentina ever restores DST, switch to
+// time.LoadLocation + embedded time/tzdata.
+var argentinaZone = time.FixedZone("ART", -3*60*60)
+
+func startOfTodayArgentina() time.Time {
+	now := time.Now().In(argentinaZone)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, argentinaZone)
+}
+
 const (
-	referenceSearchWindow = 7 * 24 * time.Hour
-	dateAnchorMargin      = 24 * time.Hour
+	dateAnchorMargin  = 24 * time.Hour
+	minMatchTokenLen  = 4
+	fallbackRecentCap = 5
 )
 
 // transactionGroup is a set of movements sharing one transaction_id (or
@@ -48,18 +61,20 @@ func groupByTransaction(ms []movement.Movement) []transactionGroup {
 }
 
 // matchesMessage is a cheap, dependency-free relevance filter over one
-// candidate group: case-insensitive substring match against
-// description/merchant, or the message literally containing one of the
-// group's amounts. It's deliberately loose — pg_trgm has already
-// narrowed the DB-side search (see resolveCandidates); this is a final
-// in-process pass, not the primary filter.
+// candidate group: it matches when any description/merchant TOKEN of
+// length >= 4 appears (case-insensitively) in the message, or the
+// message literally contains one of the group's amounts. Token-level (not
+// whole-phrase) so a verbose LLM description like "gasto en trabas"
+// matches a message that shares only "trabas". The DB layer no longer
+// pre-filters by similarity (see FindSimilarForUser / resolveCandidates),
+// so this is the primary textual relevance check.
 func matchesMessage(group transactionGroup, message string) bool {
 	lower := strings.ToLower(message)
 	for _, m := range group.Movements {
-		if m.Description != nil && *m.Description != "" && strings.Contains(lower, strings.ToLower(*m.Description)) {
+		if descOrMerchantTokenInMessage(m.Description, lower) {
 			return true
 		}
-		if m.Merchant != nil && *m.Merchant != "" && strings.Contains(lower, strings.ToLower(*m.Merchant)) {
+		if descOrMerchantTokenInMessage(m.Merchant, lower) {
 			return true
 		}
 		if !m.Amount.IsZero() && strings.Contains(message, m.Amount.String()) {
@@ -69,15 +84,36 @@ func matchesMessage(group transactionGroup, message string) bool {
 	return false
 }
 
-// resolveCandidates finds the transaction group(s) a message could
-// refer to — used for UPDATE/DELETE reference resolution and, with an
-// empty dateFrom/dateTo, as CREATE's pre-insert duplicate check (see
-// startMovementCreate). dateFrom/dateTo are whatever the orchestrator's
-// resolve call extracted from the message — a single mentioned date
-// sets only dateFrom; a range sets both. Either anchors the search
-// window instead of the default 7-day cap.
+// descOrMerchantTokenInMessage reports whether any whitespace-separated
+// token of `field` with length >= minMatchTokenLen is a substring of the
+// already-lowercased message.
+func descOrMerchantTokenInMessage(field *string, lowerMessage string) bool {
+	if field == nil || *field == "" {
+		return false
+	}
+	for _, tok := range strings.Fields(strings.ToLower(*field)) {
+		// ponytail: length>=4 skips es stopwords (de/en/el/con/por) without a
+		// stopword list; standalone <=3-char descriptions like "pan"/"ypf"
+		// won't match as tokens — revisit if that bites.
+		if len([]rune(tok)) >= minMatchTokenLen {
+			if strings.Contains(lowerMessage, tok) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// resolveCandidates finds the transaction group(s) a message could refer
+// to for UPDATE/DELETE. Default window is today (America/Argentina/
+// Buenos_Aires); a mentioned dateFrom/dateTo anchors it instead. It fetches
+// the whole window (see FindSimilarForUser) and matches in-process via
+// matchesMessage. When nothing matches textually it does NOT dead-end —
+// it returns the window's most-recent groups (capped) so the caller can
+// ask "¿cuál?". It never auto-picks: the caller still confirms (1) or
+// shows a picker (2+).
 func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo string) ([]transactionGroup, error) {
-	since := time.Now().Add(-referenceSearchWindow)
+	since := startOfTodayArgentina()
 	if dateFrom != "" {
 		if anchor, err := time.Parse("2006-01-02", dateFrom); err == nil {
 			since = anchor.Add(-dateAnchorMargin)
@@ -97,11 +133,23 @@ func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo 
 		return nil, err
 	}
 
+	groups := groupByTransaction(matches)
+
 	var candidates []transactionGroup
-	for _, g := range groupByTransaction(matches) {
+	for _, g := range groups {
 		if matchesMessage(g, message) {
 			candidates = append(candidates, g)
 		}
 	}
-	return candidates, nil
+	if len(candidates) > 0 {
+		return candidates, nil
+	}
+
+	// Nothing matched textually. Rather than dead-end, offer the most
+	// recent movements in the window as a picker. groups is already ordered
+	// date DESC, id DESC by FindSimilarForUser.
+	if len(groups) > fallbackRecentCap {
+		groups = groups[:fallbackRecentCap]
+	}
+	return groups, nil
 }

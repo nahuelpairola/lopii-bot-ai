@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -82,6 +83,7 @@ type fakeMovementRepoFull struct {
 	deletedIDs     []uint
 	similar        []movement.Movement
 	insertErr      error
+	openings       []movement.AccountOpening
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -111,6 +113,10 @@ func (r *fakeMovementRepoFull) SoftDeleteByIDs(ids []uint) error {
 	r.deletedIDs = ids
 	return nil
 }
+func (r *fakeMovementRepoFull) InsertAccountsWithOpenings(items []movement.AccountOpening) error {
+	r.openings = items
+	return nil
+}
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {
 	s := &subcategory.Subcategory{Category: category, Subcategory: sub}
@@ -122,8 +128,8 @@ func TestResolveAndInsertMovements_SimpleSingleMovement_NilTransactionID(t *test
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Alimentación|Café": newSubForTest(1, "Alimentación", "Café"),
 	}}
-	accRepo := &fakeAccountRepoFull{}
-	movRepo := &fakeMovementRepoFull{}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
@@ -152,13 +158,13 @@ func TestResolveAndInsertMovements_Compound_SharesTransactionID(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Inversiones|Compra USD": newSubForTest(2, "Inversiones", "Compra USD"),
 	}}
-	accRepo := &fakeAccountRepoFull{}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(7, currency.USD, false)}}
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
-		{Type: "expense", Amount: "140000", Currency: "ARS", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02"},
-		{Type: "transfer", Amount: "100", Currency: "USD", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(7)},
+		{Type: "transfer", Amount: "140000", Currency: "ARS", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(1), Group: "g1"},
+		{Type: "transfer", Amount: "100", Currency: "USD", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(7), Group: "g1"},
 	}}
 	data := buildCreateSeed(result)
 	data[conversation.UserIDKey] = uint64(1)
@@ -181,12 +187,13 @@ func TestResolveAndInsertMovements_PendingAccountCreation(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Inversiones|FCI": newSubForTest(3, "Inversiones", "FCI"),
 	}}
-	accRepo := &fakeAccountRepoFull{}
-	movRepo := &fakeMovementRepoFull{}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movementRow{
-		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "FCI", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "-120000", Currency: "ARS", AccountID: "1", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "FCI", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
@@ -206,7 +213,7 @@ func TestResolveAndInsertMovements_PendingAccountCreation(t *testing.T) {
 	if accRepo.inserted[0].Name != "FCI" {
 		t.Errorf("created account name = %q, want FCI", accRepo.inserted[0].Name)
 	}
-	if movRepo.inserted[0].AccountID == nil {
+	if movRepo.inserted[1].AccountID == nil {
 		t.Error("the movement should reference the newly created account")
 	}
 }
@@ -216,15 +223,18 @@ func TestResolveAndInsertMovements_FCIRedemption_GainAboveBalance(t *testing.T) 
 		"Inversiones|FCI":               newSubForTest(3, "Inversiones", "FCI"),
 		"Sistema|Rendimiento inversión": newSubForTest(9, "Sistema", "Rendimiento inversión"),
 	}}
-	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
-		7: {IsDefault: false}, // dedicated FCI account, not the everyday wallet — a redemption candidate
-	}}
+	accRepo := &fakeAccountRepoFull{
+		byID: map[uint64]*account.Account{
+			7: {IsDefault: false}, // dedicated FCI account, not the everyday wallet — a redemption candidate
+		},
+		byUserID: []account.Account{acct(7, currency.ARS, false), acct(10, currency.ARS, false)},
+	}
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}} // fund has 80000 in it
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movementRow{
-		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
-		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
@@ -262,15 +272,18 @@ func TestResolveAndInsertMovements_FCISubscription_DefaultAccount_NoGain(t *test
 		"Inversiones|FCI":               newSubForTest(3, "Inversiones", "FCI"),
 		"Sistema|Rendimiento inversión": newSubForTest(9, "Sistema", "Rendimiento inversión"),
 	}}
-	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
-		7: {IsDefault: true}, // the everyday wallet — this is a subscription, not a redemption
-	}}
+	accRepo := &fakeAccountRepoFull{
+		byID: map[uint64]*account.Account{
+			7: {IsDefault: true}, // the everyday wallet — this is a subscription, not a redemption
+		},
+		byUserID: []account.Account{acct(7, currency.ARS, true), acct(10, currency.ARS, false)},
+	}
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}} // would trigger a false gain under the old logic
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movementRow{
-		{Type: "transfer", Amount: "-120000", Currency: "ARS", AccountID: "7", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
-		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: "10", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "-120000", Currency: "ARS", AccountID: "7", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: "10", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
@@ -279,6 +292,7 @@ func TestResolveAndInsertMovements_FCISubscription_DefaultAccount_NoGain(t *test
 		"movements":             encodeMovementRows(rows),
 		"pending_category_gaps": encodeStringSlice(nil),
 		"pending_account_gaps":  encodeStringSlice(nil),
+		"_skip_balance_check":   "true", // out of scope here: this test is about gain suppression, not the insufficient-funds gate
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -294,15 +308,18 @@ func TestResolveAndInsertMovements_FCIRedemption_PartialNoGain(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Inversiones|FCI": newSubForTest(3, "Inversiones", "FCI"),
 	}}
-	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
-		7: {IsDefault: false},
-	}}
+	accRepo := &fakeAccountRepoFull{
+		byID: map[uint64]*account.Account{
+			7: {IsDefault: false},
+		},
+		byUserID: []account.Account{acct(7, currency.ARS, false), acct(10, currency.ARS, false)},
+	}
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "500000"}} // much more than being withdrawn
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movementRow{
-		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
-		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
@@ -385,7 +402,7 @@ func TestResolveAndInsertMovements_UpdateMode_CallsReplaceMovements(t *testing.T
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Alimentación|Café": newSubForTest(1, "Alimentación", "Café"),
 	}}
-	accRepo := &fakeAccountRepoFull{}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
@@ -420,8 +437,8 @@ func TestResolveAndInsertMovements_PopulatesSubcategoryAssociation(t *testing.T)
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Alimentación|Café": sub,
 	}}
-	accRepo := &fakeAccountRepoFull{}
-	movRepo := &fakeMovementRepoFull{}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
@@ -443,15 +460,18 @@ func TestResolveAndInsertMovements_FCIRedemption_GainLegHasSubcategory(t *testin
 		"Inversiones|FCI":               newSubForTest(3, "Inversiones", "FCI"),
 		"Sistema|Rendimiento inversión": newSubForTest(9, "Sistema", "Rendimiento inversión"),
 	}}
-	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
-		7: {IsDefault: false},
-	}}
+	accRepo := &fakeAccountRepoFull{
+		byID: map[uint64]*account.Account{
+			7: {IsDefault: false},
+		},
+		byUserID: []account.Account{acct(7, currency.ARS, false), acct(10, currency.ARS, false)},
+	}
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movementRow{
-		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
-		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
@@ -469,5 +489,134 @@ func TestResolveAndInsertMovements_FCIRedemption_GainLegHasSubcategory(t *testin
 	gain := inserted[2]
 	if gain.Subcategory == nil || gain.Subcategory.Subcategory != "Rendimiento inversión" {
 		t.Errorf("gain leg's Subcategory = %+v, want Subcategory=Rendimiento inversión", gain.Subcategory)
+	}
+}
+
+func TestResolveAndInsertMovements_CreatesBothPendingAccounts(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Inversiones|FCI": newSubForTest(3, "Inversiones", "FCI"),
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "transfer", Amount: "-50000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "Banco", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
+		{Type: "transfer", Amount: "50000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "Mercado Pago", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"mode":                  "create",
+		"old_movement_ids":      encodeStringSlice(nil),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice([]string{"0", "1"}),
+		"_skip_balance_check":   "true", // brand-new accounts have no meaningful prior balance to test against
+	}
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v", err)
+	}
+	if len(accRepo.inserted) != 2 {
+		t.Errorf("accounts created = %d, want 2 (Banco + Mercado Pago)", len(accRepo.inserted))
+	}
+	if len(inserted) != 2 {
+		t.Fatalf("inserted %d movements, want 2", len(inserted))
+	}
+	if inserted[0].TransactionID == nil || inserted[1].TransactionID == nil || *inserted[0].TransactionID != *inserted[1].TransactionID {
+		t.Errorf("both legs must share one transaction_id")
+	}
+	for i, m := range inserted {
+		if m.AccountID == nil {
+			t.Errorf("transfer leg %d has nil account_id", i)
+		}
+	}
+}
+
+func TestFciRedemptionGain_AttributedToFciAccount(t *testing.T) {
+	fciAccID := uint64(9)
+	subs := &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{
+			"Inversiones|FCI":                  newSubForTest(3, "Inversiones", "FCI"),
+			"Sistema|Rendimiento inversión":    newSubForTest(4, "Sistema", "Rendimiento inversión"),
+		},
+	}
+	accts := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
+		fciAccID: {Model: gorm.Model{ID: uint(fciAccID)}, IsDefault: false, Currency: currency.ARS},
+	}}
+	movs := &fakeMovementRepoFull{balances: map[uint64]string{fciAccID: "100000"}}
+	c := &controller{subcategories: subs, accounts: accts, movements: movs}
+
+	redemption := []movement.Movement{{
+		Type:          movement.Transfer,
+		AccountID:     &fciAccID,
+		SubcategoryID: 3,
+		Amount:        decimal.NewFromInt(-120000),
+		Currency:      currency.ARS,
+		UserID:        1,
+	}}
+	gain, ok, err := fciRedemptionGain(c, redemption)
+	if err != nil || !ok {
+		t.Fatalf("expected a gain, got ok=%v err=%v", ok, err)
+	}
+	if gain.AccountID == nil || *gain.AccountID != fciAccID {
+		t.Errorf("gain account = %v, want FCI account %d", gain.AccountID, fciAccID)
+	}
+	if !gain.Amount.Equal(decimal.NewFromInt(20000)) {
+		t.Errorf("gain = %s, want 20000", gain.Amount)
+	}
+}
+
+func TestResolveAndInsert_IndependentExpensesNotGrouped(t *testing.T) {
+	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentos|Supermercado": newSubForTest(5, "Alimentos", "Supermercado"),
+	}}
+	accts := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movs := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
+	c := &controller{subcategories: subs, accounts: accts, movements: movs}
+
+	rows := []movementRow{
+		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentos", Subcategory: "Supermercado", Date: "2026-07-07"},
+		{Type: "expense", Amount: "300", Currency: "ARS", Category: "Alimentos", Subcategory: "Supermercado", Date: "2026-07-07"},
+	}
+	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": encodeMovementRows(rows), "old_movement_ids": encodeStringSlice(nil)}
+
+	if _, err := c.resolveAndInsertMovements(data); err != nil {
+		t.Fatalf("resolveAndInsert: %v", err)
+	}
+	if len(movs.inserted) != 2 {
+		t.Fatalf("inserted %d, want 2", len(movs.inserted))
+	}
+	if movs.inserted[0].TransactionID != nil || movs.inserted[1].TransactionID != nil {
+		t.Error("independent expenses must not share a transaction_id")
+	}
+	if !movs.inserted[0].Amount.IsNegative() {
+		t.Error("expense must be stored negative")
+	}
+}
+
+func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
+	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Ocio y salidas|Restaurante": newSubForTest(6, "Ocio y salidas", "Restaurante"),
+	}}
+	accts := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movs := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
+	c := &controller{subcategories: subs, accounts: accts, movements: movs}
+
+	// expense carrying an account_name_guess ("Pablo") + no AccountID
+	rows := []movementRow{{Type: "expense", Amount: "100000", Currency: "ARS",
+		Category: "Ocio y salidas", Subcategory: "Restaurante", Merchant: "Pablo",
+		AccountNameGuess: "Pablo", AccountID: accountPendingCreate, Date: "2026-07-07"}}
+	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": encodeMovementRows(rows), "old_movement_ids": encodeStringSlice(nil)}
+
+	if _, err := c.resolveAndInsertMovements(data); err != nil {
+		t.Fatalf("resolveAndInsert: %v", err)
+	}
+	if len(accts.inserted) != 0 {
+		t.Errorf("created %d accounts, want 0 (no 'Pablo' account for an expense)", len(accts.inserted))
+	}
+	if movs.inserted[0].AccountID == nil || *movs.inserted[0].AccountID != 1 {
+		t.Error("expense must attribute to the default ARS account")
 	}
 }

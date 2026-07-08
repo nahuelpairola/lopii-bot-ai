@@ -84,7 +84,7 @@ func NewMovementUpdateConfirmFlow() *conversation.Flow {
 func movementToRow(m movement.Movement) movementRow {
 	row := movementRow{
 		Type:     string(m.Type),
-		Amount:   m.Amount.String(),
+		Amount:   displayAmount(m.Amount),
 		Currency: m.Currency.String(),
 		Date:     m.Date.Format("2006-01-02"),
 	}
@@ -120,6 +120,7 @@ func rowToDraft(r movementRow) orchestrator.MovementDraft {
 		Merchant:         r.Merchant,
 		Description:      r.Description,
 		Date:             r.Date,
+		Group:            r.Group,
 	}
 	if r.AccountID != "" && r.AccountID != accountPendingCreate {
 		if id, err := strconv.ParseUint(r.AccountID, 10, 64); err == nil {
@@ -141,6 +142,7 @@ func draftToRow(d orchestrator.MovementDraft) movementRow {
 		Merchant:         d.Merchant,
 		Description:      d.Description,
 		Date:             d.Date,
+		Group:            d.Group,
 	}
 	if d.AccountID != nil {
 		row.AccountID = strconv.FormatUint(*d.AccountID, 10)

@@ -59,6 +59,7 @@ type MovementDraft struct {
 	Merchant         string  `json:"merchant"`
 	Description      string  `json:"description"`
 	Date             string  `json:"date"`
+	Group            string  `json:"group"`
 }
 
 // CreateResult is Call 2 CREATE's output: 1..N movement drafts sharing
@@ -94,4 +95,20 @@ type DeleteResult struct {
 	Resolved          bool   `json:"resolved"`
 	MentionedDateFrom string `json:"mentioned_date_from,omitempty"`
 	MentionedDateTo   string `json:"mentioned_date_to,omitempty"`
+}
+
+// OnboardingAccountDraft is one account the user described at onboarding:
+// a name, a supported currency, and a fixed monetary balance. Balance is a
+// string (never trusted as a native number). Onboarding models a fixed
+// amount, never an asset position (units/shares) — see the prompt.
+type OnboardingAccountDraft struct {
+	Name     string `json:"name"`
+	Currency string `json:"currency"`
+	Balance  string `json:"balance"`
+}
+
+// OnboardingResult is ClassifyOnboarding's output: 0..N account drafts.
+// Zero accounts is a valid result (nothing parseable) — the caller re-prompts.
+type OnboardingResult struct {
+	Accounts []OnboardingAccountDraft `json:"accounts"`
 }

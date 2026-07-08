@@ -42,6 +42,7 @@ type movementRepository interface {
 	ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error
 	FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error)
 	SoftDeleteByIDs(ids []uint) error
+	InsertAccountsWithOpenings(items []movement.AccountOpening) error
 }
 
 type subcategoryRepository interface {
@@ -60,6 +61,7 @@ type movementOrchestrator interface {
 	ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error)
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
+	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
 }
 
 type metricRepository interface {
@@ -181,8 +183,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		return
 	}
 	switch result.FlowName {
-	case initialBalanceFlowName:
-		c.finishInitialBalanceFlow(ctx, b, chatID, result.Data)
+	case onboardingCollectFlowName:
+		c.finishOnboardingCollectFlow(ctx, b, chatID, result.Data)
+	case onboardingConfirmFlowName:
+		c.finishOnboardingConfirmFlow(ctx, b, chatID, result.Data)
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
 	case movementConfirmFlowName:
@@ -197,6 +201,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
 	case subcategorySetupFlowName:
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
+	case movementNegativeConfirmFlowName:
+		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}
@@ -229,6 +235,9 @@ func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton
 // sendPrompt traduce un conversation.Prompt neutro al formato real de
 // Telegram (botones inline, en grilla de buttonsPerRow por fila).
 func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
+	if b == nil {
+		return
+	}
 	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text, ParseMode: models.ParseModeHTML}
 
 	if rows := chunkButtons(prompt.Buttons); len(rows) > 0 {
@@ -239,6 +248,9 @@ func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, p
 }
 
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
+	if b == nil {
+		return
+	}
 	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text})
 }
 

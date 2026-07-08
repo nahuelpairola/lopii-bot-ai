@@ -26,9 +26,9 @@ type TextStep struct {
 	// a seeded/auto-advancing walk (see Engine.StartWithData). Returning
 	// ok=true skips this step; nextStep says where to continue (empty
 	// nextStep means the flow is complete). nil means never skip — same
-	// contract as ChoiceStep.SkipIf, and the default for every existing
-	// TextStep literal in the codebase, so initial_balance_setup is
-	// unaffected.
+	// contract as ChoiceStep.SkipIf. Used by movement/account/category
+	// setup flows to skip over already-resolved steps when starting with
+	// pre-seeded data (e.g. an LLM classification).
 	SkipIf func(data Data) (nextStep string, ok bool)
 }
 
