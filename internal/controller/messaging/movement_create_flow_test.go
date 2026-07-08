@@ -129,7 +129,7 @@ func TestResolveAndInsertMovements_SimpleSingleMovement_NilTransactionID(t *test
 		"Alimentación|Café": newSubForTest(1, "Alimentación", "Café"),
 	}}
 	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
-	movRepo := &fakeMovementRepoFull{}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
@@ -188,7 +188,7 @@ func TestResolveAndInsertMovements_PendingAccountCreation(t *testing.T) {
 		"Inversiones|FCI": newSubForTest(3, "Inversiones", "FCI"),
 	}}
 	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
-	movRepo := &fakeMovementRepoFull{}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movementRow{
@@ -292,6 +292,7 @@ func TestResolveAndInsertMovements_FCISubscription_DefaultAccount_NoGain(t *test
 		"movements":             encodeMovementRows(rows),
 		"pending_category_gaps": encodeStringSlice(nil),
 		"pending_account_gaps":  encodeStringSlice(nil),
+		"_skip_balance_check":   "true", // out of scope here: this test is about gain suppression, not the insufficient-funds gate
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -437,7 +438,7 @@ func TestResolveAndInsertMovements_PopulatesSubcategoryAssociation(t *testing.T)
 		"Alimentación|Café": sub,
 	}}
 	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
-	movRepo := &fakeMovementRepoFull{}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
@@ -510,6 +511,7 @@ func TestResolveAndInsertMovements_CreatesBothPendingAccounts(t *testing.T) {
 		"movements":             encodeMovementRows(rows),
 		"pending_category_gaps": encodeStringSlice(nil),
 		"pending_account_gaps":  encodeStringSlice([]string{"0", "1"}),
+		"_skip_balance_check":   "true", // brand-new accounts have no meaningful prior balance to test against
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)

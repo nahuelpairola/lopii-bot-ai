@@ -44,7 +44,7 @@ func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 		all:              []subcategory.Subcategory{*sub},
 	}
 	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
-	movRepo := &fakeMovementRepoFull{}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
 	}}}
@@ -226,7 +226,7 @@ func TestStartMovementCreate_NoGaps_ResolvesInserted(t *testing.T) {
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}, movements: &fakeMovementRepoFull{}, orchestrator: orch, engine: engine, metrics: metrics}
+	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}, movements: &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}, orchestrator: orch, engine: engine, metrics: metrics}
 
 	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
 

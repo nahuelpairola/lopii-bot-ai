@@ -349,6 +349,20 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		return movements, nil
 	}
 
+	if stringOrEmpty(data["_skip_balance_check"]) != "true" {
+		balances := make(map[uint64]decimal.Decimal, len(accountsByID))
+		for id := range accountsByID {
+			bal, err := c.movements.SumAmountForAccount(id)
+			if err != nil {
+				return nil, err
+			}
+			balances[id] = bal
+		}
+		if short := checkResultingBalances(movements, balances, accountsByID); len(short) > 0 {
+			return nil, &insufficientFunds{shortfalls: short}
+		}
+	}
+
 	if err := c.movements.InsertBatch(movements); err != nil {
 		return nil, err
 	}

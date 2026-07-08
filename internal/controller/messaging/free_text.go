@@ -143,6 +143,20 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 		seed[conversation.UserIDKey] = userID
 		inserted, err := c.resolveAndInsertMovements(seed)
 		if err != nil {
+			var short *insufficientFunds
+			if errors.As(err, &short) {
+				gateSeed := copyData(seed)
+				gateSeed["_gate_prompt"] = msgInsufficientFunds(short.shortfalls)
+				prompt, serr := c.engine.StartWithData(userID, movementNegativeConfirmFlowName, gateSeed)
+				if serr != nil {
+					c.sendText(ctx, b, chatID, msgGenericFlowError)
+					return
+				}
+				if b != nil {
+					c.sendPrompt(ctx, b, chatID, prompt)
+				}
+				return
+			}
 			c.sendText(ctx, b, chatID, createErrorCopy(err))
 			return
 		}

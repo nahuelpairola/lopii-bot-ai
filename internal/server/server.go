@@ -74,6 +74,7 @@ func InitServer(conf *config.Config) error {
 	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())
 	conversationEngine.Register(messagingctrl.NewAccountCreateFlow())
 	conversationEngine.Register(messagingctrl.NewSubcategorySetupFlow(subcategoryCache))
+	conversationEngine.Register(messagingctrl.NewMovementNegativeConfirmFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)

@@ -223,6 +223,15 @@ func msgAskSubcategoryDescription(sub string) string {
 
 const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 
+func msgInsufficientFunds(short []accountShortfall) string {
+	s := short[0]
+	falta := s.After.Abs().String()
+	return fmt.Sprintf("⚠️ Ojo: %s quedaría en −%s %s (te faltan %s %s). ¿Cómo lo registro?",
+		s.Name, s.After.Abs().String(), s.Currency, falta, s.Currency)
+}
+
+const msgLogMissingFirst = "Dale, registrá primero lo que falta y volvé a mandarme esto."
+
 // FlowResumeLabel gives the resume gate (conversation.Engine) a short,
 // per-flow description of what the user was doing, for its "¿retomamos o
 // cancelamos?" prompt. One entry per registered flow; an unregistered or
@@ -241,6 +250,8 @@ func FlowResumeLabel(flowName string) string {
 		return "estabas creando una subcategoría"
 	case onboardingCollectFlowName, onboardingConfirmFlowName:
 		return "estabas cargando tus cuentas"
+	case movementNegativeConfirmFlowName:
+		return "estabas confirmando un movimiento"
 	default:
 		return "una conversación anterior"
 	}

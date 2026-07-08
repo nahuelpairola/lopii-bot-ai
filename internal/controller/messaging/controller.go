@@ -201,6 +201,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
 	case subcategorySetupFlowName:
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
+	case movementNegativeConfirmFlowName:
+		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}
