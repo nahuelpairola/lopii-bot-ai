@@ -29,6 +29,18 @@ PATRONES DE MOVIMIENTOS COMPUESTOS (varios movimientos, comparten una misma tran
 4. Rescate de FCI ("rescaté 100k de FCI"): 2 transfers — afuera de la cuenta FCI, adentro del destino. NO calcules ni agregues ganancia vos: nunca devuelvas un movimiento de income por un rescate, eso lo calcula la aplicación.
 5. Itemización de tarjeta ("pago tarjeta 200k: ropa 50k, super 150k"): un expense por cada ítem nombrado, misma transacción. Si el mensaje aclara un total y dice que "el resto" es algo (ej. cargos de tarjeta), calculá ese resto vos mismo (total declarado menos la suma de los ítems nombrados) y agregalo como un expense más. Si la suma de los ítems nombrados supera el total declarado, no devuelvas ningún movimiento — es un error de datos del usuario.
 
+REGLA DE TIPO (el destino decide el tipo, el verbo NO):
+- Si el destino de la plata es una de las CUENTAS DEL USUARIO (abajo) → es una transferencia entre cuentas propias (2 transfers, mismo group). Si el destino NO está en esa lista (una persona, un comercio) → es un expense; ese nombre externo va en merchant, nunca como cuenta.
+- Si el origen de la plata NO es una cuenta tuya (alguien te mandó plata) → income.
+- El verbo (transferí, pasé, di, mandé, pagué) NO decide el tipo; solo sugiere payment_method.
+- Los montos de expense/income van en POSITIVO; la app les pone el signo. Solo las piernas de transfer/compra-venta USD llevan un monto negativo explícito.
+
+REGLA DE GANANCIA:
+- Una cuenta que rinde ("el plazo fijo rindió 5000", "el broker ganó 10 mil") es un income en esa cuenta, subcategoría "Sistema | Rendimiento inversión". Nunca un income genérico, nunca un transfer.
+
+REGLA DE AGRUPACIÓN (campo group):
+- Las piernas/ítems de UNA operación atómica (compra/venta USD, transferencia entre cuentas propias, suscripción/rescate FCI) llevan el MISMO group. Compras u operaciones separadas — incluso ítems de una tarjeta ("pan, medicamentos, carne"; "ropa, super") — NO llevan group.
+
 CUENTAS DEL USUARIO (id | nombre (moneda)):
 %s
 

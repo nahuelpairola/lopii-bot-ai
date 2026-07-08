@@ -100,3 +100,21 @@ func TestClassifyCreate_ErrorsOnEmptyMovements(t *testing.T) {
 		t.Fatal("expected an error when the result has no movements")
 	}
 }
+
+func TestCreatePrompt_ContainsNewRules(t *testing.T) {
+	var captured string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatCompletionRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		captured = req.Messages[0].Content
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"movements\":[{\"type\":\"expense\",\"amount\":\"500\",\"currency\":\"ARS\",\"category\":\"x\",\"subcategory\":\"y\",\"payment_method\":\"cash\",\"description\":\"z\",\"date\":\"2026-07-07\"}]}"}}]}}]}`))
+	}))
+	defer server.Close()
+	o := New(Config{BaseURL: server.URL, CreateModel: "m", TimeoutSeconds: 5})
+	_, _ = o.ClassifyCreate(context.Background(), "gasté 500", nil, nil, "2026-07-07")
+	for _, want := range []string{"el destino decide el tipo", "Rendimiento inversión", "campo group", "van en POSITIVO"} {
+		if !strings.Contains(captured, want) {
+			t.Errorf("create prompt missing %q", want)
+		}
+	}
+}
