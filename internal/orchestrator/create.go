@@ -56,7 +56,8 @@ var createTool = toolSchema{
 						"payment_method": {"type": "string"},
 						"merchant": {"type": "string"},
 						"description": {"type": "string"},
-						"date": {"type": "string"}
+						"date": {"type": "string"},
+						"group": {"type": "string"}
 					},
 					"required": ["type", "amount", "currency", "category", "subcategory", "payment_method", "description", "date"]
 				}

@@ -59,6 +59,7 @@ type MovementDraft struct {
 	Merchant         string  `json:"merchant"`
 	Description      string  `json:"description"`
 	Date             string  `json:"date"`
+	Group            string  `json:"group"`
 }
 
 // CreateResult is Call 2 CREATE's output: 1..N movement drafts sharing

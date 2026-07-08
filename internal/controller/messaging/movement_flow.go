@@ -31,6 +31,7 @@ type movementRow struct {
 	Description      string
 	Date             string
 	Icon             string
+	Group            string
 }
 
 func stringOrEmpty(v any) string {
@@ -64,6 +65,7 @@ func decodeMovementRows(data conversation.Data) []movementRow {
 			Description:      stringOrEmpty(m["description"]),
 			Date:             stringOrEmpty(m["date"]),
 			Icon:             stringOrEmpty(m["icon"]),
+			Group:            stringOrEmpty(m["group"]),
 		})
 	}
 	return rows
@@ -85,6 +87,7 @@ func encodeMovementRows(rows []movementRow) []interface{} {
 			"description":        r.Description,
 			"date":               r.Date,
 			"icon":               r.Icon,
+			"group":              r.Group,
 		})
 	}
 	return encoded
@@ -135,6 +138,7 @@ func buildCreateSeed(result orchestrator.CreateResult) conversation.Data {
 			Merchant:         draft.Merchant,
 			Description:      draft.Description,
 			Date:             draft.Date,
+			Group:            draft.Group,
 		}
 		if draft.AccountID != nil {
 			row.AccountID = strconv.FormatUint(*draft.AccountID, 10)
