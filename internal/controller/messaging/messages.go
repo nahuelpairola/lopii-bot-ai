@@ -25,6 +25,11 @@ const (
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
 
+	msgAmountUnclear     = "No entendí el monto 🤔 ¿Lo reescribís?"
+	msgCurrencyMismatch  = "Esa cuenta es de otra moneda. Reescribí el movimiento."
+	msgNoAccountCurrency = "No tenés una cuenta en esa moneda. Creá una primero."
+	msgMovementMalformed = "No pude armar ese movimiento. Reescribilo, porfa."
+
 	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
 
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +

@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"time"
 
@@ -10,6 +11,23 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
+
+// createErrorCopy maps a guard rejection to specific user copy, falling back
+// to the generic error. Mirrors finishAccountCreateFlow's ErrAccountAlreadyExists.
+func createErrorCopy(err error) string {
+	switch {
+	case errors.Is(err, errZeroAmount):
+		return msgAmountUnclear
+	case errors.Is(err, errCurrencyAccountMismatch):
+		return msgCurrencyMismatch
+	case errors.Is(err, errNoAccountForCurrency):
+		return msgNoAccountCurrency
+	case errors.Is(err, errTransferLeg):
+		return msgMovementMalformed
+	default:
+		return msgGenericFlowError
+	}
+}
 
 // sendText is a small helper that guards every b.SendMessage call with a
 // nil check — b is nil in unit tests that exercise these entry points
@@ -125,7 +143,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 		seed[conversation.UserIDKey] = userID
 		inserted, err := c.resolveAndInsertMovements(seed)
 		if err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, createErrorCopy(err))
 			return
 		}
 		c.resolveMetric(userID, outcomeCreateInserted)
