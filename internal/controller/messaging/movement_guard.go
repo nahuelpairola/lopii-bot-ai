@@ -111,3 +111,28 @@ func validateTransferGroups(movs []movement.Movement) error {
 	}
 	return nil
 }
+
+// assignTransactionIDs groups movements by the LLM-supplied group tag: a
+// non-empty group with 2+ members shares one fresh transaction_id; a lone or
+// empty group stays nil (independent). Replaces the old len(rows)>1 heuristic
+// that wrongly grouped independent movements.
+func assignTransactionIDs(movs []movement.Movement, groups []string) {
+	counts := map[string]int{}
+	for _, g := range groups {
+		if g != "" {
+			counts[g]++
+		}
+	}
+	ids := map[string]*uuid.UUID{}
+	for i := range movs {
+		g := groups[i]
+		if g == "" || counts[g] < 2 {
+			continue
+		}
+		if ids[g] == nil {
+			id := uuid.New()
+			ids[g] = &id
+		}
+		movs[i].TransactionID = ids[g]
+	}
+}

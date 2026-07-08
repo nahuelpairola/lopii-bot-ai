@@ -119,3 +119,37 @@ func TestNormalize_SelfTransferRejected(t *testing.T) {
 		t.Fatalf("err = %v, want errTransferLeg (self-transfer)", err)
 	}
 }
+
+func TestAssignTransactionIDs_SharedGroupOneID(t *testing.T) {
+	movs := make([]movement.Movement, 2)
+	assignTransactionIDs(movs, []string{"g1", "g1"})
+	if movs[0].TransactionID == nil || movs[1].TransactionID == nil || *movs[0].TransactionID != *movs[1].TransactionID {
+		t.Fatal("shared group must get one shared transaction_id")
+	}
+}
+
+func TestAssignTransactionIDs_IndependentAreNil(t *testing.T) {
+	movs := make([]movement.Movement, 3)
+	assignTransactionIDs(movs, []string{"", "", ""}) // pan, med, carne
+	for i, m := range movs {
+		if m.TransactionID != nil {
+			t.Errorf("mov %d got a transaction_id, want nil (independent)", i)
+		}
+	}
+}
+
+func TestAssignTransactionIDs_LoneGroupIsNil(t *testing.T) {
+	movs := make([]movement.Movement, 1)
+	assignTransactionIDs(movs, []string{"g1"}) // only one member → not a group
+	if movs[0].TransactionID != nil {
+		t.Error("a group of one must stay independent (nil)")
+	}
+}
+
+func TestAssignTransactionIDs_TwoDistinctGroups(t *testing.T) {
+	movs := make([]movement.Movement, 4) // pasé 10 al banco y 20 a MP
+	assignTransactionIDs(movs, []string{"a", "a", "b", "b"})
+	if *movs[0].TransactionID == *movs[2].TransactionID {
+		t.Error("distinct groups must get distinct transaction_ids")
+	}
+}
