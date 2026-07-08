@@ -3,7 +3,10 @@ package messaging
 import (
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/movement"
 )
 
 // Guard rejection sentinels. Call sites errors.Is-map them to specific copy
@@ -30,3 +33,81 @@ type insufficientFunds struct {
 }
 
 func (e *insufficientFunds) Error() string { return "insufficient funds" }
+
+// normalizeMovements enforces the money-model invariants on a fully-built,
+// transaction_id-assigned movement set. It mutates in place: expense→negative,
+// income→positive (LLM sign ignored); a nil account resolves to the currency's
+// default; and it rejects zero amounts, currency/account mismatches, and
+// malformed transfer groups. Pure (no repo/DB) — accountsByID and
+// defaultByCurrency are supplied by the caller.
+func normalizeMovements(movs []movement.Movement, accountsByID map[uint64]account.Account, defaultByCurrency map[string]uint64) ([]movement.Movement, error) {
+	for i := range movs {
+		m := &movs[i]
+		if m.Amount.IsZero() {
+			return nil, errZeroAmount
+		}
+		if m.AccountID == nil {
+			id, ok := defaultByCurrency[m.Currency.String()]
+			if !ok {
+				return nil, errNoAccountForCurrency
+			}
+			m.AccountID = &id
+		}
+		acc, ok := accountsByID[*m.AccountID]
+		if !ok || acc.Currency != m.Currency {
+			return nil, errCurrencyAccountMismatch
+		}
+		switch m.Type {
+		case movement.Expense:
+			m.Amount = m.Amount.Abs().Neg()
+		case movement.Income:
+			m.Amount = m.Amount.Abs()
+		}
+		// transfer: keep the LLM-classified sign (out negative / in positive).
+	}
+	if err := validateTransferGroups(movs); err != nil {
+		return nil, err
+	}
+	return movs, nil
+}
+
+// validateTransferGroups checks every transfer belongs to a 2-leg,
+// same-transaction_id, distinct-account group; same-currency groups sum to 0.
+func validateTransferGroups(movs []movement.Movement) error {
+	type leg struct {
+		accounts map[uint64]bool
+		count    int
+		sum      decimal.Decimal
+		oneCur   bool
+		currency string
+	}
+	groups := map[uuid.UUID]*leg{}
+	for _, m := range movs {
+		if m.Type != movement.Transfer {
+			continue
+		}
+		if m.TransactionID == nil || m.AccountID == nil {
+			return errTransferLeg // a transfer with no group or no account is malformed
+		}
+		g := groups[*m.TransactionID]
+		if g == nil {
+			g = &leg{accounts: map[uint64]bool{}, sum: decimal.Zero, oneCur: true, currency: m.Currency.String()}
+			groups[*m.TransactionID] = g
+		}
+		if g.currency != m.Currency.String() {
+			g.oneCur = false
+		}
+		g.accounts[*m.AccountID] = true
+		g.count++
+		g.sum = g.sum.Add(m.Amount)
+	}
+	for _, g := range groups {
+		if g.count != 2 || len(g.accounts) != 2 {
+			return errTransferLeg
+		}
+		if g.oneCur && !g.sum.IsZero() {
+			return errTransferLeg
+		}
+	}
+	return nil
+}
