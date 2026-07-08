@@ -67,7 +67,7 @@ type movementOrchestrator interface {
 
 type metricRepository interface {
 	Log(userID uint64, rawMessage, intent string, needsConfirmation bool, outcome string) error
-	Resolve(userID uint64, outcome string) error
+	Resolve(userID uint64, outcome string, movementIDs []uint) error
 }
 
 type controller struct {

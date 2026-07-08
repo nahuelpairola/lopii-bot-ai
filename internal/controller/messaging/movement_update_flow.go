@@ -292,13 +292,14 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 		return
 	}
 
-	if _, err := c.resolveAndInsertMovements(data); err != nil {
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 		}
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeUpdateConfirmed)
+	c.resolveMetric(data.UserID(), outcomeUpdateConfirmed, collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateApplied})
 	}

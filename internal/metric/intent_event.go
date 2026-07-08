@@ -53,14 +53,24 @@ func (r *repository) Log(userID uint64, rawMessage, intent string, needsConfirma
 //
 // ponytail: sin índice; agregar parcial (user_id, id) where outcome='pending'
 // si la tabla crece.
-func (r *repository) Resolve(userID uint64, outcome string) error {
+func (r *repository) Resolve(userID uint64, outcome string, movementIDs []uint) error {
 	now := time.Now()
 	sub := r.db.DB.Model(&IntentEvent{}).
 		Select("id").
 		Where("user_id = ? AND outcome = ?", userID, "pending").
 		Order("id DESC").
 		Limit(1)
+	updates := map[string]interface{}{"outcome": outcome, "resolved_at": now}
+	if len(movementIDs) > 0 {
+		// pgx/v5 stdlib encodes []int64 -> bigint[] (no lib/pq). Omitted when
+		// empty so cancelled/no-candidate rows keep movement_ids NULL.
+		ids := make([]int64, len(movementIDs))
+		for i, id := range movementIDs {
+			ids[i] = int64(id)
+		}
+		updates["movement_ids"] = ids
+	}
 	return r.db.DB.Model(&IntentEvent{}).
 		Where("id = (?)", sub).
-		Updates(map[string]interface{}{"outcome": outcome, "resolved_at": now}).Error
+		Updates(updates).Error
 }

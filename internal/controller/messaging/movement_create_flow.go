@@ -217,7 +217,7 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 		}
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeCreateInserted)
+	c.resolveMetric(data.UserID(), outcomeCreateInserted, collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
 	}
