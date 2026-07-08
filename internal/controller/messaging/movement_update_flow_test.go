@@ -5,7 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -61,6 +63,15 @@ func TestMovementToRow_ResolvesCategoryFromSubcategory(t *testing.T) {
 	}
 	if row.Amount != "15000" {
 		t.Errorf("row amount = %q, want 15000", row.Amount)
+	}
+}
+
+func TestMovementToRow_EmitsAbsAmount(t *testing.T) {
+	id := uint64(1)
+	m := movement.Movement{Type: movement.Expense, Amount: decimal.NewFromInt(-100000), Currency: currency.ARS, AccountID: &id, Date: time.Now()}
+	row := movementToRow(m)
+	if row.Amount != "100000" {
+		t.Fatalf("row.Amount = %q, want positive 100000 (abs boundary — the LLM must never see the stored sign)", row.Amount)
 	}
 }
 

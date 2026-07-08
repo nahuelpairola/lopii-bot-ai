@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 )
@@ -97,7 +98,14 @@ func movementReceiptLine(m movement.Movement) string {
 		desc = *m.Description
 	}
 	return fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
-		movement.IconForType(m.Type), category, sub, m.Amount.String(), m.Currency.String(), desc, m.Date.Format("2006-01-02"))
+		movement.IconForType(m.Type), category, sub, displayAmount(m.Amount), m.Currency.String(), desc, m.Date.Format("2006-01-02"))
+}
+
+// displayAmount renders a movement amount for any audience outside storage —
+// the user and the LLM (as an UPDATE/DELETE candidate). The stored sign is
+// internal; everyone sees the magnitude, direction comes from the type.
+func displayAmount(d decimal.Decimal) string {
+	return d.Abs().String()
 }
 
 func msgPickUpdateCandidate(data conversation.Data) string {

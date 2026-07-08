@@ -84,7 +84,7 @@ func NewMovementUpdateConfirmFlow() *conversation.Flow {
 func movementToRow(m movement.Movement) movementRow {
 	row := movementRow{
 		Type:     string(m.Type),
-		Amount:   m.Amount.String(),
+		Amount:   displayAmount(m.Amount),
 		Currency: m.Currency.String(),
 		Date:     m.Date.Format("2006-01-02"),
 	}
