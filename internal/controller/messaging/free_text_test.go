@@ -43,6 +43,42 @@ func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, us
 	return o.queryAnswer, o.queryErr
 }
 
+func TestHandleFreeText_QueryRoutesToLoopAndResolves(t *testing.T) {
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery, queryAnswer: "Gastaste 5000 ARS en mayo."}
+	f := &fakeMetricRepo{}
+	c := &controller{orchestrator: orch, metrics: f}
+
+	c.handleFreeText(context.Background(), nil, 123, 1, "cuánto gasté en mayo")
+
+	found := false
+	for _, o := range f.resolved {
+		if o == outcomeQueryAnswered {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a resolve of %q, got %v", outcomeQueryAnswered, f.resolved)
+	}
+}
+
+func TestHandleFreeText_QueryFailureResolvesFailed(t *testing.T) {
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery, queryErr: context.Canceled}
+	f := &fakeMetricRepo{}
+	c := &controller{orchestrator: orch, metrics: f}
+
+	c.handleFreeText(context.Background(), nil, 123, 1, "consulta que falla")
+
+	found := false
+	for _, o := range f.resolved {
+		if o == outcomeQueryFailed {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected a resolve of %q, got %v", outcomeQueryFailed, f.resolved)
+	}
+}
+
 func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 	sub := newSubForTest(1, "Alimentación", "Café")
 	subRepo := &fakeSubcategoryRepoFull{
@@ -204,9 +240,9 @@ func TestHandleFreeText_LogsPendingForCreate(t *testing.T) {
 	}
 }
 
-func TestHandleFreeText_LogsTerminalForQuery(t *testing.T) {
+func TestHandleFreeText_LogsPendingForQuery(t *testing.T) {
 	metrics := &fakeMetricRepo{}
-	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery, queryAnswer: "Gastaste 5000."}
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
@@ -214,8 +250,10 @@ func TestHandleFreeText_LogsTerminalForQuery(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "cuánto gasté este mes")
 
-	if len(metrics.logged) != 1 || metrics.logged[0].outcome != outcomeQueryUnsupported {
-		t.Fatalf("expected one query_unsupported log, got %+v", metrics.logged)
+	// QUERY now logs a pending row at routing time, then resolves it at the
+	// handler terminal (WIP=1) — no longer a direct terminal log.
+	if len(metrics.logged) != 1 || metrics.logged[0].outcome != outcomePending {
+		t.Fatalf("expected one pending query log, got %+v", metrics.logged)
 	}
 }
 
