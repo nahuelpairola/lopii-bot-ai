@@ -17,6 +17,15 @@ type AgentTool struct {
 	Parameters  json.RawMessage
 }
 
+// QueryTurn is one prior question/answer pair fed back to the loop so a
+// follow-up keeps its referent. Textual context only — tools re-run every
+// call, so numbers are always fresh. The messaging controller maps
+// queryhistory.Turn to this (keeps the orchestrator dependency-free).
+type QueryTurn struct {
+	Question string
+	Answer   string
+}
+
 // maxQueryIterations caps how many tool rounds the loop runs before giving
 // up. Typed tools resolve fast; a well-behaved query is 1 tool round + 1
 // narration. The cap is a runaway guard, not the expected path.
@@ -34,7 +43,7 @@ var ErrQueryMaxIterations = errors.New("orchestrator: query loop exceeded max it
 // still wants tools, one final tool_choice:"none" call forces a narration
 // from the accumulated results (only a truly empty final response yields
 // ErrQueryMaxIterations).
-func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, tools []AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
+func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []QueryTurn, tools []AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	toolDefs := make([]toolDef, len(tools))
 	for i, t := range tools {
 		toolDefs[i] = toolDef{
@@ -43,10 +52,14 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		}
 	}
 
-	messages := []loopMessage{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: userText},
+	messages := []loopMessage{{Role: "system", Content: systemPrompt}}
+	for _, t := range history {
+		messages = append(messages,
+			loopMessage{Role: "user", Content: t.Question},
+			loopMessage{Role: "assistant", Content: t.Answer},
+		)
 	}
+	messages = append(messages, loopMessage{Role: "user", Content: userText})
 
 	for i := 0; i < maxQueryIterations; i++ {
 		// Force a tool call on the first round: weak models (8b-instant)
