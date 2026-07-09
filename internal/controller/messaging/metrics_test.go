@@ -24,8 +24,9 @@ func TestRouterOutcome(t *testing.T) {
 
 // fakeMetricRepo captura las llamadas para las Tasks 4-6.
 type fakeMetricRepo struct {
-	logged   []loggedIntent
-	resolved []string
+	logged      []loggedIntent
+	resolved    []string
+	resolvedIDs [][]uint
 }
 
 type loggedIntent struct {
@@ -38,7 +39,17 @@ func (f *fakeMetricRepo) Log(userID uint64, rawMessage, intent string, needsConf
 	return nil
 }
 
-func (f *fakeMetricRepo) Resolve(userID uint64, outcome string) error {
+func (f *fakeMetricRepo) Resolve(userID uint64, outcome string, movementIDs []uint) error {
 	f.resolved = append(f.resolved, outcome)
+	f.resolvedIDs = append(f.resolvedIDs, movementIDs)
 	return nil
+}
+
+func TestResolveMetric_PassesMovementIDs(t *testing.T) {
+	f := &fakeMetricRepo{}
+	c := &controller{metrics: f}
+	c.resolveMetric(7, outcomeDeleteConfirmed, 71, 72)
+	if len(f.resolvedIDs) != 1 || len(f.resolvedIDs[0]) != 2 || f.resolvedIDs[0][0] != 71 || f.resolvedIDs[0][1] != 72 {
+		t.Fatalf("expected ids [71 72], got %v", f.resolvedIDs)
+	}
 }

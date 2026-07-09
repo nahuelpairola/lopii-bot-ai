@@ -119,6 +119,18 @@ func msgPickUpdateCandidate(data conversation.Data) string {
 
 func msgConfirmUpdateDiff(data conversation.Data) string {
 	before := decodeMovementRows(conversation.Data{"movements": data["before_movements"]})
+
+	// regalo/gratis total: the correction zeroes the movement, so it's a
+	// deletion — show what will be removed, not a "corregiría a 0" diff.
+	if stringOrEmpty(data["_delete_instead"]) == "true" {
+		lines := []string{"🗑️ Quedó gratis, así que lo voy a borrar:"}
+		for _, b := range before {
+			lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
+				iconOrDefault(b.Icon), b.Category, b.Subcategory, b.Amount, b.Currency, b.Description, b.Date))
+		}
+		return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
+	}
+
 	after := decodeMovementRows(data)
 
 	lines := []string{"✏️ Se corregiría así:"}
@@ -135,6 +147,7 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 
 const (
 	msgUpdateApplied     = "✅ Corregido."
+	msgUpdateDeleted     = "🗑️ Listo, lo borré (quedó gratis)."
 	msgUpdateCancelled   = "Cancelado, no cambié nada."
 	// Shown only when the window (today, or the mentioned day) has no
 	// movements at all — the fallback picker covers every other case.

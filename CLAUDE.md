@@ -161,7 +161,7 @@ case "account_setup":
 Intents (`internal/orchestrator/types.go`): `CREATE | UPDATE | DELETE | QUERY | ACCOUNT_CREATE | CREATE_CATEGORY`
 - Tool calling: the LLM constructs action parameters, not just the intent type
 - `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
-- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (pg_trgm DB search), not an in-memory store
+- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`), not an in-memory store
 - `CREATE_CATEGORY`: the message asks to create a category/subcategory, not to register/correct/delete a movement. No Call 2 — the flow itself (`subcategory_setup`) asks everything it needs via `ChoiceStep`/`TextStep`, unlike CREATE/UPDATE/DELETE which extract structured data from the message via a second LLM call.
 
 ### Recipe 4: Add an admin command
@@ -293,7 +293,7 @@ floored silently.
 - Low confidence → `PENDING_REVIEW` subcategory, bot asks for confirmation
 - A CREATE the router flags as ambiguous, or that matches an existing recent movement (`resolveCandidates`), stops at a reescribir/cancelar confirm gate instead of inserting — CREATE's frictionless default has this one exception
 - `UPDATE` = atomic `DELETE + INSERT` (never partial patch)
-- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (pg_trgm DB search) — no in-memory last-transaction store
+- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`) — no in-memory last-transaction store
 
 ### Bot interaction
 - No Telegram commands for end users. Everything is free text → LLM → flow or query handler.

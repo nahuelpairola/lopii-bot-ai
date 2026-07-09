@@ -19,8 +19,8 @@ var deleteTool = toolSchema{
 		"type": "object",
 		"properties": {
 			"resolved": {"type": ["boolean", "string"]},
-			"mentioned_date_from": {"type": "string"},
-			"mentioned_date_to": {"type": "string"}
+			"mentioned_date_from": {"type": ["string", "null"]},
+			"mentioned_date_to": {"type": ["string", "null"]}
 		},
 		"required": ["resolved"]
 	}`),

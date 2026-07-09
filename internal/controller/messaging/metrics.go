@@ -3,6 +3,7 @@ package messaging
 import (
 	"log"
 
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -14,8 +15,10 @@ const (
 	outcomeCreateInserted       = "create_inserted"
 	outcomeCreateCancelled      = "create_cancelled"
 	outcomeCreateRewrite        = "create_rewrite"
+	outcomeCreateFailed         = "create_failed"
 	outcomeUpdateConfirmed      = "update_confirmed"
 	outcomeUpdateCancelled      = "update_cancelled"
+	outcomeUpdateFailed         = "update_failed"
 	outcomeDeleteConfirmed      = "delete_confirmed"
 	outcomeDeleteCancelled      = "delete_cancelled"
 	outcomeNoCandidates         = "no_candidates"
@@ -56,11 +59,21 @@ func (c *controller) logIntent(userID uint64, rawMessage string, intent orchestr
 
 // resolveMetric mueve el último pending del usuario a un outcome terminal.
 // Fire-and-forget, mismo criterio que logIntent.
-func (c *controller) resolveMetric(userID uint64, outcome string) {
+func (c *controller) resolveMetric(userID uint64, outcome string, movementIDs ...uint) {
 	if c.metrics == nil {
 		return
 	}
-	if err := c.metrics.Resolve(userID, outcome); err != nil {
+	if err := c.metrics.Resolve(userID, outcome, movementIDs); err != nil {
 		log.Printf("metric: resolve %s: %v", outcome, err)
 	}
+}
+
+// collectMovementIDs pulls the primary keys of a resolved movement set for
+// intent_events traceability (populated by GORM Create on insert/replace).
+func collectMovementIDs(ms []movement.Movement) []uint {
+	ids := make([]uint, len(ms))
+	for i, m := range ms {
+		ids[i] = m.ID
+	}
+	return ids
 }

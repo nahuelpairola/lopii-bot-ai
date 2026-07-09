@@ -41,6 +41,7 @@ type movementRepository interface {
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
 	ReplaceMovements(oldIDs []uint, newMovements []movement.Movement) error
 	FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error)
+	FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]movement.Movement, error)
 	SoftDeleteByIDs(ids []uint) error
 	InsertAccountsWithOpenings(items []movement.AccountOpening) error
 }
@@ -66,7 +67,7 @@ type movementOrchestrator interface {
 
 type metricRepository interface {
 	Log(userID uint64, rawMessage, intent string, needsConfirmation bool, outcome string) error
-	Resolve(userID uint64, outcome string) error
+	Resolve(userID uint64, outcome string, movementIDs []uint) error
 }
 
 type controller struct {

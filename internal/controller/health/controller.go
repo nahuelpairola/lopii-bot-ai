@@ -19,7 +19,7 @@ func NewController(healthChecker healthChecker) *controller {
 }
 
 func (c *controller) RegisterRoutes(router *gin.Engine) {
-	router.Any("/health/internal", c.internalHealthCheck)
+	router.GET("/health/internal", c.internalHealthCheck)
 	router.HEAD("/health/external", c.externalHealthCheck)
 }
 

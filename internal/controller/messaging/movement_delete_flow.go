@@ -106,7 +106,7 @@ func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, c
 		return
 	}
 
-	c.resolveMetric(data.UserID(), outcomeDeleteConfirmed)
+	c.resolveMetric(data.UserID(), outcomeDeleteConfirmed, ids...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgDeleteApplied})
 	}

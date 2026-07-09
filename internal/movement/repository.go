@@ -125,6 +125,23 @@ func (r *repository) FindSimilarForUser(userID uint64, query string, since time.
 	return ms, err
 }
 
+// FindRecentlyCreatedForUser returns the user's non-deleted movements
+// RECORDED (created_at) at or after `since`, newest-recorded first,
+// subcategory preloaded. This is the "what did I just do" window for a
+// correction/deletion that names no date: recency of ENTRY, not of the
+// movement's business date — a movement entered today but dated in the
+// past ("le pagué el asado de ayer") must still be a candidate.
+// created_at is timestamptz, so a time.Time binds directly (no DATE-cast
+// trap; see FindSimilarForUser's note on why `date` needs a string bind).
+func (r *repository) FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]Movement, error) {
+	var ms []Movement
+	err := r.db.DB.Preload("Subcategory").
+		Where("user_id = ? AND created_at >= ?", userID, since).
+		Order("created_at DESC, id DESC").
+		Find(&ms).Error
+	return ms, err
+}
+
 // SoftDeleteByIDs borra (soft-delete vía deleted_at) todas las filas
 // listadas en un solo UPDATE. Devuelve ErrMovementNotFound si ninguna
 // coincide (0 filas afectadas).

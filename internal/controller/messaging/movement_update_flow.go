@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/go-telegram/bot"
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -243,6 +244,7 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 		"movements":             encodeMovementRows(afterRows),
 		"pending_category_gaps": encodeStringSlice(nil),
 		"pending_account_gaps":  encodeStringSlice(nil),
+		"_delete_instead":       strconv.FormatBool(correctionIsDeletion(afterRows)),
 	}
 
 	prompt, err := c.engine.StartWithData(userID, movementUpdateConfirmFlowName, seed)
@@ -292,14 +294,56 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 		return
 	}
 
-	if _, err := c.resolveAndInsertMovements(data); err != nil {
+	// A correction that zeroes the movement (regalo/gratis total) deletes it
+	// instead of storing an illegal amount-0 row — see correctionIsDeletion.
+	if stringOrEmpty(data["_delete_instead"]) == "true" {
+		oldIDs, err := parseUintSlice(decodeStringSlice(data, "old_movement_ids"))
+		if err == nil {
+			err = c.movements.SoftDeleteByIDs(oldIDs)
+		}
+		if err != nil {
+			c.resolveMetric(data.UserID(), outcomeUpdateFailed)
+			if b != nil {
+				b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+			}
+			return
+		}
+		c.resolveMetric(data.UserID(), outcomeUpdateConfirmed, oldIDs...)
 		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateDeleted})
 		}
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeUpdateConfirmed)
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		c.resolveMetric(data.UserID(), outcomeUpdateFailed)
+		if b != nil {
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
+		}
+		return
+	}
+	c.resolveMetric(data.UserID(), outcomeUpdateConfirmed, collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateApplied})
 	}
+}
+
+// correctionIsDeletion reports whether an UPDATE's corrected set nullifies the
+// movement entirely — every row's amount parses to zero. Per the chosen
+// "regalo/gratis total" semantics a correction to 0 deletes the movement
+// rather than storing an illegal amount-0 row (the guard rejects amount 0). A
+// mixed set (some 0, some not) or an unparseable amount returns false and
+// falls through to the guard.
+func correctionIsDeletion(rows []movementRow) bool {
+	if len(rows) == 0 {
+		return false
+	}
+	for _, r := range rows {
+		amt, err := decimal.NewFromString(r.Amount)
+		if err != nil || !amt.IsZero() {
+			return false
+		}
+	}
+	return true
 }
