@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -31,6 +32,9 @@ func (o *fakeOrchestrator) ResolveDelete(ctx context.Context, text string, candi
 }
 func (o *fakeOrchestrator) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
 	return orchestrator.OnboardingResult{}, nil
+}
+func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
+	return "", nil
 }
 
 type fakeStoreForController struct {

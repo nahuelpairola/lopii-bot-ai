@@ -22,7 +22,8 @@ const (
 	outcomeDeleteConfirmed      = "delete_confirmed"
 	outcomeDeleteCancelled      = "delete_cancelled"
 	outcomeNoCandidates         = "no_candidates"
-	outcomeQueryUnsupported     = "query_unsupported"
+	outcomeQueryAnswered        = "query_answered"
+	outcomeQueryFailed          = "query_failed"
 	outcomeAccountCreateRouted  = "account_create_routed"
 	outcomeCategoryCreateRouted = "category_create_routed"
 )
@@ -32,10 +33,8 @@ const (
 // terminal de su flow); el resto es terminal en el acto.
 func routerOutcome(intent orchestrator.Intent) string {
 	switch intent {
-	case orchestrator.IntentCreate, orchestrator.IntentUpdate, orchestrator.IntentDelete:
+	case orchestrator.IntentCreate, orchestrator.IntentUpdate, orchestrator.IntentDelete, orchestrator.IntentQuery:
 		return outcomePending
-	case orchestrator.IntentQuery:
-		return outcomeQueryUnsupported
 	case orchestrator.IntentAccountCreate:
 		return outcomeAccountCreateRouted
 	case orchestrator.IntentCreateCategory:

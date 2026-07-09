@@ -201,3 +201,115 @@ func (r *repository) SumAmountForAccount(accountID uint64) (decimal.Decimal, err
 	}
 	return total.Decimal, nil
 }
+
+// MovementQuery is the shared filter for the read-only QUERY tools. One
+// struct serves both SumForUser and ListForUser — identical filters, so a
+// struct beats an 8-arg signature and keeps the two in sync. Type == nil
+// means "exclude transfers" (the cash-flow default); a non-nil Type filters
+// to exactly that type. Category/Subcategory/AccountID/Merchant are optional
+// narrowing filters (Merchant is a substring ILIKE match — merchant is
+// pg_trgm-indexed). Currency is always required — ARS and USD are never mixed.
+type MovementQuery struct {
+	UserID      uint64
+	From        time.Time
+	To          time.Time
+	Currency    currency.Currency
+	Type        *string
+	Category    *string
+	Subcategory *string
+	AccountID   *uint64
+	Merchant    *string
+}
+
+// CategorySum is one grouped aggregate row. Label is the group key (category
+// name, subcategory, type, account_id as text, "YYYY-MM", "YYYY-MM-DD", or
+// "" when group_by is none). Total is SUM(ABS(amount)) — the sign is a
+// storage detail and never surfaces.
+type CategorySum struct {
+	Label string          `gorm:"column:label"`
+	Total decimal.Decimal `gorm:"column:total"`
+}
+
+// apply adds the shared WHERE clauses to a query already joined to
+// subcategories (alias s). deleted_at IS NULL is automatic (GORM soft delete).
+func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
+	db = db.Where("movements.user_id = ? AND movements.currency = ?", q.UserID, q.Currency.String()).
+		Where("movements.date >= ? AND movements.date <= ?",
+			q.From.Format("2006-01-02"), q.To.Format("2006-01-02"))
+	if q.Type != nil {
+		db = db.Where("movements.type = ?", *q.Type)
+	} else {
+		db = db.Where("movements.type <> ?", string(constants.Transfer))
+	}
+	if q.AccountID != nil {
+		db = db.Where("movements.account_id = ?", *q.AccountID)
+	}
+	if q.Category != nil {
+		db = db.Where("s.category = ?", *q.Category)
+	}
+	if q.Subcategory != nil {
+		db = db.Where("s.subcategory = ?", *q.Subcategory)
+	}
+	if q.Merchant != nil {
+		db = db.Where("movements.merchant ILIKE ?", "%"+*q.Merchant+"%")
+	}
+	return db
+}
+
+// groupLabelExpr maps a group_by name to its SQL expression, or "" for none.
+func groupLabelExpr(groupBy string) string {
+	switch groupBy {
+	case "category":
+		return "s.category"
+	case "subcategory":
+		return "s.subcategory"
+	case "type":
+		return "movements.type::text"
+	case "month":
+		return "to_char(movements.date, 'YYYY-MM')"
+	case "day":
+		return "to_char(movements.date, 'YYYY-MM-DD')"
+	case "account":
+		return "movements.account_id::text"
+	default:
+		return ""
+	}
+}
+
+// SumForUser returns SUM(ABS(amount)) over the filtered movements, optionally
+// grouped. group_by "" (or unknown) yields a single total. Invariants baked
+// in: user-scoped, single currency, abs amounts, transfer excluded by default.
+func (r *repository) SumForUser(q MovementQuery, groupBy string) ([]CategorySum, error) {
+	var rows []CategorySum
+	db := r.db.DB.Model(&Movement{}).
+		Joins("JOIN subcategories s ON s.id = movements.subcategory_id")
+	db = q.apply(db)
+
+	label := groupLabelExpr(groupBy)
+	if label == "" {
+		db = db.Select("'' AS label, COALESCE(SUM(ABS(movements.amount)), 0) AS total")
+	} else {
+		db = db.Select(label + " AS label, COALESCE(SUM(ABS(movements.amount)), 0) AS total").
+			Group(label).
+			Order("total DESC")
+	}
+	err := db.Scan(&rows).Error
+	return rows, err
+}
+
+// ListForUser returns the filtered movements newest-first, capped. Subcategory
+// is preloaded so callers can render category/subcategory names. Amounts are
+// stored signed; callers must render Amount.Abs().
+func (r *repository) ListForUser(q MovementQuery, limit int) ([]Movement, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	var ms []Movement
+	db := r.db.DB.Model(&Movement{}).
+		Select("movements.*").
+		Preload("Subcategory").
+		Joins("JOIN subcategories s ON s.id = movements.subcategory_id")
+	db = q.apply(db)
+	err := db.Order("movements.date DESC, movements.id DESC").Limit(limit).Find(&ms).Error
+	return ms, err
+}

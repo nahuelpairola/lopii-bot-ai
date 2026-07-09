@@ -13,18 +13,19 @@ type Config struct {
 	CreateModel    string
 	UpdateModel    string
 	DeleteModel    string
+	QueryModel     string
 	TimeoutSeconds int
 }
 
-// Orchestrator wires the Groq client to the 4 call types (router,
-// create, update-resolve, delete-resolve), each with its own
-// independently configured model.
+// Orchestrator wires the Groq client to the call types (router, create,
+// update-resolve, delete-resolve, query), each with its own model.
 type Orchestrator struct {
 	client      *Client
 	routerModel string
 	createModel string
 	updateModel string
 	deleteModel string
+	queryModel  string
 }
 
 func New(cfg Config) *Orchestrator {
@@ -34,5 +35,6 @@ func New(cfg Config) *Orchestrator {
 		createModel: cfg.CreateModel,
 		updateModel: cfg.UpdateModel,
 		deleteModel: cfg.DeleteModel,
+		queryModel:  cfg.QueryModel,
 	}
 }

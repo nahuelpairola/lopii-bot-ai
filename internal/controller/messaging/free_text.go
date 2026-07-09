@@ -54,7 +54,12 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 
 	switch result.Intent {
 	case orchestrator.IntentQuery:
-		c.sendText(ctx, b, chatID, msgQueryNotSupported)
+		answered, _ := c.handleQuery(ctx, b, chatID, userID, text)
+		if answered {
+			c.resolveMetric(userID, outcomeQueryAnswered)
+		} else {
+			c.resolveMetric(userID, outcomeQueryFailed)
+		}
 	case orchestrator.IntentCreate:
 		c.startMovementCreate(ctx, b, chatID, userID, text, result.NeedsConfirmation)
 	case orchestrator.IntentUpdate:

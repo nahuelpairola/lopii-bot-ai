@@ -11,7 +11,7 @@ func TestRouterOutcome(t *testing.T) {
 		orchestrator.IntentCreate:         outcomePending,
 		orchestrator.IntentUpdate:         outcomePending,
 		orchestrator.IntentDelete:         outcomePending,
-		orchestrator.IntentQuery:          outcomeQueryUnsupported,
+		orchestrator.IntentQuery:          outcomePending,
 		orchestrator.IntentAccountCreate:  outcomeAccountCreateRouted,
 		orchestrator.IntentCreateCategory: outcomeCategoryCreateRouted,
 	}
