@@ -176,4 +176,16 @@ func TestQueryEval(t *testing.T) {
 			t.Error("expected a non-empty taxonomy answer")
 		}
 	})
+	t.Run("seguro_ambiguo_no_pregunta", func(t *testing.T) {
+		ans := ask("¿pagué el seguro este mes?")
+		if strings.Contains(ans, "¿") {
+			t.Errorf("QUERY must never ask a clarifying question — answer all interpretations. Got: %s", ans)
+		}
+	})
+	t.Run("sin_markdown", func(t *testing.T) {
+		ans := ask("¿qué categorías tengo disponibles?")
+		if strings.Contains(ans, "*") {
+			t.Errorf("answer must be plain text (no markdown '*'/'**'). Got: %s", ans)
+		}
+	})
 }

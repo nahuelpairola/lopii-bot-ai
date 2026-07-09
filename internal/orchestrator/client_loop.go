@@ -1,12 +1,9 @@
 package orchestrator
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 )
 
 // loopToolCall is one tool call inside an assistant message during the
@@ -74,25 +71,9 @@ func (c *Client) chatCompletionLoop(ctx context.Context, model string, messages 
 		return loopMessage{}, fmt.Errorf("orchestrator: marshal loop request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(payload))
+	body, err := c.send(ctx, payload)
 	if err != nil {
-		return loopMessage{}, fmt.Errorf("orchestrator: build loop request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return loopMessage{}, fmt.Errorf("orchestrator: loop request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return loopMessage{}, fmt.Errorf("orchestrator: read loop response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return loopMessage{}, fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
+		return loopMessage{}, err
 	}
 
 	var parsed loopResponse

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -24,6 +26,93 @@ func NewClient(apiKey, baseURL string, timeout time.Duration) *Client {
 		apiKey:     apiKey,
 		baseURL:    baseURL,
 	}
+}
+
+const (
+	// maxSendAttempts caps total tries (1 original + 2 retries) on a transient
+	// Groq failure. Retry fires ONLY on failure, so the happy path adds 0ms.
+	maxSendAttempts = 3
+	// baseBackoff is the first retry wait; it doubles each attempt (250ms, 500ms).
+	baseBackoff = 250 * time.Millisecond
+	// maxBackoff caps any single wait (including an honored Retry-After) so a
+	// slow 429 never freezes the user longer than this.
+	maxBackoff = 1 * time.Second
+)
+
+// send POSTs payload to Groq's chat/completions and returns the 200 body. It
+// retries only transient failures — a network error, HTTP 429, or any 5xx —
+// up to maxSendAttempts with short exponential backoff (honoring a 429's
+// Retry-After header, capped at maxBackoff). A non-429 4xx (a malformed
+// request = our bug) fails immediately. The whole sequence is bound by ctx.
+// This is the single Groq I/O chokepoint: every call type (router, create,
+// update, delete, onboarding, query) inherits the retry.
+func (c *Client) send(ctx context.Context, payload []byte) ([]byte, error) {
+	var lastErr error
+	wait := baseBackoff
+	for attempt := 0; attempt < maxSendAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			wait *= 2
+			if wait > maxBackoff {
+				wait = maxBackoff
+			}
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(payload))
+		if err != nil {
+			return nil, fmt.Errorf("orchestrator: build request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("orchestrator: request failed: %w", err)
+			continue // network error — transient, retry
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("orchestrator: read response: %w", err)
+			continue
+		}
+		if resp.StatusCode == http.StatusOK {
+			return body, nil
+		}
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
+			if ra := retryAfter(resp.Header); ra > 0 {
+				wait = ra
+				if wait > maxBackoff {
+					wait = maxBackoff
+				}
+			}
+			continue // transient — retry
+		}
+		// non-retryable (a non-429 4xx = malformed request, our bug)
+		return nil, fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
+	}
+	return nil, lastErr
+}
+
+// retryAfter parses a Retry-After header expressed in whole seconds (Groq's
+// form). A missing / HTTP-date / garbage value returns 0 → the caller keeps
+// its exponential backoff.
+// ponytail: seconds only; add HTTP-date parsing if Groq ever sends that form.
+func retryAfter(h http.Header) time.Duration {
+	v := h.Get("Retry-After")
+	if v == "" {
+		return 0
+	}
+	secs, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // toolSchema describes the single tool a call forces the model to
@@ -138,25 +227,9 @@ func (c *Client) chatCompletion(ctx context.Context, model, systemPrompt, userMe
 		return nil, fmt.Errorf("orchestrator: marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(payload))
+	body, err := c.send(ctx, payload)
 	if err != nil {
-		return nil, fmt.Errorf("orchestrator: build request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("orchestrator: request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("orchestrator: read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
+		return nil, err
 	}
 
 	var parsed chatCompletionResponse

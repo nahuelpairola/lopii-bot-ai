@@ -120,7 +120,13 @@ Basá TODA cifra en los datos que devuelven las herramientas — nunca inventes 
 Sí podés hacer aritmética SOBRE esos datos: sumar, restar, promediar o sacar tasas por día/mes. Para un promedio mensual, pedí los totales por mes (group_by=month) y dividí. Para comparar dos períodos ("cuánto más que el mes pasado"), pedí cada total y restá. Para una tasa diaria, dividí el total por la cantidad de días del rango.
 Hoy es %s (zona America/Argentina/Buenos_Aires). Resolvé fechas relativas ("hoy", "ayer", "esta semana", "el mes pasado", "mayo") a rangos concretos YYYY-MM-DD antes de llamar una herramienta.
 Los montos se muestran siempre en positivo. ARS y USD son mundos separados: nunca los sumes ni los conviertas; si hacen falta ambos, reportá cada uno por su lado.
-Cuando tengas los datos, respondé en español rioplatense, claro y breve. Si la pregunta no se puede responder con estas herramientas, decilo con amabilidad en una línea.`, today)
+Nunca hagas una pregunta de aclaración — no podés recibir la respuesta del usuario. Si la consulta es ambigua entre varias categorías o cuentas conocidas, resolvela vos: usá list_categories para ver las que aplican y respondé TODAS las interpretaciones plausibles en la misma respuesta, marcando "sin registros" las que no tengan datos.
+Cuando tengas los datos, respondé en español rioplatense, claro y breve.
+No uses Markdown ni caracteres decorativos: nada de *, **, _, #, ni guiones largos como separadores — Telegram los muestra crudos. Escribí texto plano, prolijo y bien organizado: líneas cortas, un ítem por línea cuando enumeres.
+Montos en formato argentino: separador de miles con punto y símbolo adelante ($5.500, $1.234,56); no muestres los centavos ".00"/",00" cuando el monto es entero de pesos. Aclará la moneda (ARS/USD) cuando haga falta.
+Fechas en formato amable (01/07 o "1 de julio"), nunca 2026-07-01.
+Cuando una herramienta te da un emoji junto a una categoría, poné ese emoji al principio de la línea para que se lea visual.
+Si la pregunta no se puede responder con estas herramientas, decilo con amabilidad en una línea.`, today)
 }
 
 // buildQueryExecutor returns the execute closure the loop calls per tool
@@ -157,7 +163,11 @@ func (c *controller) execListCategories(userID uint64, args queryToolArgs) (stri
 		if args.Category != "" && s.Category != args.Category {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%s | %s | %s", s.Category, s.Subcategory, s.Description))
+		line := fmt.Sprintf("%s | %s | %s", s.Category, s.Subcategory, s.Description)
+		if s.Icon != "" {
+			line = s.Icon + " " + line
+		}
+		lines = append(lines, line)
 	}
 	if len(lines) == 0 {
 		return "No hay categorías que coincidan.", nil
@@ -197,6 +207,9 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 			if n, ok := nameByID[label]; ok {
 				label = n
 			}
+		}
+		if groupBy == "category" && label != "" {
+			label = c.subcategories.IconForCategory(userID, label) + " " + label
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
 	}

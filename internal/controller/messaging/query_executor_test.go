@@ -94,6 +94,32 @@ func TestExec_ListCategories(t *testing.T) {
 	}
 }
 
+func TestExec_ListCategories_LeadsWithIcon(t *testing.T) {
+	s := &fakeQuerySubcats{subs: []subcategory.Subcategory{
+		{Category: "Comida", Subcategory: "Restaurante", Description: "afuera", Icon: "🍔"},
+	}}
+	exec := newQueryController(&fakeQueryMovements{}, &fakeQueryAccounts{}, s).buildQueryExecutor(1)
+
+	out, err := exec("list_categories", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "🍔 Comida") {
+		t.Errorf("category line should lead with its icon, got: %s", out)
+	}
+}
+
+func TestExec_SumMovements_GroupByCategory_LeadsWithIcon(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Comida", Total: dec("5000")}}}
+	s := &fakeQuerySubcats{} // IconForCategory returns "📂"
+	exec := newQueryController(m, &fakeQueryAccounts{}, s).buildQueryExecutor(1)
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","group_by":"category"}`))
+	if !strings.Contains(out, "📂 Comida") {
+		t.Errorf("category total should lead with an icon, got: %s", out)
+	}
+}
+
 // Case: "cuánto gasté en comida en mayo" — range + category + currency,
 // transfer excluded by default (Type nil).
 func TestExec_SumMovements_FoodInMay(t *testing.T) {
