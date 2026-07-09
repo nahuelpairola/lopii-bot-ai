@@ -212,8 +212,9 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
+		c.resolveMetric(data.UserID(), outcomeCreateFailed)
 		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
 		}
 		return
 	}
