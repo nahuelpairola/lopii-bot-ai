@@ -23,5 +23,9 @@ routerModel = "llama-3.1-8b-instant"
 createModel = "openai/gpt-oss-20b"
 updateModel = "openai/gpt-oss-20b"
 deleteModel = "llama-3.1-8b-instant"
-queryModel = "openai/gpt-oss-20b"
+queryModel = "openai/gpt-oss-120b"
 timeoutSeconds = 10
+
+[query]
+historyTtlMinutes = 10
+historyLimit = 5

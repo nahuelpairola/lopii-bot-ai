@@ -16,6 +16,7 @@ import (
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -66,12 +67,17 @@ type movementOrchestrator interface {
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
-	AnswerQuery(ctx context.Context, systemPrompt, userText string, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
+	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
 type metricRepository interface {
 	Log(userID uint64, rawMessage, intent string, needsConfirmation bool, outcome string) error
 	Resolve(userID uint64, outcome string, movementIDs []uint) error
+}
+
+type queryHistoryRepository interface {
+	Recent(userID uint64) ([]queryhistory.Turn, error)
+	Append(userID uint64, question, answer string) error
 }
 
 type controller struct {
@@ -83,6 +89,7 @@ type controller struct {
 	engine        *conversation.Engine
 	orchestrator  movementOrchestrator
 	metrics       metricRepository
+	queryHistory  queryHistoryRepository
 }
 
 func NewController(
@@ -94,6 +101,7 @@ func NewController(
 	engine *conversation.Engine,
 	orch movementOrchestrator,
 	metrics metricRepository,
+	queryHistory queryHistoryRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -104,6 +112,7 @@ func NewController(
 		engine:        engine,
 		orchestrator:  orch,
 		metrics:       metrics,
+		queryHistory:  queryHistory,
 	}
 }
 

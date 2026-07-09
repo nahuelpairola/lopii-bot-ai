@@ -130,7 +130,7 @@ func TestQueryEval(t *testing.T) {
 		}
 		asked++
 		for attempt := 0; ; attempt++ {
-			ans, err := c.orchestrator.AnswerQuery(context.Background(), prompt, q, queryTools, exec)
+			ans, err := c.orchestrator.AnswerQuery(context.Background(), prompt, q, nil, queryTools, exec)
 			if err != nil {
 				if attempt < 4 && strings.Contains(err.Error(), "rate_limit") {
 					t.Logf("rate-limited, backing off 20s (attempt %d)", attempt+1)

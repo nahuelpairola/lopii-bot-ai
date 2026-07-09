@@ -45,12 +45,18 @@ type groq struct {
 	TimeoutSeconds int    `mapstructure:"timeoutSeconds"`
 }
 
+type query struct {
+	HistoryTtlMinutes int `mapstructure:"historyTtlMinutes"`
+	HistoryLimit      int `mapstructure:"historyLimit"`
+}
+
 type Config struct {
 	Env      string   `mapstructure:"env"`
 	Server   server   `mapstructure:"server"`
 	Database database `mapstructure:"database"`
 	Telegram telegram `mapstructure:"telegram"`
 	Groq     groq     `mapstructure:"groq"`
+	Query    query    `mapstructure:"query"`
 }
 
 func Initialize() (*Config, error) {
@@ -61,6 +67,8 @@ func Initialize() (*Config, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.SetDefault("Server.Port", "80")
+	viper.SetDefault("Query.HistoryTtlMinutes", 10)
+	viper.SetDefault("Query.HistoryLimit", 5)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err

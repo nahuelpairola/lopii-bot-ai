@@ -38,7 +38,7 @@ func TestAnswerQuery_ExecutesToolThenReturnsContent(t *testing.T) {
 	}
 
 	o := newQueryOrchestrator(server.URL)
-	answer, err := o.AnswerQuery(context.Background(), "system", "cuánto gasté",
+	answer, err := o.AnswerQuery(context.Background(), "system", "cuánto gasté", nil,
 		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{"type":"object"}`)}}, execute)
 	if err != nil {
 		t.Fatalf("AnswerQuery: %v", err)
@@ -69,7 +69,7 @@ func TestAnswerQuery_MaxIterationsError(t *testing.T) {
 
 	execute := func(name string, args json.RawMessage) (string, error) { return "x", nil }
 	o := newQueryOrchestrator(server.URL)
-	_, err := o.AnswerQuery(context.Background(), "s", "u",
+	_, err := o.AnswerQuery(context.Background(), "s", "u", nil,
 		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
 	if !errors.Is(err, ErrQueryMaxIterations) {
 		t.Fatalf("err = %v, want ErrQueryMaxIterations", err)
@@ -99,7 +99,7 @@ func TestAnswerQuery_ForcedFinalNarrationOnCap(t *testing.T) {
 
 	execute := func(name string, args json.RawMessage) (string, error) { return "x", nil }
 	o := newQueryOrchestrator(server.URL)
-	answer, err := o.AnswerQuery(context.Background(), "s", "u",
+	answer, err := o.AnswerQuery(context.Background(), "s", "u", nil,
 		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
 	if err != nil {
 		t.Fatalf("AnswerQuery: %v", err)
@@ -147,13 +147,56 @@ func TestAnswerQuery_FinalNarration_NeverOffersTools(t *testing.T) {
 
 	execute := func(name string, args json.RawMessage) (string, error) { return "x", nil }
 	o := newQueryOrchestrator(server.URL)
-	answer, err := o.AnswerQuery(context.Background(), "s", "u",
+	answer, err := o.AnswerQuery(context.Background(), "s", "u", nil,
 		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
 	if err != nil {
 		t.Fatalf("AnswerQuery: %v (final round must never offer tools, so the 400 must never happen)", err)
 	}
 	if answer != "Resumen sin herramientas." {
 		t.Errorf("answer = %q", answer)
+	}
+}
+
+func TestAnswerQuery_PrependsHistory(t *testing.T) {
+	var gotMessages []loopMessage
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loopRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		gotMessages = req.Messages
+		// Return final content immediately (no tool calls) so the loop ends round 1.
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{BaseURL: server.URL, QueryModel: "m", TimeoutSeconds: 5})
+	history := []QueryTurn{
+		{Question: "cuanto gaste en automotor esta semana?", Answer: "0 ARS"},
+	}
+	_, err := o.AnswerQuery(context.Background(), "system", "y la semana anterior?", history,
+		[]AgentTool{{Name: "sum_movements", Description: "d", Parameters: json.RawMessage(`{"type":"object"}`)}},
+		func(name string, args json.RawMessage) (string, error) { return "", nil })
+	if err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+
+	// Expect: system, user(q1), assistant(a1), user(current)
+	if len(gotMessages) != 4 {
+		t.Fatalf("messages len = %d, want 4: %+v", len(gotMessages), gotMessages)
+	}
+	if gotMessages[0].Role != "system" {
+		t.Errorf("msg[0] role = %q, want system", gotMessages[0].Role)
+	}
+	if gotMessages[1].Role != "user" || gotMessages[1].Content != "cuanto gaste en automotor esta semana?" {
+		t.Errorf("msg[1] = %+v, want user q1", gotMessages[1])
+	}
+	if gotMessages[2].Role != "assistant" || gotMessages[2].Content != "0 ARS" {
+		t.Errorf("msg[2] = %+v, want assistant a1", gotMessages[2])
+	}
+	if gotMessages[3].Role != "user" || gotMessages[3].Content != "y la semana anterior?" {
+		t.Errorf("msg[3] = %+v, want user current", gotMessages[3])
 	}
 }
 

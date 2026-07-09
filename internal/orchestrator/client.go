@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -29,23 +30,60 @@ func NewClient(apiKey, baseURL string, timeout time.Duration) *Client {
 }
 
 const (
-	// maxSendAttempts caps total tries (1 original + 2 retries) on a transient
+	// maxSendAttempts caps total tries (1 original + 3 retries) on a transient
 	// Groq failure. Retry fires ONLY on failure, so the happy path adds 0ms.
-	maxSendAttempts = 3
-	// baseBackoff is the first retry wait; it doubles each attempt (250ms, 500ms).
+	maxSendAttempts = 4
+	// baseBackoff is the first retry wait for the blind exponential path (no
+	// Retry-After header, no parseable body wait — plain 5xx/network errors);
+	// it doubles each attempt (250ms, 500ms, 1s).
 	baseBackoff = 250 * time.Millisecond
-	// maxBackoff caps any single wait (including an honored Retry-After) so a
-	// slow 429 never freezes the user longer than this.
-	maxBackoff = 1 * time.Second
+	// maxBackoff caps any single wait, including an honored Retry-After header
+	// or a body-parsed Groq TPM wait (see parseGroqRetryAfterSeconds) — a slow
+	// 429 never freezes the user longer than this. Real Groq TPM waits
+	// observed up to ~15s, so this must be well above the old 1s cap to be
+	// honored at all instead of silently truncated to uselessness.
+	maxBackoff = 20 * time.Second
 )
+
+// groqRetryAfterPattern matches Groq's TPM (tokens-per-minute) 429 error
+// message, e.g. "...Please try again in 4.185s." Groq does not set a
+// Retry-After header for token-based rate limits (only for request-count
+// ones), so this free-text wait is the only precise signal available.
+var groqRetryAfterPattern = regexp.MustCompile(`(?i)try again in ([0-9]*\.?[0-9]+)s`)
+
+// parseGroqRetryAfterSeconds extracts the wait Groq's TPM 429 body
+// recommends. Returns 0 if the body doesn't match (caller falls back to
+// blind exponential backoff) — a malformed/unexpected error body must never
+// panic or block the retry loop.
+func parseGroqRetryAfterSeconds(body []byte) time.Duration {
+	var parsed struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return 0
+	}
+	m := groqRetryAfterPattern.FindStringSubmatch(parsed.Error.Message)
+	if m == nil {
+		return 0
+	}
+	secs, err := strconv.ParseFloat(m[1], 64)
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	return time.Duration(secs * float64(time.Second))
+}
 
 // send POSTs payload to Groq's chat/completions and returns the 200 body. It
 // retries only transient failures — a network error, HTTP 429, or any 5xx —
-// up to maxSendAttempts with short exponential backoff (honoring a 429's
-// Retry-After header, capped at maxBackoff). A non-429 4xx (a malformed
-// request = our bug) fails immediately. The whole sequence is bound by ctx.
-// This is the single Groq I/O chokepoint: every call type (router, create,
-// update, delete, onboarding, query) inherits the retry.
+// up to maxSendAttempts. Wait between retries prefers, in order: the 429's
+// Retry-After header; Groq's body-stated TPM wait (parseGroqRetryAfterSeconds
+// — Groq doesn't send a header for token-based 429s); else blind exponential
+// backoff. All capped at maxBackoff. A non-429 4xx (a malformed request = our
+// bug) fails immediately. The whole sequence is bound by ctx. This is the
+// single Groq I/O chokepoint: every call type (router, create, update,
+// delete, onboarding, query) inherits the retry.
 func (c *Client) send(ctx context.Context, payload []byte) ([]byte, error) {
 	var lastErr error
 	wait := baseBackoff
@@ -85,7 +123,11 @@ func (c *Client) send(ctx context.Context, payload []byte) ([]byte, error) {
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			lastErr = fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
-			if ra := retryAfter(resp.Header); ra > 0 {
+			ra := retryAfter(resp.Header)
+			if ra == 0 && resp.StatusCode == http.StatusTooManyRequests {
+				ra = parseGroqRetryAfterSeconds(body)
+			}
+			if ra > 0 {
 				wait = ra
 				if wait > maxBackoff {
 					wait = maxBackoff

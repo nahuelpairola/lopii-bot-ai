@@ -104,12 +104,21 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 	prompt := c.buildQuerySystemPrompt()
 	execute := c.buildQueryExecutor(userID)
 
-	answer, err := c.orchestrator.AnswerQuery(ctx, prompt, text, queryTools, execute)
+	// Best-effort: a history load error never fails the query — run stateless.
+	turns, _ := c.queryHistory.Recent(userID)
+	history := make([]orchestrator.QueryTurn, len(turns))
+	for i, t := range turns {
+		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
+	}
+
+	answer, err := c.orchestrator.AnswerQuery(ctx, prompt, text, history, queryTools, execute)
 	if err != nil || strings.TrimSpace(answer) == "" {
 		c.sendText(ctx, b, chatID, msgQueryFailed)
 		return false, err
 	}
 	c.sendText(ctx, b, chatID, answer)
+	// Best-effort append: a failure here never fails the answer the user already got.
+	_ = c.queryHistory.Append(userID, text, answer)
 	return true, nil
 }
 

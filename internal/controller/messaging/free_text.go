@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"errors"
+	"log"
 	"strconv"
 	"time"
 
@@ -54,10 +55,13 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 
 	switch result.Intent {
 	case orchestrator.IntentQuery:
-		answered, _ := c.handleQuery(ctx, b, chatID, userID, text)
+		answered, qErr := c.handleQuery(ctx, b, chatID, userID, text)
 		if answered {
 			c.resolveMetric(userID, outcomeQueryAnswered)
 		} else {
+			if qErr != nil {
+				log.Printf("query: handleQuery failed for user %d: %v", userID, qErr)
+			}
 			c.resolveMetric(userID, outcomeQueryFailed)
 		}
 	case orchestrator.IntentCreate:
