@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-telegram/bot"
@@ -18,6 +19,7 @@ import (
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -47,6 +49,11 @@ func InitServer(conf *config.Config) error {
 	accountRepo := account.NewRepository(conn)
 	movementRepo := movement.InitRepository(conn)
 	metricRepo := metric.InitRepository(conn)
+	queryHistoryRepo := queryhistory.InitRepository(
+		conn,
+		time.Duration(conf.Query.HistoryTtlMinutes)*time.Minute,
+		conf.Query.HistoryLimit,
+	)
 	subcategoryRepo := subcategory.NewRepository(conn)
 	subcategoryCache, err := subcategory.NewCache(subcategoryRepo)
 	if err != nil {
@@ -84,7 +91,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator, metricRepo,
+		llmOrchestrator, metricRepo, queryHistoryRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 

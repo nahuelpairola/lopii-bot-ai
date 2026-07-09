@@ -33,7 +33,7 @@ func (o *fakeOrchestrator) ResolveDelete(ctx context.Context, text string, candi
 func (o *fakeOrchestrator) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
 	return orchestrator.OnboardingResult{}, nil
 }
-func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
+func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return "", nil
 }
 
