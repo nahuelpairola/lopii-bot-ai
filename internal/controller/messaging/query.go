@@ -15,6 +15,12 @@ import (
 
 // queryTools are the read-only tools the QUERY loop composes. Invariants
 // live in the executor (Go), not here — the model only picks tools + ranges.
+// Optional params are declared nullable (`["string","null"]`) — the tool-
+// calling models routinely emit an explicit `null` for an argument they don't
+// want to set, and Groq validates arguments against the schema server-side, so
+// a plain `"string"` type 400s on that null before the executor ever runs.
+// json.Unmarshal of null leaves the Go zero value, so the executor already
+// treats it as "absent". Only from/to/currency are required (never null).
 var queryTools = []orchestrator.AgentTool{
 	{
 		Name:        "list_categories",
@@ -22,7 +28,7 @@ var queryTools = []orchestrator.AgentTool{
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"category": {"type": "string", "description": "opcional: filtrar a una sola categoría"}
+				"category": {"type": ["string", "null"], "description": "opcional: filtrar a una sola categoría"}
 			}
 		}`),
 	},
@@ -35,12 +41,12 @@ var queryTools = []orchestrator.AgentTool{
 				"from": {"type": "string", "description": "fecha desde YYYY-MM-DD"},
 				"to": {"type": "string", "description": "fecha hasta YYYY-MM-DD"},
 				"currency": {"type": "string", "enum": ["ARS", "USD"]},
-				"group_by": {"type": "string", "enum": ["none", "category", "subcategory", "type", "month", "day", "account"]},
-				"type": {"type": "string", "enum": ["expense", "income", "transfer"], "description": "opcional; sin esto se excluyen las transferencias"},
-				"category": {"type": "string"},
-				"subcategory": {"type": "string"},
-				"account": {"type": "string", "description": "opcional: nombre de una cuenta del usuario"},
-				"merchant": {"type": "string", "description": "opcional: nombre de comercio (coincidencia parcial, ej. Carrefour)"}
+				"group_by": {"type": ["string", "null"], "enum": ["none", "category", "subcategory", "type", "month", "day", "account", null]},
+				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null], "description": "opcional; sin esto se excluyen las transferencias"},
+				"category": {"type": ["string", "null"]},
+				"subcategory": {"type": ["string", "null"]},
+				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
+				"merchant": {"type": ["string", "null"], "description": "opcional: nombre de comercio (coincidencia parcial, ej. Carrefour)"}
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -54,12 +60,12 @@ var queryTools = []orchestrator.AgentTool{
 				"from": {"type": "string", "description": "fecha desde YYYY-MM-DD"},
 				"to": {"type": "string", "description": "fecha hasta YYYY-MM-DD"},
 				"currency": {"type": "string", "enum": ["ARS", "USD"]},
-				"type": {"type": "string", "enum": ["expense", "income", "transfer"]},
-				"category": {"type": "string"},
-				"subcategory": {"type": "string"},
-				"account": {"type": "string"},
-				"merchant": {"type": "string", "description": "opcional: nombre de comercio (coincidencia parcial)"},
-				"limit": {"type": "integer", "description": "máximo de filas (default 20, tope 50)"}
+				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null]},
+				"category": {"type": ["string", "null"]},
+				"subcategory": {"type": ["string", "null"]},
+				"account": {"type": ["string", "null"]},
+				"merchant": {"type": ["string", "null"], "description": "opcional: nombre de comercio (coincidencia parcial)"},
+				"limit": {"type": ["integer", "null"], "description": "máximo de filas (default 20, tope 50)"}
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -70,7 +76,7 @@ var queryTools = []orchestrator.AgentTool{
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"account": {"type": "string", "description": "opcional: nombre de una cuenta; sin esto, todas"}
+				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta; sin esto, todas"}
 			}
 		}`),
 	},

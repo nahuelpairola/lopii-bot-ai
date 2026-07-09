@@ -49,7 +49,15 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	}
 
 	for i := 0; i < maxQueryIterations; i++ {
-		assistant, err := o.client.chatCompletionLoop(ctx, o.queryModel, messages, toolDefs, "auto")
+		// Force a tool call on the first round: weak models (8b-instant)
+		// sometimes deflect ("no puedo darte una respuesta exacta") without
+		// ever calling a tool. "required" guarantees the loop gathers real
+		// data before it is allowed to narrate; later rounds go back to "auto".
+		choice := "auto"
+		if i == 0 {
+			choice = "required"
+		}
+		assistant, err := o.client.chatCompletionLoop(ctx, o.queryModel, messages, toolDefs, choice)
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: answer query: %w", err)
 		}
