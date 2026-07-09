@@ -34,6 +34,43 @@ func TestClient_Send_RetriesTransientThenSucceeds(t *testing.T) {
 	}
 }
 
+func TestClient_Send_HonorsGroqBodyRetryAfterOnTPM429(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&hits, 1) == 1 {
+			// No Retry-After header — Groq doesn't set one for TPM (token-based)
+			// 429s, only the free-text message says how long to wait.
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"error":{"message":"Rate limit reached for model x on tokens per minute (TPM): Limit 8000, Used 7696, Requested 2254. Please try again in 3.05s.","type":"tokens","code":"rate_limit_exceeded"}}`))
+			return
+		}
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("k", server.URL, 10*time.Second)
+	start := time.Now()
+	body, err := client.send(context.Background(), []byte(`{}`))
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if string(body) != `{"ok":true}` {
+		t.Errorf("body = %s, want {\"ok\":true}", body)
+	}
+	if n := atomic.LoadInt32(&hits); n != 2 {
+		t.Errorf("server hits = %d, want 2 (one 429 then success)", n)
+	}
+	// The old maxBackoff (1s) would cap this wait far short of the 3.05s Groq
+	// asked for. Honoring the body means we actually wait close to it.
+	if elapsed < 3*time.Second {
+		t.Errorf("elapsed = %s, want >= 3s (should honor Groq's body-stated wait, not the old 1s blind cap)", elapsed)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("elapsed = %s, want < 5s (shouldn't overshoot the stated wait by much)", elapsed)
+	}
+}
+
 func TestClient_Send_NoRetryOnClientError(t *testing.T) {
 	var hits int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
