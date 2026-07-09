@@ -1,0 +1,113 @@
+package orchestrator
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func newQueryOrchestrator(url string) *Orchestrator {
+	return New(Config{APIKey: "k", BaseURL: url, QueryModel: "test-model", TimeoutSeconds: 5})
+}
+
+func TestAnswerQuery_ExecutesToolThenReturnsContent(t *testing.T) {
+	call := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		w.Header().Set("Content-Type", "application/json")
+		if call == 1 {
+			w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"c1","type":"function","function":{"name":"sum_movements","arguments":"{\"currency\":\"ARS\"}"}}
+			]}}]}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"Gastaste 5000 ARS.","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	var gotName string
+	var gotArgs string
+	execute := func(name string, args json.RawMessage) (string, error) {
+		gotName = name
+		gotArgs = string(args)
+		return "total: 5000", nil
+	}
+
+	o := newQueryOrchestrator(server.URL)
+	answer, err := o.AnswerQuery(context.Background(), "system", "cuánto gasté",
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{"type":"object"}`)}}, execute)
+	if err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+	if gotName != "sum_movements" {
+		t.Errorf("executed tool = %q, want sum_movements", gotName)
+	}
+	if gotArgs != `{"currency":"ARS"}` {
+		t.Errorf("executed args = %q", gotArgs)
+	}
+	if answer != "Gastaste 5000 ARS." {
+		t.Errorf("answer = %q", answer)
+	}
+	if call != 2 {
+		t.Errorf("groq calls = %d, want 2 (tool round + narration)", call)
+	}
+}
+
+func TestAnswerQuery_MaxIterationsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Never stops calling tools.
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+			{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{}"}}
+		]}}]}`))
+	}))
+	defer server.Close()
+
+	execute := func(name string, args json.RawMessage) (string, error) { return "x", nil }
+	o := newQueryOrchestrator(server.URL)
+	_, err := o.AnswerQuery(context.Background(), "s", "u",
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
+	if !errors.Is(err, ErrQueryMaxIterations) {
+		t.Fatalf("err = %v, want ErrQueryMaxIterations", err)
+	}
+}
+
+func TestAnswerQuery_ForcedFinalNarrationOnCap(t *testing.T) {
+	call := 0
+	var finalToolChoice string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		if call <= maxQueryIterations {
+			w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{}"}}
+			]}}]}`))
+			return
+		}
+		finalToolChoice = req.ToolChoice
+		w.Write([]byte(`{"choices":[{"message":{"content":"Acá va el resumen.","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	execute := func(name string, args json.RawMessage) (string, error) { return "x", nil }
+	o := newQueryOrchestrator(server.URL)
+	answer, err := o.AnswerQuery(context.Background(), "s", "u",
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
+	if err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+	if answer != "Acá va el resumen." {
+		t.Errorf("answer = %q", answer)
+	}
+	if finalToolChoice != "none" {
+		t.Errorf("final tool_choice = %q, want none (forced narration)", finalToolChoice)
+	}
+}
+
+var _ = time.Second
