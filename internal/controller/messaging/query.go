@@ -157,7 +157,11 @@ func (c *controller) execListCategories(userID uint64, args queryToolArgs) (stri
 		if args.Category != "" && s.Category != args.Category {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%s | %s | %s", s.Category, s.Subcategory, s.Description))
+		line := fmt.Sprintf("%s | %s | %s", s.Category, s.Subcategory, s.Description)
+		if s.Icon != "" {
+			line = s.Icon + " " + line
+		}
+		lines = append(lines, line)
 	}
 	if len(lines) == 0 {
 		return "No hay categorías que coincidan.", nil
@@ -197,6 +201,9 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 			if n, ok := nameByID[label]; ok {
 				label = n
 			}
+		}
+		if groupBy == "category" && label != "" {
+			label = c.subcategories.IconForCategory(userID, label) + " " + label
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
 	}
