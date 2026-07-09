@@ -79,6 +79,7 @@ func TestAnswerQuery_MaxIterationsError(t *testing.T) {
 func TestAnswerQuery_ForcedFinalNarrationOnCap(t *testing.T) {
 	call := 0
 	var finalToolChoice string
+	var finalToolsCount int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		call++
 		var req loopRequest
@@ -91,6 +92,7 @@ func TestAnswerQuery_ForcedFinalNarrationOnCap(t *testing.T) {
 			return
 		}
 		finalToolChoice = req.ToolChoice
+		finalToolsCount = len(req.Tools)
 		w.Write([]byte(`{"choices":[{"message":{"content":"Acá va el resumen.","tool_calls":null}}]}`))
 	}))
 	defer server.Close()
@@ -107,6 +109,51 @@ func TestAnswerQuery_ForcedFinalNarrationOnCap(t *testing.T) {
 	}
 	if finalToolChoice != "none" {
 		t.Errorf("final tool_choice = %q, want none (forced narration)", finalToolChoice)
+	}
+	if finalToolsCount != 0 {
+		t.Errorf("final round tools = %d, want 0 (no tool schemas => nothing for the model to call)", finalToolsCount)
+	}
+}
+
+// Regression: Groq hard-400s a request where tool_choice is "none" but the
+// model still attempts a tool call — observed for real against gpt-oss-120b
+// (not just the weak models), which broke the forced-narration guarantee the
+// max-iterations path depends on. Root cause was sending toolDefs alongside
+// tool_choice:"none"; the fix omits tools on that call so nothing exists for
+// the model to call. This test pins the final round to always send zero
+// tools, so a model attempting one is structurally impossible again.
+func TestAnswerQuery_FinalNarration_NeverOffersTools(t *testing.T) {
+	call := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		if call <= maxQueryIterations {
+			w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{}"}}
+			]}}]}`))
+			return
+		}
+		if len(req.Tools) != 0 {
+			// Simulates the real Groq 400 this test guards against.
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":{"message":"Tool choice is none, but model called a tool"}}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"Resumen sin herramientas.","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	execute := func(name string, args json.RawMessage) (string, error) { return "x", nil }
+	o := newQueryOrchestrator(server.URL)
+	answer, err := o.AnswerQuery(context.Background(), "s", "u",
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
+	if err != nil {
+		t.Fatalf("AnswerQuery: %v (final round must never offer tools, so the 400 must never happen)", err)
+	}
+	if answer != "Resumen sin herramientas." {
+		t.Errorf("answer = %q", answer)
 	}
 }
 
