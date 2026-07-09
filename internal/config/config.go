@@ -41,6 +41,7 @@ type groq struct {
 	CreateModel    string `mapstructure:"createModel"`
 	UpdateModel    string `mapstructure:"updateModel"`
 	DeleteModel    string `mapstructure:"deleteModel"`
+	QueryModel     string `mapstructure:"queryModel"`
 	TimeoutSeconds int    `mapstructure:"timeoutSeconds"`
 }
 

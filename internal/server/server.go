@@ -61,6 +61,7 @@ func InitServer(conf *config.Config) error {
 		CreateModel:    conf.Groq.CreateModel,
 		UpdateModel:    conf.Groq.UpdateModel,
 		DeleteModel:    conf.Groq.DeleteModel,
+		QueryModel:     conf.Groq.QueryModel,
 		TimeoutSeconds: conf.Groq.TimeoutSeconds,
 	})
 
