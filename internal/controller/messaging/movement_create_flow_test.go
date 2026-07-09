@@ -120,6 +120,12 @@ func (r *fakeMovementRepoFull) InsertAccountsWithOpenings(items []movement.Accou
 	r.openings = items
 	return nil
 }
+func (r *fakeMovementRepoFull) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
+	return nil, nil
+}
+func (r *fakeMovementRepoFull) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+	return nil, nil
+}
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {
 	s := &subcategory.Subcategory{Category: category, Subcategory: sub}

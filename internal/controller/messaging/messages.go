@@ -32,6 +32,8 @@ const (
 
 	msgQueryNotSupported = "Todavía no puedo responder consultas — esa función está en camino. Mandame un movimiento para registrarlo, o una corrección/borrado de algo que ya cargaste."
 
+	msgQueryFailed = "No pude resolver esa consulta ahora. Probá reformularla o intentá de nuevo en un momento."
+
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 

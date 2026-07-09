@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"lopiibot.com/internal/account"
@@ -19,6 +20,8 @@ type fakeFullOrchestrator struct {
 	updateResult      orchestrator.UpdateResult
 	deleteResult      orchestrator.DeleteResult
 	intentErr         error
+	queryAnswer       string
+	queryErr          error
 }
 
 func (o *fakeFullOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
@@ -35,6 +38,9 @@ func (o *fakeFullOrchestrator) ResolveDelete(ctx context.Context, text string, c
 }
 func (o *fakeFullOrchestrator) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
 	return orchestrator.OnboardingResult{}, nil
+}
+func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
+	return o.queryAnswer, o.queryErr
 }
 
 func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {

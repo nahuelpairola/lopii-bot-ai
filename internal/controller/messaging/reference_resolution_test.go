@@ -126,6 +126,12 @@ func (r *fakeMovementRepoForResolve) SoftDeleteByIDs(ids []uint) error {
 func (r *fakeMovementRepoForResolve) InsertAccountsWithOpenings(items []movement.AccountOpening) error {
 	return nil
 }
+func (r *fakeMovementRepoForResolve) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
+	return nil, nil
+}
+func (r *fakeMovementRepoForResolve) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+	return nil, nil
+}
 
 func TestResolveCandidates_NoDate_UsesCreatedAtRecencyWindow(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("Nafta YPF")}}}

@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -44,6 +45,8 @@ type movementRepository interface {
 	FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]movement.Movement, error)
 	SoftDeleteByIDs(ids []uint) error
 	InsertAccountsWithOpenings(items []movement.AccountOpening) error
+	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
+	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
 }
 
 type subcategoryRepository interface {
@@ -63,6 +66,7 @@ type movementOrchestrator interface {
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error)
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
+	AnswerQuery(ctx context.Context, systemPrompt, userText string, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
 type metricRepository interface {
