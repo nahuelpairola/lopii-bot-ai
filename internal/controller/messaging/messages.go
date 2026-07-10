@@ -12,12 +12,12 @@ import (
 
 // Mensajes estáticos, sin variables.
 const (
-	msgAlreadyHasAccount           = "Ya tenés una cuenta activa. Mandame un gasto para registrarlo."
-	msgPrivateBot                  = "Este bot es privado. Si tenés una invitación, abrí el link que te compartieron."
-	msgInvalidInvitation           = "Esa invitación no es válida."
-	msgInvitationError             = "Hubo un error procesando tu invitación, probá de nuevo en un momento."
-	msgInvitationUsed              = "Esa invitación ya fue utilizada."
-	msgInvitationExpired           = "Esa invitación expiró, pedí una nueva."
+	msgAlreadyHasAccount       = "Ya tenés una cuenta activa. Mandame un gasto para registrarlo."
+	msgPrivateBot              = "Este bot es privado. Si tenés una invitación, abrí el link que te compartieron."
+	msgInvalidInvitation       = "Esa invitación no es válida."
+	msgInvitationError         = "Hubo un error procesando tu invitación, probá de nuevo en un momento."
+	msgInvitationUsed          = "Esa invitación ya fue utilizada."
+	msgInvitationExpired       = "Esa invitación expiró, pedí una nueva."
 	msgUserCreationError       = "No pude crear tu cuenta, probá de nuevo."
 	msgUserCreatedSuccessfully = "¡Bienvenido/a! 👋 Soy Lopii, tu bot de finanzas.\n\n" +
 		"Acá no hay formularios ni comandos: me hablás normal y yo entiendo. " +
@@ -25,12 +25,23 @@ const (
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
 
+	// MsgAccountReset is exported so the admin reset endpoint
+	// (controller/admin) can send it before re-firing onboarding — the
+	// admin package can't reach unexported messaging strings.
+	MsgAccountReset = "🔄 Reseteamos tu cuenta. Arrancamos de nuevo:"
+
 	msgAmountUnclear     = "No entendí el monto 🤔 ¿Lo reescribís?"
 	msgCurrencyMismatch  = "Esa cuenta es de otra moneda. Reescribí el movimiento."
 	msgNoAccountCurrency = "No tenés una cuenta en esa moneda. Creá una primero."
 	msgMovementMalformed = "No pude armar ese movimiento. Reescribilo, porfa."
 
 	msgQueryFailed = "No pude resolver esa consulta ahora. Probá reformularla o intentá de nuevo en un momento."
+
+	msgAskReminderWindow       = "¿En qué franja querés que te recuerde cargar los gastos? (solo te aviso los días que no anotaste nada)"
+	msgAskReminderCustomWindow = "Decime el rango en horario de 24 hs, por ejemplo: 20 a 21"
+	msgInvalidReminderWindow   = "No entendí el horario. Escribilo como \"20 a 21\" (en 24 hs, de menor a mayor)."
+	msgReminderDisabled        = "Dale, no te jodo más con eso 👍 Si querés que vuelva, avisame cuando quieras."
+	msgReminderCancelled       = "Listo, dejé todo como estaba 👌"
 
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
@@ -45,10 +56,18 @@ const (
 		"🗑️ Borrar: «borrá el último gasto»\n" +
 		"🔄 Transferir: «pasé 50 mil del banco a Mercado Pago»\n" +
 		"🏦 Nueva cuenta: «quiero una cuenta para mis inversiones»\n" +
-		"📂 Nueva categoría: «creá una categoría para mascotas»\n\n" +
+		"📂 Nueva categoría: «creá una categoría para mascotas»\n" +
+		"⏰ Recordatorio: pedime que te avise a determinada hora si no cargaste nada\n\n" +
 		"Poquito vos, el resto yo."
+
+	msgOfferReminder = "¿Querés que te lo active ahora? Elegís el horario en 10 segundos."
 )
 
+// msgReminderSet builds the set/edit receipt. startMin/endMin are minutes
+// since midnight; shown as whole hours.
+func msgReminderSet(startMin, endMin int) string {
+	return fmt.Sprintf("Listo 🙌 Te recuerdo cargar gastos entre las %d y las %d, solo los días que no hayas anotado nada.", startMin/60, endMin/60)
+}
 
 func msgAskCategory(data conversation.Data) string {
 	return "¿A qué categoría pertenece este movimiento?"
@@ -146,9 +165,9 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 }
 
 const (
-	msgUpdateApplied     = "✅ Corregido."
-	msgUpdateDeleted     = "🗑️ Listo, lo borré (quedó gratis)."
-	msgUpdateCancelled   = "Cancelado, no cambié nada."
+	msgUpdateApplied   = "✅ Corregido."
+	msgUpdateDeleted   = "🗑️ Listo, lo borré (quedó gratis)."
+	msgUpdateCancelled = "Cancelado, no cambié nada."
 	// Shown only when the window (today, or the mentioned day) has no
 	// movements at all — the fallback picker covers every other case.
 	msgNoCandidatesFound = "No tengo movimientos de ese día para tocar. ¿De qué fecha era?"

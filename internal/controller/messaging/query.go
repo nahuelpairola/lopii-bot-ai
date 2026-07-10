@@ -11,6 +11,7 @@ import (
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/reminder"
 )
 
 // queryTools are the read-only tools the QUERY loop composes. Invariants
@@ -80,6 +81,11 @@ var queryTools = []orchestrator.AgentTool{
 			}
 		}`),
 	},
+	{
+		Name:        "get_reminder",
+		Description: "Devuelve el recordatorio diario de carga de gastos del usuario: si está activo o apagado y en qué franja horaria avisa. Usala cuando el usuario pregunta por su recordatorio (\"¿a qué hora me recordás?\", \"¿tengo recordatorio activo?\").",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {}}`),
+	},
 }
 
 // queryToolArgs is the union of every tool's argument shape — one struct
@@ -135,6 +141,7 @@ No uses Markdown ni caracteres decorativos: nada de *, **, _, #, ni guiones larg
 Montos en formato argentino: separador de miles con punto y símbolo adelante ($5.500, $1.234,56); no muestres los centavos ".00"/",00" cuando el monto es entero de pesos. Aclará la moneda (ARS/USD) cuando haga falta.
 Fechas en formato amable (01/07 o "1 de julio"), nunca 2026-07-01.
 Cuando una herramienta te da un emoji junto a una categoría, poné ese emoji al principio de la línea para que se lea visual.
+Para preguntas sobre el recordatorio de carga de gastos (si está activo, a qué hora avisa), usá get_reminder.
 Si la pregunta no se puede responder con estas herramientas, decilo con amabilidad en una línea.`, today)
 }
 
@@ -156,6 +163,12 @@ func (c *controller) buildQueryExecutor(userID uint64) func(string, json.RawMess
 			return c.execListMovements(userID, args)
 		case "account_balance":
 			return c.execAccountBalance(userID, args)
+		case "get_reminder":
+			rem, err := c.reminders.FindByUserID(userID)
+			if err != nil {
+				rem = nil // no row (or lookup miss) -> "no configurado"
+			}
+			return describeReminder(rem), nil
 		default:
 			return "", fmt.Errorf("herramienta desconocida: %s", name)
 		}
@@ -339,4 +352,18 @@ func (c *controller) buildMovementQuery(userID uint64, args queryToolArgs) (move
 
 func parseQueryDate(s string) (time.Time, error) {
 	return time.Parse("2006-01-02", strings.TrimSpace(s))
+}
+
+// describeReminder renders a user's reminder for the QUERY loop to narrate.
+// nil = no reminder configured. Windows shown as whole hours (ART).
+func describeReminder(r *reminder.Reminder) string {
+	if r == nil {
+		return "El usuario no tiene ningún recordatorio de carga de gastos configurado."
+	}
+	estado := "activo"
+	if !r.Enabled {
+		estado = "apagado"
+	}
+	return fmt.Sprintf("Recordatorio de carga de gastos: %s. Franja: entre las %d y las %d (aviso alrededor de las %d:%02d, solo los días sin movimientos cargados).",
+		estado, r.WindowStartMin/60, r.WindowEndMin/60, r.MidpointMin()/60, r.MidpointMin()%60)
 }

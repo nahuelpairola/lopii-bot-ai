@@ -95,12 +95,17 @@ const (
 	// OnboardingCollectFlowName is the exported name so the admin reset
 	// endpoint (controller/admin) can re-fire onboarding without importing
 	// unexported symbols.
-	OnboardingCollectFlowName = onboardingCollectFlowName
-	onboardingConfirmFlowName = "onboarding_confirm"
+	OnboardingCollectFlowName       = onboardingCollectFlowName
+	onboardingConfirmFlowName       = "onboarding_confirm"
+	onboardingReminderOfferFlowName = "onboarding_reminder_offer"
 
-	stepOnboardingAsk     = "onboarding_ask_distribution"
-	stepOnboardingDone    = "onboarding_collect_done"
-	stepOnboardingConfirm = "onboarding_confirm_accounts"
+	stepOnboardingAsk           = "onboarding_ask_distribution"
+	stepOnboardingDone          = "onboarding_collect_done"
+	stepOnboardingConfirm       = "onboarding_confirm_accounts"
+	stepOnboardingOfferReminder = "onboarding_offer_reminder"
+
+	offerReminderYes = "reminder_yes"
+	offerReminderNo  = "reminder_no"
 )
 
 // NewOnboardingCollectFlow is a single free-text step: capture how the user
@@ -165,6 +170,39 @@ func NewOnboardingConfirmFlow() *conversation.Flow {
 	return flow
 }
 
+// NewOnboardingReminderOfferFlow is a single binary ChoiceStep: after
+// onboarding finishes, ask whether to activate the daily expense-logging
+// reminder right now. No EscapeOptions/Cancelar — it's a plain Sí/No, not a
+// multi-step flow a user needs to bail out of. Chained from
+// finishOnboardingConfirmFlow, the same way onboarding_collect chains into
+// onboarding_confirm.
+func NewOnboardingReminderOfferFlow() *conversation.Flow {
+	steps := map[string]conversation.Step{
+		stepOnboardingOfferReminder: conversation.ChoiceStep{
+			PromptText: func(conversation.Data) string { return msgOfferReminder },
+			Options: []conversation.ChoiceOption{
+				{Label: "✅ Dale", Value: offerReminderYes, Finish: true},
+				{Label: "🙅 Ahora no", Value: offerReminderNo, Finish: true},
+			},
+			OnChoice: func(value string, data conversation.Data) conversation.Data {
+				next := copyData(data)
+				if value == offerReminderYes {
+					next["offer"] = "yes"
+				} else {
+					next["offer"] = "no"
+				}
+				return next
+			},
+			InvalidChoiceMessage: msgGenericFlowError,
+		},
+	}
+	flow, err := conversation.NewFlow(onboardingReminderOfferFlowName, stepOnboardingOfferReminder, steps)
+	if err != nil {
+		panic(err)
+	}
+	return flow
+}
+
 // finishOnboardingCollectFlow runs Call 2 on the captured free text. Zero
 // parsed accounts → re-prompt (don't show an empty confirmation). Otherwise
 // start the confirm flow seeded with the parsed rows, defaults marked.
@@ -206,6 +244,7 @@ func (c *controller) finishOnboardingConfirmFlow(ctx context.Context, b *bot.Bot
 	}
 	c.sendText(ctx, b, chatID, msgOnboardingReceipt(rows))
 	c.sendText(ctx, b, chatID, msgCapabilitiesShowcase)
+	c.startFlowIfNotBusy(ctx, b, chatID, data.UserID(), onboardingReminderOfferFlowName)
 }
 
 // insertOnboardingAccounts builds one AccountOpening per row (opening
@@ -235,4 +274,14 @@ func (c *controller) insertOnboardingAccounts(userID uint64, rows []onboardingRo
 		})
 	}
 	return c.movements.InsertAccountsWithOpenings(items)
+}
+
+// finishOnboardingReminderOffer applies the onboarding reminder offer: "Sí"
+// hands off to the exact same entry point a REMINDER_SET intent would use
+// (startReminderSetup) — no separate window-picking logic. "No" is a no-op.
+func (c *controller) finishOnboardingReminderOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	if stringOrEmpty(data["offer"]) != "yes" {
+		return
+	}
+	c.startReminderSetup(ctx, b, chatID, data.UserID())
 }

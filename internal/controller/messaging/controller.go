@@ -17,6 +17,7 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/queryhistory"
+	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -80,6 +81,12 @@ type queryHistoryRepository interface {
 	Append(userID uint64, question, answer string) error
 }
 
+type reminderRepository interface {
+	Upsert(r *reminder.Reminder) error
+	Disable(userID uint64) error
+	FindByUserID(userID uint64) (*reminder.Reminder, error)
+}
+
 type controller struct {
 	users         userRepository
 	invitations   invitationRepository
@@ -90,6 +97,7 @@ type controller struct {
 	orchestrator  movementOrchestrator
 	metrics       metricRepository
 	queryHistory  queryHistoryRepository
+	reminders     reminderRepository
 }
 
 func NewController(
@@ -102,6 +110,7 @@ func NewController(
 	orch movementOrchestrator,
 	metrics metricRepository,
 	queryHistory queryHistoryRepository,
+	reminders reminderRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -113,6 +122,7 @@ func NewController(
 		orchestrator:  orch,
 		metrics:       metrics,
 		queryHistory:  queryHistory,
+		reminders:     reminders,
 	}
 }
 
@@ -217,6 +227,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
 	case movementNegativeConfirmFlowName:
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
+	case reminderSetupFlowName:
+		c.finishReminderSetup(ctx, b, chatID, result.Data)
+	case onboardingReminderOfferFlowName:
+		c.finishOnboardingReminderOffer(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}

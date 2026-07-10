@@ -26,6 +26,7 @@ const (
 	outcomeQueryFailed          = "query_failed"
 	outcomeAccountCreateRouted  = "account_create_routed"
 	outcomeCategoryCreateRouted = "category_create_routed"
+	outcomeReminderSetRouted    = "reminder_set_routed"
 )
 
 // routerOutcome mapea el intent del router al outcome inicial que se loguea
@@ -39,6 +40,8 @@ func routerOutcome(intent orchestrator.Intent) string {
 		return outcomeAccountCreateRouted
 	case orchestrator.IntentCreateCategory:
 		return outcomeCategoryCreateRouted
+	case orchestrator.IntentReminderSet:
+		return outcomeReminderSetRouted
 	default:
 		return outcomePending
 	}

@@ -29,3 +29,6 @@ timeoutSeconds = 10
 [query]
 historyTtlMinutes = 10
 historyLimit = 5
+
+[reminders]
+sweepIntervalMinutes = 5

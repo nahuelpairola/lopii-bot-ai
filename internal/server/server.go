@@ -18,8 +18,10 @@ import (
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/notifier"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/queryhistory"
+	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -48,6 +50,7 @@ func InitServer(conf *config.Config) error {
 	userRepo := user.NewRepository(conn)
 	accountRepo := account.NewRepository(conn)
 	movementRepo := movement.InitRepository(conn)
+	reminderRepo := reminder.NewRepository(conn)
 	metricRepo := metric.InitRepository(conn)
 	queryHistoryRepo := queryhistory.InitRepository(
 		conn,
@@ -83,6 +86,8 @@ func InitServer(conf *config.Config) error {
 	conversationEngine.Register(messagingctrl.NewAccountCreateFlow())
 	conversationEngine.Register(messagingctrl.NewSubcategorySetupFlow(subcategoryCache))
 	conversationEngine.Register(messagingctrl.NewMovementNegativeConfirmFlow())
+	conversationEngine.Register(messagingctrl.NewReminderSetupFlow())
+	conversationEngine.Register(messagingctrl.NewOnboardingReminderOfferFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)
@@ -91,7 +96,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator, metricRepo, queryHistoryRepo,
+		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 
@@ -99,6 +104,9 @@ func InitServer(conf *config.Config) error {
 	invitationController.RegisterRoutes(ginEngine)
 	adminController.RegisterRoutes(ginEngine)
 	messagingController.RegisterHandlers(tgBot)
+
+	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo)
+	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
 
 	server = httpServer{engine: ginEngine}
 	return server.engine.Run(":" + conf.Server.Port)

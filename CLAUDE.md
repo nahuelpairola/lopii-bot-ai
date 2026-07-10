@@ -158,11 +158,21 @@ case "account_setup":
 
 ### Recipe 3: Add an LLM intent
 
-Intents (`internal/orchestrator/types.go`): `CREATE | UPDATE | DELETE | QUERY | ACCOUNT_CREATE | CREATE_CATEGORY`
+Intents (`internal/orchestrator/types.go`): `CREATE | UPDATE | DELETE | QUERY | ACCOUNT_CREATE | CREATE_CATEGORY | REMINDER_SET`
 - Tool calling: the LLM constructs action parameters, not just the intent type
 - `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
 - Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`), not an in-memory store
 - `CREATE_CATEGORY`: the message asks to create a category/subcategory, not to register/correct/delete a movement. No Call 2 — the flow itself (`subcategory_setup`) asks everything it needs via `ChoiceStep`/`TextStep`, unlike CREATE/UPDATE/DELETE which extract structured data from the message via a second LLM call.
+- `REMINDER_SET`: the message creates, edits, or turns off the daily expense-logging reminder. Like `CREATE_CATEGORY`, no Call 2 — `reminder_setup` captures the window entirely via `ChoiceStep` presets/custom-text (`parseWindow`, deterministic, no LLM). Consulting the reminder ("¿a qué hora me recordás?") is QUERY, not REMINDER_SET — see `get_reminder` in Recipe: Add a scheduled notification below.
+
+### Recipe: Add a scheduled notification
+
+A "scheduled notification" is any proactive system→user Telegram push not triggered by the user's message (e.g. the expense reminder). All of them share one engine: `internal/notifier.Sweeper`, a `time.Ticker` goroutine (`sweeper.Run`) whose `tick` calls one `sweepX` function per notifier.
+
+1. Add your own candidate query + fire condition + guard as a `sweepX(ctx, now)` method on `Sweeper` (see `sweepReminders` in `internal/notifier/sweeper.go`) — this is *not* shared with other notifiers, don't generalize it.
+2. Call it from `tick()`, alongside the existing `s.sweepReminders(ctx, now)`.
+3. Reuse `s.send(ctx, chatID, text)` to actually push — never call `bot.SendMessage` directly; `send` is the one injected/reachable asset every notifier (and any future admin broadcast) shares.
+4. Do not add a shared data table, a notification-type registry, or a templating engine — each notifier owns its own table/columns (or a couple of fields on `users`) and its own message copy.
 
 ### Recipe 4: Add an admin command
 
@@ -300,6 +310,14 @@ floored silently.
 - Exceptions: `/start` (onboarding) and admin commands (e.g. `/new-invite`)
 - Timezone: `America/Argentina/Buenos_Aires`
 - Default payment method when LLM cannot infer: `transfer`
+
+### Reminders
+- One reminder per user (`reminders` table, PK `user_id`). Configured/edited/disabled entirely by free text via `REMINDER_SET` — no confirm gate, like ACCOUNT_CREATE/CREATE_CATEGORY.
+- Window stored as minutes-since-midnight ART (`window_start_min`/`window_end_min`), not a SQL `time` — the fire target is the midpoint (`Reminder.MidpointMin()`, derived, never stored), which needs sub-hour precision.
+- Activity-aware: fires only if the user has logged **zero** movements today (any type, via `FindRecentlyCreatedForUser`) — never nags on a day already engaged.
+- Delivery: `internal/notifier.Sweeper`, an in-process `time.Ticker` (default 5 min, `[reminders].sweepIntervalMinutes`), not an external cron — the bot process is already 24/7 single-instance.
+- Delete == disable (`enabled=false`). No `deleted_at` — the user-facing fact is the same either way.
+- Consulting the reminder ("¿a qué hora me recordás?") is QUERY's `get_reminder` tool, not REMINDER_SET.
 
 ## 5. Local Dev Setup
 

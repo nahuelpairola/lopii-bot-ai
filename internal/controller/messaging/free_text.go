@@ -74,6 +74,8 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		c.startAccountCreate(ctx, b, chatID, userID)
 	case orchestrator.IntentCreateCategory:
 		c.startSubcategorySetup(ctx, b, chatID, userID)
+	case orchestrator.IntentReminderSet:
+		c.startReminderSetup(ctx, b, chatID, userID)
 	default:
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 	}
