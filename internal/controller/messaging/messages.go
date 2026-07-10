@@ -51,8 +51,11 @@ const (
 		"🗑️ Borrar: «borrá el último gasto»\n" +
 		"🔄 Transferir: «pasé 50 mil del banco a Mercado Pago»\n" +
 		"🏦 Nueva cuenta: «quiero una cuenta para mis inversiones»\n" +
-		"📂 Nueva categoría: «creá una categoría para mascotas»\n\n" +
+		"📂 Nueva categoría: «creá una categoría para mascotas»\n" +
+		"⏰ Recordatorio: pedime que te avise a determinada hora si no cargaste nada\n\n" +
 		"Poquito vos, el resto yo."
+
+	msgOfferReminder = "¿Querés que te lo active ahora? Elegís el horario en 10 segundos."
 )
 
 // msgReminderSet builds the set/edit receipt. startMin/endMin are minutes
