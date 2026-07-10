@@ -70,7 +70,7 @@ func TestResolveUpdate_AcceptsNullMentionedDates(t *testing.T) {
 	// date field 400s unless the schema allows it. Regression for the
 	// "Pablo me devolvió cien pesos por el asado" 400 (no date in message).
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"mentioned_date_from\":null,\"mentioned_date_to\":null,\"movements\":[{\"type\":\"expense\",\"amount\":\"4900\",\"currency\":\"ARS\",\"category\":\"Alimentación\",\"subcategory\":\"Carnicería\",\"payment_method\":\"transfer\",\"description\":\"pago a pablo por el asado\",\"date\":\"2026-07-07\"}]}"}}]}}]}`))
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"mentioned_date_from\":null,\"mentioned_date_to\":null,\"movements\":[{\"type\":\"expense\",\"amount\":\"4900\",\"currency\":\"ARS\",\"category\":\"Alimentación\",\"subcategory\":\"Almacén / barrio\",\"payment_method\":\"transfer\",\"description\":\"pago a pablo por el asado\",\"date\":\"2026-07-07\"}]}"}}]}}]}`))
 	}))
 	defer server.Close()
 
