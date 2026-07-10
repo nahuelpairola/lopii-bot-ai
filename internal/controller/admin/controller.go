@@ -70,6 +70,7 @@ func (c *controller) Reset(ctx *gin.Context) {
 	}
 	if c.bot != nil {
 		if chatID, convErr := strconv.ParseInt(telegramID, 10, 64); convErr == nil {
+			c.bot.SendMessage(context.Background(), &bot.SendMessageParams{ChatID: chatID, Text: messagingctrl.MsgAccountReset})
 			c.bot.SendMessage(context.Background(), &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text})
 		}
 	}

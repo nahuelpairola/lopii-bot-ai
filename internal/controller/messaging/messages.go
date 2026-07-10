@@ -25,6 +25,11 @@ const (
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
 
+	// MsgAccountReset is exported so the admin reset endpoint
+	// (controller/admin) can send it before re-firing onboarding — the
+	// admin package can't reach unexported messaging strings.
+	MsgAccountReset = "🔄 Reseteamos tu cuenta. Arrancamos de nuevo:"
+
 	msgAmountUnclear     = "No entendí el monto 🤔 ¿Lo reescribís?"
 	msgCurrencyMismatch  = "Esa cuenta es de otra moneda. Reescribí el movimiento."
 	msgNoAccountCurrency = "No tenés una cuenta en esa moneda. Creá una primero."
