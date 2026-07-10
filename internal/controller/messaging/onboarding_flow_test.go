@@ -10,11 +10,10 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-
 func TestOnboardingRowsFromDrafts_DefaultsAndSkips(t *testing.T) {
 	drafts := []orchestrator.OnboardingAccountDraft{
 		{Name: "Banco", Currency: "ARS", Balance: "20000"},
-		{Name: "", Currency: "", Balance: "5000"},        // → name Efectivo, currency ARS
+		{Name: "", Currency: "", Balance: "5000"}, // → name Efectivo, currency ARS
 		{Name: "Bróker", Currency: "USD", Balance: "100"},
 		{Name: "Acciones", Currency: "USD", Balance: ""}, // no balance → skipped
 	}
@@ -54,7 +53,9 @@ func TestFinishOnboardingConfirmFlow_ConfirmInserts(t *testing.T) {
 		},
 	}
 	movRepo := &fakeMovementRepoFull{}
-	c := &controller{subcategories: subRepo, movements: movRepo}
+	engine := conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" })
+	engine.Register(NewOnboardingReminderOfferFlow())
+	c := &controller{subcategories: subRepo, movements: movRepo, engine: engine}
 
 	rows := markDefaults([]onboardingRow{
 		{Name: "Banco", Currency: "ARS", Balance: "20000"},
@@ -70,4 +71,43 @@ func TestFinishOnboardingConfirmFlow_ConfirmInserts(t *testing.T) {
 	if !movRepo.openings[0].Account.IsDefault || !movRepo.openings[1].Account.IsDefault {
 		t.Errorf("default flags wrong: first-ARS should be default, USD is a different currency so also default")
 	}
+}
+
+func newOnboardingReminderOfferTestEngine() (*conversation.Engine, *fakeStateStore) {
+	store := &fakeStateStore{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewOnboardingReminderOfferFlow())
+	engine.Register(NewReminderSetupFlow())
+	return engine, store
+}
+
+func TestFinishOnboardingReminderOffer_Yes_StartsReminderSetup(t *testing.T) {
+	engine, store := newOnboardingReminderOfferTestEngine()
+	c := &controller{engine: engine}
+	const userID = uint64(9)
+
+	data := conversation.Data{conversation.UserIDKey: userID, "offer": "yes"}
+	c.finishOnboardingReminderOffer(context.Background(), nil, 0, data)
+
+	if store.flowName != reminderSetupFlowName {
+		t.Fatalf("expected reminder_setup to be started, got flow=%q found=%v", store.flowName, store.found)
+	}
+}
+
+func TestFinishOnboardingReminderOffer_No_NoOp(t *testing.T) {
+	engine, store := newOnboardingReminderOfferTestEngine()
+	c := &controller{engine: engine}
+	const userID = uint64(9)
+
+	data := conversation.Data{conversation.UserIDKey: userID, "offer": "no"}
+	c.finishOnboardingReminderOffer(context.Background(), nil, 0, data)
+
+	if store.found {
+		t.Fatalf("expected no flow started on decline, got flow=%q", store.flowName)
+	}
+}
+
+func TestNewOnboardingReminderOfferFlow_Valid(t *testing.T) {
+	// panics at construction if the step graph is invalid
+	_ = NewOnboardingReminderOfferFlow()
 }

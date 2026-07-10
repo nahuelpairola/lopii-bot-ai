@@ -229,6 +229,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	case reminderSetupFlowName:
 		c.finishReminderSetup(ctx, b, chatID, result.Data)
+	case onboardingReminderOfferFlowName:
+		c.finishOnboardingReminderOffer(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}
