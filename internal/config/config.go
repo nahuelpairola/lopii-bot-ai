@@ -50,13 +50,18 @@ type query struct {
 	HistoryLimit      int `mapstructure:"historyLimit"`
 }
 
+type reminders struct {
+	SweepIntervalMinutes int `mapstructure:"sweepIntervalMinutes"`
+}
+
 type Config struct {
-	Env      string   `mapstructure:"env"`
-	Server   server   `mapstructure:"server"`
-	Database database `mapstructure:"database"`
-	Telegram telegram `mapstructure:"telegram"`
-	Groq     groq     `mapstructure:"groq"`
-	Query    query    `mapstructure:"query"`
+	Env       string    `mapstructure:"env"`
+	Server    server    `mapstructure:"server"`
+	Database  database  `mapstructure:"database"`
+	Telegram  telegram  `mapstructure:"telegram"`
+	Groq      groq      `mapstructure:"groq"`
+	Query     query     `mapstructure:"query"`
+	Reminders reminders `mapstructure:"reminders"`
 }
 
 func Initialize() (*Config, error) {
@@ -69,6 +74,7 @@ func Initialize() (*Config, error) {
 	viper.SetDefault("Server.Port", "80")
 	viper.SetDefault("Query.HistoryTtlMinutes", 10)
 	viper.SetDefault("Query.HistoryLimit", 5)
+	viper.SetDefault("Reminders.SweepIntervalMinutes", 5)
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err

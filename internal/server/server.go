@@ -18,6 +18,7 @@ import (
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/notifier"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/reminder"
@@ -102,6 +103,9 @@ func InitServer(conf *config.Config) error {
 	invitationController.RegisterRoutes(ginEngine)
 	adminController.RegisterRoutes(ginEngine)
 	messagingController.RegisterHandlers(tgBot)
+
+	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo)
+	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
 
 	server = httpServer{engine: ginEngine}
 	return server.engine.Run(":" + conf.Server.Port)
