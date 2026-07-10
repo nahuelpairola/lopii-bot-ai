@@ -28,6 +28,8 @@ New flow/package → refuse, defer to `/writing-plans`.
 - Never add a `balance` column — always computed from `movements`.
 - `conversation.Data` values are strings only, never native Go numbers.
 
+For the mechanics of an in-scope change: migrations → `docs/recipes.md` (Recipe 1), admin commands → `docs/recipes.md` (Recipe 4). Money-path edge cases beyond the bullets above → `docs/business-rules.md`.
+
 ## Workflow
 
 1. `mcp__codegraph__codegraph_explore` (or `Read`) target(s). Never edit blind.
