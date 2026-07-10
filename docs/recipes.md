@@ -1,0 +1,109 @@
+# Recipes — lopii-finance-bot
+
+> Step-by-step for the common extension points. Conventions they assume live in `CLAUDE.md`.
+
+### Recipe 1: Add a DB migration
+
+File name: `migrations/YYYYMMDDHHMMSS_<descriptive_name>.sql`
+
+```sql
+-- +goose Up
+ALTER TABLE accounts ADD COLUMN alias TEXT;
+
+-- +goose Down
+ALTER TABLE accounts DROP COLUMN alias;
+```
+
+Create with:
+```bash
+goose create <descriptive_name> sql -dir ./migrations
+```
+
+Migrations run automatically at startup when `runMigrations = true` in the TOML. To run manually:
+```bash
+goose -dir ./migrations postgres "<connection_string>" up
+```
+
+### Recipe 2: Add a conversation flow
+
+A flow is a graph of steps that persists state in `conversation_states`. The graph is validated statically at construction — if a step references a non-existent next step, the server fails to start.
+
+**Steps:**
+
+1. Define step name constants in the target package:
+```go
+const (
+    stepAskName     = "ask_name"
+    stepAskCurrency = "ask_currency"
+    stepConfirm     = "confirm"
+)
+```
+
+2. Build the Flow:
+```go
+func NewAccountSetupFlow(repo accountRepository) *conversation.Flow {
+    steps := map[string]conversation.Step{
+        stepAskName:     conversation.NewTextStep(...),
+        stepAskCurrency: conversation.NewChoiceStep(...),
+        stepConfirm:     conversation.NewChoiceStep(...),
+    }
+    flow, err := conversation.NewFlow("account_setup", stepAskName, steps)
+    if err != nil {
+        panic(err) // flow graph validation failed at startup
+    }
+    return flow
+}
+```
+
+3. Register in `server.go`:
+```go
+conversationEngine.Register(NewAccountSetupFlow(accountRepo))
+```
+
+4. Start from a Telegram handler:
+```go
+engine.Start(userID, "account_setup")
+```
+
+5. Handle the result inside `handleConversationInput` when `result.Finished == true`:
+```go
+switch result.FlowName {
+case "account_setup":
+    name := result.Data["account_name"].(string)
+    // INSERT into DB
+}
+```
+
+**Cancelar/Atrás on a free-text step:** `conversation.TextStep` has `EscapeOptions []ChoiceOption` + `OnEscape func(value string, data Data) Data` — buttons rendered alongside the free-text prompt, checked before text validation. This is the existing mechanism, not something to reinvent per flow; see `account_create_flow.go`'s `onAccountCreateEscape` (shared across an entire flow's steps) and `subcategory_setup_flow.go` for reference implementations.
+
+### Recipe 3: Add an LLM intent
+
+Intents (`internal/orchestrator/types.go`): `CREATE | UPDATE | DELETE | QUERY | ACCOUNT_CREATE | CREATE_CATEGORY | REMINDER_SET`
+- Tool calling: the LLM constructs action parameters, not just the intent type
+- `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
+- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`), not an in-memory store
+- `CREATE_CATEGORY`: the message asks to create a category/subcategory, not to register/correct/delete a movement. No Call 2 — the flow itself (`subcategory_setup`) asks everything it needs via `ChoiceStep`/`TextStep`, unlike CREATE/UPDATE/DELETE which extract structured data from the message via a second LLM call.
+- `REMINDER_SET`: the message creates, edits, or turns off the daily expense-logging reminder. Like `CREATE_CATEGORY`, no Call 2 — `reminder_setup` captures the window entirely via `ChoiceStep` presets/custom-text (`parseWindow`, deterministic, no LLM). Consulting the reminder ("¿a qué hora me recordás?") is QUERY, not REMINDER_SET — see `get_reminder` in Recipe: Add a scheduled notification below.
+
+### Recipe: Add a scheduled notification
+
+A "scheduled notification" is any proactive system→user Telegram push not triggered by the user's message (e.g. the expense reminder). All of them share one engine: `internal/notifier.Sweeper`, a `time.Ticker` goroutine (`sweeper.Run`) whose `tick` calls one `sweepX` function per notifier.
+
+1. Add your own candidate query + fire condition + guard as a `sweepX(ctx, now)` method on `Sweeper` (see `sweepReminders` in `internal/notifier/sweeper.go`) — this is *not* shared with other notifiers, don't generalize it.
+2. Call it from `tick()`, alongside the existing `s.sweepReminders(ctx, now)`.
+3. Reuse `s.send(ctx, chatID, text)` to actually push — never call `bot.SendMessage` directly; `send` is the one injected/reachable asset every notifier (and any future admin broadcast) shares.
+4. Do not add a shared data table, a notification-type registry, or a templating engine — each notifier owns its own table/columns (or a couple of fields on `users`) and its own message copy.
+
+### Recipe 4: Add an admin command
+
+1. Register the handler in `controller/messaging/controller.go` with a prefix match:
+```go
+b.RegisterHandler(bot.HandlerTypeMessageText, "/new-invite", bot.MatchTypePrefix, handleNewInvite)
+```
+
+2. For HTTP admin endpoints, use the middleware:
+```go
+r.POST("/invitations", middleware.RequireAdmin(adminID), invitationController.Create)
+```
+
+3. Telegram deep-links: `https://t.me/<bot_username>?start=<CODE>`

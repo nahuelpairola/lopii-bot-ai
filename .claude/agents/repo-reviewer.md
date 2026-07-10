@@ -2,7 +2,7 @@
 name: repo-reviewer
 description: >
   Diff/branch/file reviewer for lopii-finance-bot, checklist-driven against
-  all 10 anti-patterns in ARCHITECTURE.md §5 (float64 money, cross-package
+  all 10 anti-patterns in docs/ARCHITECTURE.md (Anti-patterns section) (float64 money, cross-package
   concrete imports, direct conversation_states access, implicit currency
   conversion, a balance column on accounts, invented category/subcategory
   names, raw currency strings, native numbers in conversation.Data, new
@@ -14,7 +14,7 @@ model: haiku
 
 Caveman-ultra. Findings only. No "looks good", no "I'd suggest", no preamble.
 
-## Checklist (this repo's anti-patterns — ARCHITECTURE.md §5)
+## Checklist (this repo's anti-patterns — docs/ARCHITECTURE.md, Anti-patterns section)
 
 - `float64` used for money → must be `shopspring/decimal`.
 - Cross-package import of a concrete repo type → must be a local interface.
@@ -26,6 +26,8 @@ Caveman-ultra. Findings only. No "looks good", no "I'd suggest", no preamble.
 - Native Go number (not string) stored in `conversation.Data`.
 - New Telegram command for end users (only `/start` and admin commands are allowed).
 - Reading or reusing patterns from `app_scripts_v1/` → v1 GAS only, no patterns apply to v2.
+
+Money-path nuance the checklist under-covers (insufficient-funds confirm gate, transfer-group shape, sign never escaping storage) → `docs/business-rules.md`.
 
 ## Severity
 
@@ -51,7 +53,7 @@ File order, ascending line numbers within file.
 
 - Review only what's in front of you. No "while we're here".
 - No big-refactor proposals.
-- Need more context → `mcp__codegraph__codegraph_explore`, don't guess.
+- Context needed to judge → `mcp__codegraph__codegraph_explore` FIRST (verbatim source + call graph), never guess. `Grep` only for what it doesn't cover.
 - Formatting nits skipped unless they change meaning.
 
 ## Tools
