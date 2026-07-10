@@ -5,10 +5,8 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 **v1:** Google Sheets + Apps Script in `app_scripts_v1/` — historical reference only.  
 **v2:** This repo — Go rewrite.
 
-> **For current project state** (package map, data model, feature inventory, design decisions):
-> read `docs/ARCHITECTURE.md` — it is the authoritative reference for what exists.
-
-@docs/ARCHITECTURE.md
+> **For current project state** (package map, data model, features, design decisions):
+> see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the index of reference docs. Read the one your task touches.
 
 ## 1. Overview & Architecture
 
@@ -82,126 +80,18 @@ Loaded into memory at server startup. Zero extra queries per Telegram request.
 
 ## 3. Recipes
 
-### Recipe 1: Add a DB migration
-
-File name: `migrations/YYYYMMDDHHMMSS_<descriptive_name>.sql`
-
-```sql
--- +goose Up
-ALTER TABLE accounts ADD COLUMN alias TEXT;
-
--- +goose Down
-ALTER TABLE accounts DROP COLUMN alias;
-```
-
-Create with:
-```bash
-goose create <descriptive_name> sql -dir ./migrations
-```
-
-Migrations run automatically at startup when `runMigrations = true` in the TOML. To run manually:
-```bash
-goose -dir ./migrations postgres "<connection_string>" up
-```
-
-### Recipe 2: Add a conversation flow
-
-A flow is a graph of steps that persists state in `conversation_states`. The graph is validated statically at construction — if a step references a non-existent next step, the server fails to start.
-
-**Steps:**
-
-1. Define step name constants in the target package:
-```go
-const (
-    stepAskName     = "ask_name"
-    stepAskCurrency = "ask_currency"
-    stepConfirm     = "confirm"
-)
-```
-
-2. Build the Flow:
-```go
-func NewAccountSetupFlow(repo accountRepository) *conversation.Flow {
-    steps := map[string]conversation.Step{
-        stepAskName:     conversation.NewTextStep(...),
-        stepAskCurrency: conversation.NewChoiceStep(...),
-        stepConfirm:     conversation.NewChoiceStep(...),
-    }
-    flow, err := conversation.NewFlow("account_setup", stepAskName, steps)
-    if err != nil {
-        panic(err) // flow graph validation failed at startup
-    }
-    return flow
-}
-```
-
-3. Register in `server.go`:
-```go
-conversationEngine.Register(NewAccountSetupFlow(accountRepo))
-```
-
-4. Start from a Telegram handler:
-```go
-engine.Start(userID, "account_setup")
-```
-
-5. Handle the result inside `handleConversationInput` when `result.Finished == true`:
-```go
-switch result.FlowName {
-case "account_setup":
-    name := result.Data["account_name"].(string)
-    // INSERT into DB
-}
-```
-
-**Cancelar/Atrás on a free-text step:** `conversation.TextStep` has `EscapeOptions []ChoiceOption` + `OnEscape func(value string, data Data) Data` — buttons rendered alongside the free-text prompt, checked before text validation. This is the existing mechanism, not something to reinvent per flow; see `account_create_flow.go`'s `onAccountCreateEscape` (shared across an entire flow's steps) and `subcategory_setup_flow.go` for reference implementations.
-
-### Recipe 3: Add an LLM intent
-
-Intents (`internal/orchestrator/types.go`): `CREATE | UPDATE | DELETE | QUERY | ACCOUNT_CREATE | CREATE_CATEGORY | REMINDER_SET`
-- Tool calling: the LLM constructs action parameters, not just the intent type
-- `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
-- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`), not an in-memory store
-- `CREATE_CATEGORY`: the message asks to create a category/subcategory, not to register/correct/delete a movement. No Call 2 — the flow itself (`subcategory_setup`) asks everything it needs via `ChoiceStep`/`TextStep`, unlike CREATE/UPDATE/DELETE which extract structured data from the message via a second LLM call.
-- `REMINDER_SET`: the message creates, edits, or turns off the daily expense-logging reminder. Like `CREATE_CATEGORY`, no Call 2 — `reminder_setup` captures the window entirely via `ChoiceStep` presets/custom-text (`parseWindow`, deterministic, no LLM). Consulting the reminder ("¿a qué hora me recordás?") is QUERY, not REMINDER_SET — see `get_reminder` in Recipe: Add a scheduled notification below.
-
-### Recipe: Add a scheduled notification
-
-A "scheduled notification" is any proactive system→user Telegram push not triggered by the user's message (e.g. the expense reminder). All of them share one engine: `internal/notifier.Sweeper`, a `time.Ticker` goroutine (`sweeper.Run`) whose `tick` calls one `sweepX` function per notifier.
-
-1. Add your own candidate query + fire condition + guard as a `sweepX(ctx, now)` method on `Sweeper` (see `sweepReminders` in `internal/notifier/sweeper.go`) — this is *not* shared with other notifiers, don't generalize it.
-2. Call it from `tick()`, alongside the existing `s.sweepReminders(ctx, now)`.
-3. Reuse `s.send(ctx, chatID, text)` to actually push — never call `bot.SendMessage` directly; `send` is the one injected/reachable asset every notifier (and any future admin broadcast) shares.
-4. Do not add a shared data table, a notification-type registry, or a templating engine — each notifier owns its own table/columns (or a couple of fields on `users`) and its own message copy.
-
-### Recipe 4: Add an admin command
-
-1. Register the handler in `controller/messaging/controller.go` with a prefix match:
-```go
-b.RegisterHandler(bot.HandlerTypeMessageText, "/new-invite", bot.MatchTypePrefix, handleNewInvite)
-```
-
-2. For HTTP admin endpoints, use the middleware:
-```go
-r.POST("/invitations", middleware.RequireAdmin(adminID), invitationController.Create)
-```
-
-3. Telegram deep-links: `https://t.me/<bot_username>?start=<CODE>`
+How to add a migration, conversation flow, LLM intent, scheduled notification, or admin command → **[docs/recipes.md](docs/recipes.md)**.
 
 ## 4. Business Rules
 
-### Currencies
-- ARS and USD only. No implicit conversion between currencies.
-- Currency fields use `currency.Currency` (string alias), never raw strings.
-- Amount shorthands ("200k") → the LLM expands to 200000. The application code does not do this.
+Full rules (currencies, grouping, taxonomy, accounts, balances, reminders) → **[docs/business-rules.md](docs/business-rules.md)**. The one that's load-bearing is inline below.
 
 ### The accounting model (money precision — READ THIS before touching any money path)
 
-**Every movement is signed and attributed to a real account. No exceptions.** Accounts
-hold the user's actual money (bank, Mercado Pago, broker); a balance is *always*
-`SUM(amount)` over its movements, so the stored sign IS the accounting. Getting a sign
-or an `account_id` wrong silently corrupts a balance — this is the one place in the
-codebase where a small mistake is a financial bug, not a cosmetic one.
+**Every movement is signed and attributed to a real account. No exceptions.** A balance is
+*always* `SUM(amount)` over an account's movements, so the stored sign IS the accounting. A
+wrong sign or `account_id` silently corrupts a balance — the one place in this codebase a
+small mistake is a financial bug, not cosmetic.
 
 | Type | `account_id` | Stored sign | Meaning |
 |---|---|---|---|
@@ -209,154 +99,17 @@ codebase where a small mistake is a financial bug, not a cosmetic one.
 | `income` | destination account (required) | **positive** (`+amount.Abs()`) | money enters an account |
 | `transfer` | both legs (required) | negative out / positive in | money moves between two own accounts |
 
-Non-negotiable rules:
-- **The app owns the sign, never the LLM.** Normalization forces `expense`→negative,
-  `income`→positive on write. The LLM emits positive magnitudes; app code applies the sign.
-- **The sign is internal to storage.** It never escapes: both the user (receipts,
-  diffs, pickers) and the LLM (UPDATE/DELETE candidates) always see `amount.Abs()`.
-  Direction is conveyed by the movement type, never a `-`. Feeding a signed amount to
-  either audience is a bug (it was the cause of a real `0.00` corruption).
-- **Account resolution is app-side, deterministic** (the account list shown to the LLM
-  does not mark the default, so the LLM structurally cannot pick it): LLM-matched
-  account → it; nil → currency default (`FindDefaultByCurrency`); no account in that
-  currency → gap-fill asks. Applies uniformly to expense, income, and transfer legs.
-- **Insert-time invariants (the guard), enforced for CREATE and UPDATE alike:**
-  sign matches type; `amount != 0`; movement currency == attributed account currency; a
-  transfer's two legs reference *different* accounts and (same currency) sum to 0;
-  expense/income never trigger counterparty-named account creation. Malformed → reject
-  + reword (typed sentinel errors mapped to specific copy).
-- **Anomaly detection — the insufficient-funds gate.** A well-formed movement that
-  drives an account *into or deeper into* negative (`after < 0 && after < before`, per
-  account) is neither silently inserted nor rejected: it stops at a confirm gate
-  showing the shortfall — **Registrar igual / Reescribir / Falta registrar algo** (the
-  last aborts stateless with a hint to log the missing movement first). Reuses the
-  existing `ChoiceStep` confirm pattern; friction only on the anomaly path (CREATE
-  stays frictionless otherwise). This is the point of the model: correct numbers, and a
-  suspicious result surfaced for the user to resolve, never buried.
-- **Never `float64`.** Always `shopspring/decimal` — see the Money convention above.
-- Monthly cash-flow summaries: filter `WHERE type != 'transfer'`; report `abs(amount)`
-  by type/subcategory (the sign is a storage detail, not a reporting one).
+- **The app owns the sign, never the LLM.** The guard normalizes `expense`→negative, `income`→positive on write.
+- **The sign never escapes storage.** User and LLM both see `amount.Abs()`; direction comes from the movement type, never a `-`.
+- **Account resolution is app-side, deterministic:** LLM-matched account → currency default (`FindDefaultByCurrency`) → gap-fill asks.
+- **Never `float64`** — always `shopspring/decimal`.
 
-> **Enforcement status:** the signed/attributed model is enforced. `resolveAndInsertMovements`
-> validates every CREATE/UPDATE through `normalizeMovements` (the guard) before insert —
-> sign, currency/account agreement, transfer-group shape, and account attribution are all
-> checked, never trusted from the LLM. Rows written before this shipped may still carry the
-> legacy `account_id = NULL` shape; the fix is `POST /admin/users/:telegramID/reset`, not a
-> retroactive migration.
-
-### Grouped transactions
-`transaction_id` (nullable UUID) groups N movements of one atomic operation. **Grouping
-is signaled by the LLM (a `group` field), never inferred from movement count** — a single
-message with several *independent* movements ("compré pan, medicamentos y carne") produces
-several movements each with `transaction_id = NULL`, so UPDATE/DELETE touches one without
-touching the others. Only the legs of a genuinely atomic operation (below) share a
-`transaction_id`; card itemization is **independent** expenses, not a group.
-
-| Operation | Movements |
-|---|---|
-| USD purchase | `transfer -150,000 ARS` (account_id=ars_account) + `transfer +100 USD` (account_id=usd_account), subcategory `Inversiones \| Dólares` |
-| Same-currency transfer | `transfer -X` (source account) + `transfer +X` (dest account), same currency, subcategory `Sistema \| Transferencia` |
-| FCI subscription | `transfer -2,500,000 ARS` (bank account) + `transfer +2,500,000 ARS` (FCI account) |
-| FCI redemption with gain | 2 transfers (redemption) + 1 `income` (subcategory: `Sistema \| Rendimiento inversión`, `account_id` = the FCI account, so it ends at balance 0) |
-
-### Accounts hold a fixed monetary amount, not asset positions
-- An account's balance is always a single ARS or USD number — the current value. The bot does not model stocks/ETFs/cedears/FCI cuotapartes as units × price, does not auto-revalue, and does not accrue interest.
-- An "investment account" is just an account whose current value the user states as a fixed amount.
-- Gains (rendimiento) belong to the **account** that earned them, not to any instrument. A gain is an `income` (`Sistema | Rendimiento inversión`) **attributed to that account**, growing its balance — never a silent bump. Any account can have its own. Stated explicitly ("el broker rindió 10 mil") it's a plain attributed income; on a redemption of more than the balance the app back-computes it (currently FCI only — see the money model).
-- `ClassifyOnboarding` extracts a monetary balance only — never units/shares/tickers.
-
-### Accounts
-- Table: `id, user_id, name, currency (ARS|USD), is_default, deleted_at`
-- No `type` column (current migration has `type DEFAULT 'standard'` — legacy artifact to drop)
-- Accounts are created via the onboarding free-text flow: user describes N accounts (name + currency + opening balance), the bot calls `ClassifyOnboarding`, inserts them atomically via `InsertAccountsWithOpenings` with opening `transfer` movements (subcategory `Sistema | Saldo inicial`).
-- The first account per currency is flagged `IsDefault=true` — a throwaway seed that satisfies the partial unique index `(user_id, currency) WHERE is_default = TRUE AND deleted_at IS NULL`. This default may be reset to `false` later by the user if they create additional accounts in that currency.
-- Additional accounts beyond the onboarding flow are created organically via ACCOUNT_CREATE intent (user explicitly asks to create an account, never `IsDefault=true`).
-- Unique index: `(user_id, name, currency) WHERE deleted_at IS NULL` (case-insensitive)
-- Unique index: `(user_id, currency) WHERE is_default = TRUE AND deleted_at IS NULL`
-
-### Balances
-No `balance` column on accounts. Always computed as a plain sum of **signed** amounts —
-this is why the sign convention above is load-bearing, not stylistic:
-```sql
-SELECT SUM(amount) FROM movements
-WHERE account_id = $account_id AND deleted_at IS NULL
-```
-Negative balances are allowed (a mis-entry or overdraft) — corrected via UPDATE, never
-floored silently.
-
-### Exchange rates
-- Daily: BNA, MEP, CCL, blue via `dolarapi.com`
-- Monthly CPI via `api.argentinadatos.com`
-- Denormalized snapshot on each movement INSERT: `bna_rate`, `mep_rate`, `ccl_rate`, `blue_rate`, `amount_usd` (not yet implemented — planned addition to the movements table)
-
-### Categories and subcategories
-- Strictly two-level tree: `category > subcategory`. Never deeper.
-- `user_id = NULL` → global (visible to all). `user_id NOT NULL` → user-created.
-- Only admin can create global subcategories (`is_global = TRUE`).
-- ~80 global subcategories seeded in migration `20260625234857`, across 14 categories.
-- Reserved: `PENDING_REVIEW | PENDING_REVIEW` (low LLM confidence), `Sistema | Saldo inicial`, `Sistema | Rendimiento inversión`
-- Reserved category names (`PENDING_REVIEW`, `Sistema`, case-insensitive) apply to user-created categories too, not just the seeded taxonomy — checked at creation time in `subcategory_setup_flow.go`.
-
-### LLM classification
-- Intents: `CREATE | UPDATE | DELETE | QUERY` — classified via Groq (Call 1 router also returns `needs_confirmation`, meaningful only for CREATE)
-- Tool calling: the LLM constructs action parameters, not just the intent type
-- Low confidence → `PENDING_REVIEW` subcategory, bot asks for confirmation
-- A CREATE the router flags as ambiguous, or that matches an existing recent movement (`resolveCandidates`), stops at a reescribir/cancelar confirm gate instead of inserting — CREATE's frictionless default has this one exception
-- `UPDATE` = atomic `DELETE + INSERT` (never partial patch)
-- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`) — no in-memory last-transaction store
-
-### Bot interaction
-- No Telegram commands for end users. Everything is free text → LLM → flow or query handler.
-- Exceptions: `/start` (onboarding) and admin commands (e.g. `/new-invite`)
-- Timezone: `America/Argentina/Buenos_Aires`
-- Default payment method when LLM cannot infer: `transfer`
-
-### Reminders
-- One reminder per user (`reminders` table, PK `user_id`). Configured/edited/disabled entirely by free text via `REMINDER_SET` — no confirm gate, like ACCOUNT_CREATE/CREATE_CATEGORY.
-- Window stored as minutes-since-midnight ART (`window_start_min`/`window_end_min`), not a SQL `time` — the fire target is the midpoint (`Reminder.MidpointMin()`, derived, never stored), which needs sub-hour precision.
-- Activity-aware: fires only if the user has logged **zero** movements today (any type, via `FindRecentlyCreatedForUser`) — never nags on a day already engaged.
-- Delivery: `internal/notifier.Sweeper`, an in-process `time.Ticker` (default 5 min, `[reminders].sweepIntervalMinutes`), not an external cron — the bot process is already 24/7 single-instance.
-- Delete == disable (`enabled=false`). No `deleted_at` — the user-facing fact is the same either way.
-- Consulting the reminder ("¿a qué hora me recordás?") is QUERY's `get_reminder` tool, not REMINDER_SET.
+> **Full money model** — the guard's insert-time invariants, the insufficient-funds confirm
+> gate, grouped transactions, FCI redemption, enforcement status → **[docs/business-rules.md](docs/business-rules.md#the-accounting-model)**.
 
 ## 5. Local Dev Setup
 
-**Prerequisites:** Go 1.26+, Docker (for local Postgres), devtunnel or ngrok (public HTTPS URL for Telegram webhooks).
-
-### Start Postgres
-```bash
-docker compose up -d
-```
-Postgres 16 on `:5432`. Credentials: DB=`lopiibot`, user=`lopiibot`, pass=`lopiibot`. Data stored in `./db-data/` (git-ignored).
-
-### Configure before first run
-
-**1. Secrets in `config/local.toml`:**
-```toml
-[server]
-baseHost = "https://<your-tunnel>.devtunnels.ms"  # public HTTPS URL for Telegram webhook
-
-[telegram]
-token = "<token from @BotFather>"
-```
-The DB config is already set to match Docker Compose — no changes needed.
-
-**2. Edit the admin migration (first time only):**
-`migrations/20260618230837_create_admin_user.sql` — replace `'TELEGRAM_ID'` with your numeric Telegram user ID.
-
-### Run
-```bash
-cd cmd/server && ENV=local go run .
-```
-Migrations run automatically at startup. Working directory must be `cmd/server/` — the config path resolves as `../../config/{ENV}.toml`.
-
-### Create a new migration
-```bash
-goose create <descriptive_name> sql -dir ./migrations
-```
-
-### Tests
-First tests added in `internal/controller/messaging` (`onboarding_flow_test.go`) — mocked local repository interfaces, no real Postgres. Follow the same pattern for new packages.
+Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/dev-setup.md)**.
 
 ## 6. Technical Debt
 
