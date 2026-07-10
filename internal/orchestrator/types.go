@@ -10,6 +10,7 @@ const (
 	IntentQuery          Intent = "QUERY"
 	IntentAccountCreate  Intent = "ACCOUNT_CREATE"
 	IntentCreateCategory Intent = "CREATE_CATEGORY"
+	IntentReminderSet    Intent = "REMINDER_SET"
 )
 
 // IntentResult is Call 1 router's output: the classified intent, plus
