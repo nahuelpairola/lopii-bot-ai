@@ -254,6 +254,25 @@ func TestHandle_ResumeContinue_ResendsCurrentPrompt(t *testing.T) {
 	}
 }
 
+func TestHandle_ResumeContinue_UnregisteredFlow_ReturnsErrorNotPanic(t *testing.T) {
+	store := &fakeStore{
+		flowName:  "some_removed_flow",
+		stepName:  "some_step",
+		data:      Data{},
+		updatedAt: time.Now(),
+		found:     true,
+	}
+	engine := NewEngine(store, func(string) string { return "algo" })
+
+	_, found, err := engine.Handle(1, Input{CallbackData: "_resume_continue"})
+	if err == nil {
+		t.Fatal("expected error for unregistered flow, got nil")
+	}
+	if !found {
+		t.Fatal("found should be true: state row exists, it's just an unregistered flow")
+	}
+}
+
 func TestHandle_ResumeCancel_ClearsStateAndFinishesWithMarker(t *testing.T) {
 	store := &fakeStore{}
 	engine := NewEngine(store, func(string) string { return "algo" })

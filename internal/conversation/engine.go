@@ -92,7 +92,10 @@ func (e *Engine) StartWithData(userID uint64, flowName string, seed Data) (Promp
 		return Prompt{}, fmt.Errorf("conversation: flow %q completed immediately with seed data, nothing to prompt", flowName)
 	}
 
-	step, _ := f.step(resolved)
+	step, ok := f.step(resolved)
+	if !ok {
+		return Prompt{}, fmt.Errorf("conversation: step %q not found in flow %q", resolved, flowName)
+	}
 	if err := e.store.Set(userID, f.Name, resolved, data); err != nil {
 		return Prompt{}, err
 	}
@@ -123,12 +126,19 @@ func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, 
 	}
 
 	if input.CallbackData == resumeContinue {
+		f, ok := e.flows[flowName]
+		if !ok {
+			return Result{}, true, fmt.Errorf("conversation: flow %q is not registered", flowName)
+		}
+		step, ok := f.step(stepName)
+		if !ok {
+			return Result{}, true, fmt.Errorf("conversation: step %q not found in flow %q", stepName, flowName)
+		}
 		next := cloneData(data)
 		delete(next, retryCountKey)
 		if err := e.store.Set(userID, flowName, stepName, next); err != nil {
 			return Result{}, true, err
 		}
-		step, _ := e.flows[flowName].step(stepName)
 		return Result{Prompt: step.Prompt(next), FlowName: flowName}, true, nil
 	}
 	if input.CallbackData == resumeCancel {
