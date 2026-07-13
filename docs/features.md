@@ -14,7 +14,7 @@
 - Conversation engine: `Flow`, `TextStep`, `ChoiceStep`, state persisted in Postgres JSONB
 - Account repository: full CRUD + default management + unique violation detection
 - Subcategory repository: `FindAllForUser`, `DistinctCategoriesForUser`, `FindByCategoryAndSubcategory`, `Insert` + unique violation detection
-- ~90 global subcategories seeded across 15 categories (`migrations/20260625234857`)
+- ~60 global subcategories across 16 categories + 2 reserved (`Sistema`, `PENDING_REVIEW`), reseeded in `migrations/20260710130000` (replaces the original `20260625234857`)
 - Movement GORM model + `InitRepository` + `InsertBatch` (transactional multi-row insert), `FindSimilarForUser` (pg_trgm fuzzy search), `SoftDeleteByIDs`/`ReplaceMovements` (ID-based, atomic DELETE+INSERT), `SumAmountForAccount`
 - `handleConversationInput`'s flow-completion dispatch (`handleFlowFinished`, `switch result.FlowName`) — no longer a `"TO_REVIEW"` placeholder for registered flows
 - **LLM orchestrator** (`internal/orchestrator/`) — Groq tool-calling HTTP client, 4 call shapes: `ClassifyIntent` (Call 1 router, small/fast model), `ClassifyCreate` (Call 2 CREATE, pro model), `ResolveUpdate` (Call 2 UPDATE, pro model), `ResolveDelete` (Call 2 DELETE, small model)
