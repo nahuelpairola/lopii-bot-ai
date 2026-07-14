@@ -4,10 +4,46 @@ import (
 	"strings"
 	"testing"
 
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
+
+func TestMsgConfirmUpdateDiff_ShowsAccountChange(t *testing.T) {
+	before := []movementRow{{Amount: "610503", Currency: "ARS", AccountName: "Efectivo"}}
+	after := []movementRow{{Category: "Deudas", Subcategory: "Tarjeta", Amount: "610503", Currency: "ARS", Description: "Pago tarjeta", Date: "2026-07-14", AccountName: "Galicia"}}
+	data := conversation.Data{
+		"before_movements": encodeMovementRows(before),
+		"movements":        encodeMovementRows(after),
+	}
+
+	msg := msgConfirmUpdateDiff(data)
+	for _, want := range []string{"Galicia", "Efectivo"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("diff %q missing %q — account change must be visible", msg, want)
+		}
+	}
+}
+
+func TestMovementReceiptLine_ShowsAccountWhenLoaded(t *testing.T) {
+	m := movement.Movement{
+		Type:        movement.Expense,
+		Amount:      mustDecimal(t, "610503"),
+		Currency:    "ARS",
+		Subcategory: &subcategory.Subcategory{Category: "Deudas", Subcategory: "Tarjeta"},
+		Date:        mustDate(t, "2026-07-14"),
+		Account:     &account.Account{Name: "Efectivo"},
+	}
+	if line := movementReceiptLine(m); !strings.Contains(line, "Efectivo") {
+		t.Errorf("receipt line %q should show the account name", line)
+	}
+
+	m.Account = nil // not loaded → must not panic, must not add a stray separator
+	if line := movementReceiptLine(m); strings.Contains(line, "· ·") {
+		t.Errorf("receipt line %q added an empty account segment", line)
+	}
+}
 
 func TestMovementReceiptLine_IncludesCategorySubcategoryDescriptionDate(t *testing.T) {
 	m := movement.Movement{

@@ -27,6 +27,7 @@ type Movement struct {
 	TransactionID *uuid.UUID               `gorm:"column:transaction_id"`
 	UserID        uint64                   `gorm:"column:user_id;not null"`
 	AccountID     *uint64                  `gorm:"column:account_id"`
+	Account       *account.Account         `gorm:"foreignKey:AccountID"`
 	SubcategoryID uint64                   `gorm:"column:subcategory_id;not null"`
 	Subcategory   *subcategory.Subcategory `gorm:"foreignKey:SubcategoryID"`
 	Date          time.Time                `gorm:"column:date;not null"`
@@ -116,7 +117,7 @@ var ErrMovementNotFound = errors.New("movement not found")
 // string instead is a plain DATE-to-DATE comparison with no cast involved.
 func (r *repository) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]Movement, error) {
 	var ms []Movement
-	q := r.db.DB.Preload("Subcategory").
+	q := r.db.DB.Preload("Subcategory").Preload("Account").
 		Where("user_id = ? AND date >= ?", userID, since.Format("2006-01-02"))
 	if until != nil {
 		q = q.Where("date <= ?", until.Format("2006-01-02"))
@@ -135,7 +136,7 @@ func (r *repository) FindSimilarForUser(userID uint64, query string, since time.
 // trap; see FindSimilarForUser's note on why `date` needs a string bind).
 func (r *repository) FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]Movement, error) {
 	var ms []Movement
-	err := r.db.DB.Preload("Subcategory").
+	err := r.db.DB.Preload("Subcategory").Preload("Account").
 		Where("user_id = ? AND created_at >= ?", userID, since).
 		Order("created_at DESC, id DESC").
 		Find(&ms).Error

@@ -28,7 +28,7 @@ var onboardingTool = toolSchema{
 				"items": {
 					"type": "object",
 					"properties": {
-						"name": {"type": "string"},
+						"name": {"type": ["string", "null"]},
 						"currency": {"type": "string", "enum": ["ARS", "USD"]},
 						"balance": {"type": "string"}
 					},
