@@ -34,7 +34,7 @@ type loggedIntent struct {
 	outcome string
 }
 
-func (f *fakeMetricRepo) Log(userID uint64, rawMessage, intent string, needsConfirmation bool, outcome string) error {
+func (f *fakeMetricRepo) Log(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error {
 	f.logged = append(f.logged, loggedIntent{intent: intent, outcome: outcome})
 	return nil
 }

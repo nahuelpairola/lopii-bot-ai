@@ -66,12 +66,13 @@ func InitRepository(conn *database.Connection) *repository {
 // ponytail: dos statements, no una tx — una fila de métrica es fire-and-forget;
 // una caída entre medio a lo sumo desetiqueta una fila de analítica, nunca
 // datos del usuario.
-func (r *repository) Log(userID uint64, rawMessage, intent string, needsConfirmation bool, outcome string) error {
+func (r *repository) Log(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error {
 	r.db.DB.Model(&IntentEvent{}).
 		Where("user_id = ? AND outcome = ?", userID, "pending").
 		Updates(map[string]interface{}{"outcome": "abandoned", "resolved_at": time.Now()})
 	return r.db.DB.Create(&IntentEvent{
 		UserID:            userID,
+		TraceID:           traceID,
 		RawMessage:        rawMessage,
 		Intent:            intent,
 		NeedsConfirmation: needsConfirmation,

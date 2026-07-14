@@ -54,7 +54,8 @@ func (c *controller) logIntent(userID uint64, rawMessage string, intent orchestr
 	if c.metrics == nil {
 		return
 	}
-	if err := c.metrics.Log(userID, rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
+	// ponytail: traceID="" temporal, Task 7 lo cablea leyendo de ctx.
+	if err := c.metrics.Log(userID, "", rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
 		log.Printf("metric: log intent: %v", err)
 	}
 }

@@ -2,6 +2,33 @@ package metric
 
 import "time"
 
+// InsertLLMCall graba una llamada Groq. Fire-and-forget: el caller ignora el error.
+func (r *repository) InsertLLMCall(c *LLMCall) error {
+	return r.db.DB.Create(c).Error
+}
+
+// InsertRequestTrace graba el spine de un update. Firma primitiva para que el
+// paquete messaging no importe el modelo (mismo criterio que Log/Resolve).
+func (r *repository) InsertRequestTrace(traceID string, userID *uint64, updateType string, receivedAt time.Time, latencyMs int, errMsg string) error {
+	return r.db.DB.Create(&RequestTrace{
+		TraceID:    traceID,
+		UserID:     userID,
+		UpdateType: updateType,
+		ReceivedAt: receivedAt,
+		LatencyMs:  latencyMs,
+		Error:      errMsg,
+	}).Error
+}
+
+// DeleteOlderThan purga filas operativas viejas (retención). Barato: predicado
+// sobre índice created_at. intent_events NO se toca (negocio, retención propia).
+func (r *repository) DeleteOlderThan(cutoff time.Time) error {
+	if err := r.db.DB.Where("created_at < ?", cutoff).Delete(&LLMCall{}).Error; err != nil {
+		return err
+	}
+	return r.db.DB.Where("created_at < ?", cutoff).Delete(&RequestTrace{}).Error
+}
+
 // LLMCall es una fila de llm_calls: una llamada HTTP a Groq (grano send()).
 // CreatedAt lo autopopula GORM. Punteros = nullable (no hubo body/headers en error).
 type LLMCall struct {
