@@ -15,7 +15,8 @@ const (
 	stepAccountCreateAskBalance  = "account_create_ask_balance"
 	stepAccountCreateConfirm     = "account_create_confirm"
 
-	optionBack = "back"
+	optionBack        = "back"
+	optionConfirmSeed = "confirm_seed"
 )
 
 // onAccountCreateEscape is the shared OnEscape/OnChoice handler for this
@@ -49,7 +50,16 @@ func NewAccountCreateFlow() *conversation.Flow {
 			},
 			NextStep:      stepAccountCreateAskCurrency,
 			EscapeOptions: []conversation.ChoiceOption{cancelOption},
-			OnEscape:      onAccountCreateEscape,
+			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
+				name := stringOrEmpty(data["account_name"])
+				if name == "" {
+					return nil
+				}
+				return []conversation.ChoiceOption{
+					{Label: "✅ Usar " + name, Value: optionConfirmSeed, NextStep: stepAccountCreateAskCurrency},
+				}
+			},
+			OnEscape: onAccountCreateEscape,
 		},
 		stepAccountCreateAskCurrency: conversation.ChoiceStep{
 			PromptText: msgAskAccountCreateCurrency,
@@ -89,6 +99,19 @@ func NewAccountCreateFlow() *conversation.Flow {
 			EscapeOptions: []conversation.ChoiceOption{
 				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountCreateAskCurrency},
 				cancelOption,
+			},
+			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
+				bal := stringOrEmpty(data["account_balance"])
+				if bal == "" {
+					return nil
+				}
+				label := "✅ Usar " + bal
+				if cur := stringOrEmpty(data["account_currency"]); cur != "" {
+					label += " " + cur
+				}
+				return []conversation.ChoiceOption{
+					{Label: label, Value: optionConfirmSeed, NextStep: stepAccountCreateConfirm},
+				}
 			},
 			OnEscape: onAccountCreateEscape,
 		},

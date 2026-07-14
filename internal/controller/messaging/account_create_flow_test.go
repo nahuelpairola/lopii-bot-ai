@@ -227,3 +227,66 @@ func TestAccountCreateFlow_InvalidBalance_Retries(t *testing.T) {
 		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountCreateAskBalance)
 	}
 }
+
+func TestAccountCreateFlow_SeededBalance_ConfirmButtonKeepsValue(t *testing.T) {
+	engine, _ := newAccountCreateTestEngine()
+	const userID = uint64(1)
+
+	seed := conversation.Data{"account_name": "Cedears", "account_balance": "1041265"}
+	if _, err := engine.StartWithData(userID, accountCreateFlowName, seed); err != nil {
+		t.Fatalf("StartWithData: %v", err)
+	}
+
+	// Name step shows the confirm button; tap it to keep "Cedears".
+	prompt, found, err := engine.Handle(userID, conversation.Input{CallbackData: optionConfirmSeed})
+	if err != nil || !found || prompt.Finished {
+		t.Fatalf("confirm name: prompt=%+v found=%v err=%v", prompt, found, err)
+	}
+
+	// Currency step (normal ChoiceStep).
+	if _, _, err = engine.Handle(userID, conversation.Input{CallbackData: currency.USD.String()}); err != nil {
+		t.Fatalf("pick currency: %v", err)
+	}
+
+	// Balance step shows the seeded confirm button; tap it to keep "1041265".
+	if _, _, err = engine.Handle(userID, conversation.Input{CallbackData: optionConfirmSeed}); err != nil {
+		t.Fatalf("confirm balance: %v", err)
+	}
+
+	// Confirm step finishes with the seeded values intact.
+	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "confirm"})
+	if err != nil || !result.Finished {
+		t.Fatalf("confirm: result=%+v err=%v", result, err)
+	}
+	if result.Data["account_name"] != "Cedears" {
+		t.Errorf("account_name = %v, want %q", result.Data["account_name"], "Cedears")
+	}
+	if result.Data["account_balance"] != "1041265" {
+		t.Errorf("account_balance = %v, want %q", result.Data["account_balance"], "1041265")
+	}
+	if result.Data["account_currency"] != currency.USD.String() {
+		t.Errorf("account_currency = %v, want %q", result.Data["account_currency"], currency.USD.String())
+	}
+}
+
+func TestAccountCreateFlow_SeededBalance_TypingOverrides(t *testing.T) {
+	engine, _ := newAccountCreateTestEngine()
+	const userID = uint64(1)
+
+	seed := conversation.Data{"account_name": "Cedears", "account_balance": "1041265"}
+	engine.StartWithData(userID, accountCreateFlowName, seed)
+	engine.Handle(userID, conversation.Input{CallbackData: optionConfirmSeed})   // keep name
+	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()}) // currency
+
+	// At the balance step, type a different number instead of tapping confirm.
+	if _, _, err := engine.Handle(userID, conversation.Input{Text: "999"}); err != nil {
+		t.Fatalf("type new balance: %v", err)
+	}
+	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "confirm"})
+	if err != nil || !result.Finished {
+		t.Fatalf("confirm: result=%+v err=%v", result, err)
+	}
+	if result.Data["account_balance"] != "999" {
+		t.Errorf("typing should override the seed: account_balance = %v, want %q", result.Data["account_balance"], "999")
+	}
+}
