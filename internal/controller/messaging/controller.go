@@ -72,7 +72,7 @@ type movementOrchestrator interface {
 }
 
 type metricRepository interface {
-	Log(userID uint64, rawMessage, intent string, needsConfirmation bool, outcome string) error
+	Log(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error
 	Resolve(userID uint64, outcome string, movementIDs []uint) error
 }
 
@@ -87,6 +87,10 @@ type reminderRepository interface {
 	FindByUserID(userID uint64) (*reminder.Reminder, error)
 }
 
+type traceRepository interface {
+	InsertRequestTrace(traceID string, userID *uint64, updateType string, receivedAt time.Time, latencyMs int, errMsg string) error
+}
+
 type controller struct {
 	users         userRepository
 	invitations   invitationRepository
@@ -98,6 +102,7 @@ type controller struct {
 	metrics       metricRepository
 	queryHistory  queryHistoryRepository
 	reminders     reminderRepository
+	traces        traceRepository
 }
 
 func NewController(
@@ -111,6 +116,7 @@ func NewController(
 	metrics metricRepository,
 	queryHistory queryHistoryRepository,
 	reminders reminderRepository,
+	traces traceRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -123,6 +129,7 @@ func NewController(
 		metrics:       metrics,
 		queryHistory:  queryHistory,
 		reminders:     reminders,
+		traces:        traces,
 	}
 }
 
@@ -164,38 +171,42 @@ func (c *controller) hasIncomingInput(update *models.Update) bool {
 
 // handleConversationInput le pasa el input al motor de conversaciones.
 func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, update *models.Update) {
-	telegramID := updateTelegramID(update)
-	if telegramID == "" {
-		return
-	}
-	u, err := c.users.FindByTelegramID(telegramID)
-	if err != nil {
-		return
-	}
-
-	if cb := update.CallbackQuery; cb != nil {
-		b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: cb.ID})
-	}
-
-	input := toConversationInput(update)
-	chatID := updateChatID(update)
-
-	result, found, err := c.engine.Handle(u.ID, input)
-	if err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
-		return
-	}
-	if !found {
-		if input.Text != "" {
-			c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+	c.withTrace(ctx, update, func(ctx context.Context) (*uint64, error) {
+		telegramID := updateTelegramID(update)
+		if telegramID == "" {
+			return nil, nil
 		}
-		return
-	}
-	if result.Finished {
-		c.handleFlowFinished(ctx, b, chatID, result)
-		return
-	}
-	c.sendPrompt(ctx, b, chatID, result.Prompt)
+		u, err := c.users.FindByTelegramID(telegramID)
+		if err != nil {
+			return nil, err
+		}
+		uid := u.ID
+
+		if cb := update.CallbackQuery; cb != nil {
+			b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: cb.ID})
+		}
+
+		input := toConversationInput(update)
+		chatID := updateChatID(update)
+
+		result, found, err := c.engine.Handle(u.ID, input)
+		if err != nil {
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+			return &uid, err
+		}
+		if !found {
+			if input.Text != "" {
+				c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+			}
+			return &uid, nil
+		}
+		if result.Finished {
+			c.handleFlowFinished(ctx, b, chatID, result)
+			return &uid, nil
+		}
+		c.sendPrompt(ctx, b, chatID, result.Prompt)
+		return &uid, nil
+	})
 }
 
 // handleFlowFinished ejecuta la acción real correspondiente a un flow que

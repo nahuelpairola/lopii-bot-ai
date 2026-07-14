@@ -35,6 +35,14 @@ type userReader interface {
 	FindByID(id uint64) (*user.User, error)
 }
 
+type retentionStore interface {
+	DeleteOlderThan(cutoff time.Time) error
+}
+
+// retentionDays es cuánto se conservan las tablas operativas (llm_calls,
+// request_traces) antes de purgarse. Va en Go, no pg_cron.
+const retentionDays = 90
+
 // Sweeper drives all scheduled system->user notifications. Today it hosts one
 // tenant (reminders); future tenants add a sibling sweepX call in tick(). send
 // is injected so it is reachable by tests and, later, an admin broadcast — the
@@ -43,15 +51,17 @@ type Sweeper struct {
 	reminders reminderStore
 	movements movementReader
 	users     userReader
+	retention retentionStore
 	send      func(ctx context.Context, chatID int64, text string) error
 	now       func() time.Time
 }
 
-func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader) *Sweeper {
+func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore) *Sweeper {
 	return &Sweeper{
 		reminders: r,
 		movements: m,
 		users:     u,
+		retention: ret,
 		send: func(ctx context.Context, chatID int64, text string) error {
 			_, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text})
 			return err
@@ -77,9 +87,22 @@ func (s *Sweeper) Run(ctx context.Context, interval time.Duration) {
 // tick runs every notifier for this instant. now is in ART.
 func (s *Sweeper) tick(ctx context.Context, now time.Time) {
 	s.sweepReminders(ctx, now)
+	s.sweepRetention(now)
 	// future tenants:
 	// s.sweepCafecito(ctx, now)
 	// s.sweepWeeklySummary(ctx, now)
+}
+
+// sweepRetention purga métricas operativas más viejas que retentionDays. Corre
+// cada tick: el DELETE es idempotente y barato (índice created_at), casi siempre
+// 0 filas. ponytail: si el tick fuera caro, gatear a 1/día por la hora.
+func (s *Sweeper) sweepRetention(now time.Time) {
+	if s.retention == nil {
+		return
+	}
+	if err := s.retention.DeleteOlderThan(now.AddDate(0, 0, -retentionDays)); err != nil {
+		log.Printf("notifier: retention: %v", err)
+	}
 }
 
 // sweepReminders sends a nudge to any enabled user past their window midpoint

@@ -25,8 +25,8 @@ func TestChatCompletionLoop_ReturnsToolCalls(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key", server.URL, 5*time.Second)
-	msg, err := client.chatCompletionLoop(context.Background(), "test-model",
+	client := NewClient("test-key", server.URL, 5*time.Second, nil)
+	msg, err := client.chatCompletionLoop(context.Background(), callTypeQuery, "test-model",
 		[]loopMessage{{Role: "user", Content: "cuánto gasté"}}, nil, "auto")
 	if err != nil {
 		t.Fatalf("chatCompletionLoop: %v", err)
@@ -46,8 +46,8 @@ func TestChatCompletionLoop_ReturnsContent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key", server.URL, 5*time.Second)
-	msg, err := client.chatCompletionLoop(context.Background(), "m", []loopMessage{{Role: "user", Content: "x"}}, nil, "auto")
+	client := NewClient("test-key", server.URL, 5*time.Second, nil)
+	msg, err := client.chatCompletionLoop(context.Background(), callTypeQuery, "m", []loopMessage{{Role: "user", Content: "x"}}, nil, "auto")
 	if err != nil {
 		t.Fatalf("chatCompletionLoop: %v", err)
 	}
@@ -65,8 +65,8 @@ func TestChatCompletionLoop_ErrorsOnNonOK(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("test-key", server.URL, 5*time.Second)
-	if _, err := client.chatCompletionLoop(context.Background(), "m", []loopMessage{{Role: "user", Content: "x"}}, nil, "auto"); err == nil {
+	client := NewClient("test-key", server.URL, 5*time.Second, nil)
+	if _, err := client.chatCompletionLoop(context.Background(), callTypeQuery, "m", []loopMessage{{Role: "user", Content: "x"}}, nil, "auto"); err == nil {
 		t.Fatal("expected an error on a non-200 response")
 	}
 }

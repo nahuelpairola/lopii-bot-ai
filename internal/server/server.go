@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -31,6 +32,33 @@ type httpServer struct {
 }
 
 var server httpServer
+
+// llmCallRecorder adapta orchestrator.LLMRecorder a metric. Fire-and-forget en
+// goroutine: la métrica no debe agregar latencia ni romper el flujo del usuario.
+type llmCallRecorder struct {
+	insert func(*metric.LLMCall) error
+}
+
+func (r llmCallRecorder) Record(c orchestrator.LLMCall) {
+	go func() {
+		if err := r.insert(&metric.LLMCall{
+			TraceID:                    c.TraceID,
+			CallType:                   c.CallType,
+			Model:                      c.Model,
+			PromptTokens:               c.PromptTokens,
+			CompletionTokens:           c.CompletionTokens,
+			TotalTokens:                c.TotalTokens,
+			LatencyMs:                  c.LatencyMs,
+			HTTPStatus:                 c.HTTPStatus,
+			Attempts:                   c.Attempts,
+			Error:                      c.Err,
+			RateLimitRemainingRequests: c.RateLimitRemainingRequests,
+			RateLimitRemainingTokens:   c.RateLimitRemainingTokens,
+		}); err != nil {
+			log.Printf("metric: insert llm_call: %v", err)
+		}
+	}()
+}
 
 func InitServer(conf *config.Config) error {
 	ginEngine := gin.Default()
@@ -73,6 +101,7 @@ func InitServer(conf *config.Config) error {
 		DeleteModel:    conf.Groq.DeleteModel,
 		QueryModel:     conf.Groq.QueryModel,
 		TimeoutSeconds: conf.Groq.TimeoutSeconds,
+		Recorder:       llmCallRecorder{insert: metricRepo.InsertLLMCall},
 	})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
@@ -96,7 +125,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo,
+		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo, metricRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 
@@ -105,7 +134,7 @@ func InitServer(conf *config.Config) error {
 	adminController.RegisterRoutes(ginEngine)
 	messagingController.RegisterHandlers(tgBot)
 
-	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo)
+	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
 
 	server = httpServer{engine: ginEngine}

@@ -61,15 +61,15 @@ var createTool = toolSchema{
 						"type": {"type": "string", "enum": ["expense", "income", "transfer"]},
 						"amount": {"type": "string"},
 						"currency": {"type": "string", "enum": ["ARS", "USD"]},
-						"account_id": {"type": "integer"},
-						"account_name_guess": {"type": "string"},
+						"account_id": {"type": ["integer", "null"]},
+						"account_name_guess": {"type": ["string", "null"]},
 						"category": {"type": "string"},
 						"subcategory": {"type": "string"},
 						"payment_method": {"type": "string"},
 						"merchant": {"type": "string"},
 						"description": {"type": "string"},
 						"date": {"type": "string"},
-						"group": {"type": "string"}
+						"group": {"type": ["string", "null"]}
 					},
 					"required": ["type", "amount", "currency", "category", "subcategory", "payment_method", "description", "date"]
 				}
@@ -98,7 +98,7 @@ func buildAccountsBlock(accounts []AccountOption) string {
 func (o *Orchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []TaxonomyEntry, accounts []AccountOption, today string) (CreateResult, error) {
 	systemPrompt := fmt.Sprintf(createSystemPromptTemplate, today, buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
 
-	raw, err := o.client.chatCompletion(ctx, o.createModel, systemPrompt, text, createTool)
+	raw, err := o.client.chatCompletion(ctx, callTypeCreate, o.createModel, systemPrompt, text, createTool)
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("orchestrator: classify create: %w", err)
 	}

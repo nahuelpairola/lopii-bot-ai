@@ -15,6 +15,7 @@ type Config struct {
 	DeleteModel    string
 	QueryModel     string
 	TimeoutSeconds int
+	Recorder       LLMRecorder // nil-safe
 }
 
 // Orchestrator wires the Groq client to the call types (router, create,
@@ -30,7 +31,7 @@ type Orchestrator struct {
 
 func New(cfg Config) *Orchestrator {
 	return &Orchestrator{
-		client:      NewClient(cfg.APIKey, cfg.BaseURL, time.Duration(cfg.TimeoutSeconds)*time.Second),
+		client:      NewClient(cfg.APIKey, cfg.BaseURL, time.Duration(cfg.TimeoutSeconds)*time.Second, cfg.Recorder),
 		routerModel: cfg.RouterModel,
 		createModel: cfg.CreateModel,
 		updateModel: cfg.UpdateModel,

@@ -56,7 +56,7 @@ type loopResponse struct {
 // toolChoice is "auto" for normal rounds and "none" on a forced-narration
 // final call (Groq's documented way to make the model emit text instead of
 // another tool round).
-func (c *Client) chatCompletionLoop(ctx context.Context, model string, messages []loopMessage, tools []toolDef, toolChoice string) (loopMessage, error) {
+func (c *Client) chatCompletionLoop(ctx context.Context, callType, model string, messages []loopMessage, tools []toolDef, toolChoice string) (loopMessage, error) {
 	reqBody := loopRequest{
 		Model:               model,
 		Messages:            messages,
@@ -71,7 +71,7 @@ func (c *Client) chatCompletionLoop(ctx context.Context, model string, messages 
 		return loopMessage{}, fmt.Errorf("orchestrator: marshal loop request: %w", err)
 	}
 
-	body, err := c.send(ctx, payload)
+	body, err := c.send(ctx, callType, model, payload)
 	if err != nil {
 		return loopMessage{}, err
 	}

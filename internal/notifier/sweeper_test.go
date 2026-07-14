@@ -86,3 +86,24 @@ func TestSweep_SkipsWhenLoggedToday(t *testing.T) {
 		t.Fatalf("expected no send when already logged today, got %v", sent)
 	}
 }
+
+type fakeRetention struct {
+	cutoff time.Time
+	called bool
+}
+
+func (f *fakeRetention) DeleteOlderThan(c time.Time) error { f.cutoff, f.called = c, true; return nil }
+
+func TestSweepRetentionDeletesOldRows(t *testing.T) {
+	ret := &fakeRetention{}
+	s := &Sweeper{retention: ret}
+	now := time.Date(2026, 7, 13, 4, 0, 0, 0, time.UTC)
+	s.sweepRetention(now)
+	if !ret.called {
+		t.Fatal("retention not invoked")
+	}
+	want := now.AddDate(0, 0, -retentionDays)
+	if !ret.cutoff.Equal(want) {
+		t.Fatalf("cutoff %v, want %v", ret.cutoff, want)
+	}
+}

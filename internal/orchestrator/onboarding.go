@@ -41,7 +41,7 @@ var onboardingTool = toolSchema{
 }
 
 func (o *Orchestrator) ClassifyOnboarding(ctx context.Context, text string) (OnboardingResult, error) {
-	raw, err := o.client.chatCompletion(ctx, o.createModel, onboardingSystemPrompt, text, onboardingTool)
+	raw, err := o.client.chatCompletion(ctx, callTypeOnboarding, o.createModel, onboardingSystemPrompt, text, onboardingTool)
 	if err != nil {
 		return OnboardingResult{}, fmt.Errorf("orchestrator: classify onboarding: %w", err)
 	}

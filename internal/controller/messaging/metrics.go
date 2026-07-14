@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"context"
 	"log"
 
 	"lopiibot.com/internal/movement"
@@ -50,11 +51,11 @@ func routerOutcome(intent orchestrator.Intent) string {
 // logIntent registra la clasificación del router. Fire-and-forget: una
 // escritura de métrica nunca rompe el flujo del usuario. El nil-guard
 // mantiene verdes los tests que construyen el controller sin metrics.
-func (c *controller) logIntent(userID uint64, rawMessage string, intent orchestrator.Intent, needsConfirmation bool) {
+func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage string, intent orchestrator.Intent, needsConfirmation bool) {
 	if c.metrics == nil {
 		return
 	}
-	if err := c.metrics.Log(userID, rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
+	if err := c.metrics.Log(userID, orchestrator.TraceID(ctx), rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
 		log.Printf("metric: log intent: %v", err)
 	}
 }
