@@ -18,7 +18,7 @@ REGLAS DE MONTO Y MONEDA:
 - Los montos abreviados ("200k", "1.5m") se expanden a su valor numérico completo.
 - Si el mensaje no aclara moneda, asumí ARS siempre.
 - Método de pago por defecto si no se aclara: "transfer". Vocabulario sugerido: transfer, qr, cash, bank_deposit, check, broker, credit_card.
-
+` + numberFormatRule + `
 REGLA DE FECHA:
 - Hoy es %s. Por defecto la fecha del movimiento es hoy. Si el mensaje aclara una fecha o día relativo ("el 3 de enero", "ayer", "el lunes pasado"), usá esa fecha. Sin año aclarado, asumí el año actual salvo que caiga en el futuro, en cuyo caso usá el año anterior. Todos los movimientos de un mismo mensaje comparten la misma fecha.
 
