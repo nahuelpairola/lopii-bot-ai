@@ -101,6 +101,41 @@ func TestClassifyCreate_ErrorsOnEmptyMovements(t *testing.T) {
 	}
 }
 
+func TestCreateTool_OptionalFieldsAllowNull(t *testing.T) {
+	// Groq validates tool-call arguments against our JSON schema server-side
+	// (see flexBool comment) — gpt-oss-20b emits explicit null for optional
+	// properties it doesn't fill in (same behavior already handled for
+	// mentioned_date_from/to in update.go/delete.go). account_id,
+	// account_name_guess and group are optional (not in "required") but were
+	// declared single-type, so a real user with real accounts still 400s:
+	// "expected integer, but got null" / "expected string, but got null".
+	// Regression for a live 400 observed 2026-07-13 ("gaste 500 pesos en el
+	// super", user had accounts, model still emitted null for all three).
+	var schema struct {
+		Properties struct {
+			Movements struct {
+				Items struct {
+					Properties map[string]struct {
+						Type json.RawMessage `json:"type"`
+					} `json:"properties"`
+				} `json:"items"`
+			} `json:"movements"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(createTool.Parameters, &schema); err != nil {
+		t.Fatalf("parse createTool schema: %v", err)
+	}
+	for _, field := range []string{"account_id", "account_name_guess", "group"} {
+		prop, ok := schema.Properties.Movements.Items.Properties[field]
+		if !ok {
+			t.Fatalf("schema missing property %q", field)
+		}
+		if !strings.Contains(string(prop.Type), `"null"`) {
+			t.Errorf("%s.type = %s, want it to include \"null\" (optional field, model emits explicit null when unset)", field, prop.Type)
+		}
+	}
+}
+
 func TestCreatePrompt_ContainsNewRules(t *testing.T) {
 	var captured string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
