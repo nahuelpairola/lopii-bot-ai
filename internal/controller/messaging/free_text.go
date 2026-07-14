@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -71,7 +72,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	case orchestrator.IntentDelete:
 		c.startMovementDelete(ctx, b, chatID, userID, text)
 	case orchestrator.IntentAccountCreate:
-		c.startAccountCreate(ctx, b, chatID, userID)
+		c.startAccountCreate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentCreateCategory:
 		c.startSubcategorySetup(ctx, b, chatID, userID)
 	case orchestrator.IntentReminderSet:
@@ -95,11 +96,16 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 	}
 }
 
-// startAccountCreate starts account_create fresh — unlike CREATE, there's
-// no gap-fill seed to compute: every field (name, currency, balance) is
-// unknown until the user answers the flow's first step.
-func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
-	prompt, err := c.engine.Start(userID, accountCreateFlowName)
+// startAccountCreate reuses ClassifyOnboarding to prefill the flow when the
+// triggering message already states the account name and/or opening balance
+// (e.g. "Nueva cuenta: Cedears tengo 1041265"). It seeds only when exactly one
+// account is extracted; 0, >1, or an extractor error fall back to a blank flow
+// (StartWithData with an empty seed == Start). Currency is never seeded — it
+// stays the flow's currency ChoiceStep. No step is auto-skipped: the user still
+// confirms every value.
+func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+	seed := c.accountCreateSeed(ctx, text)
+	prompt, err := c.engine.StartWithData(userID, accountCreateFlowName, seed)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
@@ -107,6 +113,24 @@ func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID 
 	if b != nil {
 		c.sendPrompt(ctx, b, chatID, prompt)
 	}
+}
+
+// accountCreateSeed extracts a prefill seed from the account-create message.
+// Returns an empty (non-nil) Data when nothing should be prefilled.
+func (c *controller) accountCreateSeed(ctx context.Context, text string) conversation.Data {
+	seed := conversation.Data{}
+	res, err := c.orchestrator.ClassifyOnboarding(ctx, text)
+	if err != nil || len(res.Accounts) != 1 {
+		return seed
+	}
+	d := res.Accounts[0]
+	if d.Name != "" {
+		seed["account_name"] = d.Name
+	}
+	if amt, err := decimal.NewFromString(d.Balance); err == nil && !amt.IsNegative() {
+		seed["account_balance"] = d.Balance
+	}
+	return seed
 }
 
 // startMovementCreate trusts the router's needsConfirmation verdict:

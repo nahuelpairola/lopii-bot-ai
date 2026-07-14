@@ -25,6 +25,8 @@ type fakeFullOrchestrator struct {
 	intent            orchestrator.Intent
 	needsConfirmation bool
 	createResult      orchestrator.CreateResult
+	onboardingResult  orchestrator.OnboardingResult
+	onboardingErr     error
 	updateResult      orchestrator.UpdateResult
 	deleteResult      orchestrator.DeleteResult
 	intentErr         error
@@ -45,7 +47,7 @@ func (o *fakeFullOrchestrator) ResolveDelete(ctx context.Context, text string, c
 	return o.deleteResult, nil
 }
 func (o *fakeFullOrchestrator) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
-	return orchestrator.OnboardingResult{}, nil
+	return o.onboardingResult, o.onboardingErr
 }
 func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return o.queryAnswer, o.queryErr
@@ -386,5 +388,88 @@ func TestStartMovementDelete_NoCandidates_ResolvesNoCandidates(t *testing.T) {
 
 	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeNoCandidates {
 		t.Fatalf("expected resolve no_candidates, got %+v", metrics.resolved)
+	}
+}
+
+func TestStartAccountCreate_OneAccount_SeedsNameAndBalance(t *testing.T) {
+	orch := &fakeFullOrchestrator{onboardingResult: orchestrator.OnboardingResult{
+		Accounts: []orchestrator.OnboardingAccountDraft{{Name: "Cedears", Currency: "USD", Balance: "1041265"}},
+	}}
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewAccountCreateFlow())
+	c := &controller{orchestrator: orch, engine: engine}
+
+	c.startAccountCreate(context.Background(), nil, 0, 1, "Nueva cuenta: Cedears tengo 1041265")
+
+	if store.data["account_name"] != "Cedears" {
+		t.Errorf("account_name seed = %v, want %q", store.data["account_name"], "Cedears")
+	}
+	if store.data["account_balance"] != "1041265" {
+		t.Errorf("account_balance seed = %v, want %q", store.data["account_balance"], "1041265")
+	}
+	if _, ok := store.data["account_currency"]; ok {
+		t.Error("account_currency must NOT be seeded (stays the currency ChoiceStep)")
+	}
+	if store.stepName != stepAccountCreateAskName {
+		t.Errorf("stepName = %q, want %q (prefill, not skip)", store.stepName, stepAccountCreateAskName)
+	}
+}
+
+func TestStartAccountCreate_NoAccounts_NoSeed(t *testing.T) {
+	orch := &fakeFullOrchestrator{onboardingResult: orchestrator.OnboardingResult{}}
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewAccountCreateFlow())
+	c := &controller{orchestrator: orch, engine: engine}
+
+	c.startAccountCreate(context.Background(), nil, 0, 1, "quiero crear una cuenta nueva")
+
+	if _, ok := store.data["account_name"]; ok {
+		t.Error("no account extracted → account_name must not be seeded")
+	}
+	if _, ok := store.data["account_balance"]; ok {
+		t.Error("no account extracted → account_balance must not be seeded")
+	}
+	if store.stepName != stepAccountCreateAskName {
+		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountCreateAskName)
+	}
+}
+
+func TestStartAccountCreate_MultipleAccounts_NoSeed(t *testing.T) {
+	orch := &fakeFullOrchestrator{onboardingResult: orchestrator.OnboardingResult{
+		Accounts: []orchestrator.OnboardingAccountDraft{
+			{Name: "Banco", Currency: "ARS", Balance: "1000"},
+			{Name: "Efectivo", Currency: "ARS", Balance: "2000"},
+		},
+	}}
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewAccountCreateFlow())
+	c := &controller{orchestrator: orch, engine: engine}
+
+	c.startAccountCreate(context.Background(), nil, 0, 1, "tengo el banco con 1000 y efectivo 2000")
+
+	if _, ok := store.data["account_name"]; ok {
+		t.Error(">1 account (bulk onboarding misrouted) → seed nothing")
+	}
+}
+
+func TestStartAccountCreate_GarbageBalance_SeedsNameOnly(t *testing.T) {
+	orch := &fakeFullOrchestrator{onboardingResult: orchestrator.OnboardingResult{
+		Accounts: []orchestrator.OnboardingAccountDraft{{Name: "Cripto", Currency: "USD", Balance: "no-es-numero"}},
+	}}
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewAccountCreateFlow())
+	c := &controller{orchestrator: orch, engine: engine}
+
+	c.startAccountCreate(context.Background(), nil, 0, 1, "nueva cuenta Cripto")
+
+	if store.data["account_name"] != "Cripto" {
+		t.Errorf("account_name seed = %v, want %q", store.data["account_name"], "Cripto")
+	}
+	if _, ok := store.data["account_balance"]; ok {
+		t.Error("unparseable balance must not be seeded")
 	}
 }
