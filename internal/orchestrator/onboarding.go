@@ -15,7 +15,7 @@ REGLAS:
 - Si no se aclara la moneda de una cuenta, asumí ARS. "pesos" → ARS; "dólares"/"USD"/"verdes" → USD.
 - Si una cuenta no tiene nombre, llamala "Efectivo".
 - Puede haber varias cuentas de la misma moneda (ej. dos en ARS). Cada una lleva su propio saldo.
-- Si el mensaje no describe ninguna cuenta con saldo, devolvé una lista vacía.`
+- Si el mensaje no describe ninguna cuenta con saldo, devolvé una lista vacía.` + numberFormatRule
 
 var onboardingTool = toolSchema{
 	Name:        "describe_accounts",

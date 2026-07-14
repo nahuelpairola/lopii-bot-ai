@@ -29,3 +29,21 @@ func TestCreatePrompt_ContainsNumberFormatRule(t *testing.T) {
 		t.Errorf("create prompt has a Sprintf format error: %q", captured)
 	}
 }
+
+func TestOnboardingPrompt_ContainsNumberFormatRule(t *testing.T) {
+	var captured string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatCompletionRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		captured = req.Messages[0].Content
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"accounts\":[]}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{BaseURL: server.URL, CreateModel: "m", TimeoutSeconds: 5})
+	_, _ = o.ClassifyOnboarding(context.Background(), "tengo 1000 en el banco")
+
+	if !strings.Contains(captured, "REGLA DE FORMATO NUMÉRICO") {
+		t.Errorf("onboarding prompt missing the number-format rule")
+	}
+}
