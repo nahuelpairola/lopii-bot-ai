@@ -4,10 +4,30 @@ import (
 	"strings"
 	"testing"
 
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
+
+func TestMovementReceiptLine_ShowsAccountWhenLoaded(t *testing.T) {
+	m := movement.Movement{
+		Type:        movement.Expense,
+		Amount:      mustDecimal(t, "610503"),
+		Currency:    "ARS",
+		Subcategory: &subcategory.Subcategory{Category: "Deudas", Subcategory: "Tarjeta"},
+		Date:        mustDate(t, "2026-07-14"),
+		Account:     &account.Account{Name: "Efectivo"},
+	}
+	if line := movementReceiptLine(m); !strings.Contains(line, "Efectivo") {
+		t.Errorf("receipt line %q should show the account name", line)
+	}
+
+	m.Account = nil // not loaded → must not panic, must not add a stray separator
+	if line := movementReceiptLine(m); strings.Contains(line, "· ·") {
+		t.Errorf("receipt line %q added an empty account segment", line)
+	}
+}
 
 func TestMovementReceiptLine_IncludesCategorySubcategoryDescriptionDate(t *testing.T) {
 	m := movement.Movement{

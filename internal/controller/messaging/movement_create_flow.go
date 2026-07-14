@@ -338,6 +338,18 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	if err != nil {
 		return nil, err
 	}
+	// Attach the resolved account so the confirmation receipt can name it —
+	// these movements are built in memory (never DB-loaded), so there is no
+	// Preload to lean on. accountsByID already holds every candidate account.
+	for i := range movements {
+		if movements[i].AccountID == nil {
+			continue
+		}
+		if acc, ok := accountsByID[*movements[i].AccountID]; ok {
+			a := acc
+			movements[i].Account = &a
+		}
+	}
 
 	if stringOrEmpty(data["mode"]) == "update" {
 		oldIDs, err := parseUintSlice(decodeStringSlice(data, "old_movement_ids"))
