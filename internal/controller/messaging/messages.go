@@ -162,8 +162,17 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 		if i < len(before) {
 			b = before[i]
 		}
-		lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s) (antes: %s %s)",
-			iconOrDefault(a.Icon), a.Category, a.Subcategory, a.Amount, a.Currency, a.Description, a.Date, b.Amount, b.Currency))
+		line := fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
+			iconOrDefault(a.Icon), a.Category, a.Subcategory, a.Amount, a.Currency, a.Description, a.Date)
+		if a.AccountName != "" {
+			line += " · " + a.AccountName
+		}
+		changed := fmt.Sprintf("antes: %s %s", b.Amount, b.Currency)
+		if b.AccountName != "" && b.AccountName != a.AccountName {
+			changed += " · " + b.AccountName
+		}
+		line += " (" + changed + ")"
+		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
 }

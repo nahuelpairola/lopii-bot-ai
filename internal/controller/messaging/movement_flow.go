@@ -24,6 +24,7 @@ type movementRow struct {
 	Currency         string
 	AccountID        string
 	AccountNameGuess string
+	AccountName      string
 	Category         string
 	Subcategory      string
 	PaymentMethod    string
@@ -58,6 +59,7 @@ func decodeMovementRows(data conversation.Data) []movementRow {
 			Currency:         stringOrEmpty(m["currency"]),
 			AccountID:        stringOrEmpty(m["account_id"]),
 			AccountNameGuess: stringOrEmpty(m["account_name_guess"]),
+			AccountName:      stringOrEmpty(m["account_name"]),
 			Category:         stringOrEmpty(m["category"]),
 			Subcategory:      stringOrEmpty(m["subcategory"]),
 			PaymentMethod:    stringOrEmpty(m["payment_method"]),
@@ -80,6 +82,7 @@ func encodeMovementRows(rows []movementRow) []interface{} {
 			"currency":           r.Currency,
 			"account_id":         r.AccountID,
 			"account_name_guess": r.AccountNameGuess,
+			"account_name":       r.AccountName,
 			"category":           r.Category,
 			"subcategory":        r.Subcategory,
 			"payment_method":     r.PaymentMethod,

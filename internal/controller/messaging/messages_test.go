@@ -10,6 +10,22 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
+func TestMsgConfirmUpdateDiff_ShowsAccountChange(t *testing.T) {
+	before := []movementRow{{Amount: "610503", Currency: "ARS", AccountName: "Efectivo"}}
+	after := []movementRow{{Category: "Deudas", Subcategory: "Tarjeta", Amount: "610503", Currency: "ARS", Description: "Pago tarjeta", Date: "2026-07-14", AccountName: "Galicia"}}
+	data := conversation.Data{
+		"before_movements": encodeMovementRows(before),
+		"movements":        encodeMovementRows(after),
+	}
+
+	msg := msgConfirmUpdateDiff(data)
+	for _, want := range []string{"Galicia", "Efectivo"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("diff %q missing %q — account change must be visible", msg, want)
+		}
+	}
+}
+
 func TestMovementReceiptLine_ShowsAccountWhenLoaded(t *testing.T) {
 	m := movement.Movement{
 		Type:        movement.Expense,
