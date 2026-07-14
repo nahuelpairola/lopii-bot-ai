@@ -205,10 +205,19 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		drafts = append(drafts, rowToDraft(row))
 	}
 
+	accs, err := c.accounts.FindByUserID(userID)
+	if err != nil {
+		return err
+	}
+	accountOptions := make([]orchestrator.AccountOption, 0, len(accs))
+	for _, a := range accs {
+		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
+	}
+
 	result, err := c.orchestrator.ResolveUpdate(ctx, message, orchestrator.MovementCandidate{
 		TransactionID: transactionID,
 		Movements:     drafts,
-	})
+	}, accountOptions)
 	if err != nil {
 		return err
 	}
