@@ -19,13 +19,15 @@ type Client struct {
 	httpClient *http.Client
 	apiKey     string
 	baseURL    string
+	recorder   LLMRecorder
 }
 
-func NewClient(apiKey, baseURL string, timeout time.Duration) *Client {
+func NewClient(apiKey, baseURL string, timeout time.Duration, recorder LLMRecorder) *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: timeout},
 		apiKey:     apiKey,
 		baseURL:    baseURL,
+		recorder:   recorder,
 	}
 }
 
@@ -84,14 +86,18 @@ func parseGroqRetryAfterSeconds(body []byte) time.Duration {
 // bug) fails immediately. The whole sequence is bound by ctx. This is the
 // single Groq I/O chokepoint: every call type (router, create, update,
 // delete, onboarding, query) inherits the retry.
-func (c *Client) send(ctx context.Context, payload []byte) ([]byte, error) {
+func (c *Client) send(ctx context.Context, callType, model string, payload []byte) ([]byte, error) {
+	start := time.Now()
 	var lastErr error
+	var lastStatus int
+	attempt := 0
 	wait := baseBackoff
-	for attempt := 0; attempt < maxSendAttempts; attempt++ {
+	for attempt = 0; attempt < maxSendAttempts; attempt++ {
 		if attempt > 0 {
 			select {
 			case <-time.After(wait):
 			case <-ctx.Done():
+				c.record(ctx, callType, model, start, attempt, lastStatus, ctx.Err().Error(), nil, nil)
 				return nil, ctx.Err()
 			}
 			wait *= 2
@@ -118,7 +124,9 @@ func (c *Client) send(ctx context.Context, payload []byte) ([]byte, error) {
 			lastErr = fmt.Errorf("orchestrator: read response: %w", err)
 			continue
 		}
+		lastStatus = resp.StatusCode
 		if resp.StatusCode == http.StatusOK {
+			c.record(ctx, callType, model, start, attempt+1, resp.StatusCode, "", resp.Header, body)
 			return body, nil
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
@@ -136,9 +144,43 @@ func (c *Client) send(ctx context.Context, payload []byte) ([]byte, error) {
 			continue // transient — retry
 		}
 		// non-retryable (a non-429 4xx = malformed request, our bug)
+		c.record(ctx, callType, model, start, attempt+1, resp.StatusCode, fmt.Sprintf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body)), resp.Header, nil)
 		return nil, fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
 	}
+	c.record(ctx, callType, model, start, attempt, lastStatus, errStr(lastErr), nil, nil)
 	return nil, lastErr
+}
+
+// record arma el LLMCall y lo emite fire-and-forget (nil-safe).
+// ponytail: record síncrono adentro de send; si el insert agrega latencia
+// medible, moverlo a un channel buffered. A ~4 usuarios no hace falta.
+func (c *Client) record(ctx context.Context, callType, model string, start time.Time, attempts, status int, errMsg string, header http.Header, body []byte) {
+	if c.recorder == nil {
+		return
+	}
+	rec := LLMCall{
+		TraceID:    TraceID(ctx),
+		CallType:   callType,
+		Model:      model,
+		LatencyMs:  int(time.Since(start).Milliseconds()),
+		HTTPStatus: status,
+		Attempts:   attempts,
+		Err:        errMsg,
+	}
+	if body != nil {
+		rec.PromptTokens, rec.CompletionTokens, rec.TotalTokens = parseUsage(body)
+	}
+	if header != nil {
+		rec.RateLimitRemainingRequests, rec.RateLimitRemainingTokens = parseRateLimitRemaining(header)
+	}
+	c.recorder.Record(rec)
+}
+
+func errStr(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // retryAfter parses a Retry-After header expressed in whole seconds (Groq's
@@ -242,7 +284,7 @@ type chatCompletionResponse struct {
 
 // chatCompletion sends one Groq tool-calling request, forcing the model
 // to call tool, and returns the raw JSON arguments it produced.
-func (c *Client) chatCompletion(ctx context.Context, model, systemPrompt, userMessage string, tool toolSchema) (json.RawMessage, error) {
+func (c *Client) chatCompletion(ctx context.Context, callType, model, systemPrompt, userMessage string, tool toolSchema) (json.RawMessage, error) {
 	reqBody := chatCompletionRequest{
 		Model: model,
 		Messages: []chatMessage{
@@ -269,7 +311,7 @@ func (c *Client) chatCompletion(ctx context.Context, model, systemPrompt, userMe
 		return nil, fmt.Errorf("orchestrator: marshal request: %w", err)
 	}
 
-	body, err := c.send(ctx, payload)
+	body, err := c.send(ctx, callType, model, payload)
 	if err != nil {
 		return nil, err
 	}

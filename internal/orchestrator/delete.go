@@ -35,7 +35,7 @@ type deleteArgs struct {
 func (o *Orchestrator) ResolveDelete(ctx context.Context, text string, candidate MovementCandidate) (DeleteResult, error) {
 	userMessage := fmt.Sprintf("Movimiento candidato:\n%s\n\nMensaje del usuario: %q", buildCandidateBlock(candidate), text)
 
-	raw, err := o.client.chatCompletion(ctx, o.deleteModel, deleteSystemPrompt, userMessage, deleteTool)
+	raw, err := o.client.chatCompletion(ctx, callTypeDelete, o.deleteModel, deleteSystemPrompt, userMessage, deleteTool)
 	if err != nil {
 		return DeleteResult{}, fmt.Errorf("orchestrator: resolve delete: %w", err)
 	}

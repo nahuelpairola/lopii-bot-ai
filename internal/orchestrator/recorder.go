@@ -28,6 +28,39 @@ func parseRateLimitRemaining(h http.Header) (*int, *int) {
 		atoiPtr(h.Get("x-ratelimit-remaining-tokens"))
 }
 
+// LLMCall es el dato que send() emite por cada llamada Groq. Es el tipo del
+// orquestador (no el modelo GORM de metric — regla cross-package); server mapea.
+type LLMCall struct {
+	TraceID                    string
+	CallType                   string
+	Model                      string
+	PromptTokens               int
+	CompletionTokens           int
+	TotalTokens                int
+	LatencyMs                  int
+	HTTPStatus                 int
+	Attempts                   int
+	Err                        string
+	RateLimitRemainingRequests *int
+	RateLimitRemainingTokens   *int
+}
+
+// LLMRecorder recibe cada LLMCall. Implementado por un adapter en server que
+// escribe a metric. Inyectado en el Client; nil-safe (tests no lo setean).
+type LLMRecorder interface {
+	Record(LLMCall)
+}
+
+// callType* etiquetan la llamada para agregados por tipo en Grafana.
+const (
+	callTypeRouter     = "router"
+	callTypeCreate     = "create"
+	callTypeUpdate     = "update"
+	callTypeDelete     = "delete"
+	callTypeOnboarding = "onboarding"
+	callTypeQuery      = "query"
+)
+
 func atoiPtr(s string) *int {
 	if s == "" {
 		return nil

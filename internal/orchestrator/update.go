@@ -64,7 +64,7 @@ type updateArgs struct {
 func (o *Orchestrator) ResolveUpdate(ctx context.Context, text string, candidate MovementCandidate) (UpdateResult, error) {
 	userMessage := fmt.Sprintf("Movimiento candidato:\n%s\n\nMensaje del usuario: %q", buildCandidateBlock(candidate), text)
 
-	raw, err := o.client.chatCompletion(ctx, o.updateModel, updateSystemPrompt, userMessage, updateTool)
+	raw, err := o.client.chatCompletion(ctx, callTypeUpdate, o.updateModel, updateSystemPrompt, userMessage, updateTool)
 	if err != nil {
 		return UpdateResult{}, fmt.Errorf("orchestrator: resolve update: %w", err)
 	}

@@ -61,7 +61,7 @@ type routerArgs struct {
 }
 
 func (o *Orchestrator) ClassifyIntent(ctx context.Context, text string) (IntentResult, error) {
-	raw, err := o.client.chatCompletion(ctx, o.routerModel, routerSystemPrompt, text, routerTool)
+	raw, err := o.client.chatCompletion(ctx, callTypeRouter, o.routerModel, routerSystemPrompt, text, routerTool)
 	if err != nil {
 		return IntentResult{}, fmt.Errorf("orchestrator: classify intent: %w", err)
 	}

@@ -98,7 +98,7 @@ func buildAccountsBlock(accounts []AccountOption) string {
 func (o *Orchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []TaxonomyEntry, accounts []AccountOption, today string) (CreateResult, error) {
 	systemPrompt := fmt.Sprintf(createSystemPromptTemplate, today, buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
 
-	raw, err := o.client.chatCompletion(ctx, o.createModel, systemPrompt, text, createTool)
+	raw, err := o.client.chatCompletion(ctx, callTypeCreate, o.createModel, systemPrompt, text, createTool)
 	if err != nil {
 		return CreateResult{}, fmt.Errorf("orchestrator: classify create: %w", err)
 	}
