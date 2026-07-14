@@ -134,7 +134,7 @@ func InitServer(conf *config.Config) error {
 	adminController.RegisterRoutes(ginEngine)
 	messagingController.RegisterHandlers(tgBot)
 
-	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo)
+	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
 
 	server = httpServer{engine: ginEngine}
