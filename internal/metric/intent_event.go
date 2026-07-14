@@ -38,6 +38,7 @@ type IntentEvent struct {
 	Outcome           string     `gorm:"column:outcome;not null"`
 	ResolvedAt        *time.Time `gorm:"column:resolved_at"`
 	WasCorrect        *bool      `gorm:"column:was_correct"`
+	TraceID           string     `gorm:"column:trace_id"`
 }
 
 func (IntentEvent) TableName() string {
