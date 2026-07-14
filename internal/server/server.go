@@ -125,7 +125,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo,
+		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo, metricRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 
