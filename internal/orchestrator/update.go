@@ -32,14 +32,14 @@ var updateTool = toolSchema{
 						"type": {"type": "string", "enum": ["expense", "income", "transfer"]},
 						"amount": {"type": "string"},
 						"currency": {"type": "string", "enum": ["ARS", "USD"]},
-						"account_id": {"type": "integer"},
+						"account_id": {"type": ["integer", "null"]},
 						"category": {"type": "string"},
 						"subcategory": {"type": "string"},
 						"payment_method": {"type": "string"},
-						"merchant": {"type": "string"},
+						"merchant": {"type": ["string", "null"]},
 						"description": {"type": "string"},
 						"date": {"type": "string"},
-						"group": {"type": "string"}
+						"group": {"type": ["string", "null"]}
 					},
 					"required": ["type", "amount", "currency", "category", "subcategory", "payment_method", "description", "date"]
 				}

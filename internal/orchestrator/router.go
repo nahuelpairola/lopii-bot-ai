@@ -49,7 +49,7 @@ var routerTool = toolSchema{
 		"type": "object",
 		"properties": {
 			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY", "ACCOUNT_CREATE", "CREATE_CATEGORY", "REMINDER_SET"]},
-			"needs_confirmation": {"type": ["boolean", "string"]}
+			"needs_confirmation": {"type": ["boolean", "string", "null"]}
 		},
 		"required": ["intent"]
 	}`),
