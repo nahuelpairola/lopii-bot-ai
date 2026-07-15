@@ -61,10 +61,13 @@ func TestCategoryCreateEval_ProposesWhenAbsent(t *testing.T) {
 	if res.Proposal == nil {
 		t.Fatalf("expected a proposal for pet expenses, got match=%+v", res.Match)
 	}
-	if res.Proposal.Category == "Sistema" || res.Proposal.Category == "PENDING_REVIEW" {
-		t.Errorf("proposal used a reserved category: %q", res.Proposal.Category)
+	if res.Proposal.Category != "Mascotas" {
+		t.Errorf("proposal category = %q, want %q for pet expenses", res.Proposal.Category, "Mascotas")
 	}
 	if res.Proposal.Description == "" {
 		t.Error("proposal description must not be empty")
+	}
+	if res.Proposal.Icon == "" {
+		t.Error("proposal emoji must not be empty (the schema-field-name fix)")
 	}
 }
