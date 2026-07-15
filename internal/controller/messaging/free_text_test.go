@@ -22,18 +22,18 @@ func (stubQueryHistory) Recent(userID uint64) ([]queryhistory.Turn, error) { ret
 func (stubQueryHistory) Append(userID uint64, question, answer string) error { return nil }
 
 type fakeFullOrchestrator struct {
-	intent            orchestrator.Intent
-	needsConfirmation bool
-	createResult      orchestrator.CreateResult
-	onboardingResult  orchestrator.OnboardingResult
-	onboardingErr     error
-	updateResult      orchestrator.UpdateResult
-	deleteResult      orchestrator.DeleteResult
-	intentErr         error
-	queryAnswer       string
-	queryErr          error
-	categoryResult    orchestrator.CategoryCreateResult
-	categoryErr       error
+	intent              orchestrator.Intent
+	needsConfirmation   bool
+	createResult        orchestrator.CreateResult
+	onboardingResult    orchestrator.OnboardingResult
+	onboardingErr       error
+	updateResult        orchestrator.UpdateResult
+	deleteResult        orchestrator.DeleteResult
+	intentErr           error
+	queryAnswer         string
+	queryErr            error
+	categoryResult      orchestrator.CategoryCreateResult
+	categoryErr         error
 	accountManageResult orchestrator.AccountManageResult
 	accountManageErr    error
 }

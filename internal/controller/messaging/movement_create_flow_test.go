@@ -41,12 +41,12 @@ func (r *fakeSubcategoryRepoFull) Insert(s *subcategory.Subcategory) error      
 func (r *fakeSubcategoryRepoFull) Reload() error                                        { return nil }
 
 type fakeAccountRepoFull struct {
-	byCurrency map[currency.Currency]*account.Account
-	byUserID   []account.Account
-	byID       map[uint64]*account.Account
-	inserted    []account.Account
-	balances    map[uint64]string
-	insertErr   error
+	byCurrency   map[currency.Currency]*account.Account
+	byUserID     []account.Account
+	byID         map[uint64]*account.Account
+	inserted     []account.Account
+	balances     map[uint64]string
+	insertErr    error
 	renamedID    uint64
 	renamedName  string
 	renameErr    error
