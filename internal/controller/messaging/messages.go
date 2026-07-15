@@ -100,10 +100,20 @@ func msgOnboardingConfirm(data conversation.Data) string {
 
 func msgOnboardingReceipt(rows []onboardingRow) string {
 	lines := make([]string, 0, len(rows))
+	starred := false
 	for _, r := range rows {
-		lines = append(lines, fmt.Sprintf("• %s — %s %s", r.Name, r.Balance, r.Currency))
+		prefix := "• "
+		if r.IsDefault == "true" {
+			prefix = "⭐ "
+			starred = true
+		}
+		lines = append(lines, fmt.Sprintf("%s%s — %s %s", prefix, r.Name, r.Balance, r.Currency))
 	}
-	return "Listo. Tus cuentas:\n" + strings.Join(lines, "\n")
+	out := "Listo. Tus cuentas:\n" + strings.Join(lines, "\n")
+	if starred {
+		out += "\n\n⭐ = tu cuenta principal: la uso cuando no me decís de dónde sale la plata."
+	}
+	return out
 }
 
 // movementReceiptLine formats one movement for a receipt/confirmation
