@@ -110,7 +110,14 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			},
 			NextStep:      stepNewCategoryIcon,
 			EscapeOptions: []conversation.ChoiceOption{backOption(stepChooseMode), cancelOption},
-			OnEscape:      onAccountCreateEscape,
+			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
+				v := stringOrEmpty(data["category"])
+				if v == "" {
+					return nil
+				}
+				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: optionConfirmSeed, NextStep: stepNewCategoryIcon}}
+			},
+			OnEscape: onAccountCreateEscape,
 		},
 
 		// stepNewCategoryIcon is only ever reached via stepNewCategoryName's
@@ -129,7 +136,14 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			},
 			NextStep:      stepSubcategoryName,
 			EscapeOptions: []conversation.ChoiceOption{backOption(stepNewCategoryName), cancelOption},
-			OnEscape:      onAccountCreateEscape,
+			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
+				v := stringOrEmpty(data["category_icon"])
+				if v == "" {
+					return nil
+				}
+				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: optionConfirmSeed, NextStep: stepSubcategoryName}}
+			},
+			OnEscape: onAccountCreateEscape,
 		},
 
 		stepSubcategoryName: conversation.TextStep{
@@ -149,7 +163,14 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			},
 			NextStep:      stepSubcategoryDescription,
 			EscapeOptions: []conversation.ChoiceOption{cancelOption},
-			OnEscape:      onAccountCreateEscape,
+			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
+				v := stringOrEmpty(data["subcategory"])
+				if v == "" {
+					return nil
+				}
+				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: optionConfirmSeed, NextStep: stepSubcategoryDescription}}
+			},
+			OnEscape: onAccountCreateEscape,
 		},
 
 		// stepSubcategoryDescription asks the one thing the pre-existing
@@ -174,7 +195,13 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			},
 			NextStep:      stepConfirmSubcategory,
 			EscapeOptions: []conversation.ChoiceOption{backOption(stepSubcategoryName), cancelOption},
-			OnEscape:      onAccountCreateEscape,
+			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
+				if stringOrEmpty(data["subcategory_description"]) == "" {
+					return nil
+				}
+				return []conversation.ChoiceOption{{Label: "✅ Usar la propuesta", Value: optionConfirmSeed, NextStep: stepConfirmSubcategory}}
+			},
+			OnEscape: onAccountCreateEscape,
 		},
 
 		stepConfirmSubcategory: conversation.ChoiceStep{
