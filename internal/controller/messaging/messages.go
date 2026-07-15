@@ -276,6 +276,37 @@ func msgAskSubcategoryDescription(sub string) string {
 	return "En una frase: ¿cuándo se usa \"" + sub + "\"? (ej: \"gastos de comida y snacks en la calle\")"
 }
 
+// msgCategoryMatchOffer is shown when the LLM matched a CREATE_CATEGORY
+// request to an existing taxonomy entry — offer to reuse it instead of
+// creating a duplicate.
+func msgCategoryMatchOffer(data conversation.Data) string {
+	icon := stringOrEmpty(data["category_icon"])
+	if icon == "" {
+		icon = "📂"
+	}
+	out := "Ya tenés una parecida: " + icon + " " + stringOrEmpty(data["category"]) + " › " + stringOrEmpty(data["subcategory"])
+	if desc := stringOrEmpty(data["subcategory_description"]); desc != "" {
+		out += "\n📝 " + desc
+	}
+	return out + "\n\n¿Te sirve o creás una distinta?"
+}
+
+// msgCategoryProposalConfirm shows the LLM's complete proposal for a new
+// subcategory as one confirmation.
+func msgCategoryProposalConfirm(data conversation.Data) string {
+	icon := stringOrEmpty(data["category_icon"])
+	if icon == "" {
+		icon = "📂"
+	}
+	line := icon + " " + stringOrEmpty(data["category"]) + " › " + stringOrEmpty(data["subcategory"])
+	if stringOrEmpty(data["category_is_new"]) == "true" {
+		line += " (categoría nueva)"
+	}
+	return "Te propongo:\n" + line + "\n📝 " + stringOrEmpty(data["subcategory_description"]) + "\n\n¿La creo?"
+}
+
+const msgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae ahí solo (ej: \"gasté 5000 en un regalo\")."
+
 const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 
 func msgInsufficientFunds(short []accountShortfall) string {
@@ -303,6 +334,8 @@ func FlowResumeLabel(flowName string) string {
 		return "estabas creando una cuenta"
 	case subcategorySetupFlowName:
 		return "estabas creando una subcategoría"
+	case categoryMatchOfferFlowName, categoryProposalConfirmFlowName:
+		return "estabas creando una categoría"
 	case onboardingCollectFlowName, onboardingConfirmFlowName:
 		return "estabas cargando tus cuentas"
 	case movementNegativeConfirmFlowName:

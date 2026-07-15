@@ -26,8 +26,10 @@ const (
 	outcomeQueryAnswered        = "query_answered"
 	outcomeQueryFailed          = "query_failed"
 	outcomeAccountCreateRouted  = "account_create_routed"
-	outcomeCategoryCreateRouted = "category_create_routed"
 	outcomeReminderSetRouted    = "reminder_set_routed"
+	outcomeCategoryMatchUsed    = "category_match_used"
+	outcomeCategoryCreated      = "category_created"
+	outcomeCategoryCancelled    = "category_create_cancelled"
 )
 
 // routerOutcome mapea el intent del router al outcome inicial que se loguea
@@ -35,12 +37,10 @@ const (
 // terminal de su flow); el resto es terminal en el acto.
 func routerOutcome(intent orchestrator.Intent) string {
 	switch intent {
-	case orchestrator.IntentCreate, orchestrator.IntentUpdate, orchestrator.IntentDelete, orchestrator.IntentQuery:
+	case orchestrator.IntentCreate, orchestrator.IntentUpdate, orchestrator.IntentDelete, orchestrator.IntentQuery, orchestrator.IntentCreateCategory:
 		return outcomePending
 	case orchestrator.IntentAccountCreate:
 		return outcomeAccountCreateRouted
-	case orchestrator.IntentCreateCategory:
-		return outcomeCategoryCreateRouted
 	case orchestrator.IntentReminderSet:
 		return outcomeReminderSetRouted
 	default:

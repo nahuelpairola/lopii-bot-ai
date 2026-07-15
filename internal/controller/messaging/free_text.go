@@ -96,6 +96,19 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 	}
 }
 
+// startSubcategoryWizard starts the classic 7-step wizard fresh — the
+// fallback whenever the LLM path can't produce a trustworthy match/proposal.
+func (c *controller) startSubcategoryWizard(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
+	prompt, err := c.engine.Start(userID, subcategorySetupFlowName)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+}
+
 // startAccountCreate reuses ClassifyOnboarding to prefill the flow when the
 // triggering message already states the account name and/or opening balance
 // (e.g. "Nueva cuenta: Cedears tengo 1041265"). It seeds only when exactly one

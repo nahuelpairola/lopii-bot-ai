@@ -236,6 +236,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
 	case subcategorySetupFlowName:
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
+	case categoryMatchOfferFlowName:
+		c.finishCategoryMatchOffer(ctx, b, chatID, result.Data)
+	case categoryProposalConfirmFlowName:
+		c.finishCategoryProposalConfirm(ctx, b, chatID, result.Data)
 	case movementNegativeConfirmFlowName:
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	case reminderSetupFlowName:

@@ -16,6 +16,7 @@ import (
 // short-circuit in handleFlowFinished).
 func (c *controller) finishSubcategorySetupFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["cancelled"]) == "true" {
+		c.resolveMetric(data.UserID(), outcomeCategoryCancelled)
 		c.sendText(ctx, b, chatID, msgCreateCancelled)
 		return
 	}
@@ -25,6 +26,7 @@ func (c *controller) finishSubcategorySetupFlow(ctx context.Context, b *bot.Bot,
 		return
 	}
 
+	c.resolveMetric(data.UserID(), outcomeCategoryCreated)
 	c.sendText(ctx, b, chatID, msgSubcategorySetupFinished)
 }
 
