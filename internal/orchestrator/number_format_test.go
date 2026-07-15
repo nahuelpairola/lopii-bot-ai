@@ -59,7 +59,7 @@ func TestUpdatePrompt_ContainsNumberFormatRule(t *testing.T) {
 	defer server.Close()
 
 	o := New(Config{BaseURL: server.URL, UpdateModel: "m", TimeoutSeconds: 5})
-	_, _ = o.ResolveUpdate(context.Background(), "cambialo a 1.500", MovementCandidate{})
+	_, _ = o.ResolveUpdate(context.Background(), "cambialo a 1.500", MovementCandidate{}, nil)
 
 	if !strings.Contains(captured, "REGLA DE FORMATO NUMÉRICO") {
 		t.Errorf("update prompt missing the number-format rule")

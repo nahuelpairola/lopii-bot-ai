@@ -8,9 +8,9 @@ import (
 
 const routerSystemPrompt = `Sos un clasificador de intención para un bot de finanzas personales argentino.
 Clasificá el mensaje del usuario en una de estas 7 acciones:
-- CREATE: el mensaje reporta un movimiento nuevo. Típicamente tiene un verbo de acción (gasté, pagué, cobré, transferí, compré) o es un monto+categoría suelto sin verbo (ej. "20k", "nafta 5k").
+- CREATE: el mensaje reporta un movimiento nuevo. Típicamente tiene un verbo de acción (gasté, pagué, cobré, transferí, compré) o describe un débito en voz pasiva ("se debitó", "me debitaron", "me descontaron", "se me fue", "salió de la cuenta") o es un monto+categoría suelto sin verbo (ej. "20k", "nafta 5k"). Un débito reportado es un movimiento nuevo, no un borrado.
 - UPDATE: el mensaje corrige un movimiento YA registrado, o reporta un REINTEGRO/DEVOLUCIÓN de plata sobre una compra ya registrada, o dice que un ítem ya registrado terminó siendo gratis (te lo regalaron/invitaron). Señales: (a) verbo copulativo en pasado (era/eran/fue/fueron) describiendo un monto ("el café en realidad era 3000", "el café de hoy eran 5k"); (b) cualquier frase que corrija o contradiga una afirmación reciente propia sobre un movimiento, sin importar la forma verbal — copulativa o de acción ("en realidad rescaté 5 mil del fci" corrige un rescate ya registrado, no es un rescate nuevo); (c) un reintegro que alude a un ítem existente ("me devolvió 100 por el café", "me dieron 500 del asado", "reintegro del super"); (d) un regalo/invitación sobre un ítem ya registrado ("al final me regalaron el helado", "me invitaron el café", "el asado fue gratis"). Ni un reintegro ni un regalo son un income nuevo: se resuelven corrigiendo (o anulando) el movimiento aludido.
-- DELETE: el mensaje pide borrar o eliminar un movimiento ya registrado.
+- DELETE: el mensaje pide EXPLÍCITAMENTE borrar o eliminar un movimiento ya registrado (borrá, eliminá, sacá ese movimiento). Reportar que salió/se debitó plata de una cuenta NO es DELETE: es CREATE.
 - QUERY: el mensaje pregunta o pide un resumen/consulta sobre movimientos existentes, sin registrar ni corregir nada.
 - ACCOUNT_CREATE: el mensaje pide crear una cuenta nueva (no un movimiento) — billetera, cuenta de inversión, jubilación, ahorro, etc. Señal clave: menciona "cuenta"/"cuentas" sin montos ni verbos de movimiento (gasté, pagué, cobré, transferí). Ejemplos: "quiero crear una cuenta nueva", "nueva cuenta", "cuentas", "abrí una cuenta para mi jubilación", "quiero agregar una cuenta de inversión". Un mensaje con monto Y cuenta (ej. "transferí 50k a mi cuenta de inversión") sigue siendo CREATE, no ACCOUNT_CREATE — ahí ya existe un flujo que ofrece crear la cuenta si no existe.
 - CREATE_CATEGORY: el mensaje pide crear una categoría o subcategoría nueva, no registrar/corregir/borrar un movimiento ni consultar. Señal clave: menciona "categoría"/"subcategoría" en el sentido de crear una clasificación nueva, no de elegir una existente para un movimiento. Ejemplos: "quiero crear una categoría nueva", "quiero agregar una subcategoría", "necesito una categoría para mis gastos de mascotas".
@@ -37,6 +37,10 @@ Ejemplos:
 - "en realidad rescaté 5 mil del fci" → UPDATE (corrige un monto ya registrado, no es un rescate nuevo)
 - "rescaté 100k de FCI" → CREATE (rescate nuevo, sin conector de corrección)
 - "al final me regalaron el helado" → UPDATE (el helado ya registrado pasó a ser gratis; se anula ese movimiento)
+- "se debitaron $610503 de la cuenta del banco" → CREATE (débito reportado = expense nuevo)
+- "me descontaron 5000 de la tarjeta" → CREATE (expense)
+- "borrá el gasto del café" → DELETE (verbo explícito de borrado)
+- "era Galicia" → UPDATE (corrige la cuenta de un movimiento ya registrado)
 
 Este criterio aplica solo si clasificaste CREATE. En cualquier otro caso
 (incluido cualquier intent que no sea CREATE), needs_confirmation debe ser
@@ -49,7 +53,7 @@ var routerTool = toolSchema{
 		"type": "object",
 		"properties": {
 			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY", "ACCOUNT_CREATE", "CREATE_CATEGORY", "REMINDER_SET"]},
-			"needs_confirmation": {"type": ["boolean", "string"]}
+			"needs_confirmation": {"type": ["boolean", "string", "null"]}
 		},
 		"required": ["intent"]
 	}`),

@@ -97,6 +97,9 @@ func movementToRow(m movement.Movement) movementRow {
 	if m.AccountID != nil {
 		row.AccountID = strconv.FormatUint(*m.AccountID, 10)
 	}
+	if m.Account != nil {
+		row.AccountName = m.Account.Name
+	}
 	if m.PaymentMethod != nil {
 		row.PaymentMethod = *m.PaymentMethod
 	}
@@ -205,10 +208,19 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		drafts = append(drafts, rowToDraft(row))
 	}
 
+	accs, err := c.accounts.FindByUserID(userID)
+	if err != nil {
+		return err
+	}
+	accountOptions := make([]orchestrator.AccountOption, 0, len(accs))
+	for _, a := range accs {
+		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
+	}
+
 	result, err := c.orchestrator.ResolveUpdate(ctx, message, orchestrator.MovementCandidate{
 		TransactionID: transactionID,
 		Movements:     drafts,
-	})
+	}, accountOptions)
 	if err != nil {
 		return err
 	}
@@ -228,11 +240,20 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 // and starts it. Called by proceedToUpdateConfirm once Call 2 UPDATE
 // resolves.
 func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, oldIDs []string, beforeRows []movementRow, result orchestrator.UpdateResult) error {
+	accs, _ := c.accounts.FindByUserID(userID)
+	nameByID := make(map[string]string, len(accs))
+	for _, a := range accs {
+		nameByID[strconv.FormatUint(uint64(a.ID), 10)] = a.Name
+	}
+
 	afterRows := make([]movementRow, 0, len(result.Movements))
 	for _, d := range result.Movements {
 		row := draftToRow(d)
 		if sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, row.Category, row.Subcategory); err == nil {
 			row.Icon = sub.Icon
+		}
+		if row.AccountID != "" {
+			row.AccountName = nameByID[row.AccountID]
 		}
 		afterRows = append(afterRows, row)
 	}

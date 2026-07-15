@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -14,8 +15,9 @@ import (
 )
 
 type fakeOrchestrator struct {
-	updateResult orchestrator.UpdateResult
-	updateErr    error
+	updateResult      orchestrator.UpdateResult
+	updateErr         error
+	gotUpdateAccounts []orchestrator.AccountOption
 }
 
 func (o *fakeOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
@@ -24,7 +26,8 @@ func (o *fakeOrchestrator) ClassifyIntent(ctx context.Context, text string) (orc
 func (o *fakeOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
 	return orchestrator.CreateResult{}, nil
 }
-func (o *fakeOrchestrator) ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.UpdateResult, error) {
+func (o *fakeOrchestrator) ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error) {
+	o.gotUpdateAccounts = accounts
 	return o.updateResult, o.updateErr
 }
 func (o *fakeOrchestrator) ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error) {
@@ -124,7 +127,8 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementUpdateConfirmFlow())
 
-	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(7, currency.ARS, false)}}
+	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
 
 	beforeRows := []movementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
 	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows); err != nil {
@@ -133,6 +137,9 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	if store.flowName != movementUpdateConfirmFlowName {
 		t.Errorf("started flow = %q, want %q", store.flowName, movementUpdateConfirmFlowName)
 	}
+	if len(orch.gotUpdateAccounts) == 0 {
+		t.Error("ResolveUpdate should receive the user's accounts so it can re-target by name, got none")
+	}
 }
 
 func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
@@ -140,7 +147,7 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementUpdateConfirmFlow())
-	c := &controller{orchestrator: orch, engine: engine}
+	c := &controller{orchestrator: orch, engine: engine, accounts: &fakeAccountRepoFull{}}
 
 	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "che no sé", "", nil, nil); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
@@ -155,7 +162,7 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewMovementUpdateConfirmFlow())
-	c := &controller{engine: engine, subcategories: &fakeSubcategoryRepoFull{}}
+	c := &controller{engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: &fakeAccountRepoFull{}}
 
 	result := orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3500", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},

@@ -4,8 +4,27 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+func TestBuildUpdateSystemPrompt_IncludesAccountsAndRule(t *testing.T) {
+	accs := []AccountOption{
+		{ID: 7, Name: "Banco Galicia", Currency: "ARS"},
+		{ID: 9, Name: "FCI", Currency: "ARS"},
+	}
+	prompt := buildUpdateSystemPrompt(accs)
+
+	for _, want := range []string{"Banco Galicia", "FCI", "7 | Banco Galicia (ARS)"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("prompt missing %q", want)
+		}
+	}
+	// The account-correction rule must be present so the model knows to remap.
+	if !strings.Contains(strings.ToLower(prompt), "account_id") || !strings.Contains(prompt, "corrige la cuenta") {
+		t.Errorf("prompt missing the account-correction rule:\n%s", prompt)
+	}
+}
 
 func TestResolveUpdate_Resolved(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -16,7 +35,7 @@ func TestResolveUpdate_Resolved(t *testing.T) {
 	o := New(Config{BaseURL: server.URL, UpdateModel: "test-model", TimeoutSeconds: 5})
 	candidate := MovementCandidate{TransactionID: "", Movements: []MovementDraft{{Amount: "100", Currency: "USD"}}}
 
-	result, err := o.ResolveUpdate(context.Background(), "en realidad fueron 150 usd", candidate)
+	result, err := o.ResolveUpdate(context.Background(), "en realidad fueron 150 usd", candidate, nil)
 	if err != nil {
 		t.Fatalf("ResolveUpdate: %v", err)
 	}
@@ -37,7 +56,7 @@ func TestResolveUpdate_Unresolved(t *testing.T) {
 	o := New(Config{BaseURL: server.URL, UpdateModel: "test-model", TimeoutSeconds: 5})
 	candidate := MovementCandidate{Movements: []MovementDraft{{Amount: "100", Currency: "USD", Description: "Nafta"}}}
 
-	result, err := o.ResolveUpdate(context.Background(), "el café de ayer era 3000", candidate)
+	result, err := o.ResolveUpdate(context.Background(), "el café de ayer era 3000", candidate, nil)
 	if err != nil {
 		t.Fatalf("ResolveUpdate: %v", err)
 	}
@@ -55,7 +74,7 @@ func TestResolveUpdate_AcceptsStringResolved(t *testing.T) {
 	o := New(Config{BaseURL: server.URL, UpdateModel: "test-model", TimeoutSeconds: 5})
 	candidate := MovementCandidate{Movements: []MovementDraft{{Amount: "100", Currency: "USD"}}}
 
-	result, err := o.ResolveUpdate(context.Background(), "en realidad fueron 150 usd", candidate)
+	result, err := o.ResolveUpdate(context.Background(), "en realidad fueron 150 usd", candidate, nil)
 	if err != nil {
 		t.Fatalf("ResolveUpdate: %v", err)
 	}
@@ -77,7 +96,7 @@ func TestResolveUpdate_AcceptsNullMentionedDates(t *testing.T) {
 	o := New(Config{BaseURL: server.URL, UpdateModel: "test-model", TimeoutSeconds: 5})
 	candidate := MovementCandidate{Movements: []MovementDraft{{Amount: "5000", Currency: "ARS", Description: "pago a pablo por el asado"}}}
 
-	result, err := o.ResolveUpdate(context.Background(), "Pablo me devolvió cien pesos por el asado", candidate)
+	result, err := o.ResolveUpdate(context.Background(), "Pablo me devolvió cien pesos por el asado", candidate, nil)
 	if err != nil {
 		t.Fatalf("ResolveUpdate: %v", err)
 	}
@@ -99,7 +118,7 @@ func TestResolveUpdate_NetsReintegro(t *testing.T) {
 	o := New(Config{BaseURL: server.URL, UpdateModel: "test-model", TimeoutSeconds: 5})
 	candidate := MovementCandidate{Movements: []MovementDraft{{Amount: "700", Currency: "ARS", Description: "café"}}}
 
-	result, err := o.ResolveUpdate(context.Background(), "me devolvieron 100 del café", candidate)
+	result, err := o.ResolveUpdate(context.Background(), "me devolvieron 100 del café", candidate, nil)
 	if err != nil {
 		t.Fatalf("ResolveUpdate: %v", err)
 	}
@@ -123,7 +142,7 @@ func TestResolveUpdate_MentionedDateRange(t *testing.T) {
 	o := New(Config{BaseURL: server.URL, UpdateModel: "test-model", TimeoutSeconds: 5})
 	candidate := MovementCandidate{Movements: []MovementDraft{{Amount: "100", Currency: "USD"}}}
 
-	result, err := o.ResolveUpdate(context.Background(), "fue entre el 27 y el 29", candidate)
+	result, err := o.ResolveUpdate(context.Background(), "fue entre el 27 y el 29", candidate, nil)
 	if err != nil {
 		t.Fatalf("ResolveUpdate: %v", err)
 	}
