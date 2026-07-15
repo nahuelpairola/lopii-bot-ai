@@ -116,6 +116,18 @@ func (r *repository) SetDefault(accountID uint64) error {
 		Update("is_default", true).Error
 }
 
+// Rename cambia el nombre de una cuenta. El índice único (user, nombre,
+// moneda) puede rechazarlo — se mapea a ErrAccountAlreadyExists.
+func (r *repository) Rename(accountID uint64, name string) error {
+	err := r.conn.DB.Model(&Account{}).
+		Where("id = ?", accountID).
+		Update("name", name).Error
+	if isUniqueViolation(err) {
+		return ErrAccountAlreadyExists
+	}
+	return err
+}
+
 // isUniqueViolation detecta el código de error de Postgres para
 // violación de constraint único (23505), sin acoplar el resto del
 // código a pgconn directamente.

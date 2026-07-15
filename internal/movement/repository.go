@@ -203,6 +203,33 @@ func (r *repository) SumAmountForAccount(accountID uint64) (decimal.Decimal, err
 	return total.Decimal, nil
 }
 
+// ReassignAccount mueve TODOS los movimientos vivos de la cuenta from a la
+// cuenta to, en una sola transacción. NO es un UPDATE pelado: las
+// transferencias internas from↔to (transacciones con una pata en cada una)
+// se soft-deletean ENTERAS — netean 0 entre ambas cuentas, y re-apuntar la
+// pata de from dejaría una "transferencia de to a to" que viola el
+// invariante de 2 cuentas distintas (ver validateTransferGroups). El resto
+// se re-apunta. Precondición (la valida el caller): misma moneda.
+// ponytail: sin paginado — volúmenes de un usuario individual.
+func (r *repository) ReassignAccount(fromID, toID uint64) error {
+	return r.db.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`
+			UPDATE movements SET deleted_at = NOW()
+			WHERE deleted_at IS NULL AND transaction_id IN (
+				SELECT transaction_id FROM movements
+				WHERE deleted_at IS NULL AND transaction_id IS NOT NULL
+				  AND account_id IN (?, ?)
+				GROUP BY transaction_id
+				HAVING BOOL_OR(account_id = ?) AND BOOL_OR(account_id = ?)
+			)`, fromID, toID, fromID, toID).Error; err != nil {
+			return err
+		}
+		return tx.Exec(`
+			UPDATE movements SET account_id = ?
+			WHERE deleted_at IS NULL AND account_id = ?`, toID, fromID).Error
+	})
+}
+
 // MovementQuery is the shared filter for the read-only QUERY tools. One
 // struct serves both SumForUser and ListForUser — identical filters, so a
 // struct beats an 8-arg signature and keeps the two in sync. Type == nil
