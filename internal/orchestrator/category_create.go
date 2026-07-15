@@ -30,18 +30,16 @@ var categoryCreateTool = toolSchema{
 				"properties": {
 					"category": {"type": "string"},
 					"subcategory": {"type": "string"}
-				},
-				"required": ["category", "subcategory"]
+				}
 			},
 			"proposal": {
 				"type": ["object", "null"],
 				"properties": {
 					"category": {"type": "string"},
 					"subcategory": {"type": "string"},
-					"icon": {"type": "string"},
+					"emoji": {"type": "string"},
 					"description": {"type": "string"}
-				},
-				"required": ["category", "subcategory", "icon", "description"]
+				}
 			}
 		}
 	}`),

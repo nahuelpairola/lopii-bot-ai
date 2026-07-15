@@ -52,7 +52,7 @@ func TestClassifyCategoryCreate_MatchPromptAndParse(t *testing.T) {
 }
 
 func TestClassifyCategoryCreate_ProposalParse(t *testing.T) {
-	srv := categoryCreateServer(t, `{"match":null,"proposal":{"category":"Mascotas","subcategory":"Veterinario","icon":"🐶","description":"Gastos del veterinario y salud de mascotas."}}`, nil)
+	srv := categoryCreateServer(t, `{"match":null,"proposal":{"category":"Mascotas","subcategory":"Veterinario","emoji":"🐶","description":"Gastos del veterinario y salud de mascotas."}}`, nil)
 	defer srv.Close()
 
 	o := New(Config{BaseURL: srv.URL, CreateModel: "m", TimeoutSeconds: 5})
@@ -79,7 +79,7 @@ func TestClassifyCategoryCreate_ErrorWhenBothNil(t *testing.T) {
 }
 
 func TestClassifyCategoryCreate_BothSetPrefersMatch(t *testing.T) {
-	srv := categoryCreateServer(t, `{"match":{"category":"Otros","subcategory":"Regalos / donaciones"},"proposal":{"category":"Regalos","subcategory":"Regalos","icon":"🎁","description":"x"}}`, nil)
+	srv := categoryCreateServer(t, `{"match":{"category":"Otros","subcategory":"Regalos / donaciones"},"proposal":{"category":"Regalos","subcategory":"Regalos","emoji":"🎁","description":"x"}}`, nil)
 	defer srv.Close()
 
 	o := New(Config{BaseURL: srv.URL, CreateModel: "m", TimeoutSeconds: 5})

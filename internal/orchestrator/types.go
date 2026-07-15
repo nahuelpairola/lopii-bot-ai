@@ -128,7 +128,7 @@ type CategoryMatch struct {
 type CategoryProposal struct {
 	Category    string `json:"category"`
 	Subcategory string `json:"subcategory"`
-	Icon        string `json:"icon"`
+	Icon        string `json:"emoji"` // the model reaches for "emoji"; app maps it to the row's Icon
 	Description string `json:"description"`
 }
 
