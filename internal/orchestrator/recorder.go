@@ -53,12 +53,13 @@ type LLMRecorder interface {
 
 // callType* etiquetan la llamada para agregados por tipo en Grafana.
 const (
-	callTypeRouter     = "router"
-	callTypeCreate     = "create"
-	callTypeUpdate     = "update"
-	callTypeDelete     = "delete"
-	callTypeOnboarding = "onboarding"
-	callTypeQuery      = "query"
+	callTypeRouter         = "router"
+	callTypeCreate         = "create"
+	callTypeUpdate         = "update"
+	callTypeDelete         = "delete"
+	callTypeOnboarding     = "onboarding"
+	callTypeQuery          = "query"
+	callTypeCategoryCreate = "category_create"
 )
 
 func atoiPtr(s string) *int {
