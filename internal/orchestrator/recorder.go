@@ -60,6 +60,7 @@ const (
 	callTypeOnboarding     = "onboarding"
 	callTypeQuery          = "query"
 	callTypeCategoryCreate = "category_create"
+	callTypeAccountManage  = "account_manage"
 )
 
 func atoiPtr(s string) *int {
