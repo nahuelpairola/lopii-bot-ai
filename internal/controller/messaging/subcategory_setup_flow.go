@@ -103,11 +103,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			PromptText: func(conversation.Data) string { return subcategory.MsgAskNewCategoryName() },
 			DataKey:    "category",
 			Validate: func(text string, _ conversation.Data) string {
-				lower := strings.ToLower(strings.TrimSpace(text))
-				if lower == "" {
-					return subcategory.MsgInvalidCategoryName
-				}
-				if lower == "pending_review" || lower == "sistema" {
+				if strings.TrimSpace(text) == "" || subcategory.IsReserved(text) {
 					return subcategory.MsgInvalidCategoryName
 				}
 				return ""

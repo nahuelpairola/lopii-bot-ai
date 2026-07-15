@@ -45,7 +45,7 @@ func (r *repository) DistinctCategoriesForUser(userID uint64) ([]string, error) 
 	var categories []string
 	err := r.conn.DB.
 		Model(&Subcategory{}).
-		Where("user_id = ? OR is_global = TRUE", userID).
+		Where("(user_id = ? OR is_global = TRUE) AND category NOT IN ?", userID, reservedCategories).
 		Distinct("category").
 		Order("category").
 		Pluck("category", &categories).Error
