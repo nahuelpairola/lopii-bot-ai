@@ -47,9 +47,11 @@ type fakeAccountRepoFull struct {
 	inserted    []account.Account
 	balances    map[uint64]string
 	insertErr   error
-	renamedID   uint64
-	renamedName string
-	renameErr   error
+	renamedID    uint64
+	renamedName  string
+	renameErr    error
+	unsetCalls   []currency.Currency
+	setDefaultID uint64
 }
 
 func (r *fakeAccountRepoFull) Insert(a *account.Account) error {
@@ -84,6 +86,15 @@ func (r *fakeAccountRepoFull) Rename(accountID uint64, name string) error {
 	r.renamedID, r.renamedName = accountID, name
 	return nil
 }
+func (r *fakeAccountRepoFull) UnsetDefault(userID uint64, cur currency.Currency) error {
+	r.unsetCalls = append(r.unsetCalls, cur)
+	delete(r.byCurrency, cur) // mirror the real repo: after unset, no default of this currency
+	return nil
+}
+func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
+	r.setDefaultID = accountID
+	return nil
+}
 
 type fakeMovementRepoFull struct {
 	inserted       []movement.Movement
@@ -94,6 +105,9 @@ type fakeMovementRepoFull struct {
 	similar        []movement.Movement
 	insertErr      error
 	openings       []movement.AccountOpening
+	reassignFrom   uint64
+	reassignTo     uint64
+	reassignCalls  int
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -135,6 +149,11 @@ func (r *fakeMovementRepoFull) SumForUser(q movement.MovementQuery, groupBy stri
 }
 func (r *fakeMovementRepoFull) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
 	return nil, nil
+}
+func (r *fakeMovementRepoFull) ReassignAccount(fromID, toID uint64) error {
+	r.reassignFrom, r.reassignTo = fromID, toID
+	r.reassignCalls++
+	return nil
 }
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {

@@ -117,5 +117,71 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 }
 
 func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	c.sendText(ctx, b, chatID, msgGenericFlowError) // replaced in Task 8
+	accountID, err := strconv.ParseUint(stringOrEmpty(data["account_id"]), 10, 64)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	cur := currency.Currency(stringOrEmpty(data["account_currency"]))
+	name := stringOrEmpty(data["account_name"])
+
+	// capture the previous default BEFORE unsetting it
+	prev, prevErr := c.accounts.FindDefaultByCurrency(data.UserID(), cur)
+
+	if err := c.accounts.UnsetDefault(data.UserID(), cur); err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if err := c.accounts.SetDefault(accountID); err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	c.resolveMetric(data.UserID(), outcomeAccountDefaultSet)
+	c.sendText(ctx, b, chatID, fmt.Sprintf("⭐ %s es tu cuenta en %s por defecto.", name, cur.String()))
+
+	// same-currency guaranteed: prev is the old default OF THIS currency
+	if prevErr != nil || prev == nil || uint64(prev.ID) == accountID {
+		return
+	}
+	balance, err := c.movements.SumAmountForAccount(uint64(prev.ID))
+	if err != nil {
+		return
+	}
+	// don't offer to move an empty account — nothing meaningful to consolidate
+	if balance.IsZero() {
+		return
+	}
+	seed := conversation.Data{
+		"move_from_id":      strconv.FormatUint(uint64(prev.ID), 10),
+		"move_from_name":    prev.Name,
+		"move_from_balance": balance.String(),
+		"move_to_id":        strconv.FormatUint(accountID, 10),
+		"move_to_name":      name,
+	}
+	prompt, err := c.engine.StartWithData(data.UserID(), accountMoveOfferFlowName, seed)
+	if err != nil {
+		return
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+}
+
+func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	if stringOrEmpty(data["move_choice"]) != "move" {
+		c.sendText(ctx, b, chatID, "Listo, dejé todo como estaba.")
+		return
+	}
+	fromID, err1 := strconv.ParseUint(stringOrEmpty(data["move_from_id"]), 10, 64)
+	toID, err2 := strconv.ParseUint(stringOrEmpty(data["move_to_id"]), 10, 64)
+	if err1 != nil || err2 != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if err := c.movements.ReassignAccount(fromID, toID); err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	c.sendText(ctx, b, chatID, fmt.Sprintf("Listo: los movimientos de %s ahora están en %s. %s quedó en 0.",
+		stringOrEmpty(data["move_from_name"]), stringOrEmpty(data["move_to_name"]), stringOrEmpty(data["move_from_name"])))
 }

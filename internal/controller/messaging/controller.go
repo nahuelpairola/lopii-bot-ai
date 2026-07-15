@@ -38,6 +38,8 @@ type accountRepository interface {
 	FindByUserID(userID uint64) ([]account.Account, error)
 	GetAccount(id uint64) (*account.Account, error)
 	Rename(accountID uint64, name string) error
+	UnsetDefault(userID uint64, currency currency.Currency) error
+	SetDefault(accountID uint64) error
 }
 
 type movementRepository interface {
@@ -50,6 +52,7 @@ type movementRepository interface {
 	InsertAccountsWithOpenings(items []movement.AccountOpening) error
 	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
 	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
+	ReassignAccount(fromID, toID uint64) error
 }
 
 type subcategoryRepository interface {
@@ -239,6 +242,8 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
 	case accountManageFlowName:
 		c.finishAccountManageFlow(ctx, b, chatID, result.Data)
+	case accountMoveOfferFlowName:
+		c.finishAccountMoveOffer(ctx, b, chatID, result.Data)
 	case subcategorySetupFlowName:
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
 	case categoryMatchOfferFlowName:

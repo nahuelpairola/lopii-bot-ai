@@ -132,6 +132,7 @@ func (r *fakeMovementRepoForResolve) SumForUser(q movement.MovementQuery, groupB
 func (r *fakeMovementRepoForResolve) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
 	return nil, nil
 }
+func (r *fakeMovementRepoForResolve) ReassignAccount(fromID, toID uint64) error { return nil }
 
 func TestResolveCandidates_NoDate_UsesCreatedAtRecencyWindow(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("Nafta YPF")}}}
