@@ -39,6 +39,9 @@ func (o *fakeOrchestrator) ClassifyOnboarding(ctx context.Context, text string) 
 func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return "", nil
 }
+func (o *fakeOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
+	return orchestrator.CategoryCreateResult{}, nil
+}
 
 type fakeStoreForController struct {
 	flowName, stepName string

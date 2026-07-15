@@ -32,6 +32,8 @@ type fakeFullOrchestrator struct {
 	intentErr         error
 	queryAnswer       string
 	queryErr          error
+	categoryResult    orchestrator.CategoryCreateResult
+	categoryErr       error
 }
 
 func (o *fakeFullOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
@@ -51,6 +53,93 @@ func (o *fakeFullOrchestrator) ClassifyOnboarding(ctx context.Context, text stri
 }
 func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return o.queryAnswer, o.queryErr
+}
+func (o *fakeFullOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
+	return o.categoryResult, o.categoryErr
+}
+
+// newCreateCategoryController wires a controller + engine with all three
+// category flows registered, for the CREATE_CATEGORY dispatch tests.
+func newCreateCategoryController(orch *fakeFullOrchestrator, subs *fakeSubcategoryRepoFull) (*controller, *fakeStoreForController) {
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewSubcategorySetupFlow(subs))
+	engine.Register(NewCategoryMatchOfferFlow())
+	engine.Register(NewCategoryProposalConfirmFlow())
+	return &controller{orchestrator: orch, engine: engine, subcategories: subs}, store
+}
+
+func TestCreateCategory_MatchStartsMatchOfferFlow(t *testing.T) {
+	existing := newSubForTest(9, "Otros", "Regalos / donaciones")
+	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Otros|Regalos / donaciones": existing}}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreateCategory, categoryResult: orchestrator.CategoryCreateResult{
+		Match: &orchestrator.CategoryMatch{Category: "Otros", Subcategory: "Regalos / donaciones"},
+	}}
+	c, store := newCreateCategoryController(orch, subs)
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "quiero categoría regalos")
+
+	if store.flowName != categoryMatchOfferFlowName {
+		t.Errorf("flow = %q, want %q", store.flowName, categoryMatchOfferFlowName)
+	}
+}
+
+func TestCreateCategory_ProposalStartsConfirmFlow(t *testing.T) {
+	subs := &fakeSubcategoryRepoFull{categories: []string{"Alimentación"}}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreateCategory, categoryResult: orchestrator.CategoryCreateResult{
+		Proposal: &orchestrator.CategoryProposal{Category: "Regalos", Subcategory: "Regalos", Icon: "🎁", Description: "Regalos a terceros."},
+	}}
+	c, store := newCreateCategoryController(orch, subs)
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "categoría regalos")
+
+	if store.flowName != categoryProposalConfirmFlowName {
+		t.Errorf("flow = %q, want %q", store.flowName, categoryProposalConfirmFlowName)
+	}
+	if stringOrEmpty(store.data["category_is_new"]) != "true" {
+		t.Errorf("category_is_new = %q, want true (Regalos not in existing categories)", store.data["category_is_new"])
+	}
+}
+
+func TestCreateCategory_ProposalDuplicateFallsToMatch(t *testing.T) {
+	existing := newSubForTest(9, "Otros", "Regalos / donaciones")
+	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Otros|Regalos / donaciones": existing}}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreateCategory, categoryResult: orchestrator.CategoryCreateResult{
+		Proposal: &orchestrator.CategoryProposal{Category: "Otros", Subcategory: "Regalos / donaciones", Icon: "🎁", Description: "x"},
+	}}
+	c, store := newCreateCategoryController(orch, subs)
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "categoría regalos")
+
+	if store.flowName != categoryMatchOfferFlowName {
+		t.Errorf("flow = %q, want %q (exact-duplicate proposal must offer the existing)", store.flowName, categoryMatchOfferFlowName)
+	}
+}
+
+func TestCreateCategory_ReservedProposalFallsToWizard(t *testing.T) {
+	subs := &fakeSubcategoryRepoFull{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreateCategory, categoryResult: orchestrator.CategoryCreateResult{
+		Proposal: &orchestrator.CategoryProposal{Category: "Sistema", Subcategory: "Cualquiera", Icon: "⚙️", Description: "x"},
+	}}
+	c, store := newCreateCategoryController(orch, subs)
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "categoría sistema")
+
+	if store.flowName != subcategorySetupFlowName {
+		t.Errorf("flow = %q, want %q (reserved proposal falls to wizard)", store.flowName, subcategorySetupFlowName)
+	}
+}
+
+func TestCreateCategory_LLMErrorFallsToWizard(t *testing.T) {
+	subs := &fakeSubcategoryRepoFull{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreateCategory, categoryErr: context.Canceled}
+	c, store := newCreateCategoryController(orch, subs)
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "categoría lo que sea")
+
+	if store.flowName != subcategorySetupFlowName {
+		t.Errorf("flow = %q, want %q (LLM error falls to wizard)", store.flowName, subcategorySetupFlowName)
+	}
 }
 
 func TestHandleFreeText_QueryRoutesToLoopAndResolves(t *testing.T) {
@@ -213,13 +302,18 @@ func TestHandleFreeText_AccountCreate_StartsFlow(t *testing.T) {
 	}
 }
 
-func TestHandleFreeText_CreateCategory_StartsFlow(t *testing.T) {
-	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreateCategory}
+// When the LLM returns nothing usable (no match, no proposal), CREATE_CATEGORY
+// falls back to the classic wizard rather than a dead end.
+func TestHandleFreeText_CreateCategory_FallsBackToWizard(t *testing.T) {
+	subs := &fakeSubcategoryRepoFull{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreateCategory} // empty categoryResult
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewSubcategorySetupFlow(&fakeSubcategoryRepoFull{}))
-	c := &controller{orchestrator: orch, engine: engine}
+	engine.Register(NewSubcategorySetupFlow(subs))
+	engine.Register(NewCategoryMatchOfferFlow())
+	engine.Register(NewCategoryProposalConfirmFlow())
+	c := &controller{orchestrator: orch, engine: engine, subcategories: subs}
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "quiero crear una categoría nueva")
 

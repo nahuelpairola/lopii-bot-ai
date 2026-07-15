@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -12,6 +13,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/subcategory"
 )
 
 // createErrorCopy maps a guard rejection to specific user copy, falling back
@@ -74,7 +76,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	case orchestrator.IntentAccountCreate:
 		c.startAccountCreate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentCreateCategory:
-		c.startSubcategorySetup(ctx, b, chatID, userID)
+		c.startSubcategorySetup(ctx, b, chatID, userID, text)
 	case orchestrator.IntentReminderSet:
 		c.startReminderSetup(ctx, b, chatID, userID)
 	default:
@@ -82,10 +84,9 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	}
 }
 
-// startSubcategorySetup starts subcategory_setup fresh — like
-// startAccountCreate, every field is unknown until the user answers the
-// flow's first step, so there's no gap-fill seed to compute.
-func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
+// startSubcategoryWizard starts the classic 7-step wizard fresh — the
+// fallback whenever the LLM path can't produce a trustworthy match/proposal.
+func (c *controller) startSubcategoryWizard(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
 	prompt, err := c.engine.Start(userID, subcategorySetupFlowName)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
@@ -96,12 +97,97 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 	}
 }
 
-// startSubcategoryWizard starts the classic 7-step wizard fresh — the
-// fallback whenever the LLM path can't produce a trustworthy match/proposal.
-func (c *controller) startSubcategoryWizard(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
-	prompt, err := c.engine.Start(userID, subcategorySetupFlowName)
+// startSubcategorySetup resolves a CREATE_CATEGORY message with the LLM
+// first: an existing-entry match offers reuse (the "regalos ya existía"
+// case), a full proposal collapses the 7-step wizard into one confirmation.
+// Any doubt → the classic wizard, never a dead end.
+func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.startSubcategoryWizard(ctx, b, chatID, userID)
+		return
+	}
+	taxonomy := make([]orchestrator.TaxonomyEntry, 0, len(subs))
+	for _, s := range subs {
+		if subcategory.IsReserved(s.Category) {
+			continue
+		}
+		taxonomy = append(taxonomy, orchestrator.TaxonomyEntry{Category: s.Category, Subcategory: s.Subcategory, Description: s.Description})
+	}
+
+	res, err := c.orchestrator.ClassifyCategoryCreate(ctx, text, taxonomy)
+	if err != nil {
+		c.startSubcategoryWizard(ctx, b, chatID, userID)
+		return
+	}
+
+	if res.Match != nil {
+		existing, err := c.subcategories.FindByCategoryAndSubcategory(userID, res.Match.Category, res.Match.Subcategory)
+		if err != nil { // hallucinated match → can't offer it
+			c.startSubcategoryWizard(ctx, b, chatID, userID)
+			return
+		}
+		c.startCategoryMatchOffer(ctx, b, chatID, userID, existing)
+		return
+	}
+
+	if res.Proposal == nil { // neither match nor proposal usable → never a dead end
+		c.startSubcategoryWizard(ctx, b, chatID, userID)
+		return
+	}
+	p := res.Proposal
+	p.Category, p.Subcategory = strings.TrimSpace(p.Category), strings.TrimSpace(p.Subcategory)
+	if p.Category == "" || p.Subcategory == "" || subcategory.IsReserved(p.Category) || subcategory.IsReserved(p.Subcategory) {
+		c.startSubcategoryWizard(ctx, b, chatID, userID)
+		return
+	}
+	if existing, err := c.subcategories.FindByCategoryAndSubcategory(userID, p.Category, p.Subcategory); err == nil {
+		c.startCategoryMatchOffer(ctx, b, chatID, userID, existing) // exact duplicate → offer, don't re-create
+		return
+	}
+
+	isNew := "true"
+	if cats, err := c.subcategories.DistinctCategoriesForUser(userID); err == nil {
+		for _, cat := range cats {
+			if cat == p.Category {
+				isNew = "false"
+				break
+			}
+		}
+	}
+	icon := strings.TrimSpace(p.Icon)
+	if !subcategory.ValidIcon(icon) {
+		icon = "" // insertNewSubcategory falls back to IconForCategory / 📂
+	}
+	seed := conversation.Data{
+		"category":                p.Category,
+		"category_is_new":         isNew,
+		"category_icon":           icon,
+		"subcategory":             p.Subcategory,
+		"subcategory_description": strings.TrimSpace(p.Description),
+	}
+	prompt, err := c.engine.StartWithData(userID, categoryProposalConfirmFlowName, seed)
+	if err != nil {
+		c.startSubcategoryWizard(ctx, b, chatID, userID)
+		return
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+}
+
+// startCategoryMatchOffer seeds and starts category_match_offer from an
+// existing taxonomy row.
+func (c *controller) startCategoryMatchOffer(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, s *subcategory.Subcategory) {
+	seed := conversation.Data{
+		"category":                s.Category,
+		"subcategory":             s.Subcategory,
+		"subcategory_description": s.Description,
+		"category_icon":           s.Icon,
+	}
+	prompt, err := c.engine.StartWithData(userID, categoryMatchOfferFlowName, seed)
+	if err != nil {
+		c.startSubcategoryWizard(ctx, b, chatID, userID)
 		return
 	}
 	if b != nil {
