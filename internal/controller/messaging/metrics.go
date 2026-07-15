@@ -37,10 +37,8 @@ const (
 // terminal de su flow); el resto es terminal en el acto.
 func routerOutcome(intent orchestrator.Intent) string {
 	switch intent {
-	case orchestrator.IntentCreate, orchestrator.IntentUpdate, orchestrator.IntentDelete, orchestrator.IntentQuery, orchestrator.IntentCreateCategory:
+	case orchestrator.IntentCreate, orchestrator.IntentUpdate, orchestrator.IntentDelete, orchestrator.IntentQuery, orchestrator.IntentCreateCategory, orchestrator.IntentAccountManage:
 		return outcomePending
-	case orchestrator.IntentAccountCreate:
-		return outcomeAccountCreateRouted
 	case orchestrator.IntentReminderSet:
 		return outcomeReminderSetRouted
 	default:

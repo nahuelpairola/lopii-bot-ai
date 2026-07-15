@@ -285,7 +285,7 @@ func TestStartMovementDelete_NoCandidates_SendsErrorNoFlow(t *testing.T) {
 }
 
 func TestHandleFreeText_AccountCreate_StartsFlow(t *testing.T) {
-	orch := &fakeFullOrchestrator{intent: orchestrator.IntentAccountCreate}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentAccountManage}
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })

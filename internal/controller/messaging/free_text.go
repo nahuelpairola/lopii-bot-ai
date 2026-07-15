@@ -73,7 +73,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		c.startMovementUpdate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentDelete:
 		c.startMovementDelete(ctx, b, chatID, userID, text)
-	case orchestrator.IntentAccountCreate:
+	case orchestrator.IntentAccountManage:
 		c.startAccountCreate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentCreateCategory:
 		c.startSubcategorySetup(ctx, b, chatID, userID, text)

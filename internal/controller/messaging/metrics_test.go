@@ -12,7 +12,7 @@ func TestRouterOutcome(t *testing.T) {
 		orchestrator.IntentUpdate:         outcomePending,
 		orchestrator.IntentDelete:         outcomePending,
 		orchestrator.IntentQuery:          outcomePending,
-		orchestrator.IntentAccountCreate:  outcomeAccountCreateRouted,
+		orchestrator.IntentAccountManage:  outcomePending,
 		orchestrator.IntentCreateCategory: outcomePending,
 	}
 	for intent, want := range cases {

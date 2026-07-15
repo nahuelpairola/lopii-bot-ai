@@ -8,7 +8,7 @@ const (
 	IntentUpdate         Intent = "UPDATE"
 	IntentDelete         Intent = "DELETE"
 	IntentQuery          Intent = "QUERY"
-	IntentAccountCreate  Intent = "ACCOUNT_CREATE"
+	IntentAccountManage  Intent = "ACCOUNT_MANAGE"
 	IntentCreateCategory Intent = "CREATE_CATEGORY"
 	IntentReminderSet    Intent = "REMINDER_SET"
 )
