@@ -1,0 +1,187 @@
+package messaging
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/go-telegram/bot"
+	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/movement"
+)
+
+// finishAccountManageFlow applies the confirmed operation. Every branch
+// already passed its confirm gate inside the flow — this is pure execution.
+func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	if stringOrEmpty(data["cancelled"]) == "true" {
+		c.resolveMetric(data.UserID(), outcomeAccountManageCancelled)
+		c.sendText(ctx, b, chatID, msgAccountManageCancelled)
+		return
+	}
+
+	switch stringOrEmpty(data["operation"]) {
+	case "create_new":
+		c.resolveMetric(data.UserID(), outcomeAccountCreateRouted)
+		c.startAccountCreate(ctx, b, chatID, data.UserID(), stringOrEmpty(data["message"]))
+	case "rename":
+		c.finishAccountRename(ctx, b, chatID, data)
+	case "adjust":
+		c.finishAccountAdjust(ctx, b, chatID, data) // Task 7
+	case "default":
+		c.finishAccountDefault(ctx, b, chatID, data) // Task 8
+	default:
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+	}
+}
+
+func (c *controller) finishAccountRename(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	id, err := strconv.ParseUint(stringOrEmpty(data["account_id"]), 10, 64)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	newName := stringOrEmpty(data["new_name"])
+	if err := c.accounts.Rename(id, newName); err != nil {
+		if errors.Is(err, account.ErrAccountAlreadyExists) {
+			c.sendText(ctx, b, chatID, account.MsgAccountAlreadyExists(newName, stringOrEmpty(data["account_currency"])))
+			return
+		}
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	c.resolveMetric(data.UserID(), outcomeAccountRenamed)
+	c.sendText(ctx, b, chatID, "Listo, ahora se llama "+newName+".")
+}
+
+// finishAccountAdjust inserts THE adjustment movement: delta between the
+// declared new total and SUM(amount). The app owns the sign here exactly
+// like the guard does: income → +Abs, expense → -Abs. Never the LLM (the
+// LLM never even saw the number — it came from a validated TextStep).
+func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	accountID, err := strconv.ParseUint(stringOrEmpty(data["account_id"]), 10, 64)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	newTotal, err := decimal.NewFromString(stringOrEmpty(data["new_total"]))
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	current, err := c.movements.SumAmountForAccount(accountID)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+
+	delta := newTotal.Sub(current)
+	if delta.IsZero() {
+		c.resolveMetric(data.UserID(), outcomeAccountAdjusted)
+		c.sendText(ctx, b, chatID, msgAccountManageNoChange)
+		return
+	}
+
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(data.UserID(), "Sistema", "Ajuste de saldo")
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+
+	mType := movement.Income
+	amount := delta.Abs()
+	if delta.IsNegative() {
+		mType = movement.Expense
+		amount = delta.Abs().Neg()
+	}
+	m := movement.Movement{
+		UserID:        data.UserID(),
+		AccountID:     &accountID,
+		SubcategoryID: uint64(sub.ID),
+		Date:          time.Now(),
+		Type:          mType,
+		Amount:        amount,
+		Currency:      currency.Currency(stringOrEmpty(data["account_currency"])),
+	}
+	if err := c.movements.InsertBatch([]movement.Movement{m}); err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	c.resolveMetric(data.UserID(), outcomeAccountAdjusted)
+	c.sendText(ctx, b, chatID, fmt.Sprintf("%s: %s %s.",
+		stringOrEmpty(data["account_name"]), newTotal.String(), stringOrEmpty(data["account_currency"])))
+}
+
+func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	accountID, err := strconv.ParseUint(stringOrEmpty(data["account_id"]), 10, 64)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	cur := currency.Currency(stringOrEmpty(data["account_currency"]))
+	name := stringOrEmpty(data["account_name"])
+
+	// capture the previous default BEFORE unsetting it
+	prev, prevErr := c.accounts.FindDefaultByCurrency(data.UserID(), cur)
+
+	if err := c.accounts.UnsetDefault(data.UserID(), cur); err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if err := c.accounts.SetDefault(accountID); err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	c.resolveMetric(data.UserID(), outcomeAccountDefaultSet)
+	c.sendText(ctx, b, chatID, fmt.Sprintf("⭐ %s es tu cuenta en %s por defecto.", name, cur.String()))
+
+	// same-currency guaranteed: prev is the old default OF THIS currency
+	if prevErr != nil || prev == nil || uint64(prev.ID) == accountID {
+		return
+	}
+	balance, err := c.movements.SumAmountForAccount(uint64(prev.ID))
+	if err != nil {
+		return
+	}
+	// don't offer to move an empty account — nothing meaningful to consolidate
+	if balance.IsZero() {
+		return
+	}
+	seed := conversation.Data{
+		"move_from_id":      strconv.FormatUint(uint64(prev.ID), 10),
+		"move_from_name":    prev.Name,
+		"move_from_balance": balance.String(),
+		"move_to_id":        strconv.FormatUint(accountID, 10),
+		"move_to_name":      name,
+	}
+	prompt, err := c.engine.StartWithData(data.UserID(), accountMoveOfferFlowName, seed)
+	if err != nil {
+		return
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+}
+
+func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	if stringOrEmpty(data["move_choice"]) != "move" {
+		c.sendText(ctx, b, chatID, "Listo, dejé todo como estaba.")
+		return
+	}
+	fromID, err1 := strconv.ParseUint(stringOrEmpty(data["move_from_id"]), 10, 64)
+	toID, err2 := strconv.ParseUint(stringOrEmpty(data["move_to_id"]), 10, 64)
+	if err1 != nil || err2 != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if err := c.movements.ReassignAccount(fromID, toID); err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	c.sendText(ctx, b, chatID, fmt.Sprintf("Listo: los movimientos de %s ahora están en %s. %s quedó en 0.",
+		stringOrEmpty(data["move_from_name"]), stringOrEmpty(data["move_to_name"]), stringOrEmpty(data["move_from_name"])))
+}

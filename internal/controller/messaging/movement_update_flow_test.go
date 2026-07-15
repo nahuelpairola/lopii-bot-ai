@@ -42,6 +42,9 @@ func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userTe
 func (o *fakeOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
 	return orchestrator.CategoryCreateResult{}, nil
 }
+func (o *fakeOrchestrator) ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error) {
+	return orchestrator.AccountManageResult{}, nil
+}
 
 type fakeStoreForController struct {
 	flowName, stepName string

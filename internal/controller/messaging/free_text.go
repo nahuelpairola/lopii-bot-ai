@@ -73,8 +73,8 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		c.startMovementUpdate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentDelete:
 		c.startMovementDelete(ctx, b, chatID, userID, text)
-	case orchestrator.IntentAccountCreate:
-		c.startAccountCreate(ctx, b, chatID, userID, text)
+	case orchestrator.IntentAccountManage:
+		c.startAccountManage(ctx, b, chatID, userID, text)
 	case orchestrator.IntentCreateCategory:
 		c.startSubcategorySetup(ctx, b, chatID, userID, text)
 	case orchestrator.IntentReminderSet:
@@ -202,6 +202,76 @@ func (c *controller) startCategoryMatchOffer(ctx context.Context, b *bot.Bot, ch
 // (StartWithData with an empty seed == Start). Currency is never seeded — it
 // stays the flow's currency ChoiceStep. No step is auto-skipped: the user still
 // confirms every value.
+// startAccountManage runs Call 2 account-match and branches: matched →
+// manage menu; wants-new → the existing (prefill-seeded) create flow;
+// unclear → the candidate picker. Candidates are always seeded — the pick
+// step needs them, the menu path skips it via SkipIf.
+func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+	accs, err := c.accounts.FindByUserID(userID)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if len(accs) == 0 {
+		c.resolveMetric(userID, outcomeAccountCreateRouted)
+		c.startAccountCreate(ctx, b, chatID, userID, text)
+		return
+	}
+
+	opts := make([]orchestrator.AccountOption, 0, len(accs))
+	for _, a := range accs {
+		opts = append(opts, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
+	}
+	res, err := c.orchestrator.ResolveAccountManage(ctx, text, opts)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if res.WantsNewAccount {
+		c.resolveMetric(userID, outcomeAccountCreateRouted)
+		c.startAccountCreate(ctx, b, chatID, userID, text)
+		return
+	}
+
+	ids := make([]string, 0, len(accs))
+	labels := make([]string, 0, len(accs))
+	names := make([]string, 0, len(accs))
+	curs := make([]string, 0, len(accs))
+	for _, a := range accs {
+		ids = append(ids, strconv.FormatUint(uint64(a.ID), 10))
+		labels = append(labels, a.Name+" ("+a.Currency.String()+")")
+		names = append(names, a.Name)
+		curs = append(curs, a.Currency.String())
+	}
+	seed := conversation.Data{
+		"message":              text,
+		"candidate_ids":        encodeStringSlice(ids),
+		"candidate_labels":     encodeStringSlice(labels),
+		"candidate_names":      encodeStringSlice(names),
+		"candidate_currencies": encodeStringSlice(curs),
+	}
+	if res.MatchedAccountID != nil {
+		// never trust an LLM id blindly — it must exist in the user's list
+		for _, a := range accs {
+			if uint64(a.ID) == *res.MatchedAccountID {
+				seed["account_id"] = strconv.FormatUint(uint64(a.ID), 10)
+				seed["account_name"] = a.Name
+				seed["account_currency"] = a.Currency.String()
+				break
+			}
+		}
+	}
+
+	prompt, err := c.engine.StartWithData(userID, accountManageFlowName, seed)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+}
+
 func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
 	seed := c.accountCreateSeed(ctx, text)
 	prompt, err := c.engine.StartWithData(userID, accountCreateFlowName, seed)

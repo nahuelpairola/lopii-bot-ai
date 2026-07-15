@@ -72,7 +72,7 @@ func TestClassifyIntent_ErrorsOnUnknownIntent(t *testing.T) {
 
 func TestClassifyIntent_ReturnsAccountCreate(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"intent\":\"ACCOUNT_CREATE\"}"}}]}}]}`))
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"intent\":\"ACCOUNT_MANAGE\"}"}}]}}]}`))
 	}))
 	defer server.Close()
 
@@ -81,8 +81,8 @@ func TestClassifyIntent_ReturnsAccountCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClassifyIntent: %v", err)
 	}
-	if result.Intent != IntentAccountCreate {
-		t.Errorf("intent = %q, want %q", result.Intent, IntentAccountCreate)
+	if result.Intent != IntentAccountManage {
+		t.Errorf("intent = %q, want %q", result.Intent, IntentAccountManage)
 	}
 }
 

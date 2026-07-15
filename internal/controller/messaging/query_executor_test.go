@@ -46,6 +46,7 @@ func (r *fakeQueryMovements) FindRecentlyCreatedForUser(uint64, time.Time) ([]mo
 }
 func (r *fakeQueryMovements) SoftDeleteByIDs([]uint) error                               { return nil }
 func (r *fakeQueryMovements) InsertAccountsWithOpenings([]movement.AccountOpening) error { return nil }
+func (r *fakeQueryMovements) ReassignAccount(uint64, uint64) error                       { return nil }
 
 type fakeQueryAccounts struct{ accts []account.Account }
 
@@ -54,7 +55,10 @@ func (r *fakeQueryAccounts) Insert(*account.Account) error                  { re
 func (r *fakeQueryAccounts) FindDefaultByCurrency(uint64, currency.Currency) (*account.Account, error) {
 	return nil, nil
 }
-func (r *fakeQueryAccounts) GetAccount(uint64) (*account.Account, error) { return nil, nil }
+func (r *fakeQueryAccounts) GetAccount(uint64) (*account.Account, error)  { return nil, nil }
+func (r *fakeQueryAccounts) Rename(uint64, string) error                  { return nil }
+func (r *fakeQueryAccounts) UnsetDefault(uint64, currency.Currency) error { return nil }
+func (r *fakeQueryAccounts) SetDefault(uint64) error                      { return nil }
 
 type fakeQuerySubcats struct{ subs []subcategory.Subcategory }
 

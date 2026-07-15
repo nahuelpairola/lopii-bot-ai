@@ -22,18 +22,20 @@ func (stubQueryHistory) Recent(userID uint64) ([]queryhistory.Turn, error) { ret
 func (stubQueryHistory) Append(userID uint64, question, answer string) error { return nil }
 
 type fakeFullOrchestrator struct {
-	intent            orchestrator.Intent
-	needsConfirmation bool
-	createResult      orchestrator.CreateResult
-	onboardingResult  orchestrator.OnboardingResult
-	onboardingErr     error
-	updateResult      orchestrator.UpdateResult
-	deleteResult      orchestrator.DeleteResult
-	intentErr         error
-	queryAnswer       string
-	queryErr          error
-	categoryResult    orchestrator.CategoryCreateResult
-	categoryErr       error
+	intent              orchestrator.Intent
+	needsConfirmation   bool
+	createResult        orchestrator.CreateResult
+	onboardingResult    orchestrator.OnboardingResult
+	onboardingErr       error
+	updateResult        orchestrator.UpdateResult
+	deleteResult        orchestrator.DeleteResult
+	intentErr           error
+	queryAnswer         string
+	queryErr            error
+	categoryResult      orchestrator.CategoryCreateResult
+	categoryErr         error
+	accountManageResult orchestrator.AccountManageResult
+	accountManageErr    error
 }
 
 func (o *fakeFullOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
@@ -56,6 +58,9 @@ func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, us
 }
 func (o *fakeFullOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
 	return o.categoryResult, o.categoryErr
+}
+func (o *fakeFullOrchestrator) ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error) {
+	return o.accountManageResult, o.accountManageErr
 }
 
 // newCreateCategoryController wires a controller + engine with all three
@@ -284,21 +289,95 @@ func TestStartMovementDelete_NoCandidates_SendsErrorNoFlow(t *testing.T) {
 	}
 }
 
-func TestHandleFreeText_AccountCreate_StartsFlow(t *testing.T) {
-	orch := &fakeFullOrchestrator{intent: orchestrator.IntentAccountCreate}
-
+func newManageDispatchEngine() (*conversation.Engine, *fakeStoreForController) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(NewAccountCreateFlow())
-	c := &controller{orchestrator: orch, engine: engine}
+	engine.Register(NewAccountManageFlow(fakeBalanceSummer{}))
+	return engine, store
+}
+
+// (a) wants_new → the create flow (prefill-seeded).
+func TestHandleFreeText_AccountManage_WantsNew_StartsCreate(t *testing.T) {
+	orch := &fakeFullOrchestrator{
+		intent:              orchestrator.IntentAccountManage,
+		accountManageResult: orchestrator.AccountManageResult{WantsNewAccount: true},
+	}
+	engine, store := newManageDispatchEngine()
+	accs := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	c := &controller{orchestrator: orch, engine: engine, accounts: accs}
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "quiero crear una cuenta nueva")
 
 	if store.flowName != accountCreateFlowName {
 		t.Errorf("started flow = %q, want %q", store.flowName, accountCreateFlowName)
 	}
-	if store.stepName != stepAccountCreateAskName {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountCreateAskName)
+}
+
+// (b) matched to an existing account → manage flow, lands on the menu.
+func TestHandleFreeText_AccountManage_Matched_StartsMenu(t *testing.T) {
+	id := uint64(2)
+	orch := &fakeFullOrchestrator{
+		intent:              orchestrator.IntentAccountManage,
+		accountManageResult: orchestrator.AccountManageResult{MatchedAccountID: &id},
+	}
+	engine, store := newManageDispatchEngine()
+	accs := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(2, currency.ARS, false)}}
+	c := &controller{orchestrator: orch, engine: engine, accounts: accs}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "renombrá la segunda")
+
+	if store.flowName != accountManageFlowName {
+		t.Fatalf("started flow = %q, want %q", store.flowName, accountManageFlowName)
+	}
+	if store.stepName != stepAccountManageMenu {
+		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountManageMenu)
+	}
+}
+
+// (c) no match → manage flow at the candidate picker.
+func TestHandleFreeText_AccountManage_NoMatch_StartsPick(t *testing.T) {
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentAccountManage} // zero result: nil id, no wants_new
+	engine, store := newManageDispatchEngine()
+	accs := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(2, currency.ARS, false)}}
+	c := &controller{orchestrator: orch, engine: engine, accounts: accs}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "cambiá el monto")
+
+	if store.flowName != accountManageFlowName || store.stepName != stepAccountManagePick {
+		t.Errorf("flow/step = %q/%q, want %q/%q", store.flowName, store.stepName, accountManageFlowName, stepAccountManagePick)
+	}
+}
+
+// (d) a hallucinated id (not in the user's list) is never trusted → pick.
+func TestHandleFreeText_AccountManage_HallucinatedID_StartsPick(t *testing.T) {
+	id := uint64(999)
+	orch := &fakeFullOrchestrator{
+		intent:              orchestrator.IntentAccountManage,
+		accountManageResult: orchestrator.AccountManageResult{MatchedAccountID: &id},
+	}
+	engine, store := newManageDispatchEngine()
+	accs := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	c := &controller{orchestrator: orch, engine: engine, accounts: accs}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "renombrá esa")
+
+	if store.stepName != stepAccountManagePick {
+		t.Errorf("stepName = %q, want %q (hallucinated id must not skip the pick)", store.stepName, stepAccountManagePick)
+	}
+}
+
+// (e) a user with no accounts skips Call 2 and goes straight to create.
+func TestHandleFreeText_AccountManage_NoAccounts_StartsCreate(t *testing.T) {
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentAccountManage}
+	engine, store := newManageDispatchEngine()
+	accs := &fakeAccountRepoFull{byUserID: nil}
+	c := &controller{orchestrator: orch, engine: engine, accounts: accs}
+
+	c.handleFreeText(context.Background(), nil, 0, 1, "quiero modificar una cuenta")
+
+	if store.flowName != accountCreateFlowName {
+		t.Errorf("started flow = %q, want %q (no accounts → create)", store.flowName, accountCreateFlowName)
 	}
 }
 

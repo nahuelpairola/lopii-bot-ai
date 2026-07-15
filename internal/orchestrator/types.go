@@ -8,7 +8,7 @@ const (
 	IntentUpdate         Intent = "UPDATE"
 	IntentDelete         Intent = "DELETE"
 	IntentQuery          Intent = "QUERY"
-	IntentAccountCreate  Intent = "ACCOUNT_CREATE"
+	IntentAccountManage  Intent = "ACCOUNT_MANAGE"
 	IntentCreateCategory Intent = "CREATE_CATEGORY"
 	IntentReminderSet    Intent = "REMINDER_SET"
 )
@@ -136,4 +136,13 @@ type CategoryProposal struct {
 type CategoryCreateResult struct {
 	Match    *CategoryMatch    `json:"match"`
 	Proposal *CategoryProposal `json:"proposal"`
+}
+
+// AccountManageResult is ResolveAccountManage's output: which existing
+// account the message refers to (nil if none), or whether the user is
+// asking for a brand-new account. It carries NO operation and NO values —
+// those come from the deterministic menu flow, never from free text.
+type AccountManageResult struct {
+	MatchedAccountID *uint64
+	WantsNewAccount  bool
 }

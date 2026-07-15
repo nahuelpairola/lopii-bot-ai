@@ -37,6 +37,9 @@ type accountRepository interface {
 	FindDefaultByCurrency(userID uint64, currency currency.Currency) (*account.Account, error)
 	FindByUserID(userID uint64) ([]account.Account, error)
 	GetAccount(id uint64) (*account.Account, error)
+	Rename(accountID uint64, name string) error
+	UnsetDefault(userID uint64, currency currency.Currency) error
+	SetDefault(accountID uint64) error
 }
 
 type movementRepository interface {
@@ -49,6 +52,7 @@ type movementRepository interface {
 	InsertAccountsWithOpenings(items []movement.AccountOpening) error
 	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
 	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
+	ReassignAccount(fromID, toID uint64) error
 }
 
 type subcategoryRepository interface {
@@ -69,6 +73,7 @@ type movementOrchestrator interface {
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
 	ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error)
+	ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error)
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
@@ -235,6 +240,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishMovementDeleteFlow(ctx, b, chatID, result.Data)
 	case accountCreateFlowName:
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
+	case accountManageFlowName:
+		c.finishAccountManageFlow(ctx, b, chatID, result.Data)
+	case accountMoveOfferFlowName:
+		c.finishAccountMoveOffer(ctx, b, chatID, result.Data)
 	case subcategorySetupFlowName:
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
 	case categoryMatchOfferFlowName:
