@@ -268,6 +268,50 @@ func msgAccountCreateSuccess(name, cur, balance string) string {
 	return "✅ Cuenta \"" + name + "\" creada en " + cur + " con saldo inicial " + balance + "."
 }
 
+// --- ACCOUNT_MANAGE ---
+// Voz: qué necesito · ejemplo · qué hago con eso. Los saldos se muestran con
+// .String() directo — un saldo puede ser negativo y el usuario tiene que
+// verlo tal cual (NO displayAmount, que hace Abs(): esa es para magnitudes de
+// movimientos).
+
+func msgAccountManagePick(data conversation.Data) string {
+	return "¿De cuál de tus cuentas me hablás? Elegila acá abajo y te muestro qué se puede hacer."
+}
+
+func msgAccountManageMenu(name, cur string, balance decimal.Decimal) string {
+	return fmt.Sprintf("Cuenta: %s (%s) — saldo actual %s %s.\n¿Qué querés hacer con ella?",
+		name, cur, balance.String(), cur)
+}
+
+func msgAskAccountNewName(current string) string {
+	return fmt.Sprintf("✏️ Decime el nombre nuevo para %s.\nEs el nombre con el que la vas a nombrar en tus mensajes.\n\nEj: FCI", current)
+}
+
+func msgConfirmAccountRename(oldName, newName string) string {
+	return fmt.Sprintf("Renombro %s → %s. ¿Confirmás?", oldName, newName)
+}
+
+func msgAskAccountNewTotal(name string) string {
+	return fmt.Sprintf("💰 Decime cuánto tenés en total hoy en %s.\nPoné el número que ves en tu banco o app.\nYo calculo la diferencia con lo registrado y la ajusto.\n\nEj: 52000", name)
+}
+
+func msgConfirmAccountAdjust(name, cur string, current, newTotal decimal.Decimal) string {
+	delta := newTotal.Sub(current)
+	sign := "+"
+	if delta.IsNegative() {
+		sign = "-"
+	}
+	return fmt.Sprintf("%s: %s %s → %s %s (ajuste %s%s %s)\n¿Confirmás?",
+		name, current.String(), cur, newTotal.String(), cur, sign, delta.Abs().String(), cur)
+}
+
+func msgConfirmAccountDefault(name, cur string) string {
+	return fmt.Sprintf("⭐ ¿%s pasa a ser tu cuenta en %s por defecto? Los movimientos en %s sin cuenta aclarada van a ir ahí.", name, cur, cur)
+}
+
+const msgAccountManageCancelled = "Listo, no toqué nada."
+const msgAccountManageNoChange = "Ya tenías ese saldo, no cambié nada."
+
 // msgAskSubcategoryDescription is deliberately short and concrete: the
 // answer feeds orchestrator.TaxonomyEntry.Description, Call 2 CREATE's
 // classification hint, so it must tell the LLM when/what this
