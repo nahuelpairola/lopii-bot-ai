@@ -69,6 +69,9 @@ func (c *Cache) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	seen := make(map[string]bool)
 	categories := make([]string, 0, len(all))
 	for _, s := range all {
+		if IsReserved(s.Category) {
+			continue
+		}
 		if seen[s.Category] {
 			continue
 		}

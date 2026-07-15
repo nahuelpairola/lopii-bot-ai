@@ -68,6 +68,7 @@ type movementOrchestrator interface {
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error)
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
+	ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error)
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
@@ -236,6 +237,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
 	case subcategorySetupFlowName:
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
+	case categoryMatchOfferFlowName:
+		c.finishCategoryMatchOffer(ctx, b, chatID, result.Data)
+	case categoryProposalConfirmFlowName:
+		c.finishCategoryProposalConfirm(ctx, b, chatID, result.Data)
 	case movementNegativeConfirmFlowName:
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	case reminderSetupFlowName:

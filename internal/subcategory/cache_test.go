@@ -57,6 +57,41 @@ func TestCache_DistinctCategoriesForUser_SortedUnique(t *testing.T) {
 	}
 }
 
+func TestDistinctCategoriesForUser_ExcludesReserved(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Otros", Subcategory: "Regalos / donaciones", IsGlobal: true},
+		{Category: "Sistema", Subcategory: "Saldo inicial", IsGlobal: true},
+		{Category: "PENDING_REVIEW", Subcategory: "PENDING_REVIEW", IsGlobal: true},
+	}}
+	cache, err := NewCache(loader)
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	cats, err := cache.DistinctCategoriesForUser(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cats {
+		if c == "Sistema" || c == "PENDING_REVIEW" {
+			t.Errorf("reserved category %q leaked into picker list %v", c, cats)
+		}
+	}
+	if len(cats) != 1 || cats[0] != "Otros" {
+		t.Errorf("cats = %v, want [Otros]", cats)
+	}
+}
+
+func TestIsReserved(t *testing.T) {
+	for _, name := range []string{"Sistema", "sistema", "PENDING_REVIEW", "pending_review", " Sistema "} {
+		if !IsReserved(name) {
+			t.Errorf("IsReserved(%q) = false, want true", name)
+		}
+	}
+	if IsReserved("Otros") {
+		t.Error("IsReserved(Otros) = true, want false")
+	}
+}
+
 func TestCache_FindByCategoryAndSubcategory_PerUserIsolation(t *testing.T) {
 	loader := &fakeLoader{subs: []Subcategory{
 		{Category: "Mascotas", Subcategory: "Veterinario", UserID: u(1), Icon: "🐶"},

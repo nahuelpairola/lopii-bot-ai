@@ -17,7 +17,7 @@ Si el ítem pasó a ser gratis en su totalidad (te lo regalaron o invitaron: "me
 Si el mensaje corrige la cuenta de la que salió o entró la plata ("era Galicia", "fue de la cuenta X", "salió del banco", "era del fci"), buscá esa cuenta en la lista de CUENTAS DEL USUARIO de abajo y poné su account_id en TODAS las filas afectadas. Nunca inventes un account_id. Si el mensaje no menciona ninguna cuenta, conservá el account_id del candidato tal cual.
 
 CUENTAS DEL USUARIO (id | nombre (moneda)):
-%s`
+%s` + numberFormatRule
 
 func buildUpdateSystemPrompt(accounts []AccountOption) string {
 	return fmt.Sprintf(updateSystemPromptTemplate, buildAccountsBlock(accounts))

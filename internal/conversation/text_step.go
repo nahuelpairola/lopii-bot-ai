@@ -22,6 +22,13 @@ type TextStep struct {
 	// de EscapeOptions (ej. marcar cancelación). nil = Data pasa sin
 	// cambios — mismo contrato que ChoiceStep.OnChoice.
 	OnEscape func(value string, data Data) Data
+	// EscapeOptionsFunc, if set, returns EXTRA escape buttons computed from
+	// Data (e.g. a "confirm the prefilled value" button whose label shows the
+	// seeded value). Its buttons are appended after the static EscapeOptions.
+	// They MUST target NextStep or Finish — they introduce no new graph
+	// destination, so PossibleNextSteps stays correct without listing them.
+	// nil = no extra buttons (behavior unchanged).
+	EscapeOptionsFunc func(data Data) []ChoiceOption
 	// SkipIf, if set, is checked before showing this step's Prompt during
 	// a seeded/auto-advancing walk (see Engine.StartWithData). Returning
 	// ok=true skips this step; nextStep says where to continue (empty
@@ -32,16 +39,25 @@ type TextStep struct {
 	SkipIf func(data Data) (nextStep string, ok bool)
 }
 
+func (s TextStep) escapeOptions(data Data) []ChoiceOption {
+	if s.EscapeOptionsFunc == nil {
+		return s.EscapeOptions
+	}
+	opts := make([]ChoiceOption, 0, len(s.EscapeOptions)+1)
+	opts = append(opts, s.EscapeOptions...)
+	return append(opts, s.EscapeOptionsFunc(data)...)
+}
+
 func (s TextStep) Prompt(data Data) Prompt {
 	var buttons []Button
-	for _, opt := range s.EscapeOptions {
+	for _, opt := range s.escapeOptions(data) {
 		buttons = append(buttons, Button{Label: opt.Label, Data: opt.Value})
 	}
 	return Prompt{Text: s.PromptText(data), Buttons: buttons}
 }
 
 func (s TextStep) Process(input Input, data Data) Transition {
-	for _, opt := range s.EscapeOptions {
+	for _, opt := range s.escapeOptions(data) {
 		if input.CallbackData != opt.Value {
 			continue
 		}

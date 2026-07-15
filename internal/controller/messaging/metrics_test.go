@@ -13,7 +13,7 @@ func TestRouterOutcome(t *testing.T) {
 		orchestrator.IntentDelete:         outcomePending,
 		orchestrator.IntentQuery:          outcomePending,
 		orchestrator.IntentAccountCreate:  outcomeAccountCreateRouted,
-		orchestrator.IntentCreateCategory: outcomeCategoryCreateRouted,
+		orchestrator.IntentCreateCategory: outcomePending,
 	}
 	for intent, want := range cases {
 		if got := routerOutcome(intent); got != want {

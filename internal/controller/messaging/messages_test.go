@@ -131,3 +131,23 @@ func TestOnboardingReceipt_ListsEachAccount(t *testing.T) {
 		}
 	}
 }
+
+func TestOnboardingReceipt_MarksDefaultPerCurrency(t *testing.T) {
+	got := msgOnboardingReceipt([]onboardingRow{
+		{Name: "Banco", Currency: "ARS", Balance: "20000", IsDefault: "true"},
+		{Name: "Efectivo", Currency: "ARS", Balance: "5000", IsDefault: "false"},
+		{Name: "Bróker", Currency: "USD", Balance: "100", IsDefault: "true"},
+	})
+	if !strings.Contains(got, "⭐ Banco") {
+		t.Errorf("default ARS account not starred:\n%s", got)
+	}
+	if !strings.Contains(got, "⭐ Bróker") {
+		t.Errorf("default USD account not starred:\n%s", got)
+	}
+	if strings.Contains(got, "⭐ Efectivo") {
+		t.Errorf("non-default account starred:\n%s", got)
+	}
+	if !strings.Contains(got, "cuenta principal") {
+		t.Errorf("explainer line missing:\n%s", got)
+	}
+}

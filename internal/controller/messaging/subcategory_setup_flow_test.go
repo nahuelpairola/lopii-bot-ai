@@ -95,6 +95,30 @@ func TestSubcategorySetup_NewCategoryName_RejectsReservedNames(t *testing.T) {
 	}
 }
 
+func TestSubcategorySetup_SeededStepsOfferConfirmButton(t *testing.T) {
+	engine := newSubcategorySetupTestEngine(&fakeSubcatSetupRepo{})
+	seed := conversation.Data{
+		"category": "Regalos", "category_is_new": "true", "category_icon": "🎁",
+		"subcategory": "Regalos", "subcategory_description": "Regalos a terceros.",
+	}
+	if _, err := engine.StartWithData(1, subcategorySetupFlowName, seed); err != nil {
+		t.Fatalf("StartWithData: %v", err)
+	}
+	res, _, err := engine.Handle(1, conversation.Input{CallbackData: optionNewCategory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, btn := range res.Prompt.Buttons {
+		if strings.Contains(btn.Label, "Usar Regalos") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("seeded name step missing confirm button; buttons = %+v", res.Prompt.Buttons)
+	}
+}
+
 func TestSubcategorySetup_ExistingCategory_SkipsIconStep_LandsOnSubcategoryName(t *testing.T) {
 	engine := newSubcategorySetupTestEngine(&fakeSubcatSetupRepo{categories: []string{"Mascotas"}})
 	if _, err := engine.Start(1, subcategorySetupFlowName); err != nil {

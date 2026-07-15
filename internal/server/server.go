@@ -114,6 +114,8 @@ func InitServer(conf *config.Config) error {
 	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())
 	conversationEngine.Register(messagingctrl.NewAccountCreateFlow())
 	conversationEngine.Register(messagingctrl.NewSubcategorySetupFlow(subcategoryCache))
+	conversationEngine.Register(messagingctrl.NewCategoryMatchOfferFlow())
+	conversationEngine.Register(messagingctrl.NewCategoryProposalConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementNegativeConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewReminderSetupFlow())
 	conversationEngine.Register(messagingctrl.NewOnboardingReminderOfferFlow())

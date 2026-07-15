@@ -113,3 +113,27 @@ type OnboardingAccountDraft struct {
 type OnboardingResult struct {
 	Accounts []OnboardingAccountDraft `json:"accounts"`
 }
+
+// CategoryMatch is ClassifyCategoryCreate's "ya existe algo parecido" answer:
+// the existing taxonomy entry the user's request is already covered by.
+type CategoryMatch struct {
+	Category    string `json:"category"`
+	Subcategory string `json:"subcategory"`
+}
+
+// CategoryProposal is ClassifyCategoryCreate's "creá esto" answer: a complete
+// subcategory the user only has to confirm. Description is the LLM-written
+// classification hint (fed to Call 2 CREATE as TaxonomyEntry.Description).
+// Whether Category already exists is decided app-side, not by the LLM.
+type CategoryProposal struct {
+	Category    string `json:"category"`
+	Subcategory string `json:"subcategory"`
+	Icon        string `json:"emoji"` // the model reaches for "emoji"; app maps it to the row's Icon
+	Description string `json:"description"`
+}
+
+// CategoryCreateResult carries exactly one of Match/Proposal on success.
+type CategoryCreateResult struct {
+	Match    *CategoryMatch    `json:"match"`
+	Proposal *CategoryProposal `json:"proposal"`
+}
