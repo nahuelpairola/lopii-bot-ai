@@ -19,9 +19,9 @@ token=""
 [groq]
 apiKey = ""
 baseUrl = "https://api.groq.com/openai/v1"
-routerModel = "llama-3.1-8b-instant"
-createModel = "openai/gpt-oss-20b"
-updateModel = "openai/gpt-oss-20b"
+routerModel = "openai/gpt-oss-20b"
+createModel = "qwen/qwen3.6-27b"
+updateModel = "qwen/qwen3.6-27b"
 deleteModel = "llama-3.1-8b-instant"
 queryModel = "openai/gpt-oss-120b"
 timeoutSeconds = 10
