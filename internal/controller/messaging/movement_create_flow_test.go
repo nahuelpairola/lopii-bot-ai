@@ -44,9 +44,12 @@ type fakeAccountRepoFull struct {
 	byCurrency map[currency.Currency]*account.Account
 	byUserID   []account.Account
 	byID       map[uint64]*account.Account
-	inserted   []account.Account
-	balances   map[uint64]string
-	insertErr  error
+	inserted    []account.Account
+	balances    map[uint64]string
+	insertErr   error
+	renamedID   uint64
+	renamedName string
+	renameErr   error
 }
 
 func (r *fakeAccountRepoFull) Insert(a *account.Account) error {
@@ -73,6 +76,13 @@ func (r *fakeAccountRepoFull) GetAccount(id uint64) (*account.Account, error) {
 		return nil, errors.New("not found")
 	}
 	return a, nil
+}
+func (r *fakeAccountRepoFull) Rename(accountID uint64, name string) error {
+	if r.renameErr != nil {
+		return r.renameErr
+	}
+	r.renamedID, r.renamedName = accountID, name
+	return nil
 }
 
 type fakeMovementRepoFull struct {

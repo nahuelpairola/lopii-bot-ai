@@ -55,6 +55,7 @@ func (r *fakeQueryAccounts) FindDefaultByCurrency(uint64, currency.Currency) (*a
 	return nil, nil
 }
 func (r *fakeQueryAccounts) GetAccount(uint64) (*account.Account, error) { return nil, nil }
+func (r *fakeQueryAccounts) Rename(uint64, string) error                 { return nil }
 
 type fakeQuerySubcats struct{ subs []subcategory.Subcategory }
 

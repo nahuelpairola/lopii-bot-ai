@@ -30,6 +30,11 @@ const (
 	outcomeCategoryMatchUsed    = "category_match_used"
 	outcomeCategoryCreated      = "category_created"
 	outcomeCategoryCancelled    = "category_create_cancelled"
+
+	outcomeAccountRenamed         = "account_renamed"
+	outcomeAccountAdjusted        = "account_adjusted"
+	outcomeAccountDefaultSet      = "account_default_set"
+	outcomeAccountManageCancelled = "account_manage_cancelled"
 )
 
 // routerOutcome mapea el intent del router al outcome inicial que se loguea
