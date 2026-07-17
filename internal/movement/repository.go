@@ -341,3 +341,48 @@ func (r *repository) ListForUser(q MovementQuery, limit int) ([]Movement, error)
 	err := db.Order("movements.date DESC, movements.id DESC").Limit(limit).Find(&ms).Error
 	return ms, err
 }
+
+// DayCount is one row of the per-day movement tally used by the weekly summary
+// (activity metric). Count is all movements that day, any type/currency.
+type DayCount struct {
+	Date  time.Time `gorm:"column:date"`
+	Count int       `gorm:"column:count"`
+}
+
+// CountByDayForUser tallies movements per calendar day in [from,to], across all
+// currencies and types (activity signal, not money). deleted_at IS NULL is
+// automatic (GORM soft delete).
+// ponytail: counts rows; a grouped tx (transfer = 2 legs, batch = N rows) can
+// inflate the tally. Fine for v1; dedupe by group if it matters.
+func (r *repository) CountByDayForUser(userID uint64, from, to time.Time) ([]DayCount, error) {
+	var rows []DayCount
+	err := r.db.DB.Model(&Movement{}).
+		Select("movements.date AS date, COUNT(*) AS count").
+		Where("movements.user_id = ?", userID).
+		Where("movements.date >= ? AND movements.date <= ?", from.Format("2006-01-02"), to.Format("2006-01-02")).
+		Group("movements.date").
+		Scan(&rows).Error
+	return rows, err
+}
+
+// TopExpenseForUser returns the single largest expense (by absolute amount) for
+// the query's window/currency, Subcategory preloaded (for category name).
+// Returns (nil, nil) when there are no expenses. q.Type is forced to expense.
+func (r *repository) TopExpenseForUser(q MovementQuery) (*Movement, error) {
+	expense := string(Expense)
+	q.Type = &expense
+	var m Movement
+	db := r.db.DB.Model(&Movement{}).
+		Select("movements.*").
+		Preload("Subcategory").
+		Joins("JOIN subcategories s ON s.id = movements.subcategory_id")
+	db = q.apply(db)
+	err := db.Order("ABS(movements.amount) DESC, movements.id DESC").First(&m).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
