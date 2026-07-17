@@ -3,7 +3,7 @@ package messaging
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -63,7 +63,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 			c.resolveMetric(ctx, userID, outcomeQueryAnswered)
 		} else {
 			if qErr != nil {
-				log.Printf("query: handleQuery failed for user %d: %v", userID, qErr)
+				slog.ErrorContext(ctx, "query failed", "user_id", userID, "err", qErr)
 			}
 			c.resolveMetric(ctx, userID, outcomeQueryFailed)
 		}

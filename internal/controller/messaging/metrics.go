@@ -2,7 +2,7 @@ package messaging
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -60,7 +60,7 @@ func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage st
 		return
 	}
 	if err := c.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
-		log.Printf("metric: log intent: %v", err)
+		slog.ErrorContext(ctx, "metric log intent failed", "err", err)
 	}
 }
 
@@ -73,7 +73,7 @@ func (c *controller) resolveMetric(ctx context.Context, userID uint64, outcome s
 		return
 	}
 	if err := c.metrics.Resolve(userID, outcome, movementIDs); err != nil {
-		log.Printf("metric: resolve %s: %v", outcome, err)
+		slog.ErrorContext(ctx, "metric resolve failed", "outcome", outcome, "err", err)
 	}
 }
 

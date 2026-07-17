@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -56,7 +56,7 @@ func (r llmCallRecorder) Record(c orchestrator.LLMCall) {
 			RateLimitRemainingRequests: c.RateLimitRemainingRequests,
 			RateLimitRemainingTokens:   c.RateLimitRemainingTokens,
 		}); err != nil {
-			log.Printf("metric: insert llm_call: %v", err)
+			slog.Error("llm_call insert failed", "err", err)
 		}
 	}()
 }

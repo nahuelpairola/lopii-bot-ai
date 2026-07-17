@@ -2,7 +2,7 @@ package messaging
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/go-telegram/bot/models"
@@ -27,7 +27,7 @@ func (c *controller) withTrace(ctx context.Context, update *models.Update, fn fu
 		errMsg = err.Error()
 	}
 	if e := c.traces.InsertRequestTrace(traceID, userID, updateType(update), start, int(time.Since(start).Milliseconds()), errMsg); e != nil {
-		log.Printf("metric: insert request_trace: %v", e)
+		slog.ErrorContext(ctx, "request_trace insert failed", "err", e)
 	}
 }
 
