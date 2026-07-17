@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -212,6 +213,7 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
+		slog.ErrorContext(ctx, "movement insert failed", "user_id", data.UserID(), "reason", guardReason(err))
 		c.resolveMetric(ctx, data.UserID(), outcomeCreateFailed)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})

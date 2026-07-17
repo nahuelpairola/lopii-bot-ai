@@ -33,6 +33,23 @@ func createErrorCopy(err error) string {
 	}
 }
 
+// guardReason maps a guard rejection to a stable log value. Mirror of
+// createErrorCopy, which maps the same sentinels to user-facing copy.
+func guardReason(err error) string {
+	switch {
+	case errors.Is(err, errZeroAmount):
+		return "zero_amount"
+	case errors.Is(err, errCurrencyAccountMismatch):
+		return "currency_account_mismatch"
+	case errors.Is(err, errNoAccountForCurrency):
+		return "no_account_for_currency"
+	case errors.Is(err, errTransferLeg):
+		return "malformed_transfer"
+	default:
+		return "other"
+	}
+}
+
 // sendText is a small helper that guards every b.SendMessage call with a
 // nil check — b is nil in unit tests that exercise these entry points
 // directly (see free_text_test.go), matching the same guard pattern
@@ -50,9 +67,16 @@ func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, tex
 func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
 	result, err := c.orchestrator.ClassifyIntent(ctx, text)
 	if err != nil {
+		slog.ErrorContext(ctx, "intent classification failed", "user_id", userID, "err", err)
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
+
+	slog.InfoContext(ctx, "intent classified",
+		"user_id", userID,
+		"intent", string(result.Intent),
+		"needs_confirmation", result.NeedsConfirmation,
+	)
 
 	c.logIntent(ctx, userID, text, result.Intent, result.NeedsConfirmation)
 
@@ -102,6 +126,7 @@ func (c *controller) startSubcategoryWizard(ctx context.Context, b *bot.Bot, cha
 // case), a full proposal collapses the 7-step wizard into one confirmation.
 // Any doubt → the classic wizard, never a dead end.
 func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+	slog.InfoContext(ctx, "flow started", "flow", subcategorySetupFlowName, "user_id", userID)
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
 		c.startSubcategoryWizard(ctx, b, chatID, userID)
@@ -207,6 +232,7 @@ func (c *controller) startCategoryMatchOffer(ctx context.Context, b *bot.Bot, ch
 // unclear → the candidate picker. Candidates are always seeded — the pick
 // step needs them, the menu path skips it via SkipIf.
 func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+	slog.InfoContext(ctx, "flow started", "flow", accountManageFlowName, "user_id", userID)
 	accs, err := c.accounts.FindByUserID(userID)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
@@ -273,6 +299,7 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 }
 
 func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+	slog.InfoContext(ctx, "flow started", "flow", accountCreateFlowName, "user_id", userID)
 	seed := c.accountCreateSeed(ctx, text)
 	prompt, err := c.engine.StartWithData(userID, accountCreateFlowName, seed)
 	if err != nil {
@@ -313,6 +340,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 		c.startMovementConfirm(ctx, b, chatID, userID)
 		return
 	}
+	slog.InfoContext(ctx, "flow started", "flow", movementCreateFlowName, "user_id", userID)
 
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
@@ -339,8 +367,15 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
+	slog.DebugContext(ctx, "create classification result", "result", result)
 
 	seed := buildCreateSeed(result)
+	slog.InfoContext(ctx, "create seed built",
+		"user_id", userID,
+		"movements", len(result.Movements),
+		"category_gaps", len(decodeStringSlice(seed, "pending_category_gaps")),
+		"account_gaps", len(decodeStringSlice(seed, "pending_account_gaps")),
+	)
 	hasGaps := len(decodeStringSlice(seed, "pending_category_gaps")) > 0 || len(decodeStringSlice(seed, "pending_account_gaps")) > 0
 
 	if !hasGaps {
@@ -383,6 +418,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 // refers to via resolveCandidates (pg_trgm search, default 7-day
 // window) and branches on how many candidates come back.
 func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+	slog.InfoContext(ctx, "flow started", "flow", movementUpdatePickFlowName, "user_id", userID)
 	candidates, err := c.resolveCandidates(userID, text, "", "")
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
@@ -391,6 +427,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 
 	switch len(candidates) {
 	case 0:
+		slog.InfoContext(ctx, "no candidates found", "user_id", userID)
 		c.resolveMetric(ctx, userID, outcomeNoCandidates)
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:
@@ -431,6 +468,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 // candidate, letting the flow's Skip mechanism bypass the picker
 // entirely.
 func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+	slog.InfoContext(ctx, "flow started", "flow", movementDeleteFlowName, "user_id", userID)
 	candidates, err := c.resolveCandidates(userID, text, "", "")
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
@@ -439,6 +477,7 @@ func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID
 
 	switch len(candidates) {
 	case 0:
+		slog.InfoContext(ctx, "no candidates found", "user_id", userID)
 		c.resolveMetric(ctx, userID, outcomeNoCandidates)
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:

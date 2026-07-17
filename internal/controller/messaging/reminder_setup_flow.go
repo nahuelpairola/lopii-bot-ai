@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"regexp"
 	"strconv"
 
@@ -151,6 +152,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 // startReminderSetup starts reminder_setup fresh — like startAccountCreate,
 // there's no seed: the flow captures the window by button/text.
 func (c *controller) startReminderSetup(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
+	slog.InfoContext(ctx, "flow started", "flow", reminderSetupFlowName, "user_id", userID)
 	prompt, err := c.engine.Start(userID, reminderSetupFlowName)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)

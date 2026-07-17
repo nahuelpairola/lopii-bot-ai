@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -219,6 +220,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 // acaba de terminar (crear cuenta, insertar movimiento, etc.), según su
 // nombre. Agregar un flow nuevo implica agregar un case acá.
 func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID int64, result conversation.Result) {
+	slog.InfoContext(ctx, "flow finished", "flow", result.FlowName)
 	if stringOrEmpty(result.Data["_resume_cancelled"]) == "true" {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgResumeCancelled})
 		return
