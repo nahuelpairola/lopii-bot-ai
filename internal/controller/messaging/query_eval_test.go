@@ -55,7 +55,7 @@ func TestQueryEval(t *testing.T) {
 
 	conn, err := database.Initialize(database.Creds{
 		Host: "localhost", Port: 5432, Name: "lopiibot", User: "lopiibot", Password: "lopiibot",
-	})
+	}, false)
 	if err != nil {
 		t.Fatalf("db connect: %v", err)
 	}

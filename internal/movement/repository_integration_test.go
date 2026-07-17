@@ -51,7 +51,7 @@ func testConnection(t *testing.T) *database.Connection {
 		User:     "lopiibot",
 		Password: "lopiibot",
 	}
-	conn, err := database.Initialize(creds)
+	conn, err := database.Initialize(creds, false)
 	if err != nil {
 		t.Fatalf("failed to initialize database: %v", err)
 	}

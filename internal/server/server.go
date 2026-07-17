@@ -163,7 +163,7 @@ func initializeDatabase(conf *config.Config) (*database.Connection, error) {
 		Port:     conf.Database.Port,
 		User:     conf.Database.User,
 		Password: conf.Database.Password,
-	})
+	}, conf.Log.Level == "debug")
 	if err != nil {
 		return nil, err
 	}
