@@ -225,7 +225,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		return err
 	}
 	if !result.Resolved {
-		c.resolveMetric(userID, outcomeNoCandidates)
+		c.resolveMetric(ctx, userID, outcomeNoCandidates)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgNoCandidatesFound})
 		}
@@ -308,7 +308,7 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 // to one of "true"/"false".
 func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["confirmed"]) != "true" {
-		c.resolveMetric(data.UserID(), outcomeUpdateCancelled)
+		c.resolveMetric(ctx, data.UserID(), outcomeUpdateCancelled)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateCancelled})
 		}
@@ -323,13 +323,13 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 			err = c.movements.SoftDeleteByIDs(oldIDs)
 		}
 		if err != nil {
-			c.resolveMetric(data.UserID(), outcomeUpdateFailed)
+			c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
 			if b != nil {
 				b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 			}
 			return
 		}
-		c.resolveMetric(data.UserID(), outcomeUpdateConfirmed, oldIDs...)
+		c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, oldIDs...)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateDeleted})
 		}
@@ -338,13 +338,13 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
-		c.resolveMetric(data.UserID(), outcomeUpdateFailed)
+		c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
 		}
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeUpdateConfirmed, collectMovementIDs(inserted)...)
+	c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateApplied})
 	}

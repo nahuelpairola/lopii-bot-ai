@@ -51,7 +51,7 @@ func (c *controller) finishMovementNegativeConfirmFlow(ctx context.Context, b *b
 			c.sendText(ctx, b, chatID, createErrorCopy(err))
 			return
 		}
-		c.resolveMetric(data.UserID(), outcomeCreateInserted, collectMovementIDs(inserted)...)
+		c.resolveMetric(ctx, data.UserID(), outcomeCreateInserted, collectMovementIDs(inserted)...)
 		c.sendText(ctx, b, chatID, msgConfirmMovements(inserted))
 	case "missing":
 		c.sendText(ctx, b, chatID, msgLogMissingFirst)

@@ -44,11 +44,11 @@ func NewMovementConfirmFlow() *conversation.Flow {
 
 func (c *controller) finishMovementConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["choice"]) == "rewrite" {
-		c.resolveMetric(data.UserID(), outcomeCreateRewrite)
+		c.resolveMetric(ctx, data.UserID(), outcomeCreateRewrite)
 		c.sendText(ctx, b, chatID, msgAskRewrite)
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeCreateCancelled)
+	c.resolveMetric(ctx, data.UserID(), outcomeCreateCancelled)
 	c.sendText(ctx, b, chatID, msgConfirmIntentCancelled)
 }
 

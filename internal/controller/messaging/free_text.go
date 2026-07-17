@@ -60,12 +60,12 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	case orchestrator.IntentQuery:
 		answered, qErr := c.handleQuery(ctx, b, chatID, userID, text)
 		if answered {
-			c.resolveMetric(userID, outcomeQueryAnswered)
+			c.resolveMetric(ctx, userID, outcomeQueryAnswered)
 		} else {
 			if qErr != nil {
 				log.Printf("query: handleQuery failed for user %d: %v", userID, qErr)
 			}
-			c.resolveMetric(userID, outcomeQueryFailed)
+			c.resolveMetric(ctx, userID, outcomeQueryFailed)
 		}
 	case orchestrator.IntentCreate:
 		c.startMovementCreate(ctx, b, chatID, userID, text, result.NeedsConfirmation)
@@ -213,7 +213,7 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 		return
 	}
 	if len(accs) == 0 {
-		c.resolveMetric(userID, outcomeAccountCreateRouted)
+		c.resolveMetric(ctx, userID, outcomeAccountCreateRouted)
 		c.startAccountCreate(ctx, b, chatID, userID, text)
 		return
 	}
@@ -228,7 +228,7 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 		return
 	}
 	if res.WantsNewAccount {
-		c.resolveMetric(userID, outcomeAccountCreateRouted)
+		c.resolveMetric(ctx, userID, outcomeAccountCreateRouted)
 		c.startAccountCreate(ctx, b, chatID, userID, text)
 		return
 	}
@@ -364,7 +364,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 			c.sendText(ctx, b, chatID, createErrorCopy(err))
 			return
 		}
-		c.resolveMetric(userID, outcomeCreateInserted)
+		c.resolveMetric(ctx, userID, outcomeCreateInserted)
 		c.sendText(ctx, b, chatID, msgConfirmMovements(inserted))
 		return
 	}
@@ -391,7 +391,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 
 	switch len(candidates) {
 	case 0:
-		c.resolveMetric(userID, outcomeNoCandidates)
+		c.resolveMetric(ctx, userID, outcomeNoCandidates)
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:
 		rows := make([]movementRow, 0, len(candidates[0].Movements))
@@ -439,7 +439,7 @@ func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID
 
 	switch len(candidates) {
 	case 0:
-		c.resolveMetric(userID, outcomeNoCandidates)
+		c.resolveMetric(ctx, userID, outcomeNoCandidates)
 		c.sendText(ctx, b, chatID, msgNoCandidatesFound)
 	case 1:
 		c.startMovementDeleteFlowFor(ctx, b, chatID, userID, candidates, 0)
