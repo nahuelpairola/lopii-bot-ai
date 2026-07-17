@@ -1,0 +1,34 @@
+package templates
+
+templ TabBar(active string) {
+	<nav class="tab-bar">
+		<a class="tab-link" href="/app/resumen" hx-get="/app/resumen" hx-target="#content" hx-push-url="true">
+			if active == "resumen" {
+				<strong>Resumen</strong>
+			} else {
+				Resumen
+			}
+		</a>
+		<a class="tab-link" href="/app/categorias" hx-get="/app/categorias" hx-target="#content" hx-push-url="true">
+			if active == "categorias" {
+				<strong>Categorías</strong>
+			} else {
+				Categorías
+			}
+		</a>
+		<a class="tab-link" href="/app/matriz" hx-get="/app/matriz" hx-target="#content" hx-push-url="true">
+			if active == "matriz" {
+				<strong>Matriz</strong>
+			} else {
+				Matriz
+			}
+		</a>
+		<a class="tab-link" href="/app/cuentas" hx-get="/app/cuentas" hx-target="#content" hx-push-url="true">
+			if active == "cuentas" {
+				<strong>Cuentas</strong>
+			} else {
+				Cuentas
+			}
+		</a>
+	</nav>
+}
