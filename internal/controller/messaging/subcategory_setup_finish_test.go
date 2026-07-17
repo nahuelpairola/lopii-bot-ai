@@ -15,9 +15,13 @@ type fakeSubcatFinishRepo struct {
 func (r *fakeSubcatFinishRepo) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
 	return nil, subcategory.ErrSubcategoryNotFound
 }
-func (r *fakeSubcatFinishRepo) FindAllForUser(userID uint64) ([]subcategory.Subcategory, error) { return nil, nil }
-func (r *fakeSubcatFinishRepo) DistinctCategoriesForUser(userID uint64) ([]string, error)        { return nil, nil }
-func (r *fakeSubcatFinishRepo) IconForCategory(userID uint64, category string) string             { return "📂" }
+func (r *fakeSubcatFinishRepo) FindAllForUser(userID uint64) ([]subcategory.Subcategory, error) {
+	return nil, nil
+}
+func (r *fakeSubcatFinishRepo) DistinctCategoriesForUser(userID uint64) ([]string, error) {
+	return nil, nil
+}
+func (r *fakeSubcatFinishRepo) IconForCategory(userID uint64, category string) string { return "📂" }
 func (r *fakeSubcatFinishRepo) Insert(s *subcategory.Subcategory) error {
 	r.inserted = append(r.inserted, *s)
 	return nil
@@ -32,11 +36,11 @@ func TestInsertNewSubcategory_NewCategory_SetsIsGlobalFalseAndIcon(t *testing.T)
 	c := &controller{subcategories: repo}
 
 	data := conversation.Data{
-		conversation.UserIDKey:   uint64(7),
-		"category":               "Mascotas",
-		"category_is_new":        "true",
-		"category_icon":          "🐶",
-		"subcategory":            "Veterinario",
+		conversation.UserIDKey:    uint64(7),
+		"category":                "Mascotas",
+		"category_is_new":         "true",
+		"category_icon":           "🐶",
+		"subcategory":             "Veterinario",
 		"subcategory_description": "Consultas y controles de mascotas",
 	}
 

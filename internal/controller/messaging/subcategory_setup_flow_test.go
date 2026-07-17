@@ -20,13 +20,15 @@ func (r *fakeSubcatSetupRepo) FindByCategoryAndSubcategory(userID uint64, catego
 	}
 	return nil, subcategory.ErrSubcategoryNotFound
 }
-func (r *fakeSubcatSetupRepo) FindAllForUser(userID uint64) ([]subcategory.Subcategory, error) { return nil, nil }
+func (r *fakeSubcatSetupRepo) FindAllForUser(userID uint64) ([]subcategory.Subcategory, error) {
+	return nil, nil
+}
 func (r *fakeSubcatSetupRepo) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	return r.categories, nil
 }
 func (r *fakeSubcatSetupRepo) IconForCategory(userID uint64, category string) string { return "📂" }
 func (r *fakeSubcatSetupRepo) Insert(s *subcategory.Subcategory) error               { return nil }
-func (r *fakeSubcatSetupRepo) Reload() error                                        { return nil }
+func (r *fakeSubcatSetupRepo) Reload() error                                         { return nil }
 
 // fakeConvStore is a minimal conversation.Engine-compatible store — Go
 // interface satisfaction is structural, so this struct (defined in the

@@ -263,8 +263,8 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 		keyOldMovementIDs:       encodeStringSlice(oldIDs),
 		keyBeforeMovements:      encodeMovementRows(beforeRows),
 		keyMovements:            encodeMovementRows(afterRows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		keyPendingCategoryGaps: encodeStringSlice(nil),
+		keyPendingAccountGaps:  encodeStringSlice(nil),
 		keyDeleteInstead:        strconv.FormatBool(correctionIsDeletion(afterRows)),
 	}
 

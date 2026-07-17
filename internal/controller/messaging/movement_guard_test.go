@@ -6,10 +6,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
-	"gorm.io/gorm"
 )
 
 func acct(id uint64, cur currency.Currency, def bool) account.Account {

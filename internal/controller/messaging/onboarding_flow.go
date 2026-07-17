@@ -150,7 +150,7 @@ func NewOnboardingConfirmFlow() *conversation.Flow {
 		stepOnboardingConfirm: conversation.ChoiceStep{
 			PromptText: msgOnboardingConfirm,
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
 				{Label: "✍️ Reescribir", Value: "rewrite", Finish: true},
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {

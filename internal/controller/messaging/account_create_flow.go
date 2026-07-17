@@ -122,7 +122,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountCreateAskBalance},
 				cancelOption,
 			},
-			OnChoice: onAccountCreateEscape,
+			OnChoice:             onAccountCreateEscape,
 			InvalidChoiceMessage: msgGenericFlowError,
 		},
 	}

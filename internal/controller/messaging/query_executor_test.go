@@ -62,14 +62,16 @@ func (r *fakeQueryAccounts) SetDefault(uint64) error                      { retu
 
 type fakeQuerySubcats struct{ subs []subcategory.Subcategory }
 
-func (r *fakeQuerySubcats) FindAllForUser(uint64) ([]subcategory.Subcategory, error) { return r.subs, nil }
+func (r *fakeQuerySubcats) FindAllForUser(uint64) ([]subcategory.Subcategory, error) {
+	return r.subs, nil
+}
 func (r *fakeQuerySubcats) FindByCategoryAndSubcategory(uint64, string, string) (*subcategory.Subcategory, error) {
 	return nil, nil
 }
 func (r *fakeQuerySubcats) DistinctCategoriesForUser(uint64) ([]string, error) { return nil, nil }
-func (r *fakeQuerySubcats) IconForCategory(uint64, string) string             { return "📂" }
-func (r *fakeQuerySubcats) Insert(*subcategory.Subcategory) error             { return nil }
-func (r *fakeQuerySubcats) Reload() error                                     { return nil }
+func (r *fakeQuerySubcats) IconForCategory(uint64, string) string              { return "📂" }
+func (r *fakeQuerySubcats) Insert(*subcategory.Subcategory) error              { return nil }
+func (r *fakeQuerySubcats) Reload() error                                      { return nil }
 
 func newQueryController(m *fakeQueryMovements, a *fakeQueryAccounts, s *fakeQuerySubcats) *controller {
 	return &controller{movements: m, accounts: a, subcategories: s}

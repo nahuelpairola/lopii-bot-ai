@@ -39,8 +39,8 @@ const (
 	// movementRow map fields (encode/decode pair)
 	keyRowType          dataKey = "type"
 	keyRowAmount        dataKey = "amount"
-	keyCurrency         dataKey = "currency"    // shared: movementRow + onboardingRow
-	keyAccountID        dataKey = "account_id"  // shared: movementRow + account/manage flows
+	keyCurrency         dataKey = "currency"   // shared: movementRow + onboardingRow
+	keyAccountID        dataKey = "account_id" // shared: movementRow + account/manage flows
 	keyAccountNameGuess dataKey = "account_name_guess"
 	keyAccountName      dataKey = "account_name" // shared: movementRow + account flows + messages
 	keyCategory         dataKey = "category"     // shared: movementRow + category_proposal + free_text
