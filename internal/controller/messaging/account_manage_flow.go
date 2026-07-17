@@ -23,6 +23,13 @@ const (
 	optionManageAdjust  = "op_adjust"
 	optionManageDefault = "op_default"
 	optionManageCreate  = "op_create_new"
+
+	// operation values stored under keyOperation and switched on in
+	// account_manage_finish.go — distinct from the optionManage* button values.
+	opRename    = "rename"
+	opAdjust    = "adjust"
+	opDefault   = "default"
+	opCreateNew = "create_new"
 )
 
 // balanceSummer is the narrow read the flow needs to show saldo actual.
@@ -37,12 +44,12 @@ func onAccountManageCancel(value string, data conversation.Data) conversation.Da
 		return data
 	}
 	next := copyData(data)
-	next["cancelled"] = "true"
+	setFlag(next, keyCancelled)
 	return next
 }
 
 func accountManageBalance(balances balanceSummer, data conversation.Data) decimal.Decimal {
-	id, err := strconv.ParseUint(stringOrEmpty(data["account_id"]), 10, 64)
+	id, err := strconv.ParseUint(stringOrEmpty(data[keyAccountID]), 10, 64)
 	if err != nil {
 		return decimal.Zero
 	}
@@ -62,7 +69,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		stepAccountManagePick: conversation.ChoiceStep{
 			PromptText: msgAccountManagePick,
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				labels := decodeStringSlice(data, "candidate_labels")
+				labels := decodeStringSlice(data, keyCandidateLabels)
 				opts := make([]conversation.ChoiceOption, 0, len(labels)+2)
 				for i, l := range labels {
 					opts = append(opts, conversation.ChoiceOption{
@@ -80,25 +87,25 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 				next := copyData(data)
 				switch value {
 				case optionCancel:
-					next["cancelled"] = "true"
+					setFlag(next, keyCancelled)
 				case optionManageCreate:
-					next["operation"] = "create_new"
+					next[keyOperation] = opCreateNew
 				default:
 					i, err := strconv.Atoi(strings.TrimPrefix(value, "pick_"))
-					ids := decodeStringSlice(data, "candidate_ids")
-					names := decodeStringSlice(data, "candidate_names")
-					curs := decodeStringSlice(data, "candidate_currencies")
+					ids := decodeStringSlice(data, keyCandidateIDs)
+					names := decodeStringSlice(data, keyCandidateNames)
+					curs := decodeStringSlice(data, keyCandidateCurrencies)
 					if err == nil && i >= 0 && i < len(ids) {
-						next["account_id"] = ids[i]
-						next["account_name"] = names[i]
-						next["account_currency"] = curs[i]
+						next[keyAccountID] = ids[i]
+						next[keyAccountName] = names[i]
+						next[keyAccountCurrency] = curs[i]
 					}
 				}
 				return next
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if stringOrEmpty(data["account_id"]) != "" {
+				if stringOrEmpty(data[keyAccountID]) != "" {
 					return stepAccountManageMenu, true
 				}
 				return "", false
@@ -107,8 +114,8 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		stepAccountManageMenu: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
 				return msgAccountManageMenu(
-					stringOrEmpty(data["account_name"]),
-					stringOrEmpty(data["account_currency"]),
+					stringOrEmpty(data[keyAccountName]),
+					stringOrEmpty(data[keyAccountCurrency]),
 					accountManageBalance(balances, data),
 				)
 			},
@@ -123,9 +130,9 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		},
 		stepAccountManageAskName: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return msgAskAccountNewName(stringOrEmpty(data["account_name"]))
+				return msgAskAccountNewName(stringOrEmpty(data[keyAccountName]))
 			},
-			DataKey: "new_name",
+			DataKey: keyNewName,
 			Validate: func(text string, _ conversation.Data) string {
 				if text == "" {
 					return msgInvalidAccountCreateName
@@ -141,18 +148,18 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		},
 		stepAccountManageConfirmRename: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
-				return msgConfirmAccountRename(stringOrEmpty(data["account_name"]), stringOrEmpty(data["new_name"]))
+				return msgConfirmAccountRename(stringOrEmpty(data[keyAccountName]), stringOrEmpty(data[keyNewName]))
 			},
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
 				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountManageAskName},
 				cancelOption,
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := onAccountManageCancel(value, data)
-				if value == "confirm" {
+				if value == optionConfirm {
 					next = copyData(next)
-					next["operation"] = "rename"
+					next[keyOperation] = opRename
 				}
 				return next
 			},
@@ -160,9 +167,9 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		},
 		stepAccountManageAskTotal: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return msgAskAccountNewTotal(stringOrEmpty(data["account_name"]))
+				return msgAskAccountNewTotal(stringOrEmpty(data[keyAccountName]))
 			},
-			DataKey:  "new_total",
+			DataKey:  keyNewTotal,
 			Validate: validateBalanceAmount,
 			NextStep: stepAccountManageConfirmAdjust,
 			EscapeOptions: []conversation.ChoiceOption{
@@ -174,23 +181,23 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		stepAccountManageConfirmAdjust: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
 				current := accountManageBalance(balances, data)
-				newTotal, _ := decimal.NewFromString(stringOrEmpty(data["new_total"]))
+				newTotal, _ := decimal.NewFromString(stringOrEmpty(data[keyNewTotal]))
 				return msgConfirmAccountAdjust(
-					stringOrEmpty(data["account_name"]),
-					stringOrEmpty(data["account_currency"]),
+					stringOrEmpty(data[keyAccountName]),
+					stringOrEmpty(data[keyAccountCurrency]),
 					current, newTotal,
 				)
 			},
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
 				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountManageAskTotal},
 				cancelOption,
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := onAccountManageCancel(value, data)
-				if value == "confirm" {
+				if value == optionConfirm {
 					next = copyData(next)
-					next["operation"] = "adjust"
+					next[keyOperation] = opAdjust
 				}
 				return next
 			},
@@ -198,18 +205,18 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		},
 		stepAccountManageConfirmDefault: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
-				return msgConfirmAccountDefault(stringOrEmpty(data["account_name"]), stringOrEmpty(data["account_currency"]))
+				return msgConfirmAccountDefault(stringOrEmpty(data[keyAccountName]), stringOrEmpty(data[keyAccountCurrency]))
 			},
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
 				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountManageMenu},
 				cancelOption,
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := onAccountManageCancel(value, data)
-				if value == "confirm" {
+				if value == optionConfirm {
 					next = copyData(next)
-					next["operation"] = "default"
+					next[keyOperation] = opDefault
 				}
 				return next
 			},

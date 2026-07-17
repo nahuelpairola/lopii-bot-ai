@@ -9,6 +9,10 @@ import (
 const (
 	accountMoveOfferFlowName = "account_move_offer"
 	stepAccountMoveOffer     = "account_move_offer_ask"
+
+	// move-choice button values stored under keyMoveChoice.
+	moveChoiceMove = "move"
+	moveChoiceKeep = "keep"
 )
 
 // NewAccountMoveOfferFlow is the one-question follow-up after a default
@@ -18,16 +22,16 @@ func NewAccountMoveOfferFlow() *conversation.Flow {
 		stepAccountMoveOffer: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
 				return fmt.Sprintf("Tu default anterior era %s (saldo %s).\n¿Movés sus movimientos a %s? Así todo tu historial queda en la cuenta que vas a usar, y %s queda en 0.",
-					stringOrEmpty(data["move_from_name"]), stringOrEmpty(data["move_from_balance"]),
-					stringOrEmpty(data["move_to_name"]), stringOrEmpty(data["move_from_name"]))
+					stringOrEmpty(data[keyMoveFromName]), stringOrEmpty(data[keyMoveFromBalance]),
+					stringOrEmpty(data[keyMoveToName]), stringOrEmpty(data[keyMoveFromName]))
 			},
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Sí, mover", Value: "move", Finish: true},
-				{Label: "✋ No, dejar como está", Value: "keep", Finish: true},
+				{Label: "✅ Sí, mover", Value: moveChoiceMove, Finish: true},
+				{Label: "✋ No, dejar como está", Value: moveChoiceKeep, Finish: true},
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := copyData(data)
-				next["move_choice"] = value
+				next[keyMoveChoice] = value
 				return next
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
