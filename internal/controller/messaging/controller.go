@@ -12,6 +12,7 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/invitation"
@@ -143,6 +144,7 @@ func NewController(
 
 func (c *controller) RegisterHandlers(b *bot.Bot) {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypePrefix, c.handleStart)
+	b.RegisterHandler(bot.HandlerTypeCallbackQueryData, constants.WeeklySummaryOffData, bot.MatchTypeExact, c.handleWeeklySummaryOff)
 	b.RegisterHandlerMatchFunc(c.hasIncomingInput, c.handleConversationInput)
 }
 
@@ -169,7 +171,7 @@ func (c *controller) startFlowIfNotBusy(ctx context.Context, b *bot.Bot, chatID 
 // motor de conversaciones puede llegar a procesar.
 func (c *controller) hasIncomingInput(update *models.Update) bool {
 	if update.CallbackQuery != nil {
-		return true
+		return update.CallbackQuery.Data != constants.WeeklySummaryOffData
 	}
 	if update.Message != nil && update.Message.Text != "" && !strings.HasPrefix(update.Message.Text, "/") {
 		return true
