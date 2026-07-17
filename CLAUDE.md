@@ -78,6 +78,20 @@ DB-backed JSONB in the `conversation_states` table. Never access this table dire
 ### Admin IDs
 Loaded into memory at server startup. Zero extra queries per Telegram request.
 
+### No duplicated literals
+A string or number used more than once is a named constant, scoped to its reach:
+
+| Reach | Home |
+|---|---|
+| Used 2+× in one package | unexported `const` in that package |
+| Used across packages | `internal/constants` (raw string); typed wrappers may re-export (`currency.ARS = constants.ARS`) |
+| Owned by one package, read by another | **exported** `const` in the producer (e.g. `conversation.ResumeCancelledKey`) |
+
+One const per distinct value; one const per distinct *meaning* even when strings
+collide (a button value and a Data key that share `"edit_proposal"` are two consts).
+Single-use literals stay inline. In `conversation.Data`, all map keys are consts
+(`internal/controller/messaging/data_keys.go`).
+
 ## 3. Recipes
 
 How to add a migration, conversation flow, LLM intent, scheduled notification, or admin command → **[docs/recipes.md](docs/recipes.md)**.
