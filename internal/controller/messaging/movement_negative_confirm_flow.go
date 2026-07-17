@@ -45,7 +45,7 @@ func NewMovementNegativeConfirmFlow() *conversation.Flow {
 func (c *controller) finishMovementNegativeConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	switch stringOrEmpty(data["_gate_choice"]) {
 	case "register":
-		data["_skip_balance_check"] = "true"
+		setFlag(data, keySkipBalanceCheck)
 		inserted, err := c.resolveAndInsertMovements(data)
 		if err != nil {
 			c.sendText(ctx, b, chatID, createErrorCopy(err))

@@ -151,11 +151,11 @@ func msgPickUpdateCandidate(data conversation.Data) string {
 }
 
 func msgConfirmUpdateDiff(data conversation.Data) string {
-	before := decodeMovementRows(conversation.Data{"movements": data["before_movements"]})
+	before := decodeMovementRows(conversation.Data{keyMovements: data[keyBeforeMovements]})
 
 	// regalo/gratis total: the correction zeroes the movement, so it's a
 	// deletion — show what will be removed, not a "corregiría a 0" diff.
-	if stringOrEmpty(data["_delete_instead"]) == "true" {
+	if flag(data, keyDeleteInstead) {
 		lines := []string{"🗑️ Quedó gratis, así que lo voy a borrar:"}
 		for _, b := range before {
 			lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
@@ -201,7 +201,7 @@ func msgPickDeleteCandidate(data conversation.Data) string {
 }
 
 func msgConfirmDelete(data conversation.Data) string {
-	idx, _ := strconv.Atoi(stringOrEmpty(data["resolved_index"]))
+	idx, _ := strconv.Atoi(stringOrEmpty(data[keyResolvedIndex]))
 	candidates := decodeCandidateGroups(data)
 	if idx < 0 || idx >= len(candidates) {
 		return "¿Confirmás el borrado?"

@@ -26,6 +26,9 @@ const (
 	// the user realizing mid-flow that the original message was a
 	// mistake, with nowhere else to bail out (see finishMovementCreateFlow).
 	optionCancel = "cancel"
+
+	// optionConfirm is the shared confirm-button value across movement/account flows.
+	optionConfirm = "confirm"
 )
 
 // cancelOption is the "🚫 Cancelar" button appended to every gap-fill
@@ -67,7 +70,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				if value == optionCancel {
 					next := copyData(data)
-					next["cancelled"] = "true"
+					setFlag(next, keyCancelled)
 					return next
 				}
 				gaps := decodeStringSlice(data, keyPendingCategoryGaps)
@@ -110,7 +113,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				if value == optionCancel {
 					next := copyData(data)
-					next["cancelled"] = "true"
+					setFlag(next, keyCancelled)
 					return next
 				}
 				next := copyData(data)
@@ -168,7 +171,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				if value == optionCancel {
 					next := copyData(data)
-					next["cancelled"] = "true"
+					setFlag(next, keyCancelled)
 					return next
 				}
 				next := copyData(data)
@@ -203,7 +206,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 // resolveAndInsertMovements — same split for testability as
 // finishInitialBalanceFlow/insertInitialBalanceMovements.
 func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if stringOrEmpty(data["cancelled"]) == "true" {
+	if flag(data, keyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCreateCancelled)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCreateCancelled})
@@ -364,7 +367,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		return movements, nil
 	}
 
-	if stringOrEmpty(data["_skip_balance_check"]) != "true" {
+	if !flag(data, keySkipBalanceCheck) {
 		balances := make(map[uint64]decimal.Decimal, len(accountsByID))
 		for id := range accountsByID {
 			bal, err := c.movements.SumAmountForAccount(id)
