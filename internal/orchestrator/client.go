@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"lopiibot.com/internal/trace"
 )
 
 // Client is a minimal Groq chat-completions client using tool calling
@@ -159,7 +161,7 @@ func (c *Client) record(ctx context.Context, callType, model string, start time.
 		return
 	}
 	rec := LLMCall{
-		TraceID:    TraceID(ctx),
+		TraceID:    trace.ID(ctx),
 		CallType:   callType,
 		Model:      model,
 		LatencyMs:  int(time.Since(start).Milliseconds()),

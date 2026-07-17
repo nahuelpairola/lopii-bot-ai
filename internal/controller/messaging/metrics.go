@@ -6,6 +6,7 @@ import (
 
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/trace"
 )
 
 // outcome* son los valores de intent_events.outcome. Los intents de
@@ -58,7 +59,7 @@ func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage st
 	if c.metrics == nil {
 		return
 	}
-	if err := c.metrics.Log(userID, orchestrator.TraceID(ctx), rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
+	if err := c.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
 		log.Printf("metric: log intent: %v", err)
 	}
 }

@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot/models"
-	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/trace"
 )
 
 // withTrace envuelve un entrypoint: genera trace_id, lo mete en ctx, mide
 // received→done y graba el spine. fn devuelve el userID resuelto (nil si no) y
 // el error top-level (para request_traces.error). Fire-and-forget en el grabado.
 func (c *controller) withTrace(ctx context.Context, update *models.Update, fn func(ctx context.Context) (*uint64, error)) {
-	traceID := orchestrator.NewTraceID()
-	ctx = orchestrator.WithTraceID(ctx, traceID)
+	traceID := trace.NewID()
+	ctx = trace.WithID(ctx, traceID)
 	start := time.Now()
 
 	userID, err := fn(ctx)

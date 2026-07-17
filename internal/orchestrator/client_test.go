@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"lopiibot.com/internal/trace"
 )
 
 func TestClient_Send_RetriesTransientThenSucceeds(t *testing.T) {
@@ -170,7 +172,7 @@ func TestSendRecordsLLMCall(t *testing.T) {
 
 	rec := &fakeRecorder{}
 	c := NewClient("k", srv.URL, 5*time.Second, rec)
-	ctx := WithTraceID(context.Background(), "trace-xyz")
+	ctx := trace.WithID(context.Background(), "trace-xyz")
 
 	if _, err := c.send(ctx, callTypeRouter, "llama-3.1-8b-instant", []byte(`{}`)); err != nil {
 		t.Fatal(err)
