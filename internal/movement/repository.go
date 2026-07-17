@@ -203,6 +203,30 @@ func (r *repository) SumAmountForAccount(accountID uint64) (decimal.Decimal, err
 	return total.Decimal, nil
 }
 
+// MonthlyDelta is one signed month-over-month movement total for an
+// account — the building block for a computed running balance. Delta is
+// SIGNED (not ABS, unlike CategorySum) because a balance needs direction.
+type MonthlyDelta struct {
+	Month string          `gorm:"column:month"`
+	Delta decimal.Decimal `gorm:"column:delta"`
+}
+
+// MonthlyDeltasForAccount returns every month with account activity,
+// oldest first, with the signed sum of that month's movements. Callers
+// cumsum this in Go over the FULL history (never a pre-filtered window) to
+// avoid an opening-balance boundary bug, then slice the trailing N months
+// for display.
+func (r *repository) MonthlyDeltasForAccount(accountID uint64) ([]MonthlyDelta, error) {
+	var rows []MonthlyDelta
+	err := r.db.DB.Model(&Movement{}).
+		Select("to_char(date, 'YYYY-MM') AS month, COALESCE(SUM(amount), 0) AS delta").
+		Where("account_id = ?", accountID).
+		Group("month").
+		Order("month ASC").
+		Scan(&rows).Error
+	return rows, err
+}
+
 // ReassignAccount mueve TODOS los movimientos vivos de la cuenta from a la
 // cuenta to, en una sola transacción. NO es un UPDATE pelado: las
 // transferencias internas from↔to (transacciones con una pata en cada una)
