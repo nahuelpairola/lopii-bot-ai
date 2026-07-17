@@ -45,7 +45,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		stepResolveCategory: conversation.ChoiceStep{
 			PromptText: msgAskCategory,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if len(decodeStringSlice(data, "pending_category_gaps")) == 0 {
+				if len(decodeStringSlice(data, keyPendingCategoryGaps)) == 0 {
 					return stepResolveAccount, true
 				}
 				return "", false
@@ -70,7 +70,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 					next["cancelled"] = "true"
 					return next
 				}
-				gaps := decodeStringSlice(data, "pending_category_gaps")
+				gaps := decodeStringSlice(data, keyPendingCategoryGaps)
 				if len(gaps) == 0 {
 					return data
 				}
@@ -79,7 +79,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				rows := decodeMovementRows(data)
 				idx, _ := strconv.Atoi(gaps[0])
 				rows[idx].Category = value
-				next["movements"] = encodeMovementRows(rows)
+				next[keyMovements] = encodeMovementRows(rows)
 				return next
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
@@ -114,14 +114,14 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 					return next
 				}
 				next := copyData(data)
-				gaps := decodeStringSlice(data, "pending_category_gaps")
+				gaps := decodeStringSlice(data, keyPendingCategoryGaps)
 				rowIdx, _ := strconv.Atoi(stringOrEmpty(data["gap_active_row"]))
 
 				rows := decodeMovementRows(data)
 				rows[rowIdx].Subcategory = value
-				next["movements"] = encodeMovementRows(rows)
+				next[keyMovements] = encodeMovementRows(rows)
 				if len(gaps) > 0 {
-					next["pending_category_gaps"] = encodeStringSlice(gaps[1:])
+					next[keyPendingCategoryGaps] = encodeStringSlice(gaps[1:])
 				}
 				next["gap_active_row"] = ""
 				return next
@@ -131,13 +131,13 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		stepResolveAccount: conversation.ChoiceStep{
 			PromptText: msgAskAccount,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if len(decodeStringSlice(data, "pending_account_gaps")) == 0 {
+				if len(decodeStringSlice(data, keyPendingAccountGaps)) == 0 {
 					return "", true // nothing left — the flow is complete
 				}
 				return "", false
 			},
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				gaps := decodeStringSlice(data, "pending_account_gaps")
+				gaps := decodeStringSlice(data, keyPendingAccountGaps)
 				if len(gaps) == 0 {
 					return nil
 				}
@@ -172,7 +172,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 					return next
 				}
 				next := copyData(data)
-				gaps := decodeStringSlice(data, "pending_account_gaps")
+				gaps := decodeStringSlice(data, keyPendingAccountGaps)
 				if len(gaps) == 0 {
 					return next
 				}
@@ -184,8 +184,8 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				} else {
 					rows[rowIdx].AccountID = strings.TrimPrefix(value, "existing:")
 				}
-				next["movements"] = encodeMovementRows(rows)
-				next["pending_account_gaps"] = encodeStringSlice(gaps[1:])
+				next[keyMovements] = encodeMovementRows(rows)
+				next[keyPendingAccountGaps] = encodeStringSlice(gaps[1:])
 				return next
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
@@ -353,8 +353,8 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		}
 	}
 
-	if stringOrEmpty(data["mode"]) == "update" {
-		oldIDs, err := parseUintSlice(decodeStringSlice(data, "old_movement_ids"))
+	if stringOrEmpty(data[keyMode]) == modeUpdate {
+		oldIDs, err := parseUintSlice(decodeStringSlice(data, keyOldMovementIDs))
 		if err != nil {
 			return nil, err
 		}

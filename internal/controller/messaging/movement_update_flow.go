@@ -259,7 +259,7 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	}
 
 	seed := conversation.Data{
-		"mode":                  "update",
+		keyMode:                modeUpdate,
 		"old_movement_ids":      encodeStringSlice(oldIDs),
 		"before_movements":      encodeMovementRows(beforeRows),
 		"movements":             encodeMovementRows(afterRows),

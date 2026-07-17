@@ -3,6 +3,7 @@ package messaging
 import (
 	"strconv"
 
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -11,6 +12,13 @@ import (
 // meaning "the user chose, mid-flow, to create this account" — real
 // account ids are always numeric strings, so this can never collide.
 const accountPendingCreate = "PENDING_CREATE"
+
+// mode discriminates buildCreateSeed's flow: a fresh CREATE vs a resolved
+// UPDATE reusing the create flow. Stored under keyMode.
+const (
+	modeCreate = "create"
+	modeUpdate = "update"
+)
 
 // movementRow is the JSON-safe, per-row shape carried inside
 // conversation.Data during CREATE's gap-fill flow. Every field is a
@@ -49,25 +57,25 @@ func copyData(data conversation.Data) conversation.Data {
 }
 
 func decodeMovementRows(data conversation.Data) []movementRow {
-	raw, _ := data["movements"].([]interface{})
+	raw, _ := data[keyMovements].([]interface{})
 	rows := make([]movementRow, 0, len(raw))
 	for _, r := range raw {
 		m, _ := r.(map[string]interface{})
 		rows = append(rows, movementRow{
-			Type:             stringOrEmpty(m["type"]),
-			Amount:           stringOrEmpty(m["amount"]),
-			Currency:         stringOrEmpty(m["currency"]),
-			AccountID:        stringOrEmpty(m["account_id"]),
-			AccountNameGuess: stringOrEmpty(m["account_name_guess"]),
-			AccountName:      stringOrEmpty(m["account_name"]),
-			Category:         stringOrEmpty(m["category"]),
-			Subcategory:      stringOrEmpty(m["subcategory"]),
-			PaymentMethod:    stringOrEmpty(m["payment_method"]),
-			Merchant:         stringOrEmpty(m["merchant"]),
-			Description:      stringOrEmpty(m["description"]),
-			Date:             stringOrEmpty(m["date"]),
-			Icon:             stringOrEmpty(m["icon"]),
-			Group:            stringOrEmpty(m["group"]),
+			Type:             stringOrEmpty(m[keyRowType]),
+			Amount:           stringOrEmpty(m[keyRowAmount]),
+			Currency:         stringOrEmpty(m[keyCurrency]),
+			AccountID:        stringOrEmpty(m[keyAccountID]),
+			AccountNameGuess: stringOrEmpty(m[keyAccountNameGuess]),
+			AccountName:      stringOrEmpty(m[keyAccountName]),
+			Category:         stringOrEmpty(m[keyCategory]),
+			Subcategory:      stringOrEmpty(m[keySubcategory]),
+			PaymentMethod:    stringOrEmpty(m[keyPaymentMethod]),
+			Merchant:         stringOrEmpty(m[keyMerchant]),
+			Description:      stringOrEmpty(m[keyDescription]),
+			Date:             stringOrEmpty(m[keyDate]),
+			Icon:             stringOrEmpty(m[keyIcon]),
+			Group:            stringOrEmpty(m[keyGroup]),
 		})
 	}
 	return rows
@@ -77,20 +85,20 @@ func encodeMovementRows(rows []movementRow) []interface{} {
 	encoded := make([]interface{}, 0, len(rows))
 	for _, r := range rows {
 		encoded = append(encoded, map[string]interface{}{
-			"type":               r.Type,
-			"amount":             r.Amount,
-			"currency":           r.Currency,
-			"account_id":         r.AccountID,
-			"account_name_guess": r.AccountNameGuess,
-			"account_name":       r.AccountName,
-			"category":           r.Category,
-			"subcategory":        r.Subcategory,
-			"payment_method":     r.PaymentMethod,
-			"merchant":           r.Merchant,
-			"description":        r.Description,
-			"date":               r.Date,
-			"icon":               r.Icon,
-			"group":              r.Group,
+			keyRowType:          r.Type,
+			keyRowAmount:        r.Amount,
+			keyCurrency:         r.Currency,
+			keyAccountID:        r.AccountID,
+			keyAccountNameGuess: r.AccountNameGuess,
+			keyAccountName:      r.AccountName,
+			keyCategory:         r.Category,
+			keySubcategory:      r.Subcategory,
+			keyPaymentMethod:    r.PaymentMethod,
+			keyMerchant:         r.Merchant,
+			keyDescription:      r.Description,
+			keyDate:             r.Date,
+			keyIcon:             r.Icon,
+			keyGroup:            r.Group,
 		})
 	}
 	return encoded
@@ -148,10 +156,10 @@ func buildCreateSeed(result orchestrator.CreateResult) conversation.Data {
 		}
 
 		idx := strconv.Itoa(i)
-		if draft.Category == "PENDING_REVIEW" {
+		if draft.Category == constants.PendingReview {
 			categoryGaps = append(categoryGaps, idx)
 		}
-		if draft.Type == "transfer" && draft.AccountID == nil {
+		if draft.Type == constants.Transfer && draft.AccountID == nil {
 			accountGaps = append(accountGaps, idx)
 		}
 
@@ -159,11 +167,11 @@ func buildCreateSeed(result orchestrator.CreateResult) conversation.Data {
 	}
 
 	return conversation.Data{
-		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(categoryGaps),
-		"pending_account_gaps":  encodeStringSlice(accountGaps),
+		keyMode:                modeCreate,
+		keyOldMovementIDs:      encodeStringSlice(nil),
+		keyMovements:           encodeMovementRows(rows),
+		keyPendingCategoryGaps: encodeStringSlice(categoryGaps),
+		keyPendingAccountGaps:  encodeStringSlice(accountGaps),
 	}
 }
 
