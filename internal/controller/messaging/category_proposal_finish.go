@@ -12,13 +12,13 @@ import (
 // distinct one, or cancel.
 func (c *controller) finishCategoryMatchOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["cancelled"]) == "true" {
-		c.resolveMetric(data.UserID(), outcomeCategoryCancelled)
+		c.resolveMetric(ctx, data.UserID(), outcomeCategoryCancelled)
 		c.sendText(ctx, b, chatID, msgCreateCancelled)
 		return
 	}
 	switch stringOrEmpty(data["match_choice"]) {
 	case optionUseExisting:
-		c.resolveMetric(data.UserID(), outcomeCategoryMatchUsed)
+		c.resolveMetric(ctx, data.UserID(), outcomeCategoryMatchUsed)
 		c.sendText(ctx, b, chatID, msgCategoryMatchUse)
 	case optionCreateNew:
 		// stays pending in intent_events; the wizard's own terminal resolves it
@@ -33,7 +33,7 @@ func (c *controller) finishCategoryMatchOffer(ctx context.Context, b *bot.Bot, c
 // cancel.
 func (c *controller) finishCategoryProposalConfirm(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["cancelled"]) == "true" {
-		c.resolveMetric(data.UserID(), outcomeCategoryCancelled)
+		c.resolveMetric(ctx, data.UserID(), outcomeCategoryCancelled)
 		c.sendText(ctx, b, chatID, msgCreateCancelled)
 		return
 	}
@@ -57,6 +57,6 @@ func (c *controller) finishCategoryProposalConfirm(ctx context.Context, b *bot.B
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeCategoryCreated)
+	c.resolveMetric(ctx, data.UserID(), outcomeCategoryCreated)
 	c.sendText(ctx, b, chatID, msgSubcategorySetupFinished)
 }

@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -203,7 +204,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 // finishInitialBalanceFlow/insertInitialBalanceMovements.
 func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["cancelled"]) == "true" {
-		c.resolveMetric(data.UserID(), outcomeCreateCancelled)
+		c.resolveMetric(ctx, data.UserID(), outcomeCreateCancelled)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCreateCancelled})
 		}
@@ -212,13 +213,14 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
-		c.resolveMetric(data.UserID(), outcomeCreateFailed)
+		slog.ErrorContext(ctx, "movement insert failed", "user_id", data.UserID(), "reason", guardReason(err))
+		c.resolveMetric(ctx, data.UserID(), outcomeCreateFailed)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
 		}
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeCreateInserted, collectMovementIDs(inserted)...)
+	c.resolveMetric(ctx, data.UserID(), outcomeCreateInserted, collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
 	}

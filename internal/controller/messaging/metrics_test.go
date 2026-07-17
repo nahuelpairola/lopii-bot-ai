@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"context"
 	"testing"
 
 	"lopiibot.com/internal/orchestrator"
@@ -48,7 +49,7 @@ func (f *fakeMetricRepo) Resolve(userID uint64, outcome string, movementIDs []ui
 func TestResolveMetric_PassesMovementIDs(t *testing.T) {
 	f := &fakeMetricRepo{}
 	c := &controller{metrics: f}
-	c.resolveMetric(7, outcomeDeleteConfirmed, 71, 72)
+	c.resolveMetric(context.Background(), 7, outcomeDeleteConfirmed, 71, 72)
 	if len(f.resolvedIDs) != 1 || len(f.resolvedIDs[0]) != 2 || f.resolvedIDs[0][0] != 71 || f.resolvedIDs[0][1] != 72 {
 		t.Fatalf("expected ids [71 72], got %v", f.resolvedIDs)
 	}

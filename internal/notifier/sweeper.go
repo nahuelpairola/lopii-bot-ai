@@ -2,7 +2,7 @@ package notifier
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -101,7 +101,7 @@ func (s *Sweeper) sweepRetention(now time.Time) {
 		return
 	}
 	if err := s.retention.DeleteOlderThan(now.AddDate(0, 0, -retentionDays)); err != nil {
-		log.Printf("notifier: retention: %v", err)
+		slog.Error("notifier retention purge failed", "err", err)
 	}
 }
 
@@ -113,7 +113,7 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 
 	due, err := s.reminders.ListDue(startOfDay)
 	if err != nil {
-		log.Printf("notifier: ListDue: %v", err)
+		slog.ErrorContext(ctx, "notifier list due failed", "err", err)
 		return
 	}
 
@@ -123,7 +123,7 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 		}
 		moved, err := s.movements.FindRecentlyCreatedForUser(r.UserID, startOfDay)
 		if err != nil {
-			log.Printf("notifier: movements for user %d: %v", r.UserID, err)
+			slog.ErrorContext(ctx, "notifier movements lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
 		if len(moved) > 0 {
@@ -131,20 +131,20 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 		}
 		u, err := s.users.FindByID(r.UserID)
 		if err != nil {
-			log.Printf("notifier: user %d: %v", r.UserID, err)
+			slog.ErrorContext(ctx, "notifier user lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
 		chatID, err := strconv.ParseInt(u.TelegramID, 10, 64)
 		if err != nil {
-			log.Printf("notifier: bad telegram_id %q for user %d: %v", u.TelegramID, r.UserID, err)
+			slog.ErrorContext(ctx, "notifier bad telegram_id", "user_id", r.UserID, "err", err)
 			continue
 		}
 		if err := s.send(ctx, chatID, reminder.PickMessage()); err != nil {
-			log.Printf("notifier: send to user %d: %v", r.UserID, err)
+			slog.ErrorContext(ctx, "notifier send failed", "user_id", r.UserID, "err", err)
 			continue
 		}
 		if err := s.reminders.SetLastRemindedOn(r.UserID, startOfDay); err != nil {
-			log.Printf("notifier: SetLastRemindedOn user %d: %v", r.UserID, err)
+			slog.ErrorContext(ctx, "notifier set last reminded failed", "user_id", r.UserID, "err", err)
 		}
 	}
 }

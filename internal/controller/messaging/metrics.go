@@ -2,34 +2,35 @@ package messaging
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/trace"
 )
 
 // outcome* son los valores de intent_events.outcome. Los intents de
 // movimiento arrancan en pending y se resuelven en su terminal; el resto es
 // terminal directo.
 const (
-	outcomePending              = "pending"
-	outcomeCreateInserted       = "create_inserted"
-	outcomeCreateCancelled      = "create_cancelled"
-	outcomeCreateRewrite        = "create_rewrite"
-	outcomeCreateFailed         = "create_failed"
-	outcomeUpdateConfirmed      = "update_confirmed"
-	outcomeUpdateCancelled      = "update_cancelled"
-	outcomeUpdateFailed         = "update_failed"
-	outcomeDeleteConfirmed      = "delete_confirmed"
-	outcomeDeleteCancelled      = "delete_cancelled"
-	outcomeNoCandidates         = "no_candidates"
-	outcomeQueryAnswered        = "query_answered"
-	outcomeQueryFailed          = "query_failed"
-	outcomeAccountCreateRouted  = "account_create_routed"
-	outcomeReminderSetRouted    = "reminder_set_routed"
-	outcomeCategoryMatchUsed    = "category_match_used"
-	outcomeCategoryCreated      = "category_created"
-	outcomeCategoryCancelled    = "category_create_cancelled"
+	outcomePending             = "pending"
+	outcomeCreateInserted      = "create_inserted"
+	outcomeCreateCancelled     = "create_cancelled"
+	outcomeCreateRewrite       = "create_rewrite"
+	outcomeCreateFailed        = "create_failed"
+	outcomeUpdateConfirmed     = "update_confirmed"
+	outcomeUpdateCancelled     = "update_cancelled"
+	outcomeUpdateFailed        = "update_failed"
+	outcomeDeleteConfirmed     = "delete_confirmed"
+	outcomeDeleteCancelled     = "delete_cancelled"
+	outcomeNoCandidates        = "no_candidates"
+	outcomeQueryAnswered       = "query_answered"
+	outcomeQueryFailed         = "query_failed"
+	outcomeAccountCreateRouted = "account_create_routed"
+	outcomeReminderSetRouted   = "reminder_set_routed"
+	outcomeCategoryMatchUsed   = "category_match_used"
+	outcomeCategoryCreated     = "category_created"
+	outcomeCategoryCancelled   = "category_create_cancelled"
 
 	outcomeAccountRenamed         = "account_renamed"
 	outcomeAccountAdjusted        = "account_adjusted"
@@ -58,19 +59,21 @@ func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage st
 	if c.metrics == nil {
 		return
 	}
-	if err := c.metrics.Log(userID, orchestrator.TraceID(ctx), rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
-		log.Printf("metric: log intent: %v", err)
+	if err := c.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
+		slog.ErrorContext(ctx, "metric log intent failed", "err", err)
 	}
 }
 
 // resolveMetric mueve el último pending del usuario a un outcome terminal.
-// Fire-and-forget, mismo criterio que logIntent.
-func (c *controller) resolveMetric(userID uint64, outcome string, movementIDs ...uint) {
+// Fire-and-forget, mismo criterio que logIntent. ctx es solo para el trace_id
+// del log: NO se pasa a Resolve — una escritura de métrica no debe ser
+// cancelable por el ctx del caller.
+func (c *controller) resolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint) {
 	if c.metrics == nil {
 		return
 	}
 	if err := c.metrics.Resolve(userID, outcome, movementIDs); err != nil {
-		log.Printf("metric: resolve %s: %v", outcome, err)
+		slog.ErrorContext(ctx, "metric resolve failed", "outcome", outcome, "err", err)
 	}
 }
 

@@ -75,7 +75,7 @@ func NewMovementDeleteFlow() *conversation.Flow {
 // on which button the user pressed.
 func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["confirmed"]) != "true" {
-		c.resolveMetric(data.UserID(), outcomeDeleteCancelled)
+		c.resolveMetric(ctx, data.UserID(), outcomeDeleteCancelled)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgDeleteCancelled})
 		}
@@ -106,7 +106,7 @@ func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, c
 		return
 	}
 
-	c.resolveMetric(data.UserID(), outcomeDeleteConfirmed, ids...)
+	c.resolveMetric(ctx, data.UserID(), outcomeDeleteConfirmed, ids...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgDeleteApplied})
 	}

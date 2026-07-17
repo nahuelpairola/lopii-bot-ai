@@ -19,14 +19,14 @@ import (
 // already passed its confirm gate inside the flow — this is pure execution.
 func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["cancelled"]) == "true" {
-		c.resolveMetric(data.UserID(), outcomeAccountManageCancelled)
+		c.resolveMetric(ctx, data.UserID(), outcomeAccountManageCancelled)
 		c.sendText(ctx, b, chatID, msgAccountManageCancelled)
 		return
 	}
 
 	switch stringOrEmpty(data["operation"]) {
 	case "create_new":
-		c.resolveMetric(data.UserID(), outcomeAccountCreateRouted)
+		c.resolveMetric(ctx, data.UserID(), outcomeAccountCreateRouted)
 		c.startAccountCreate(ctx, b, chatID, data.UserID(), stringOrEmpty(data["message"]))
 	case "rename":
 		c.finishAccountRename(ctx, b, chatID, data)
@@ -54,7 +54,7 @@ func (c *controller) finishAccountRename(ctx context.Context, b *bot.Bot, chatID
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeAccountRenamed)
+	c.resolveMetric(ctx, data.UserID(), outcomeAccountRenamed)
 	c.sendText(ctx, b, chatID, "Listo, ahora se llama "+newName+".")
 }
 
@@ -81,7 +81,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 
 	delta := newTotal.Sub(current)
 	if delta.IsZero() {
-		c.resolveMetric(data.UserID(), outcomeAccountAdjusted)
+		c.resolveMetric(ctx, data.UserID(), outcomeAccountAdjusted)
 		c.sendText(ctx, b, chatID, msgAccountManageNoChange)
 		return
 	}
@@ -111,7 +111,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeAccountAdjusted)
+	c.resolveMetric(ctx, data.UserID(), outcomeAccountAdjusted)
 	c.sendText(ctx, b, chatID, fmt.Sprintf("%s: %s %s.",
 		stringOrEmpty(data["account_name"]), newTotal.String(), stringOrEmpty(data["account_currency"])))
 }
@@ -136,7 +136,7 @@ func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatI
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
-	c.resolveMetric(data.UserID(), outcomeAccountDefaultSet)
+	c.resolveMetric(ctx, data.UserID(), outcomeAccountDefaultSet)
 	c.sendText(ctx, b, chatID, fmt.Sprintf("⭐ %s es tu cuenta en %s por defecto.", name, cur.String()))
 
 	// same-currency guaranteed: prev is the old default OF THIS currency

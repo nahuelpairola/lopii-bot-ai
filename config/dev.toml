@@ -31,3 +31,7 @@ historyLimit = 5
 
 [reminders]
 sweepIntervalMinutes = 5
+
+[log]
+level = "info"
+format = "json"
