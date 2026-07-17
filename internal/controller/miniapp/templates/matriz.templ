@@ -1,0 +1,50 @@
+package templates
+
+type MatrizCell struct {
+	Value     string
+	Intensity string // "0.0".."1.0", CSS rgba alpha
+}
+
+type MatrizRow struct {
+	Subcategory string
+	Cells       []MatrizCell
+}
+
+type MatrizData struct {
+	Months []string
+	Rows   []MatrizRow
+	Empty  bool
+}
+
+templ Matriz(data MatrizData) {
+	<h2>Matriz por mes</h2>
+	if data.Empty {
+		@EmptyState("Sin gastos en este período.")
+	} else {
+		<div class="matriz-scroll" style="overflow-x:auto; overscroll-behavior: contain;">
+			<table>
+				<thead>
+					<tr>
+						<th>Subcategoría</th>
+						for _, month := range data.Months {
+							<th>{ month }</th>
+						}
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range data.Rows {
+						<tr>
+							<td>{ row.Subcategory }</td>
+							for _, cell := range row.Cells {
+								<td
+									class="money"
+									style={ "background-color: rgba(42,120,214," + cell.Intensity + ")" }
+								>{ cell.Value }</td>
+							}
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}

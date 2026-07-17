@@ -44,4 +44,5 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 	authed.GET("/categorias", c.handleCategorias)
 	authed.GET("/categorias/:category", c.handleCategoriaDrill)
 	authed.GET("/cuentas", c.handleCuentas)
+	authed.GET("/matriz", c.handleMatriz)
 }
