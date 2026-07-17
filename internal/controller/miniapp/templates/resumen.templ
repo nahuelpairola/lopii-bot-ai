@@ -1,0 +1,55 @@
+package templates
+
+// TrendChartData is the JSON shape read by app.js's "bar-grouped"/"line-multi"
+// chart types (see static/app.js): Chart.js's {labels, datasets} shape directly.
+// Exported: built by package miniapp's handlers, rendered by this package.
+type TrendChartData struct {
+	Labels   []string        `json:"labels"`
+	Datasets []TrendDataset  `json:"datasets"`
+}
+
+type TrendDataset struct {
+	Label           string    `json:"label"`
+	Data            []float64 `json:"data"`
+	BackgroundColor string    `json:"backgroundColor"`
+}
+
+// ResumenData is what Resumen renders.
+type ResumenData struct {
+	Gastos     string
+	Ingresos   string
+	Neto       string
+	NetoStatus string // "good" | "critical"
+	Empty      bool
+	TrendChart TrendChartData
+}
+
+templ Resumen(data ResumenData) {
+	<h2>Resumen</h2>
+	<div class="grid">
+		<article>
+			<p>Gastos</p>
+			<p class="money">{ data.Gastos }</p>
+		</article>
+		<article>
+			<p>Ingresos</p>
+			<p class="money">{ data.Ingresos }</p>
+		</article>
+		<article>
+			<p>Neto</p>
+			<p
+				if data.NetoStatus == "good" {
+					class="money neto-good"
+				} else {
+					class="money neto-critical"
+				}
+			>{ data.Neto }</p>
+		</article>
+	</div>
+	if data.Empty {
+		@EmptyState("Sin movimientos en este período.")
+	} else {
+		<canvas id="resumen-trend" data-chart-type="bar-grouped" data-chart-data-id="resumen-trend-data"></canvas>
+		@templ.JSONScript("resumen-trend-data", data.TrendChart)
+	}
+}
