@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/user"
@@ -23,6 +24,8 @@ func (f *fakeReminders) SetLastRemindedOn(userID uint64, date time.Time) error {
 	f.remindedT[userID] = date
 	return nil
 }
+func (f *fakeReminders) ListWeeklyDue(time.Time) ([]reminder.Reminder, error) { return nil, nil }
+func (f *fakeReminders) SetLastSummaryOn(uint64, time.Time) error             { return nil }
 
 type fakeMovements struct{ byUser map[uint64]int }
 
@@ -41,7 +44,7 @@ func newSweeper(r *fakeReminders, m *fakeMovements, sent *[]int64) *Sweeper {
 		reminders: r,
 		movements: m,
 		users:     fakeUsers{},
-		send: func(_ context.Context, chatID int64, _ string) error {
+		send: func(_ context.Context, chatID int64, _ string, _ *models.InlineKeyboardMarkup) error {
 			*sent = append(*sent, chatID)
 			return nil
 		},
