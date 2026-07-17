@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/user"
@@ -25,6 +27,8 @@ func init() {
 type reminderStore interface {
 	ListDue(before time.Time) ([]reminder.Reminder, error)
 	SetLastRemindedOn(userID uint64, date time.Time) error
+	ListWeeklyDue(before time.Time) ([]reminder.Reminder, error)
+	SetLastSummaryOn(userID uint64, date time.Time) error
 }
 
 type movementReader interface {
@@ -37,6 +41,10 @@ type userReader interface {
 
 type retentionStore interface {
 	DeleteOlderThan(cutoff time.Time) error
+}
+
+type summaryReader interface {
+	Build(userID uint64, from, to, prevFrom, prevTo time.Time) (string, error)
 }
 
 // retentionDays es cuánto se conservan las tablas operativas (llm_calls,
@@ -52,18 +60,24 @@ type Sweeper struct {
 	movements movementReader
 	users     userReader
 	retention retentionStore
-	send      func(ctx context.Context, chatID int64, text string) error
+	summaries summaryReader
+	send      func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error
 	now       func() time.Time
 }
 
-func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore) *Sweeper {
+func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader) *Sweeper {
 	return &Sweeper{
 		reminders: r,
 		movements: m,
 		users:     u,
 		retention: ret,
-		send: func(ctx context.Context, chatID int64, text string) error {
-			_, err := b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text})
+		summaries: sum,
+		send: func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error {
+			p := &bot.SendMessageParams{ChatID: chatID, Text: text}
+			if markup != nil {
+				p.ReplyMarkup = markup
+			}
+			_, err := b.SendMessage(ctx, p)
 			return err
 		},
 		now: func() time.Time { return time.Now().In(artLoc) },
@@ -88,9 +102,9 @@ func (s *Sweeper) Run(ctx context.Context, interval time.Duration) {
 func (s *Sweeper) tick(ctx context.Context, now time.Time) {
 	s.sweepReminders(ctx, now)
 	s.sweepRetention(now)
+	s.sweepWeeklySummary(ctx, now)
 	// future tenants:
 	// s.sweepCafecito(ctx, now)
-	// s.sweepWeeklySummary(ctx, now)
 }
 
 // sweepRetention purga métricas operativas más viejas que retentionDays. Corre
@@ -139,12 +153,66 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 			slog.ErrorContext(ctx, "notifier bad telegram_id", "user_id", r.UserID, "err", err)
 			continue
 		}
-		if err := s.send(ctx, chatID, reminder.PickMessage()); err != nil {
+		if err := s.send(ctx, chatID, reminder.PickMessage(), nil); err != nil {
 			slog.ErrorContext(ctx, "notifier send failed", "user_id", r.UserID, "err", err)
 			continue
 		}
 		if err := s.reminders.SetLastRemindedOn(r.UserID, startOfDay); err != nil {
 			slog.ErrorContext(ctx, "notifier set last reminded failed", "user_id", r.UserID, "err", err)
+		}
+	}
+}
+
+// weeklySummaryFireMin is the ART minute-of-day the Monday summary fires at (09:00).
+const weeklySummaryFireMin = 9 * 60
+
+// sweepWeeklySummary sends the previous-week (Mon–Sun) summary to opted-in users,
+// once per week, on Mondays at/after 09:00 ART. Idempotent via last_summary_on.
+func (s *Sweeper) sweepWeeklySummary(ctx context.Context, now time.Time) {
+	if now.Weekday() != time.Monday {
+		return
+	}
+	if now.Hour()*60+now.Minute() < weeklySummaryFireMin {
+		return
+	}
+	thisMonday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	from := thisMonday.AddDate(0, 0, -7)
+	to := thisMonday.AddDate(0, 0, -1)
+	prevFrom := from.AddDate(0, 0, -7)
+	prevTo := from.AddDate(0, 0, -1)
+
+	due, err := s.reminders.ListWeeklyDue(thisMonday)
+	if err != nil {
+		slog.ErrorContext(ctx, "notifier weekly list due failed", "err", err)
+		return
+	}
+
+	markup := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
+		{Text: "🔕 Desactivar resumen", CallbackData: constants.WeeklySummaryOffData},
+	}}}
+
+	for _, r := range due {
+		text, err := s.summaries.Build(r.UserID, from, to, prevFrom, prevTo)
+		if err != nil {
+			slog.ErrorContext(ctx, "notifier weekly build failed", "user_id", r.UserID, "err", err)
+			continue
+		}
+		u, err := s.users.FindByID(r.UserID)
+		if err != nil {
+			slog.ErrorContext(ctx, "notifier weekly user lookup failed", "user_id", r.UserID, "err", err)
+			continue
+		}
+		chatID, err := strconv.ParseInt(u.TelegramID, 10, 64)
+		if err != nil {
+			slog.ErrorContext(ctx, "notifier weekly bad telegram_id", "user_id", r.UserID, "err", err)
+			continue
+		}
+		if err := s.send(ctx, chatID, text, markup); err != nil {
+			slog.ErrorContext(ctx, "notifier weekly send failed", "user_id", r.UserID, "err", err)
+			continue
+		}
+		if err := s.reminders.SetLastSummaryOn(r.UserID, thisMonday); err != nil {
+			slog.ErrorContext(ctx, "notifier weekly set last summary failed", "user_id", r.UserID, "err", err)
 		}
 	}
 }

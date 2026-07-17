@@ -15,6 +15,7 @@ const (
 	keyDeleteInstead    dataKey = "_delete_instead"
 	keyEditProposal     dataKey = "edit_proposal" // Data key, NOT optionEditProposal
 	keyCategoryIsNew    dataKey = "category_is_new"
+	keyWeeklySummary    dataKey = "weekly_summary"
 
 	// discriminators (key const; enum VALUE consts live in their owning file)
 	keyMode        dataKey = "mode"
