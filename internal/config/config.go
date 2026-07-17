@@ -54,6 +54,11 @@ type reminders struct {
 	SweepIntervalMinutes int `mapstructure:"sweepIntervalMinutes"`
 }
 
+type logConfig struct {
+	Level  string `mapstructure:"level"`
+	Format string `mapstructure:"format"`
+}
+
 type Config struct {
 	Env       string    `mapstructure:"env"`
 	Server    server    `mapstructure:"server"`
@@ -62,6 +67,7 @@ type Config struct {
 	Groq      groq      `mapstructure:"groq"`
 	Query     query     `mapstructure:"query"`
 	Reminders reminders `mapstructure:"reminders"`
+	Log       logConfig `mapstructure:"log"`
 }
 
 func Initialize() (*Config, error) {
@@ -75,6 +81,8 @@ func Initialize() (*Config, error) {
 	viper.SetDefault("Query.HistoryTtlMinutes", 10)
 	viper.SetDefault("Query.HistoryLimit", 5)
 	viper.SetDefault("Reminders.SweepIntervalMinutes", 5)
+	viper.SetDefault("Log.Level", "info")
+	viper.SetDefault("Log.Format", "json")
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err

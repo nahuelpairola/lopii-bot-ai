@@ -17,6 +17,7 @@ import (
 	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/health"
 	"lopiibot.com/internal/invitation"
+	"lopiibot.com/internal/logging"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/notifier"
@@ -61,7 +62,17 @@ func (r llmCallRecorder) Record(c orchestrator.LLMCall) {
 }
 
 func InitServer(conf *config.Config) error {
-	ginEngine := gin.Default()
+	// First statement: everything after this — including a failed DB connect —
+	// is logged through the configured handler.
+	logging.Init(conf.Log.Level, conf.Log.Format)
+
+	ginEngine := gin.New()
+	// /health/internal is polled continuously by the platform; its access log is
+	// pure noise and its latency/status add nothing. Every other route — external
+	// health, webhook, invitations, admin — stays logged. SkipPaths suppresses only
+	// the log line: the route still serves 200 OK unchanged.
+	ginEngine.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/health/internal"}}))
+	ginEngine.Use(gin.Recovery())
 
 	conn, err := initializeDatabase(conf)
 	if err != nil {
