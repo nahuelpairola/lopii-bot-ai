@@ -39,6 +39,11 @@ const (
 	resumeCancel   = "_resume_cancel"
 )
 
+// ResumeCancelledKey is the Data marker the engine sets on Result when the user
+// cancels at the resume gate. Exported because it is produced here but read
+// cross-package in controller/messaging.
+const ResumeCancelledKey = "_resume_cancelled"
+
 // Engine orquesta Flows registrados contra la persistencia de estado.
 type Engine struct {
 	flows       map[string]*Flow
@@ -145,7 +150,7 @@ func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, 
 		if err := e.store.Clear(userID); err != nil {
 			return Result{}, true, err
 		}
-		return Result{Finished: true, FlowName: flowName, Data: Data{"_resume_cancelled": "true"}}, true, nil
+		return Result{Finished: true, FlowName: flowName, Data: Data{ResumeCancelledKey: "true"}}, true, nil
 	}
 
 	if time.Since(updatedAt) > idleThreshold {

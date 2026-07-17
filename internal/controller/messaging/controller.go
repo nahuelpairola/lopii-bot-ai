@@ -221,7 +221,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 // nombre. Agregar un flow nuevo implica agregar un case acá.
 func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID int64, result conversation.Result) {
 	slog.InfoContext(ctx, "flow finished", "flow", result.FlowName)
-	if stringOrEmpty(result.Data["_resume_cancelled"]) == "true" {
+	if stringOrEmpty(result.Data[conversation.ResumeCancelledKey]) == "true" {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgResumeCancelled})
 		return
 	}
