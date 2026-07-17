@@ -27,22 +27,22 @@ func encodeOnboardingRows(rows []onboardingRow) []interface{} {
 	out := make([]interface{}, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, map[string]interface{}{
-			"name": r.Name, "currency": r.Currency, "balance": r.Balance, "is_default": r.IsDefault,
+			keyName: r.Name, keyCurrency: r.Currency, keyBalance: r.Balance, keyIsDefault: r.IsDefault,
 		})
 	}
 	return out
 }
 
 func decodeOnboardingRows(data conversation.Data) []onboardingRow {
-	raw, _ := data["accounts"].([]interface{})
+	raw, _ := data[keyAccounts].([]interface{})
 	rows := make([]onboardingRow, 0, len(raw))
 	for _, r := range raw {
 		m, _ := r.(map[string]interface{})
 		rows = append(rows, onboardingRow{
-			Name:      stringOrEmpty(m["name"]),
-			Currency:  stringOrEmpty(m["currency"]),
-			Balance:   stringOrEmpty(m["balance"]),
-			IsDefault: stringOrEmpty(m["is_default"]),
+			Name:      stringOrEmpty(m[keyName]),
+			Currency:  stringOrEmpty(m[keyCurrency]),
+			Balance:   stringOrEmpty(m[keyBalance]),
+			IsDefault: stringOrEmpty(m[keyIsDefault]),
 		})
 	}
 	return rows
@@ -150,7 +150,7 @@ func NewOnboardingConfirmFlow() *conversation.Flow {
 		stepOnboardingConfirm: conversation.ChoiceStep{
 			PromptText: msgOnboardingConfirm,
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
 				{Label: "✍️ Reescribir", Value: "rewrite", Finish: true},
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
@@ -219,7 +219,7 @@ func (c *controller) finishOnboardingCollectFlow(ctx context.Context, b *bot.Bot
 		c.startFlowIfNotBusy(ctx, b, chatID, userID, onboardingCollectFlowName)
 		return
 	}
-	seed := conversation.Data{"accounts": encodeOnboardingRows(rows)}
+	seed := conversation.Data{keyAccounts: encodeOnboardingRows(rows)}
 	prompt, err := c.engine.StartWithData(userID, onboardingConfirmFlowName, seed)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)

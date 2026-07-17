@@ -18,21 +18,21 @@ import (
 // finishAccountManageFlow applies the confirmed operation. Every branch
 // already passed its confirm gate inside the flow — this is pure execution.
 func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if stringOrEmpty(data["cancelled"]) == "true" {
+	if flag(data, keyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeAccountManageCancelled)
 		c.sendText(ctx, b, chatID, msgAccountManageCancelled)
 		return
 	}
 
-	switch stringOrEmpty(data["operation"]) {
-	case "create_new":
+	switch stringOrEmpty(data[keyOperation]) {
+	case opCreateNew:
 		c.resolveMetric(ctx, data.UserID(), outcomeAccountCreateRouted)
-		c.startAccountCreate(ctx, b, chatID, data.UserID(), stringOrEmpty(data["message"]))
-	case "rename":
+		c.startAccountCreate(ctx, b, chatID, data.UserID(), stringOrEmpty(data[keyMessage]))
+	case opRename:
 		c.finishAccountRename(ctx, b, chatID, data)
-	case "adjust":
+	case opAdjust:
 		c.finishAccountAdjust(ctx, b, chatID, data) // Task 7
-	case "default":
+	case opDefault:
 		c.finishAccountDefault(ctx, b, chatID, data) // Task 8
 	default:
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
@@ -40,15 +40,15 @@ func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, ch
 }
 
 func (c *controller) finishAccountRename(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	id, err := strconv.ParseUint(stringOrEmpty(data["account_id"]), 10, 64)
+	id, err := strconv.ParseUint(stringOrEmpty(data[keyAccountID]), 10, 64)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
-	newName := stringOrEmpty(data["new_name"])
+	newName := stringOrEmpty(data[keyNewName])
 	if err := c.accounts.Rename(id, newName); err != nil {
 		if errors.Is(err, account.ErrAccountAlreadyExists) {
-			c.sendText(ctx, b, chatID, account.MsgAccountAlreadyExists(newName, stringOrEmpty(data["account_currency"])))
+			c.sendText(ctx, b, chatID, account.MsgAccountAlreadyExists(newName, stringOrEmpty(data[keyAccountCurrency])))
 			return
 		}
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
@@ -63,12 +63,12 @@ func (c *controller) finishAccountRename(ctx context.Context, b *bot.Bot, chatID
 // like the guard does: income → +Abs, expense → -Abs. Never the LLM (the
 // LLM never even saw the number — it came from a validated TextStep).
 func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	accountID, err := strconv.ParseUint(stringOrEmpty(data["account_id"]), 10, 64)
+	accountID, err := strconv.ParseUint(stringOrEmpty(data[keyAccountID]), 10, 64)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
-	newTotal, err := decimal.NewFromString(stringOrEmpty(data["new_total"]))
+	newTotal, err := decimal.NewFromString(stringOrEmpty(data[keyNewTotal]))
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
@@ -105,7 +105,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 		Date:          time.Now(),
 		Type:          mType,
 		Amount:        amount,
-		Currency:      currency.Currency(stringOrEmpty(data["account_currency"])),
+		Currency:      currency.Currency(stringOrEmpty(data[keyAccountCurrency])),
 	}
 	if err := c.movements.InsertBatch([]movement.Movement{m}); err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
@@ -113,17 +113,17 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 	}
 	c.resolveMetric(ctx, data.UserID(), outcomeAccountAdjusted)
 	c.sendText(ctx, b, chatID, fmt.Sprintf("%s: %s %s.",
-		stringOrEmpty(data["account_name"]), newTotal.String(), stringOrEmpty(data["account_currency"])))
+		stringOrEmpty(data[keyAccountName]), newTotal.String(), stringOrEmpty(data[keyAccountCurrency])))
 }
 
 func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	accountID, err := strconv.ParseUint(stringOrEmpty(data["account_id"]), 10, 64)
+	accountID, err := strconv.ParseUint(stringOrEmpty(data[keyAccountID]), 10, 64)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
-	cur := currency.Currency(stringOrEmpty(data["account_currency"]))
-	name := stringOrEmpty(data["account_name"])
+	cur := currency.Currency(stringOrEmpty(data[keyAccountCurrency]))
+	name := stringOrEmpty(data[keyAccountName])
 
 	// capture the previous default BEFORE unsetting it
 	prev, prevErr := c.accounts.FindDefaultByCurrency(data.UserID(), cur)
@@ -152,11 +152,11 @@ func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatI
 		return
 	}
 	seed := conversation.Data{
-		"move_from_id":      strconv.FormatUint(uint64(prev.ID), 10),
-		"move_from_name":    prev.Name,
-		"move_from_balance": balance.String(),
-		"move_to_id":        strconv.FormatUint(accountID, 10),
-		"move_to_name":      name,
+		keyMoveFromID:      strconv.FormatUint(uint64(prev.ID), 10),
+		keyMoveFromName:    prev.Name,
+		keyMoveFromBalance: balance.String(),
+		keyMoveToID:        strconv.FormatUint(accountID, 10),
+		keyMoveToName:      name,
 	}
 	prompt, err := c.engine.StartWithData(data.UserID(), accountMoveOfferFlowName, seed)
 	if err != nil {
@@ -168,12 +168,12 @@ func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatI
 }
 
 func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if stringOrEmpty(data["move_choice"]) != "move" {
+	if stringOrEmpty(data[keyMoveChoice]) != moveChoiceMove {
 		c.sendText(ctx, b, chatID, "Listo, dejé todo como estaba.")
 		return
 	}
-	fromID, err1 := strconv.ParseUint(stringOrEmpty(data["move_from_id"]), 10, 64)
-	toID, err2 := strconv.ParseUint(stringOrEmpty(data["move_to_id"]), 10, 64)
+	fromID, err1 := strconv.ParseUint(stringOrEmpty(data[keyMoveFromID]), 10, 64)
+	toID, err2 := strconv.ParseUint(stringOrEmpty(data[keyMoveToID]), 10, 64)
 	if err1 != nil || err2 != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
@@ -183,5 +183,5 @@ func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, cha
 		return
 	}
 	c.sendText(ctx, b, chatID, fmt.Sprintf("Listo: los movimientos de %s ahora están en %s. %s quedó en 0.",
-		stringOrEmpty(data["move_from_name"]), stringOrEmpty(data["move_to_name"]), stringOrEmpty(data["move_from_name"])))
+		stringOrEmpty(data[keyMoveFromName]), stringOrEmpty(data[keyMoveToName]), stringOrEmpty(data[keyMoveFromName])))
 }

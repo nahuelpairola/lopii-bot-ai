@@ -33,7 +33,7 @@ func NewCategoryMatchOfferFlow() *conversation.Flow {
 					return onAccountCreateEscape(optionCancel, data)
 				}
 				next := copyData(data)
-				next["match_choice"] = value
+				next[keyMatchChoice] = value
 				return next
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
@@ -55,7 +55,7 @@ func NewCategoryProposalConfirmFlow() *conversation.Flow {
 		stepCategoryProposalConfirm: conversation.ChoiceStep{
 			PromptText: msgCategoryProposalConfirm,
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
 				{Label: "✏️ Editar", Value: optionEditProposal, Finish: true},
 				cancelOption,
 			},
@@ -65,7 +65,7 @@ func NewCategoryProposalConfirmFlow() *conversation.Flow {
 				}
 				next := copyData(data)
 				if value == optionEditProposal {
-					next["edit_proposal"] = "true"
+					setFlag(next, keyEditProposal)
 				}
 				return next
 			},

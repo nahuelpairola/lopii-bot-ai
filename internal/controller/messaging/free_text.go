@@ -185,11 +185,11 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 		icon = "" // insertNewSubcategory falls back to IconForCategory / 📂
 	}
 	seed := conversation.Data{
-		"category":                p.Category,
-		"category_is_new":         isNew,
-		"category_icon":           icon,
-		"subcategory":             p.Subcategory,
-		"subcategory_description": strings.TrimSpace(p.Description),
+		keyCategory:               p.Category,
+		keyCategoryIsNew:          isNew,
+		keyCategoryIcon:           icon,
+		keySubcategory:            p.Subcategory,
+		keySubcategoryDescription: strings.TrimSpace(p.Description),
 	}
 	prompt, err := c.engine.StartWithData(userID, categoryProposalConfirmFlowName, seed)
 	if err != nil {
@@ -205,10 +205,10 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 // existing taxonomy row.
 func (c *controller) startCategoryMatchOffer(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, s *subcategory.Subcategory) {
 	seed := conversation.Data{
-		"category":                s.Category,
-		"subcategory":             s.Subcategory,
-		"subcategory_description": s.Description,
-		"category_icon":           s.Icon,
+		keyCategory:               s.Category,
+		keySubcategory:            s.Subcategory,
+		keySubcategoryDescription: s.Description,
+		keyCategoryIcon:           s.Icon,
 	}
 	prompt, err := c.engine.StartWithData(userID, categoryMatchOfferFlowName, seed)
 	if err != nil {
@@ -270,19 +270,19 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 		curs = append(curs, a.Currency.String())
 	}
 	seed := conversation.Data{
-		"message":              text,
-		"candidate_ids":        encodeStringSlice(ids),
-		"candidate_labels":     encodeStringSlice(labels),
-		"candidate_names":      encodeStringSlice(names),
-		"candidate_currencies": encodeStringSlice(curs),
+		keyMessage:             text,
+		keyCandidateIDs:        encodeStringSlice(ids),
+		keyCandidateLabels:     encodeStringSlice(labels),
+		keyCandidateNames:      encodeStringSlice(names),
+		keyCandidateCurrencies: encodeStringSlice(curs),
 	}
 	if res.MatchedAccountID != nil {
 		// never trust an LLM id blindly — it must exist in the user's list
 		for _, a := range accs {
 			if uint64(a.ID) == *res.MatchedAccountID {
-				seed["account_id"] = strconv.FormatUint(uint64(a.ID), 10)
-				seed["account_name"] = a.Name
-				seed["account_currency"] = a.Currency.String()
+				seed[keyAccountID] = strconv.FormatUint(uint64(a.ID), 10)
+				seed[keyAccountName] = a.Name
+				seed[keyAccountCurrency] = a.Currency.String()
 				break
 			}
 		}
@@ -321,10 +321,10 @@ func (c *controller) accountCreateSeed(ctx context.Context, text string) convers
 	}
 	d := res.Accounts[0]
 	if d.Name != "" {
-		seed["account_name"] = d.Name
+		seed[keyAccountName] = d.Name
 	}
 	if amt, err := decimal.NewFromString(d.Balance); err == nil && !amt.IsNegative() {
-		seed["account_balance"] = d.Balance
+		seed[keyAccountBalance] = d.Balance
 	}
 	return seed
 }
@@ -373,10 +373,10 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 	slog.InfoContext(ctx, "create seed built",
 		"user_id", userID,
 		"movements", len(result.Movements),
-		"category_gaps", len(decodeStringSlice(seed, "pending_category_gaps")),
-		"account_gaps", len(decodeStringSlice(seed, "pending_account_gaps")),
+		"category_gaps", len(decodeStringSlice(seed, keyPendingCategoryGaps)),
+		"account_gaps", len(decodeStringSlice(seed, keyPendingAccountGaps)),
 	)
-	hasGaps := len(decodeStringSlice(seed, "pending_category_gaps")) > 0 || len(decodeStringSlice(seed, "pending_account_gaps")) > 0
+	hasGaps := len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 || len(decodeStringSlice(seed, keyPendingAccountGaps)) > 0
 
 	if !hasGaps {
 		seed[conversation.UserIDKey] = userID
@@ -446,9 +446,9 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 			labels = append(labels, candidateLabel(g))
 		}
 		seed := conversation.Data{
-			"message":          text,
-			"candidate_labels": encodeStringSlice(labels),
-			"candidate_groups": encodeCandidateGroups(candidates),
+			keyMessage:         text,
+			keyCandidateLabels: encodeStringSlice(labels),
+			keyCandidateGroups: encodeCandidateGroups(candidates),
 		}
 		prompt, err := c.engine.StartWithData(userID, movementUpdatePickFlowName, seed)
 		if err != nil {
@@ -498,11 +498,11 @@ func (c *controller) startMovementDeleteFlowFor(ctx context.Context, b *bot.Bot,
 	}
 
 	seed := conversation.Data{
-		"candidate_labels": encodeStringSlice(labels),
-		"candidate_groups": encodeCandidateGroups(candidates),
+		keyCandidateLabels: encodeStringSlice(labels),
+		keyCandidateGroups: encodeCandidateGroups(candidates),
 	}
 	if resolvedIndex >= 0 {
-		seed["resolved_index"] = strconv.Itoa(resolvedIndex)
+		seed[keyResolvedIndex] = strconv.Itoa(resolvedIndex)
 	}
 
 	prompt, err := c.engine.StartWithData(userID, movementDeleteFlowName, seed)

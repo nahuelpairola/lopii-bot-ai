@@ -29,6 +29,7 @@ For conventions and the condensed money-model warning, see `CLAUDE.md` (always l
 - **Never invent category/subcategory names in code or prompts.** The taxonomy lives in the DB, seeded via migrations.
 - **Never use raw strings for currency values.** Use `currency.ARS` / `currency.USD` constants.
 - **Never store a native Go number in `conversation.Data`.** Always encode as a string — the JSONB round-trip silently turns numbers into `float64`, which violates the money rule.
+- **Never duplicate a literal value.** A string or number used more than once is a named constant. Scope it to its reach: an unexported `const` in the package if it's local; `internal/constants` if it's used across packages (typed wrappers may re-export it, as `currency.ARS = constants.ARS`); an **exported** const in the producing package if one package owns the value but another reads it (as `conversation.ResumeCancelledKey`). One const per distinct value; one const per distinct *meaning* even when two values share a string. Single-use literals stay inline. In `internal/controller/messaging`, every `conversation.Data` map key is a const in `data_keys.go`.
 - **Never insert a movement without an `account_id`.** Every expense/income/transfer attributes to a real account (see [business-rules.md](business-rules.md#the-accounting-model)). A NULL account means the balance never reflects that movement.
 - **Never let the LLM decide a movement's sign, and never let a stored sign escape storage.** The app normalizes sign by type on write; user and LLM both see `abs`. Feeding a signed amount to the user or to an UPDATE/DELETE candidate is a bug (it caused a real `0.00` corruption).
 - **Never trust the LLM's `amount` sign, `account_id` validity, or currency/account agreement without the guard.** `normalizeMovements` re-derives sign, resolves the account, and rejects `amount == 0` / currency mismatch — for CREATE and UPDATE alike.
@@ -50,3 +51,4 @@ For conventions and the condensed money-model warning, see `CLAUDE.md` (always l
 | A new recipe (flow type, step type, intent) | `docs/recipes.md` |
 | A new business rule | `docs/business-rules.md` |
 | A new dependency added to `go.mod` | `CLAUDE.md` → Stack |
+| A value reused across files or packages | define a constant scoped per the no-duplicated-literal rule (`internal/constants` if cross-package) |

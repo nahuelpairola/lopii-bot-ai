@@ -36,9 +36,11 @@ func (r *fakeSubcategoryRepoFull) FindAllForUser(userID uint64) ([]subcategory.S
 func (r *fakeSubcategoryRepoFull) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	return r.categories, nil
 }
-func (r *fakeSubcategoryRepoFull) IconForCategory(userID uint64, category string) string { return "📂" }
-func (r *fakeSubcategoryRepoFull) Insert(s *subcategory.Subcategory) error               { return nil }
-func (r *fakeSubcategoryRepoFull) Reload() error                                        { return nil }
+func (r *fakeSubcategoryRepoFull) IconForCategory(userID uint64, category string) string {
+	return "📂"
+}
+func (r *fakeSubcategoryRepoFull) Insert(s *subcategory.Subcategory) error { return nil }
+func (r *fakeSubcategoryRepoFull) Reload() error                           { return nil }
 
 type fakeAccountRepoFull struct {
 	byCurrency   map[currency.Currency]*account.Account
@@ -576,8 +578,8 @@ func TestFciRedemptionGain_AttributedToFciAccount(t *testing.T) {
 	fciAccID := uint64(9)
 	subs := &fakeSubcategoryRepoFull{
 		byCategoryAndSub: map[string]*subcategory.Subcategory{
-			"Inversiones|FCI":                  newSubForTest(3, "Inversiones", "FCI"),
-			"Sistema|Rendimiento inversión":    newSubForTest(4, "Sistema", "Rendimiento inversión"),
+			"Inversiones|FCI":               newSubForTest(3, "Inversiones", "FCI"),
+			"Sistema|Rendimiento inversión": newSubForTest(4, "Sistema", "Rendimiento inversión"),
 		},
 	}
 	accts := &fakeAccountRepoFull{byID: map[uint64]*account.Account{

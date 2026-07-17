@@ -28,7 +28,7 @@ func NewMovementUpdatePickFlow() *conversation.Flow {
 		stepPickUpdateCandidate: conversation.ChoiceStep{
 			PromptText: msgPickUpdateCandidate,
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				labels := decodeStringSlice(data, "candidate_labels")
+				labels := decodeStringSlice(data, keyCandidateLabels)
 				opts := make([]conversation.ChoiceOption, 0, len(labels))
 				for i, label := range labels {
 					opts = append(opts, conversation.ChoiceOption{
@@ -63,12 +63,12 @@ func NewMovementUpdateConfirmFlow() *conversation.Flow {
 		stepConfirmUpdate: conversation.ChoiceStep{
 			PromptText: msgConfirmUpdateDiff,
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
 				{Label: "❌ Cancelar", Value: "cancel", Finish: true},
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := copyData(data)
-				next["confirmed"] = strconv.FormatBool(value == "confirm")
+				next[keyConfirmed] = strconv.FormatBool(value == optionConfirm)
 				return next
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
@@ -186,14 +186,14 @@ func encodeCandidateGroups(groups []transactionGroup) []interface{} {
 }
 
 func decodeCandidateGroups(data conversation.Data) []candidateGroup {
-	raw, _ := data["candidate_groups"].([]interface{})
+	raw, _ := data[keyCandidateGroups].([]interface{})
 	groups := make([]candidateGroup, 0, len(raw))
 	for _, r := range raw {
 		m, _ := r.(map[string]interface{})
 		groups = append(groups, candidateGroup{
 			TransactionID: stringOrEmpty(m["transaction_id"]),
 			OldIDs:        decodeStringSlice(conversation.Data{"ids": m["old_ids"]}, "ids"),
-			Rows:          decodeMovementRows(conversation.Data{"movements": m["rows"]}),
+			Rows:          decodeMovementRows(conversation.Data{keyMovements: m["rows"]}),
 		})
 	}
 	return groups
@@ -259,13 +259,13 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	}
 
 	seed := conversation.Data{
-		"mode":                  "update",
-		"old_movement_ids":      encodeStringSlice(oldIDs),
-		"before_movements":      encodeMovementRows(beforeRows),
-		"movements":             encodeMovementRows(afterRows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
-		"_delete_instead":       strconv.FormatBool(correctionIsDeletion(afterRows)),
+		keyMode:                 modeUpdate,
+		keyOldMovementIDs:       encodeStringSlice(oldIDs),
+		keyBeforeMovements:      encodeMovementRows(beforeRows),
+		keyMovements:            encodeMovementRows(afterRows),
+		keyPendingCategoryGaps: encodeStringSlice(nil),
+		keyPendingAccountGaps:  encodeStringSlice(nil),
+		keyDeleteInstead:        strconv.FormatBool(correctionIsDeletion(afterRows)),
 	}
 
 	prompt, err := c.engine.StartWithData(userID, movementUpdateConfirmFlowName, seed)
@@ -307,7 +307,7 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 // neither: the confirm ChoiceStep always finishes with "confirmed" set
 // to one of "true"/"false".
 func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if stringOrEmpty(data["confirmed"]) != "true" {
+	if !flag(data, keyConfirmed) {
 		c.resolveMetric(ctx, data.UserID(), outcomeUpdateCancelled)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateCancelled})
@@ -317,7 +317,7 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 
 	// A correction that zeroes the movement (regalo/gratis total) deletes it
 	// instead of storing an illegal amount-0 row — see correctionIsDeletion.
-	if stringOrEmpty(data["_delete_instead"]) == "true" {
+	if flag(data, keyDeleteInstead) {
 		oldIDs, err := parseUintSlice(decodeStringSlice(data, "old_movement_ids"))
 		if err == nil {
 			err = c.movements.SoftDeleteByIDs(oldIDs)

@@ -14,7 +14,7 @@ import (
 func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	userID := data.UserID()
 
-	if stringOrEmpty(data["cancelled"]) == "true" {
+	if flag(data, keyCancelled) {
 		c.sendText(ctx, b, chatID, msgReminderCancelled)
 		return
 	}

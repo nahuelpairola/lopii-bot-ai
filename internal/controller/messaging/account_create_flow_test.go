@@ -275,7 +275,7 @@ func TestAccountCreateFlow_SeededBalance_TypingOverrides(t *testing.T) {
 
 	seed := conversation.Data{"account_name": "Cedears", "account_balance": "1041265"}
 	engine.StartWithData(userID, accountCreateFlowName, seed)
-	engine.Handle(userID, conversation.Input{CallbackData: optionConfirmSeed})   // keep name
+	engine.Handle(userID, conversation.Input{CallbackData: optionConfirmSeed})     // keep name
 	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()}) // currency
 
 	// At the balance step, type a different number instead of tapping confirm.

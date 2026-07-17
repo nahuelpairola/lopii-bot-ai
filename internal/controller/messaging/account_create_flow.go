@@ -28,7 +28,7 @@ func onAccountCreateEscape(value string, data conversation.Data) conversation.Da
 		return data
 	}
 	next := copyData(data)
-	next["cancelled"] = "true"
+	setFlag(next, keyCancelled)
 	return next
 }
 
@@ -41,7 +41,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepAccountCreateAskName: conversation.TextStep{
 			PromptText: msgAskAccountCreateName,
-			DataKey:    "account_name",
+			DataKey:    keyAccountName,
 			Validate: func(text string, _ conversation.Data) string {
 				if text == "" {
 					return msgInvalidAccountCreateName
@@ -51,7 +51,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 			NextStep:      stepAccountCreateAskCurrency,
 			EscapeOptions: []conversation.ChoiceOption{cancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				name := stringOrEmpty(data["account_name"])
+				name := stringOrEmpty(data[keyAccountName])
 				if name == "" {
 					return nil
 				}
@@ -84,16 +84,16 @@ func NewAccountCreateFlow() *conversation.Flow {
 					return onAccountCreateEscape(value, data)
 				}
 				next := copyData(data)
-				next["account_currency"] = value
+				next[keyAccountCurrency] = value
 				return next
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
 		},
 		stepAccountCreateAskBalance: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return account.MsgAskInitialBalance(stringOrEmpty(data["account_name"]), stringOrEmpty(data["account_currency"]))
+				return account.MsgAskInitialBalance(stringOrEmpty(data[keyAccountName]), stringOrEmpty(data[keyAccountCurrency]))
 			},
-			DataKey:  "account_balance",
+			DataKey:  keyAccountBalance,
 			Validate: validateBalanceAmount,
 			NextStep: stepAccountCreateConfirm,
 			EscapeOptions: []conversation.ChoiceOption{
@@ -101,12 +101,12 @@ func NewAccountCreateFlow() *conversation.Flow {
 				cancelOption,
 			},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				bal := stringOrEmpty(data["account_balance"])
+				bal := stringOrEmpty(data[keyAccountBalance])
 				if bal == "" {
 					return nil
 				}
 				label := "✅ Usar " + bal
-				if cur := stringOrEmpty(data["account_currency"]); cur != "" {
+				if cur := stringOrEmpty(data[keyAccountCurrency]); cur != "" {
 					label += " " + cur
 				}
 				return []conversation.ChoiceOption{
@@ -118,11 +118,11 @@ func NewAccountCreateFlow() *conversation.Flow {
 		stepAccountCreateConfirm: conversation.ChoiceStep{
 			PromptText: msgConfirmAccountCreate,
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: "confirm", Finish: true},
+				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
 				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountCreateAskBalance},
 				cancelOption,
 			},
-			OnChoice: onAccountCreateEscape,
+			OnChoice:             onAccountCreateEscape,
 			InvalidChoiceMessage: msgGenericFlowError,
 		},
 	}

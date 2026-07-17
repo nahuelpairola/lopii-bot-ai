@@ -151,11 +151,11 @@ func msgPickUpdateCandidate(data conversation.Data) string {
 }
 
 func msgConfirmUpdateDiff(data conversation.Data) string {
-	before := decodeMovementRows(conversation.Data{"movements": data["before_movements"]})
+	before := decodeMovementRows(conversation.Data{keyMovements: data[keyBeforeMovements]})
 
 	// regalo/gratis total: the correction zeroes the movement, so it's a
 	// deletion — show what will be removed, not a "corregiría a 0" diff.
-	if stringOrEmpty(data["_delete_instead"]) == "true" {
+	if flag(data, keyDeleteInstead) {
 		lines := []string{"🗑️ Quedó gratis, así que lo voy a borrar:"}
 		for _, b := range before {
 			lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
@@ -201,7 +201,7 @@ func msgPickDeleteCandidate(data conversation.Data) string {
 }
 
 func msgConfirmDelete(data conversation.Data) string {
-	idx, _ := strconv.Atoi(stringOrEmpty(data["resolved_index"]))
+	idx, _ := strconv.Atoi(stringOrEmpty(data[keyResolvedIndex]))
 	candidates := decodeCandidateGroups(data)
 	if idx < 0 || idx >= len(candidates) {
 		return "¿Confirmás el borrado?"
@@ -254,9 +254,9 @@ func msgAskAccountCreateCurrency(data conversation.Data) string {
 }
 
 func msgConfirmAccountCreate(data conversation.Data) string {
-	name := stringOrEmpty(data["account_name"])
-	cur := stringOrEmpty(data["account_currency"])
-	balance := stringOrEmpty(data["account_balance"])
+	name := stringOrEmpty(data[keyAccountName])
+	cur := stringOrEmpty(data[keyAccountCurrency])
+	balance := stringOrEmpty(data[keyAccountBalance])
 	return "Confirmá la cuenta nueva:\n\n" +
 		"📛 Nombre: " + name + "\n" +
 		"💱 Moneda: " + cur + "\n" +
@@ -324,12 +324,12 @@ func msgAskSubcategoryDescription(sub string) string {
 // request to an existing taxonomy entry — offer to reuse it instead of
 // creating a duplicate.
 func msgCategoryMatchOffer(data conversation.Data) string {
-	icon := stringOrEmpty(data["category_icon"])
+	icon := stringOrEmpty(data[keyCategoryIcon])
 	if icon == "" {
 		icon = "📂"
 	}
-	out := "Ya tenés una parecida: " + icon + " " + stringOrEmpty(data["category"]) + " › " + stringOrEmpty(data["subcategory"])
-	if desc := stringOrEmpty(data["subcategory_description"]); desc != "" {
+	out := "Ya tenés una parecida: " + icon + " " + stringOrEmpty(data[keyCategory]) + " › " + stringOrEmpty(data[keySubcategory])
+	if desc := stringOrEmpty(data[keySubcategoryDescription]); desc != "" {
 		out += "\n📝 " + desc
 	}
 	return out + "\n\n¿Te sirve o creás una distinta?"
@@ -338,15 +338,15 @@ func msgCategoryMatchOffer(data conversation.Data) string {
 // msgCategoryProposalConfirm shows the LLM's complete proposal for a new
 // subcategory as one confirmation.
 func msgCategoryProposalConfirm(data conversation.Data) string {
-	icon := stringOrEmpty(data["category_icon"])
+	icon := stringOrEmpty(data[keyCategoryIcon])
 	if icon == "" {
 		icon = "📂"
 	}
-	line := icon + " " + stringOrEmpty(data["category"]) + " › " + stringOrEmpty(data["subcategory"])
-	if stringOrEmpty(data["category_is_new"]) == "true" {
+	line := icon + " " + stringOrEmpty(data[keyCategory]) + " › " + stringOrEmpty(data[keySubcategory])
+	if flag(data, keyCategoryIsNew) {
 		line += " (categoría nueva)"
 	}
-	return "Te propongo:\n" + line + "\n📝 " + stringOrEmpty(data["subcategory_description"]) + "\n\n¿La creo?"
+	return "Te propongo:\n" + line + "\n📝 " + stringOrEmpty(data[keySubcategoryDescription]) + "\n\n¿La creo?"
 }
 
 const msgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae ahí solo (ej: \"gasté 5000 en un regalo\")."

@@ -285,7 +285,7 @@ func TestHandle_ResumeCancel_ClearsStateAndFinishesWithMarker(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("Handle: found=%v err=%v", found, err)
 	}
-	if !result.Finished || result.Data["_resume_cancelled"] != "true" {
+	if !result.Finished || result.Data[ResumeCancelledKey] != "true" {
 		t.Fatalf("expected Finished with _resume_cancelled marker, got %+v", result)
 	}
 	if store.found {

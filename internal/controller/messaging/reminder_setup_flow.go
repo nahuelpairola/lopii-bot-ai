@@ -67,7 +67,7 @@ func onReminderPickWindow(value string, data conversation.Data) conversation.Dat
 	next := copyData(data)
 	switch value {
 	case optionCancel:
-		next["cancelled"] = "true"
+		setFlag(next, keyCancelled)
 	case optionReminderOff:
 		next[reminderActionKey] = reminderActionOff
 	case optionReminderOther:
@@ -132,7 +132,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 					return data
 				}
 				next := copyData(data)
-				next["cancelled"] = "true"
+				setFlag(next, keyCancelled)
 				return next
 			},
 		},

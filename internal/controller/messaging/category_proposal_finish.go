@@ -11,12 +11,12 @@ import (
 // reuse the existing entry, fall through to the classic wizard to create a
 // distinct one, or cancel.
 func (c *controller) finishCategoryMatchOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if stringOrEmpty(data["cancelled"]) == "true" {
+	if flag(data, keyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryCancelled)
 		c.sendText(ctx, b, chatID, msgCreateCancelled)
 		return
 	}
-	switch stringOrEmpty(data["match_choice"]) {
+	switch stringOrEmpty(data[keyMatchChoice]) {
 	case optionUseExisting:
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryMatchUsed)
 		c.sendText(ctx, b, chatID, msgCategoryMatchUse)
@@ -32,18 +32,18 @@ func (c *controller) finishCategoryMatchOffer(ctx context.Context, b *bot.Bot, c
 // as-is, drop into the classic wizard seeded with the proposal to edit, or
 // cancel.
 func (c *controller) finishCategoryProposalConfirm(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if stringOrEmpty(data["cancelled"]) == "true" {
+	if flag(data, keyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryCancelled)
 		c.sendText(ctx, b, chatID, msgCreateCancelled)
 		return
 	}
-	if stringOrEmpty(data["edit_proposal"]) == "true" {
+	if flag(data, keyEditProposal) {
 		seed := conversation.Data{
-			"category":                stringOrEmpty(data["category"]),
-			"category_is_new":         stringOrEmpty(data["category_is_new"]),
-			"category_icon":           stringOrEmpty(data["category_icon"]),
-			"subcategory":             stringOrEmpty(data["subcategory"]),
-			"subcategory_description": stringOrEmpty(data["subcategory_description"]),
+			keyCategory:               stringOrEmpty(data[keyCategory]),
+			keyCategoryIsNew:          stringOrEmpty(data[keyCategoryIsNew]),
+			keyCategoryIcon:           stringOrEmpty(data[keyCategoryIcon]),
+			keySubcategory:            stringOrEmpty(data[keySubcategory]),
+			keySubcategoryDescription: stringOrEmpty(data[keySubcategoryDescription]),
 		}
 		prompt, err := c.engine.StartWithData(data.UserID(), subcategorySetupFlowName, seed)
 		if err != nil {

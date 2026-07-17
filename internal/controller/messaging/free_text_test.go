@@ -18,7 +18,7 @@ import (
 // handleQuery but don't care about the conversation thread itself.
 type stubQueryHistory struct{}
 
-func (stubQueryHistory) Recent(userID uint64) ([]queryhistory.Turn, error) { return nil, nil }
+func (stubQueryHistory) Recent(userID uint64) ([]queryhistory.Turn, error)   { return nil, nil }
 func (stubQueryHistory) Append(userID uint64, question, answer string) error { return nil }
 
 type fakeFullOrchestrator struct {
