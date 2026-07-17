@@ -17,6 +17,7 @@ type fakeMovements struct {
 	sums   map[string][]movement.CategorySum
 	tops   map[string]*movement.Movement
 	counts []movement.DayCount
+	bals   map[uint64]decimal.Decimal
 }
 
 func (f fakeMovements) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
@@ -32,17 +33,16 @@ func (f fakeMovements) TopExpenseForUser(q movement.MovementQuery) (*movement.Mo
 func (f fakeMovements) CountByDayForUser(_ uint64, _, _ time.Time) ([]movement.DayCount, error) {
 	return f.counts, nil
 }
+func (f fakeMovements) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
+	return f.bals[id], nil
+}
 
 type fakeAccounts struct {
 	list map[uint64][]account.Account
-	bals map[uint64]decimal.Decimal
 }
 
 func (f fakeAccounts) FindByUserID(userID uint64) ([]account.Account, error) {
 	return f.list[userID], nil
-}
-func (f fakeAccounts) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
-	return f.bals[id], nil
 }
 
 func dec(s string) decimal.Decimal { d, _ := decimal.NewFromString(s); return d }
@@ -82,10 +82,10 @@ func TestBuild_ReportARSOnly(t *testing.T) {
 		},
 		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Merchant: strptr("Cena")}},
 		counts: []movement.DayCount{{Date: to, Count: 5}, {Date: from, Count: 2}},
+		bals:   map[uint64]decimal.Decimal{0: dec("2500")},
 	}
 	fa := fakeAccounts{
 		list: map[uint64][]account.Account{1: {{Name: "Efectivo", Currency: currency.ARS}}},
-		bals: map[uint64]decimal.Decimal{0: dec("2500")},
 	}
 	text, err := NewBuilder(fm, fa).Build(1, from, to, prevFrom, prevTo)
 	if err != nil {

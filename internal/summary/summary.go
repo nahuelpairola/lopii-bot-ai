@@ -18,12 +18,15 @@ type MovementReader interface {
 	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
 	TopExpenseForUser(q movement.MovementQuery) (*movement.Movement, error)
 	CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error)
+	// SumAmountForAccount computes an account's current balance (SUM over its
+	// movements) — the balance is never stored (movement.repository owns it).
+	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
 }
 
-// AccountReader is the account-repo surface for the balances snapshot.
+// AccountReader is the account-repo surface for the balances snapshot (listing
+// only; per-account balances come from MovementReader).
 type AccountReader interface {
 	FindByUserID(userID uint64) ([]account.Account, error)
-	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
 }
 
 type Builder struct {
@@ -174,7 +177,7 @@ func (b *Builder) accountsBlock(userID uint64) (string, error) {
 	var sb strings.Builder
 	sb.WriteString("\n🏦 Cuentas (hoy)\n")
 	for _, a := range accts {
-		bal, err := b.accounts.SumAmountForAccount(uint64(a.ID))
+		bal, err := b.movements.SumAmountForAccount(uint64(a.ID))
 		if err != nil {
 			return "", err
 		}
