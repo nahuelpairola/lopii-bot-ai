@@ -38,4 +38,6 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 	authed := app.Group("")
 	authed.Use(authInitData(c.botToken, c.users))
 	authed.GET("/resumen", c.handleResumen)
+	authed.GET("/categorias", c.handleCategorias)
+	authed.GET("/categorias/:category", c.handleCategoriaDrill)
 }

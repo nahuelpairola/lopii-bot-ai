@@ -1,0 +1,61 @@
+package templates
+
+// BarChartData is the JSON shape read by app.js's "bar-single" chart type.
+type BarChartData struct {
+	Labels []string  `json:"labels"`
+	Values []float64 `json:"values"`
+	Color  string    `json:"color"`
+}
+
+type CategoriaRow struct {
+	Category string
+	Total    string
+}
+
+// CategoriasData renders both the top-level Categorías view and the
+// subcategory drill (same shape, different query).
+type CategoriasData struct {
+	Rows  []CategoriaRow
+	Chart BarChartData
+	Empty bool
+}
+
+templ Categorias(data CategoriasData) {
+	<h2>Categorías</h2>
+	if data.Empty {
+		@EmptyState("Sin gastos en este período.")
+	} else {
+		<canvas id="categorias-bars" data-chart-type="bar-single" data-chart-data-id="categorias-bars-data"></canvas>
+		@templ.JSONScript("categorias-bars-data", data.Chart)
+		<table>
+			<thead><tr><th>Categoría</th><th>Total</th></tr></thead>
+			<tbody>
+				for _, row := range data.Rows {
+					<tr>
+						<td><a href="#" hx-get={ "/app/categorias/" + row.Category } hx-target="#content">{ row.Category }</a></td>
+						<td class="money">{ row.Total }</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	}
+}
+
+templ SubcategoriaDrill(category string, data CategoriasData) {
+	<h2>{ category }</h2>
+	<a href="#" hx-get="/app/categorias" hx-target="#content">&larr; Volver a Categorías</a>
+	if data.Empty {
+		@EmptyState("Sin gastos en esta categoría.")
+	} else {
+		<canvas id="subcat-bars" data-chart-type="bar-single" data-chart-data-id="subcat-bars-data"></canvas>
+		@templ.JSONScript("subcat-bars-data", data.Chart)
+		<table>
+			<thead><tr><th>Subcategoría</th><th>Total</th></tr></thead>
+			<tbody>
+				for _, row := range data.Rows {
+					<tr><td>{ row.Category }</td><td class="money">{ row.Total }</td></tr>
+				}
+			</tbody>
+		</table>
+	}
+}
