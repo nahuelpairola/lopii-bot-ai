@@ -1,0 +1,31 @@
+package templates
+
+type AccountSnapshot struct {
+	Name     string
+	Balance  string
+	Currency string
+}
+
+type CuentasData struct {
+	Snapshots  []AccountSnapshot
+	TrendChart TrendChartData
+	Empty      bool
+}
+
+templ Cuentas(data CuentasData) {
+	<h2>Cuentas</h2>
+	if data.Empty {
+		@EmptyState("Todavía no tenés cuentas.")
+	} else {
+		<div class="grid">
+			for _, a := range data.Snapshots {
+				<article>
+					<p>{ a.Name }</p>
+					<p class="money">{ a.Balance } { a.Currency }</p>
+				</article>
+			}
+		</div>
+		<canvas id="cuentas-trend" data-chart-type="line-multi" data-chart-data-id="cuentas-trend-data"></canvas>
+		@templ.JSONScript("cuentas-trend-data", data.TrendChart)
+	}
+}

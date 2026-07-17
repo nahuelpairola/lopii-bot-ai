@@ -20,6 +20,14 @@ func (s stubMovements) SumForUser(q movement.MovementQuery, groupBy string) ([]m
 	return s.rows[groupBy], nil
 }
 
+func (s stubMovements) SumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
+	return decimal.Zero, nil
+}
+
+func (s stubMovements) MonthlyDeltasForAccount(accountID uint64) ([]movement.MonthlyDelta, error) {
+	return nil, nil
+}
+
 type stubAccounts struct{}
 
 func (stubAccounts) FindByUserID(userID uint64) ([]account.Account, error) { return nil, nil }

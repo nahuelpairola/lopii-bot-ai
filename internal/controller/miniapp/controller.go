@@ -2,6 +2,7 @@ package miniapp
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/movement"
 )
@@ -10,6 +11,8 @@ import (
 // convention, consumer-local interface (grows as later tasks add views).
 type movementReader interface {
 	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
+	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
+	MonthlyDeltasForAccount(accountID uint64) ([]movement.MonthlyDelta, error)
 }
 
 // accountReader is the account-repo surface this package needs.
@@ -40,4 +43,5 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 	authed.GET("/resumen", c.handleResumen)
 	authed.GET("/categorias", c.handleCategorias)
 	authed.GET("/categorias/:category", c.handleCategoriaDrill)
+	authed.GET("/cuentas", c.handleCuentas)
 }
