@@ -92,6 +92,7 @@ type reminderRepository interface {
 	Upsert(r *reminder.Reminder) error
 	Disable(userID uint64) error
 	FindByUserID(userID uint64) (*reminder.Reminder, error)
+	SetWeeklySummary(userID uint64, enabled bool) error
 }
 
 type traceRepository interface {

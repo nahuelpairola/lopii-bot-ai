@@ -19,12 +19,25 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 		return
 	}
 
-	if stringOrEmpty(data[reminderActionKey]) == reminderActionOff {
+	switch stringOrEmpty(data[reminderActionKey]) {
+	case reminderActionOff:
 		if err := c.reminders.Disable(userID); err != nil {
 			c.sendText(ctx, b, chatID, msgGenericFlowError)
 			return
 		}
 		c.sendText(ctx, b, chatID, msgReminderDisabled)
+		return
+
+	case reminderActionWeeklyOnly:
+		if err := c.reminders.SetWeeklySummary(userID, flag(data, keyWeeklySummary)); err != nil {
+			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			return
+		}
+		if flag(data, keyWeeklySummary) {
+			c.sendText(ctx, b, chatID, msgWeeklySummaryOn)
+		} else {
+			c.sendText(ctx, b, chatID, msgWeeklySummaryOff)
+		}
 		return
 	}
 
@@ -41,10 +54,11 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 	}
 
 	if err := c.reminders.Upsert(&reminder.Reminder{
-		UserID:         userID,
-		WindowStartMin: startMin,
-		WindowEndMin:   endMin,
-		Enabled:        true,
+		UserID:               userID,
+		WindowStartMin:       startMin,
+		WindowEndMin:         endMin,
+		Enabled:              true,
+		WeeklySummaryEnabled: flag(data, keyWeeklySummary),
 	}); err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return

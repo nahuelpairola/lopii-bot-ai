@@ -43,6 +43,10 @@ const (
 	msgReminderDisabled        = "Dale, no te jodo más con eso 👍 Si querés que vuelva, avisame cuando quieras."
 	msgReminderCancelled       = "Listo, dejé todo como estaba 👌"
 
+	msgAskWeeklySummary = "¿Querés que te mande un resumen de tu semana todos los lunes? 📊"
+	msgWeeklySummaryOn  = "📊 Listo, te mando el resumen todos los lunes."
+	msgWeeklySummaryOff = "📊 Ok, no te mando el resumen semanal."
+
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 

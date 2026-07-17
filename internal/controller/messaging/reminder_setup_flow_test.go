@@ -34,14 +34,21 @@ func TestParseWindow(t *testing.T) {
 }
 
 type fakeReminderRepo struct {
-	upserted *reminder.Reminder
-	disabled uint64
+	upserted     *reminder.Reminder
+	disabled     uint64
+	weeklySet    *bool
+	weeklySetFor uint64
 }
 
 func (f *fakeReminderRepo) Upsert(r *reminder.Reminder) error { f.upserted = r; return nil }
 func (f *fakeReminderRepo) Disable(userID uint64) error       { f.disabled = userID; return nil }
 func (f *fakeReminderRepo) FindByUserID(uint64) (*reminder.Reminder, error) {
 	return nil, nil
+}
+func (f *fakeReminderRepo) SetWeeklySummary(userID uint64, enabled bool) error {
+	f.weeklySetFor = userID
+	f.weeklySet = &enabled
+	return nil
 }
 
 func TestFinishReminderSetup_Preset(t *testing.T) {
@@ -101,6 +108,40 @@ func TestFinishReminderSetup_Cancelled(t *testing.T) {
 func TestNewReminderSetupFlow_Valid(t *testing.T) {
 	// panics at construction if the step graph is invalid
 	_ = NewReminderSetupFlow()
+}
+
+func TestReminderSetup_PresetThenWeeklyYes(t *testing.T) {
+	// onReminderPickWindow(preset) then onReminderWeekly(Sí) sets the flag; finish Upserts it.
+	data := onReminderPickWindow("1200-1320", conversation.Data{conversation.UserIDKey: uint64(42)})
+	data = onReminderWeekly(optionWeeklyOn, data)
+
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, data)
+
+	if repo.upserted == nil || !repo.upserted.WeeklySummaryEnabled {
+		t.Fatalf("expected upsert with WeeklySummaryEnabled=true, got %+v", repo.upserted)
+	}
+	if repo.upserted.WindowStartMin != 1200 || repo.upserted.WindowEndMin != 1320 {
+		t.Fatalf("unexpected window: %+v", repo.upserted)
+	}
+}
+
+func TestReminderSetup_WeeklyOnlyOff(t *testing.T) {
+	// manage entry -> weekly step "No" -> SetWeeklySummary(userID,false), no Upsert/Disable.
+	data := onReminderPickWindow(optionWeeklyManage, conversation.Data{conversation.UserIDKey: uint64(7)})
+	data = onReminderWeekly(optionWeeklyOff, data)
+
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, data)
+
+	if repo.weeklySet == nil || *repo.weeklySet != false || repo.weeklySetFor != 7 {
+		t.Fatalf("expected SetWeeklySummary(7,false), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
+	}
+	if repo.upserted != nil || repo.disabled != 0 {
+		t.Fatal("weekly-only path must not Upsert or Disable")
+	}
 }
 
 func TestExecGetReminder(t *testing.T) {

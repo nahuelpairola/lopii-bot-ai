@@ -40,24 +40,29 @@ const (
 
 	stepReminderPickWindow   = "reminder_pick_window"
 	stepReminderCustomWindow = "reminder_custom_window"
+	stepReminderWeekly       = "reminder_weekly"
 	stepReminderDone         = "reminder_done" // terminal skip step (never rendered)
 
-	reminderActionKey   = "reminder_action" // "set" | "disable"
-	reminderStartKey    = "reminder_start_min"
-	reminderEndKey      = "reminder_end_min"
-	reminderCustomKey   = "reminder_custom_raw"
-	reminderActionSet   = "set"
-	reminderActionOff   = "disable"
-	optionReminderOff   = "reminder_off"
-	optionReminderOther = "reminder_other"
+	reminderActionKey        = "reminder_action" // "set" | "disable" | "weekly_only"
+	reminderStartKey         = "reminder_start_min"
+	reminderEndKey           = "reminder_end_min"
+	reminderCustomKey        = "reminder_custom_raw"
+	reminderActionSet        = "set"
+	reminderActionOff        = "disable"
+	reminderActionWeeklyOnly = "weekly_only"
+	optionReminderOff        = "reminder_off"
+	optionReminderOther      = "reminder_other"
+	optionWeeklyManage       = "weekly_manage"
+	optionWeeklyOn           = "weekly_on"
+	optionWeeklyOff          = "weekly_off"
 )
 
 // window presets, "startMin-endMin" encoded in the option Value.
 var reminderPresets = []conversation.ChoiceOption{
-	{Label: "🌅 Mañana (8 a 10)", Value: "480-600", Finish: true},
-	{Label: "☀️ Mediodía (12 a 14)", Value: "720-840", Finish: true},
-	{Label: "🌆 Tarde (16 a 18)", Value: "960-1080", Finish: true},
-	{Label: "🌙 Noche (20 a 22)", Value: "1200-1320", Finish: true},
+	{Label: "🌅 Mañana (8 a 10)", Value: "480-600", NextStep: stepReminderWeekly},
+	{Label: "☀️ Mediodía (12 a 14)", Value: "720-840", NextStep: stepReminderWeekly},
+	{Label: "🌆 Tarde (16 a 18)", Value: "960-1080", NextStep: stepReminderWeekly},
+	{Label: "🌙 Noche (20 a 22)", Value: "1200-1320", NextStep: stepReminderWeekly},
 }
 
 // onReminderPickWindow records the chosen action/window into Data. Presets and
@@ -72,11 +77,22 @@ func onReminderPickWindow(value string, data conversation.Data) conversation.Dat
 		next[reminderActionKey] = reminderActionOff
 	case optionReminderOther:
 		// no data; advances to the custom text step
+	case optionWeeklyManage:
+		next[reminderActionKey] = reminderActionWeeklyOnly
 	default: // a preset "start-end"
 		start, end := splitPreset(value)
 		next[reminderActionKey] = reminderActionSet
 		next[reminderStartKey] = strconv.Itoa(start)
 		next[reminderEndKey] = strconv.Itoa(end)
+	}
+	return next
+}
+
+// onReminderWeekly records the weekly-summary yes/no into Data.
+func onReminderWeekly(value string, data conversation.Data) conversation.Data {
+	next := copyData(data)
+	if value == optionWeeklyOn {
+		setFlag(next, keyWeeklySummary)
 	}
 	return next
 }
@@ -103,6 +119,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 		opts = append(opts,
 			conversation.ChoiceOption{Label: "⌨️ Otro horario", Value: optionReminderOther, NextStep: stepReminderCustomWindow},
 			conversation.ChoiceOption{Label: "🔕 Apagar recordatorio", Value: optionReminderOff, Finish: true},
+			conversation.ChoiceOption{Label: "📊 Resumen semanal", Value: optionWeeklyManage, NextStep: stepReminderWeekly},
 			cancelOption,
 		)
 		return opts
@@ -112,7 +129,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 		stepReminderPickWindow: conversation.ChoiceStep{
 			PromptText:           func(conversation.Data) string { return msgAskReminderWindow },
 			OptionsFunc:          pickOptions,
-			DeclaredNextSteps:    []string{stepReminderCustomWindow},
+			DeclaredNextSteps:    []string{stepReminderCustomWindow, stepReminderWeekly},
 			OnChoice:             onReminderPickWindow,
 			InvalidChoiceMessage: msgGenericFlowError,
 		},
@@ -125,7 +142,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 				}
 				return ""
 			},
-			NextStep:      stepReminderDone,
+			NextStep:      stepReminderWeekly,
 			EscapeOptions: []conversation.ChoiceOption{cancelOption},
 			OnEscape: func(value string, data conversation.Data) conversation.Data {
 				if value != optionCancel {
@@ -135,6 +152,15 @@ func NewReminderSetupFlow() *conversation.Flow {
 				setFlag(next, keyCancelled)
 				return next
 			},
+		},
+		stepReminderWeekly: conversation.ChoiceStep{
+			PromptText: func(conversation.Data) string { return msgAskWeeklySummary },
+			Options: []conversation.ChoiceOption{
+				{Label: "✅ Sí, dale", Value: optionWeeklyOn, Finish: true},
+				{Label: "No por ahora", Value: optionWeeklyOff, Finish: true},
+			},
+			OnChoice:             onReminderWeekly,
+			InvalidChoiceMessage: msgGenericFlowError,
 		},
 		stepReminderDone: conversation.ChoiceStep{
 			PromptText: func(conversation.Data) string { return "" }, // never rendered
