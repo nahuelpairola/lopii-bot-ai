@@ -290,3 +290,11 @@ func TestAccountCreateFlow_SeededBalance_TypingOverrides(t *testing.T) {
 		t.Errorf("typing should override the seed: account_balance = %v, want %q", result.Data["account_balance"], "999")
 	}
 }
+
+func TestValidateBalanceAmount_AcceptsARComma(t *testing.T) {
+	// validateBalanceAmount returns "" when the input is a valid non-negative
+	// amount, or an error message otherwise. An AR comma-decimal must validate.
+	if msg := validateBalanceAmount("45685,9", nil); msg != "" {
+		t.Errorf("validateBalanceAmount(\"45685,9\") rejected valid AR amount: %q", msg)
+	}
+}

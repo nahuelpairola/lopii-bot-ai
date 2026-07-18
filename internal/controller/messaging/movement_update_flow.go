@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/go-telegram/bot"
-	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -361,7 +360,7 @@ func correctionIsDeletion(rows []movementRow) bool {
 		return false
 	}
 	for _, r := range rows {
-		amt, err := decimal.NewFromString(r.Amount)
+		amt, err := parseARAmount(r.Amount)
 		if err != nil || !amt.IsZero() {
 			return false
 		}

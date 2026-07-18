@@ -181,7 +181,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		stepAccountManageConfirmAdjust: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
 				current := accountManageBalance(balances, data)
-				newTotal, _ := decimal.NewFromString(stringOrEmpty(data[keyNewTotal]))
+				newTotal, _ := parseARAmount(stringOrEmpty(data[keyNewTotal]))
 				return msgConfirmAccountAdjust(
 					stringOrEmpty(data[keyAccountName]),
 					stringOrEmpty(data[keyAccountCurrency]),

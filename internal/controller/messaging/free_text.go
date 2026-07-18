@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
-	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -323,7 +322,7 @@ func (c *controller) accountCreateSeed(ctx context.Context, text string) convers
 	if d.Name != "" {
 		seed[keyAccountName] = d.Name
 	}
-	if amt, err := decimal.NewFromString(d.Balance); err == nil && !amt.IsNegative() {
+	if amt, err := parseARAmount(d.Balance); err == nil && !amt.IsNegative() {
 		seed[keyAccountBalance] = d.Balance
 	}
 	return seed

@@ -294,7 +294,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		if err != nil {
 			return nil, err
 		}
-		amount, err := decimal.NewFromString(row.Amount)
+		amount, err := parseARAmount(row.Amount)
 		if err != nil {
 			return nil, err
 		}
