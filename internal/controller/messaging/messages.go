@@ -50,7 +50,7 @@ const (
 	msgWeeklySummaryOff = "📊 Ok, no te mando el resumen semanal."
 
 	msgWeeklySummaryDisabled = "✅ Listo, no te mando más el resumen semanal. Tu recordatorio diario sigue igual.\n" +
-		"¿Lo querés de vuelta? Escribí \"recordatorios\" → 📊 Resumen semanal → Sí."
+		"¿Lo querés de vuelta? Escribí \"notificaciones\" → 📊 Activar resumen semanal."
 
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."

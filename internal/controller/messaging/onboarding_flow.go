@@ -276,11 +276,12 @@ func (c *controller) insertOnboardingAccounts(userID uint64, rows []onboardingRo
 }
 
 // finishOnboardingReminderOffer applies the onboarding reminder offer: "Sí"
-// hands off to the exact same entry point a REMINDER_SET intent would use
-// (startReminderSetup) — no separate window-picking logic. "No" is a no-op.
+// hands off to the same reminder_setup flow a REMINDER_SET intent would use,
+// via the onboarding entry point that skips the hub and asks weekly directly
+// (startReminderSetupForOnboarding). "No" is a no-op.
 func (c *controller) finishOnboardingReminderOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if stringOrEmpty(data["offer"]) != "yes" {
 		return
 	}
-	c.startReminderSetup(ctx, b, chatID, data.UserID())
+	c.startReminderSetupForOnboarding(ctx, b, chatID, data.UserID())
 }
