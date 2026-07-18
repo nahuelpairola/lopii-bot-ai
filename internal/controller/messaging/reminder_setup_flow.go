@@ -43,7 +43,6 @@ const (
 	stepReminderPickWindow   = "reminder_pick_window"
 	stepReminderCustomWindow = "reminder_custom_window"
 	stepReminderWeekly       = "reminder_weekly"
-	stepReminderDone         = "reminder_done" // terminal skip step (never rendered)
 
 	reminderActionKey        = "reminder_action" // "set" | "disable" | "weekly_only"
 	reminderStartKey         = "reminder_start_min"
@@ -56,7 +55,6 @@ const (
 	reminderActionSoftExit   = "soft_exit"
 	optionReminderOff        = "reminder_off"
 	optionReminderOther      = "reminder_other"
-	optionWeeklyManage       = "weekly_manage"
 	optionWeeklyOn           = "weekly_on"
 	optionWeeklyOff          = "weekly_off"
 	optionHubDaily           = "hub_daily"
@@ -89,8 +87,6 @@ func onReminderPickWindow(value string, data conversation.Data) conversation.Dat
 		next[reminderActionKey] = reminderActionOff
 	case optionReminderOther:
 		// no data; advances to the custom text step
-	case optionWeeklyManage:
-		next[reminderActionKey] = reminderActionWeeklyOnly
 	default: // a preset "start-end"
 		start, end := splitPreset(value)
 		next[reminderActionKey] = reminderActionSet
@@ -206,22 +202,35 @@ func splitPreset(v string) (start, end int) {
 	return 0, 0
 }
 
-// NewReminderSetupFlow builds the deterministic reminder-config flow: a band
-// picker (presets / custom / apagar / cancelar), a custom-window text step, and
-// a terminal skip step. No LLM call — the flow captures everything by button/text.
-func NewReminderSetupFlow() *conversation.Flow {
-	pickOptions := func(conversation.Data) []conversation.ChoiceOption {
-		opts := make([]conversation.ChoiceOption, 0, len(reminderPresets)+3)
-		opts = append(opts, reminderPresets...)
-		opts = append(opts,
-			conversation.ChoiceOption{Label: "⌨️ Otro horario", Value: optionReminderOther, NextStep: stepReminderCustomWindow},
-			conversation.ChoiceOption{Label: "🔕 Apagar recordatorio", Value: optionReminderOff, Finish: true},
-			conversation.ChoiceOption{Label: "📊 Resumen semanal", Value: optionWeeklyManage, NextStep: stepReminderWeekly},
-			cancelOption,
-		)
-		return opts
-	}
+// reminderPickOptions builds the band-picker buttons: presets, custom, "apagar
+// recordatorio diario" (daily only), cancel. NO weekly button — the weekly
+// summary is managed from the hub, never mixed into the band keyboard.
+func reminderPickOptions(conversation.Data) []conversation.ChoiceOption {
+	opts := make([]conversation.ChoiceOption, 0, len(reminderPresets)+3)
+	opts = append(opts, reminderPresets...)
+	opts = append(opts,
+		conversation.ChoiceOption{Label: "⌨️ Otro horario", Value: optionReminderOther, NextStep: stepReminderCustomWindow},
+		conversation.ChoiceOption{Label: "🔕 Apagar recordatorio diario", Value: optionReminderOff, Finish: true},
+		cancelOption,
+	)
+	return opts
+}
 
+// skipWeeklyUnlessAsked skips the weekly Sí/No unless the onboarding entry
+// seeded askWeekly. Hub entries never re-ask weekly (they toggle it from the
+// hub); returning ("", true) completes the flow.
+func skipWeeklyUnlessAsked(data conversation.Data) (string, bool) {
+	if flag(data, keyAskWeekly) {
+		return "", false
+	}
+	return "", true
+}
+
+// NewReminderSetupFlow builds the deterministic reminder-config flow: a hub
+// screen, a band picker (presets / custom / apagar / cancelar), a custom-window
+// text step, and a gated weekly step. No LLM call — the flow captures
+// everything by button/text.
+func NewReminderSetupFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepReminderHub: conversation.ChoiceStep{
 			PromptText:           msgReminderHub,
@@ -233,7 +242,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 		},
 		stepReminderPickWindow: conversation.ChoiceStep{
 			PromptText:           func(conversation.Data) string { return msgAskReminderWindow },
-			OptionsFunc:          pickOptions,
+			OptionsFunc:          reminderPickOptions,
 			DeclaredNextSteps:    []string{stepReminderCustomWindow, stepReminderWeekly},
 			OnChoice:             onReminderPickWindow,
 			InvalidChoiceMessage: msgGenericFlowError,
@@ -266,10 +275,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 			},
 			OnChoice:             onReminderWeekly,
 			InvalidChoiceMessage: msgGenericFlowError,
-		},
-		stepReminderDone: conversation.ChoiceStep{
-			PromptText: func(conversation.Data) string { return "" }, // never rendered
-			SkipIf:     func(conversation.Data) (string, bool) { return "", true },
+			SkipIf:               skipWeeklyUnlessAsked,
 		},
 	}
 

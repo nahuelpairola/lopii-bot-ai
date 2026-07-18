@@ -294,6 +294,36 @@ func TestSkipHubIfSeeded(t *testing.T) {
 	}
 }
 
+func TestPickOptions_NoWeeklyButton(t *testing.T) {
+	// The band picker must not carry the weekly-summary button anymore.
+	flow := NewReminderSetupFlow() // panics if the graph is invalid
+	_ = flow
+	opts := reminderPickOptions(conversation.Data{})
+	for _, o := range opts {
+		if strings.Contains(o.Label, "Resumen semanal") {
+			t.Errorf("picker must not show a weekly button, got %q", o.Label)
+		}
+	}
+	found := false
+	for _, o := range opts {
+		if strings.Contains(o.Label, "Apagar recordatorio diario") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("picker should label the off button 'Apagar recordatorio diario'")
+	}
+}
+
+func TestSkipWeeklyUnlessAsked(t *testing.T) {
+	if next, ok := skipWeeklyUnlessAsked(conversation.Data{}); !ok || next != "" {
+		t.Errorf("hub entry (no askWeekly) must skip weekly and complete, got (%q,%v)", next, ok)
+	}
+	if _, ok := skipWeeklyUnlessAsked(conversation.Data{keyAskWeekly: "true"}); ok {
+		t.Error("onboarding (askWeekly) must NOT skip the weekly step")
+	}
+}
+
 func TestExecGetReminder(t *testing.T) {
 	start := 1200
 	active := &reminder.Reminder{UserID: 5, WindowStartMin: start, WindowEndMin: 1260, Enabled: true}
