@@ -1,0 +1,45 @@
+:root {
+  --pico-spacing: 0.75rem; /* denser than pico's marketing-page default */
+}
+
+.money {
+  font-variant-numeric: tabular-nums;
+}
+
+.neto-good { color: #0ca30c; }
+.neto-critical { color: #d03b3b; }
+
+/* tap-highlight: intentional, not the mobile-Chrome default flash */
+a, button, .tab-link {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.05);
+}
+
+.tab-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-around;
+  border-top: 1px solid var(--pico-muted-border-color);
+  background: var(--pico-background-color);
+  padding: 0.5rem 0;
+}
+
+.tab-link {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.content-area {
+  padding-bottom: 4rem; /* clears the fixed tab bar */
+  overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-canvas { animation: none !important; }
+}

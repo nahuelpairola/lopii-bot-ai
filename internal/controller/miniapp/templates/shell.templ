@@ -1,0 +1,30 @@
+package templates
+
+// Shell is the unauthenticated HTML skeleton served on a full-page
+// navigation. It cannot embed user data: Telegram delivers initData only to
+// client JS (launch-URL hash), so nothing is authenticated server-side yet.
+// Instead #content self-loads loadPath via htmx once telegram-web-app.js has
+// populated window.Telegram.WebApp.initData — that request carries the
+// X-Telegram-Init-Data header (see app.js) and IS authenticated.
+templ Shell(active string, loadPath string) {
+	<!DOCTYPE html>
+	<html lang="es">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ AppName }</title>
+			<script src="https://telegram.org/js/telegram-web-app.js"></script>
+			<link rel="stylesheet" href="/app/static/pico.min.css"/>
+			<link rel="stylesheet" href="/app/static/app.css"/>
+			<script src="/app/static/chart.umd.min.js"></script>
+			<script src="https://unpkg.com/htmx.org@2"></script>
+			<script src="/app/static/app.js"></script>
+		</head>
+		<body>
+			<main class="container content-area" id="content" hx-get={ loadPath } hx-trigger="load">
+				<p aria-busy="true">Cargando…</p>
+			</main>
+			@TabBar(active)
+		</body>
+	</html>
+}

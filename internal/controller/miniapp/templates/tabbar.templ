@@ -1,0 +1,34 @@
+package templates
+
+templ TabBar(active string) {
+	<nav class="tab-bar">
+		<a class="tab-link" href={ RouteOverview } hx-get={ RouteOverview } hx-target="#content" hx-push-url="true">
+			if active == TabOverview {
+				<strong>Resumen</strong>
+			} else {
+				Resumen
+			}
+		</a>
+		<a class="tab-link" href={ RouteCategories } hx-get={ RouteCategories } hx-target="#content" hx-push-url="true">
+			if active == TabCategories {
+				<strong>Categorías</strong>
+			} else {
+				Categorías
+			}
+		</a>
+		<a class="tab-link" href={ RouteMatrix } hx-get={ RouteMatrix } hx-target="#content" hx-push-url="true">
+			if active == TabMatrix {
+				<strong>Matriz</strong>
+			} else {
+				Matriz
+			}
+		</a>
+		<a class="tab-link" href={ RouteAccounts } hx-get={ RouteAccounts } hx-target="#content" hx-push-url="true">
+			if active == TabAccounts {
+				<strong>Cuentas</strong>
+			} else {
+				Cuentas
+			}
+		</a>
+	</nav>
+}
