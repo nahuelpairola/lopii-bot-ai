@@ -8,7 +8,13 @@ package templates
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-func Shell(active string, content templ.Component) templ.Component {
+// Shell is the unauthenticated HTML skeleton served on a full-page
+// navigation. It cannot embed user data: Telegram delivers initData only to
+// client JS (launch-URL hash), so nothing is authenticated server-side yet.
+// Instead #content self-loads loadPath via htmx once telegram-web-app.js has
+// populated window.Telegram.WebApp.initData — that request carries the
+// X-Telegram-Init-Data header (see app.js) and IS authenticated.
+func Shell(active string, loadPath string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -29,15 +35,20 @@ func Shell(active string, content templ.Component) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Mis finanzas</title><script src=\"https://telegram.org/js/telegram-web-app.js\"></script><link rel=\"stylesheet\" href=\"/app/static/pico.min.css\"><link rel=\"stylesheet\" href=\"/app/static/app.css\"><script src=\"/app/static/chart.umd.min.js\"></script><script src=\"https://unpkg.com/htmx.org@2\"></script><script src=\"/app/static/app.js\"></script></head><body><main class=\"container content-area\" id=\"content\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Mis finanzas</title><script src=\"https://telegram.org/js/telegram-web-app.js\"></script><link rel=\"stylesheet\" href=\"/app/static/pico.min.css\"><link rel=\"stylesheet\" href=\"/app/static/app.css\"><script src=\"/app/static/chart.umd.min.js\"></script><script src=\"https://unpkg.com/htmx.org@2\"></script><script src=\"/app/static/app.js\"></script></head><body><main class=\"container content-area\" id=\"content\" hx-get=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = content.Render(ctx, templ_7745c5c3_Buffer)
+		var templ_7745c5c3_Var2 string
+		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(loadPath)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/shell.templ`, Line: 24, Col: 70}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" hx-trigger=\"load\"><p aria-busy=\"true\">Cargando…</p></main>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -13,6 +13,9 @@ import (
 )
 
 func (c *controller) handleMatriz(ctx *gin.Context) {
+	if serveShellIfNav(ctx, "matriz", "/app/matriz") {
+		return
+	}
 	userID := ctx.GetUint64(contextUserIDKey)
 	expenseType := "expense"
 	now := time.Now()
@@ -68,5 +71,5 @@ func (c *controller) handleMatriz(ctx *gin.Context) {
 	}
 
 	ctx.Status(http.StatusOK)
-	templates.Shell("matriz", templates.Matriz(data)).Render(ctx.Request.Context(), ctx.Writer)
+	templates.Matriz(data).Render(ctx.Request.Context(), ctx.Writer)
 }

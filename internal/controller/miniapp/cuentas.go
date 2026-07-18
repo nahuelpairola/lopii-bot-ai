@@ -15,6 +15,9 @@ import (
 var accountSlotColors = []string{"#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"}
 
 func (c *controller) handleCuentas(ctx *gin.Context) {
+	if serveShellIfNav(ctx, "cuentas", "/app/cuentas") {
+		return
+	}
 	userID := ctx.GetUint64(contextUserIDKey)
 
 	accounts, err := c.accounts.FindByUserID(userID)
@@ -64,7 +67,7 @@ func (c *controller) handleCuentas(ctx *gin.Context) {
 	data.TrendChart = templates.TrendChartData{Labels: allMonths, Datasets: datasets}
 
 	ctx.Status(http.StatusOK)
-	templates.Shell("cuentas", templates.Cuentas(data)).Render(ctx.Request.Context(), ctx.Writer)
+	templates.Cuentas(data).Render(ctx.Request.Context(), ctx.Writer)
 }
 
 type monthBalance struct {

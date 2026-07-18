@@ -62,5 +62,28 @@ function initCharts(root) {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => initCharts(document));
-document.body.addEventListener('htmx:afterSwap', (evt) => initCharts(evt.detail.target));
+// Telegram delivers initData only to client JS (in the launch URL hash) —
+// it never reaches the server on the first full-page navigation. So we
+// inject it as a header on every htmx request; the server's authInitData
+// middleware verifies THAT (the shell itself loads unauthenticated).
+document.addEventListener('htmx:configRequest', (evt) => {
+  try {
+    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+      evt.detail.headers['X-Telegram-Init-Data'] = window.Telegram.WebApp.initData;
+    }
+  } catch (e) { /* opened outside Telegram — request goes unauthenticated, server 401s */ }
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    if (window.Telegram && window.Telegram.WebApp) {
+      window.Telegram.WebApp.ready();
+      window.Telegram.WebApp.expand();
+    }
+  } catch (e) { /* not inside Telegram */ }
+  initCharts(document);
+});
+
+// htmx events bubble to document — listen there, NOT on document.body (this
+// script is in <head>, where document.body is still null).
+document.addEventListener('htmx:afterSwap', (evt) => initCharts(evt.detail.target));

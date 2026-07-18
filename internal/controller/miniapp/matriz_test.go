@@ -2,7 +2,6 @@ package miniapp
 
 import (
 	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 
@@ -34,10 +33,8 @@ func TestHandleMatriz_RendersTableFallback(t *testing.T) {
 	router := gin.New()
 	c.RegisterRoutes(router)
 
-	initData := buildInitData(t, "999", timeNow(), testBotToken)
-	req := httptest.NewRequest("GET", "/app/matriz?tgWebAppData="+url.QueryEscape(initData), nil)
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/matriz"))
 
 	if w.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())

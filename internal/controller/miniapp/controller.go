@@ -1,11 +1,19 @@
 package miniapp
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/movement"
 )
+
+// hxRequestHeader is htmx's marker on every request it issues. Its presence
+// is how the app tells a data-fetch (htmx, carries initData) from a
+// full-page navigation (plain browser, no initData yet).
+const hxRequestHeader = "HX-Request"
 
 // movementReader is the movement-repo surface this package needs — repo
 // convention, consumer-local interface (grows as later tasks add views).
@@ -45,4 +53,17 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 	authed.GET("/categorias/:category", c.handleCategoriaDrill)
 	authed.GET("/cuentas", c.handleCuentas)
 	authed.GET("/matriz", c.handleMatriz)
+}
+
+// serveShellIfNav serves the HTML shell for a full-page navigation (no
+// initData yet — auth was skipped) and returns true, telling the handler to
+// stop. On an htmx request (already authed, initData verified) it returns
+// false so the handler renders just the data partial into #content.
+func serveShellIfNav(ctx *gin.Context, active, loadPath string) bool {
+	if ctx.GetHeader(hxRequestHeader) != "" {
+		return false
+	}
+	ctx.Status(http.StatusOK)
+	templates.Shell(active, loadPath).Render(ctx.Request.Context(), ctx.Writer)
+	return true
 }

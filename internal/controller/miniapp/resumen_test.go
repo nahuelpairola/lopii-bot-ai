@@ -2,7 +2,6 @@ package miniapp
 
 import (
 	"net/http/httptest"
-	"net/url"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -49,12 +48,47 @@ func TestHandleResumen_RendersOK(t *testing.T) {
 	router := gin.New()
 	c.RegisterRoutes(router)
 
-	initData := buildInitData(t, "999", timeNow(), testBotToken)
-	req := httptest.NewRequest("GET", "/app/resumen?tgWebAppData="+url.QueryEscape(initData), nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/resumen"))
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleResumen_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c := NewController(stubMovements{}, stubAccounts{}, stubUsers{}, testBotToken)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	// No HX-Request, no initData — a plain browser navigation. Must NOT 401;
+	// it serves the shell, which then self-loads the authed content.
+	req := httptest.NewRequest("GET", "/app/resumen", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	if w.Code != 200 {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+		t.Fatalf("expected 200 shell, got %d", w.Code)
+	}
+	if !bodyContains(w.Body.String(), `hx-get="/app/resumen"`) {
+		t.Fatal("shell must self-load its content via htmx")
+	}
+}
+
+func TestHandleResumen_HTMXWithoutInitData_401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c := NewController(stubMovements{}, stubAccounts{}, stubUsers{}, testBotToken)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	// htmx request but no initData header — the attacker/out-of-Telegram case.
+	req := httptest.NewRequest("GET", "/app/resumen", nil)
+	req.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != 401 {
+		t.Fatalf("expected 401 for htmx request without initData, got %d", w.Code)
 	}
 }

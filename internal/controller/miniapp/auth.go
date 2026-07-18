@@ -96,19 +96,21 @@ type userLookup interface {
 	FindByTelegramID(telegramID string) (*user.User, error)
 }
 
-// authInitData is Gin middleware guarding every /app route. It reads
-// initData from the X-Telegram-Init-Data header (htmx requests) or the
-// "tgWebAppData" query param (first page load, before any JS runs), verifies
-// it, resolves the Telegram user to our internal user_id, and stores it in
-// the Gin context under contextUserIDKey. Aborts with 401 on any failure.
+// authInitData is Gin middleware for the /app view routes. It enforces auth
+// ONLY on htmx requests (which carry initData in the X-Telegram-Init-Data
+// header, injected client-side by app.js). A plain full-page navigation can
+// never carry initData — Telegram delivers it only to client JS via the
+// launch-URL hash — so those requests pass through and the handler serves the
+// unauthenticated shell, whose htmx content-load THEN authenticates. Data is
+// therefore only ever rendered behind a verified initData (partial path).
 func authInitData(botToken string, users userLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		initData := c.GetHeader(initDataHeader)
-		if initData == "" {
-			initData = c.Query("tgWebAppData")
+		if c.GetHeader(hxRequestHeader) == "" {
+			c.Next() // full-page nav → shell renders unauthenticated
+			return
 		}
 
-		telegramID, ok := verifyInitData(initData, botToken, time.Now())
+		telegramID, ok := verifyInitData(c.GetHeader(initDataHeader), botToken, time.Now())
 		if !ok {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
