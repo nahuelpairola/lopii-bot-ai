@@ -27,3 +27,17 @@ const (
 	NetoGood     = "good"
 	NetoCritical = "critical"
 )
+
+// Chart palette (dataviz skill — categorical slots + status hues). Hex for
+// Chart.js datasets; HeatmapBaseRGB is the same primary as an "r,g,b" triple
+// for the matrix cell rgba().
+const (
+	ColorExpense   = "#2a78d6" // primary (also categorical slot 0)
+	ColorIncome    = "#1baf7a"
+	ColorBar       = "#2a78d6"
+	HeatmapBaseRGB = "42,120,214" // == #2a78d6
+)
+
+// AccountSlotColors gives each account a stable color by position ("color
+// follows the entity" — its snapshot and trend line always match).
+var AccountSlotColors = []string{"#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"}

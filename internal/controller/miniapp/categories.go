@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -13,7 +14,7 @@ import (
 
 func (c *controller) handleCategories(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
-	data, err := c.buildCategoriesData(userID, "category", nil)
+	data, err := c.buildCategoriesData(userID, movement.GroupByCategory, nil)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
@@ -25,7 +26,7 @@ func (c *controller) handleCategories(ctx *gin.Context) {
 func (c *controller) handleCategoryDrill(ctx *gin.Context) {
 	category := ctx.Param("category")
 	userID := ctx.GetUint64(contextUserIDKey)
-	data, err := c.buildCategoriesData(userID, "subcategory", &category)
+	data, err := c.buildCategoriesData(userID, movement.GroupBySubcategory, &category)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
@@ -35,7 +36,7 @@ func (c *controller) handleCategoryDrill(ctx *gin.Context) {
 }
 
 func (c *controller) buildCategoriesData(userID uint64, groupBy string, category *string) (templates.CategoriesData, error) {
-	expenseType := "expense"
+	expenseType := constants.Expense
 	now := time.Now()
 	from := now.AddDate(0, -trendMonths, 0)
 
@@ -66,6 +67,6 @@ func (c *controller) buildCategoriesData(userID uint64, groupBy string, category
 		f, _ := r.Total.Float64()
 		values[i] = f
 	}
-	out.Chart = templates.BarChartData{Labels: labels, Values: values, Color: "#2a78d6"}
+	out.Chart = templates.BarChartData{Labels: labels, Values: values, Color: templates.ColorBar}
 	return out, nil
 }

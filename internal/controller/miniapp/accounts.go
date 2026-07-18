@@ -8,12 +8,6 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// accountSlotColors mirrors the dataviz skill's fixed categorical order —
-// each account gets a stable slot by position, so its snapshot and its
-// trend line always share the same color (spec §8, "color follows the
-// entity").
-var accountSlotColors = []string{"#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"}
-
 func (c *controller) handleAccounts(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
 
@@ -55,7 +49,7 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 
 	var datasets []templates.TrendDataset
 	for i, a := range accounts {
-		color := accountSlotColors[i%len(accountSlotColors)]
+		color := templates.AccountSlotColors[i%len(templates.AccountSlotColors)]
 		datasets = append(datasets, templates.TrendDataset{
 			Label: a.Name, Data: valuesForRunning(runningByAccount[i], allMonths), BackgroundColor: color,
 		})

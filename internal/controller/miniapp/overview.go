@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -20,25 +21,25 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 	now := time.Now()
 	from := now.AddDate(0, -trendMonths, 0)
 
-	expenseType := "expense"
-	incomeType := "income"
+	expenseType := constants.Expense
+	incomeType := constants.Income
 
-	expenseRows, err := c.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: now, Currency: cur, Type: &expenseType}, "")
+	expenseRows, err := c.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: now, Currency: cur, Type: &expenseType}, movement.GroupByNone)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	incomeRows, err := c.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: now, Currency: cur, Type: &incomeType}, "")
+	incomeRows, err := c.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: now, Currency: cur, Type: &incomeType}, movement.GroupByNone)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	expenseByMonth, err := c.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: now, Currency: cur, Type: &expenseType}, "month")
+	expenseByMonth, err := c.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: now, Currency: cur, Type: &expenseType}, movement.GroupByMonth)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	incomeByMonth, err := c.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: now, Currency: cur, Type: &incomeType}, "month")
+	incomeByMonth, err := c.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: now, Currency: cur, Type: &incomeType}, movement.GroupByMonth)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
@@ -48,9 +49,9 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 	incomes := sumTotal(incomeRows)
 	neto := incomes.Sub(expenses)
 
-	status := "good"
+	status := templates.NetoGood
 	if neto.IsNegative() {
-		status = "critical"
+		status = templates.NetoCritical
 	}
 
 	data := templates.OverviewData{
@@ -80,8 +81,8 @@ func buildTrendChart(expenses, incomes []movement.CategorySum) templates.TrendCh
 	return templates.TrendChartData{
 		Labels: labels,
 		Datasets: []templates.TrendDataset{
-			{Label: "Gastos", Data: valuesForLabels(expenses, labels), BackgroundColor: "#2a78d6"},
-			{Label: "Ingresos", Data: valuesForLabels(incomes, labels), BackgroundColor: "#1baf7a"},
+			{Label: "Gastos", Data: valuesForLabels(expenses, labels), BackgroundColor: templates.ColorExpense},
+			{Label: "Ingresos", Data: valuesForLabels(incomes, labels), BackgroundColor: templates.ColorIncome},
 		},
 	}
 }

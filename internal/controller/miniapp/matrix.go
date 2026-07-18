@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -14,7 +15,7 @@ import (
 
 func (c *controller) handleMatrix(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
-	expenseType := "expense"
+	expenseType := constants.Expense
 	now := time.Now()
 
 	months := make([]string, trendMonths)
@@ -30,7 +31,7 @@ func (c *controller) handleMatrix(ctx *gin.Context) {
 
 		rows, err := c.movements.SumForUser(movement.MovementQuery{
 			UserID: userID, From: from, To: to, Currency: currency.ARS, Type: &expenseType,
-		}, "subcategory")
+		}, movement.GroupBySubcategory)
 		if err != nil {
 			ctx.AbortWithStatus(http.StatusInternalServerError)
 			return

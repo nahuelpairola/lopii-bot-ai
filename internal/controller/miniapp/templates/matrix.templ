@@ -38,7 +38,7 @@ templ Matrix(data MatrixData) {
 							for _, cell := range row.Cells {
 								<td
 									class="money"
-									style={ "background-color: rgba(42,120,214," + cell.Intensity + ")" }
+									style={ "background-color: rgba(" + HeatmapBaseRGB + "," + cell.Intensity + ")" }
 								>{ cell.Value }</td>
 							}
 						</tr>
