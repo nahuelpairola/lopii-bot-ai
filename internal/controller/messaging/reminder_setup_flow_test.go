@@ -324,6 +324,66 @@ func TestSkipWeeklyUnlessAsked(t *testing.T) {
 	}
 }
 
+func newReminderTestEngine() (*conversation.Engine, *fakeStateStore) {
+	store := &fakeStateStore{}
+	engine := conversation.NewEngine(store, func(string) string { return "los recordatorios" })
+	engine.Register(NewReminderSetupFlow())
+	return engine, store
+}
+
+func TestReminderFlow_HubBandChange_SkipsWeekly(t *testing.T) {
+	engine, _ := newReminderTestEngine()
+	// hub entry seeded as if the user already had weekly ON and daily OFF
+	seed := conversation.Data{keyWeeklySummary: "true", keyHubHasRow: "true"}
+	if _, err := engine.StartWithData(1, reminderSetupFlowName, seed); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	// tap "Activar recordatorio diario" -> picker
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionHubDaily}); err != nil {
+		t.Fatalf("hub choice: %v", err)
+	}
+	// pick a preset band -> should COMPLETE (weekly skipped), preserving weekly=true
+	res, _, err := engine.Handle(1, conversation.Input{CallbackData: "1200-1320"})
+	if err != nil {
+		t.Fatalf("preset: %v", err)
+	}
+	if !res.Finished {
+		t.Fatal("hub band change must finish without asking the weekly question")
+	}
+	if stringOrEmpty(res.Data[keyWeeklySummary]) != "true" {
+		t.Errorf("weekly flag must be preserved through a band change, got %q", res.Data[keyWeeklySummary])
+	}
+	if stringOrEmpty(res.Data[reminderActionKey]) != reminderActionSet {
+		t.Errorf("expected action=set, got %q", res.Data[reminderActionKey])
+	}
+}
+
+func TestReminderFlow_Onboarding_SkipsHubShowsWeekly(t *testing.T) {
+	engine, _ := newReminderTestEngine()
+	seed := conversation.Data{}
+	setFlag(seed, keySkipHub)
+	setFlag(seed, keyAskWeekly)
+	prompt, err := engine.StartWithData(1, reminderSetupFlowName, seed)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	// hub was skipped -> first prompt is the band picker
+	if !strings.Contains(prompt.Text, "franja") {
+		t.Fatalf("onboarding must land on the band picker, got prompt %q", prompt.Text)
+	}
+	// pick a band -> weekly question shown (NOT finished)
+	res, _, err := engine.Handle(1, conversation.Input{CallbackData: "1200-1320"})
+	if err != nil {
+		t.Fatalf("preset: %v", err)
+	}
+	if res.Finished {
+		t.Fatal("onboarding must show the weekly question after the band, not finish")
+	}
+	if !strings.Contains(res.Prompt.Text, "resumen") {
+		t.Errorf("expected the weekly-summary question, got %q", res.Prompt.Text)
+	}
+}
+
 func TestExecGetReminder(t *testing.T) {
 	start := 1200
 	active := &reminder.Reminder{UserID: 5, WindowStartMin: start, WindowEndMin: 1260, Enabled: true}
