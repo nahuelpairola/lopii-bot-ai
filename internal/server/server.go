@@ -197,16 +197,20 @@ func inititalizeBot(conf *config.Config, engine *gin.Engine) (*bot.Bot, error) {
 
 	engine.POST("/webhook/telegram", gin.WrapH(tgBot.WebhookHandler()))
 
-	_, err = tgBot.SetChatMenuButton(context.Background(), &bot.SetChatMenuButtonParams{
-		MenuButton: &models.MenuButtonWebApp{
-			Type:   models.MenuButtonTypeWebApp,
-			Text:   "Mis finanzas",
-			WebApp: models.WebAppInfo{URL: conf.Server.BaseHost + "/app/resumen"},
-		},
-	})
-	if err != nil {
-		return nil, err
-	}
+	// The Mini App menu button is cosmetic — register it best-effort, OFF the
+	// boot critical path. A slow or failing Telegram call here must never
+	// delay or abort the webhook loop (the bot's core function).
+	go func() {
+		if _, err := tgBot.SetChatMenuButton(context.Background(), &bot.SetChatMenuButtonParams{
+			MenuButton: &models.MenuButtonWebApp{
+				Type:   models.MenuButtonTypeWebApp,
+				Text:   "Mis finanzas",
+				WebApp: models.WebAppInfo{URL: conf.Server.BaseHost + "/app/resumen"},
+			},
+		}); err != nil {
+			slog.Error("miniapp: SetChatMenuButton failed", "err", err)
+		}
+	}()
 
 	go tgBot.StartWebhook(context.Background())
 	return tgBot, nil
