@@ -117,7 +117,7 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 	}
 	sb.WriteString(line + "\n")
 
-	cats, err := b.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: to, Currency: cur, Type: &expense}, "category")
+	cats, err := b.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: to, Currency: cur, Type: &expense}, movement.GroupByCategory)
 	if err != nil {
 		return "", err
 	}
@@ -146,7 +146,7 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 
 // total runs SumForUser with no grouping and returns the single total (0 if none).
 func (b *Builder) total(q movement.MovementQuery) (decimal.Decimal, error) {
-	rows, err := b.movements.SumForUser(q, "")
+	rows, err := b.movements.SumForUser(q, movement.GroupByNone)
 	if err != nil {
 		return decimal.Zero, err
 	}

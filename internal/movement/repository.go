@@ -308,20 +308,33 @@ func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 	return db
 }
 
+// GroupBy* are the recognized group_by keys for SumForUser. Exported so
+// callers name the grouping instead of passing a magic string; groupLabelExpr
+// is the single place that maps each key to its SQL expression.
+const (
+	GroupByNone        = ""
+	GroupByCategory    = "category"
+	GroupBySubcategory = "subcategory"
+	GroupByType        = "type"
+	GroupByMonth       = "month"
+	GroupByDay         = "day"
+	GroupByAccount     = "account"
+)
+
 // groupLabelExpr maps a group_by name to its SQL expression, or "" for none.
 func groupLabelExpr(groupBy string) string {
 	switch groupBy {
-	case "category":
+	case GroupByCategory:
 		return "s.category"
-	case "subcategory":
+	case GroupBySubcategory:
 		return "s.subcategory"
-	case "type":
+	case GroupByType:
 		return "movements.type::text"
-	case "month":
+	case GroupByMonth:
 		return "to_char(movements.date, 'YYYY-MM')"
-	case "day":
+	case GroupByDay:
 		return "to_char(movements.date, 'YYYY-MM-DD')"
-	case "account":
+	case GroupByAccount:
 		return "movements.account_id::text"
 	default:
 		return ""
