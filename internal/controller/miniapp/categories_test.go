@@ -9,7 +9,7 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-func TestHandleCategorias_ExcludesReservedCategories(t *testing.T) {
+func TestHandleCategories_ExcludesReservedCategories(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"category": {
@@ -22,7 +22,7 @@ func TestHandleCategorias_ExcludesReservedCategories(t *testing.T) {
 	c.RegisterRoutes(router)
 
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categorias"))
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categories"))
 
 	if w.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())

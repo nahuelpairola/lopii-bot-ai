@@ -37,7 +37,7 @@ func (stubUsers) FindByTelegramID(telegramID string) (*user.User, error) {
 	return &user.User{ID: 1, TelegramID: telegramID}, nil
 }
 
-func TestHandleResumen_RendersOK(t *testing.T) {
+func TestHandleOverview_RendersOK(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"":      {{Label: "", Total: decimal.NewFromInt(1000)}},
@@ -49,14 +49,14 @@ func TestHandleResumen_RendersOK(t *testing.T) {
 	c.RegisterRoutes(router)
 
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authedHTMXRequest(t, "/app/resumen"))
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/overview"))
 
 	if w.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 }
 
-func TestHandleResumen_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
+func TestHandleOverview_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c := NewController(stubMovements{}, stubAccounts{}, stubUsers{}, testBotToken)
 	router := gin.New()
@@ -64,26 +64,26 @@ func TestHandleResumen_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
 
 	// No HX-Request, no initData — a plain browser navigation. Must NOT 401;
 	// it serves the shell, which then self-loads the authed content.
-	req := httptest.NewRequest("GET", "/app/resumen", nil)
+	req := httptest.NewRequest("GET", "/app/overview", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	if w.Code != 200 {
 		t.Fatalf("expected 200 shell, got %d", w.Code)
 	}
-	if !bodyContains(w.Body.String(), `hx-get="/app/resumen"`) {
+	if !bodyContains(w.Body.String(), `hx-get="/app/overview"`) {
 		t.Fatal("shell must self-load its content via htmx")
 	}
 }
 
-func TestHandleResumen_HTMXWithoutInitData_401(t *testing.T) {
+func TestHandleOverview_HTMXWithoutInitData_401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c := NewController(stubMovements{}, stubAccounts{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
 	// htmx request but no initData header — the attacker/out-of-Telegram case.
-	req := httptest.NewRequest("GET", "/app/resumen", nil)
+	req := httptest.NewRequest("GET", "/app/overview", nil)
 	req.Header.Set("HX-Request", "true")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)

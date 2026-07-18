@@ -10,12 +10,12 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-type stubMovementsMatriz struct {
+type stubMovementsMatrix struct {
 	stubMovementsWithAccounts
 	byMonth map[string][]movement.CategorySum // keyed by "YYYY-MM"
 }
 
-func (s stubMovementsMatriz) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
+func (s stubMovementsMatrix) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
 	if groupBy == "subcategory" {
 		key := q.From.Format("2006-01")
 		return s.byMonth[key], nil
@@ -23,10 +23,10 @@ func (s stubMovementsMatriz) SumForUser(q movement.MovementQuery, groupBy string
 	return nil, nil
 }
 
-func TestHandleMatriz_RendersTableFallback(t *testing.T) {
+func TestHandleMatrix_RendersTableFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	currentMonth := time.Now().Format("2006-01")
-	movements := stubMovementsMatriz{byMonth: map[string][]movement.CategorySum{
+	movements := stubMovementsMatrix{byMonth: map[string][]movement.CategorySum{
 		currentMonth: {{Label: "Supermercado", Total: decimal.NewFromInt(1500)}},
 	}}
 	c := NewController(movements, stubAccountsWithData{}, stubUsers{}, testBotToken)
@@ -34,7 +34,7 @@ func TestHandleMatriz_RendersTableFallback(t *testing.T) {
 	c.RegisterRoutes(router)
 
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authedHTMXRequest(t, "/app/matriz"))
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/matrix"))
 
 	if w.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())

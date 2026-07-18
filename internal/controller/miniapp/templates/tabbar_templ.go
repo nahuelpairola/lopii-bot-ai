@@ -29,11 +29,11 @@ func TabBar(active string) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav class=\"tab-bar\"><a class=\"tab-link\" href=\"/app/resumen\" hx-get=\"/app/resumen\" hx-target=\"#content\" hx-push-url=\"true\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav class=\"tab-bar\"><a class=\"tab-link\" href=\"/app/overview\" hx-get=\"/app/overview\" hx-target=\"#content\" hx-push-url=\"true\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if active == "resumen" {
+		if active == "overview" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<strong>Resumen</strong>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -44,11 +44,11 @@ func TabBar(active string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</a> <a class=\"tab-link\" href=\"/app/categorias\" hx-get=\"/app/categorias\" hx-target=\"#content\" hx-push-url=\"true\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</a> <a class=\"tab-link\" href=\"/app/categories\" hx-get=\"/app/categories\" hx-target=\"#content\" hx-push-url=\"true\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if active == "categorias" {
+		if active == "categories" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<strong>Categorías</strong>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -59,11 +59,11 @@ func TabBar(active string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</a> <a class=\"tab-link\" href=\"/app/matriz\" hx-get=\"/app/matriz\" hx-target=\"#content\" hx-push-url=\"true\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</a> <a class=\"tab-link\" href=\"/app/matrix\" hx-get=\"/app/matrix\" hx-target=\"#content\" hx-push-url=\"true\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if active == "matriz" {
+		if active == "matrix" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<strong>Matriz</strong>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -74,11 +74,11 @@ func TabBar(active string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</a> <a class=\"tab-link\" href=\"/app/cuentas\" hx-get=\"/app/cuentas\" hx-target=\"#content\" hx-push-url=\"true\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</a> <a class=\"tab-link\" href=\"/app/accounts\" hx-get=\"/app/accounts\" hx-target=\"#content\" hx-push-url=\"true\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if active == "cuentas" {
+		if active == "accounts" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<strong>Cuentas</strong>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

@@ -7,20 +7,20 @@ type BarChartData struct {
 	Color  string    `json:"color"`
 }
 
-type CategoriaRow struct {
+type CategoryRow struct {
 	Category string
 	Total    string
 }
 
-// CategoriasData renders both the top-level Categorías view and the
+// CategoriesData renders both the top-level Categorías view and the
 // subcategory drill (same shape, different query).
-type CategoriasData struct {
-	Rows  []CategoriaRow
+type CategoriesData struct {
+	Rows  []CategoryRow
 	Chart BarChartData
 	Empty bool
 }
 
-templ Categorias(data CategoriasData) {
+templ Categories(data CategoriesData) {
 	<h2>Categorías</h2>
 	if data.Empty {
 		@EmptyState("Sin gastos en este período.")
@@ -32,7 +32,7 @@ templ Categorias(data CategoriasData) {
 			<tbody>
 				for _, row := range data.Rows {
 					<tr>
-						<td><a href="#" hx-get={ "/app/categorias/" + row.Category } hx-target="#content">{ row.Category }</a></td>
+						<td><a href="#" hx-get={ "/app/categories/" + row.Category } hx-target="#content">{ row.Category }</a></td>
 						<td class="money">{ row.Total }</td>
 					</tr>
 				}
@@ -41,9 +41,9 @@ templ Categorias(data CategoriasData) {
 	}
 }
 
-templ SubcategoriaDrill(category string, data CategoriasData) {
+templ SubcategoryDrill(category string, data CategoriesData) {
 	<h2>{ category }</h2>
-	<a href="#" hx-get="/app/categorias" hx-target="#content">&larr; Volver a Categorías</a>
+	<a href="#" hx-get="/app/categories" hx-target="#content">&larr; Volver a Categorías</a>
 	if data.Empty {
 		@EmptyState("Sin gastos en esta categoría.")
 	} else {

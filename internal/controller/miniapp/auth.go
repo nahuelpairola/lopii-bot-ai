@@ -66,7 +66,7 @@ func authInitData(botToken string, users userLookup) gin.HandlerFunc {
 }
 
 // activeFromPath returns the tab key for a request path — the first segment
-// after "/app/" (e.g. "/app/categorias/Comida" → "categorias"). The tabbar
+// after "/app/" (e.g. "/app/categories/Comida" → "categories"). The tabbar
 // highlights the tab whose key matches.
 func activeFromPath(path string) string {
 	rest := strings.TrimPrefix(path, "/app/")

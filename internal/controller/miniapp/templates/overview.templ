@@ -14,8 +14,8 @@ type TrendDataset struct {
 	BackgroundColor string    `json:"backgroundColor"`
 }
 
-// ResumenData is what Resumen renders.
-type ResumenData struct {
+// OverviewData is what Overview renders.
+type OverviewData struct {
 	Gastos     string
 	Ingresos   string
 	Neto       string
@@ -24,7 +24,7 @@ type ResumenData struct {
 	TrendChart TrendChartData
 }
 
-templ Resumen(data ResumenData) {
+templ Overview(data OverviewData) {
 	<h2>Resumen</h2>
 	<div class="grid">
 		<article>

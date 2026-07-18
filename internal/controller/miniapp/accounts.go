@@ -14,7 +14,7 @@ import (
 // entity").
 var accountSlotColors = []string{"#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"}
 
-func (c *controller) handleCuentas(ctx *gin.Context) {
+func (c *controller) handleAccounts(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
 
 	accounts, err := c.accounts.FindByUserID(userID)
@@ -23,7 +23,7 @@ func (c *controller) handleCuentas(ctx *gin.Context) {
 		return
 	}
 
-	data := templates.CuentasData{Empty: len(accounts) == 0}
+	data := templates.AccountsData{Empty: len(accounts) == 0}
 	var allMonths []string
 	seenMonths := map[string]bool{}
 	var runningByAccount [][]monthBalance
@@ -64,7 +64,7 @@ func (c *controller) handleCuentas(ctx *gin.Context) {
 	data.TrendChart = templates.TrendChartData{Labels: allMonths, Datasets: datasets}
 
 	ctx.Status(http.StatusOK)
-	templates.Cuentas(data).Render(ctx.Request.Context(), ctx.Writer)
+	templates.Accounts(data).Render(ctx.Request.Context(), ctx.Writer)
 }
 
 type monthBalance struct {

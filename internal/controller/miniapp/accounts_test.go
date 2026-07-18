@@ -33,7 +33,7 @@ func (stubAccountsWithData) FindByUserID(userID uint64) ([]account.Account, erro
 	return []account.Account{acct}, nil
 }
 
-func TestHandleCuentas_RendersBalances(t *testing.T) {
+func TestHandleAccounts_RendersBalances(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovementsWithAccounts{
 		balances: map[uint64]decimal.Decimal{1: decimal.NewFromInt(50000)},
@@ -46,7 +46,7 @@ func TestHandleCuentas_RendersBalances(t *testing.T) {
 	c.RegisterRoutes(router)
 
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authedHTMXRequest(t, "/app/cuentas"))
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts"))
 
 	if w.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())

@@ -12,7 +12,7 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-func (c *controller) handleMatriz(ctx *gin.Context) {
+func (c *controller) handleMatrix(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
 	expenseType := "expense"
 	now := time.Now()
@@ -50,16 +50,16 @@ func (c *controller) handleMatriz(ctx *gin.Context) {
 		}
 	}
 
-	data := templates.MatrizData{Months: months, Empty: len(bySubcatByMonth) == 0}
+	data := templates.MatrixData{Months: months, Empty: len(bySubcatByMonth) == 0}
 	for subcat, cellsByMonth := range bySubcatByMonth {
-		row := templates.MatrizRow{Subcategory: subcat, Cells: make([]templates.MatrizCell, trendMonths)}
+		row := templates.MatrixRow{Subcategory: subcat, Cells: make([]templates.MatrixCell, trendMonths)}
 		for i := 0; i < trendMonths; i++ {
 			v := cellsByMonth[i]
 			intensity := 0.0
 			if maxTotal > 0 {
 				intensity = v / maxTotal
 			}
-			row.Cells[i] = templates.MatrizCell{
+			row.Cells[i] = templates.MatrixCell{
 				Value:     fmt.Sprintf("%.0f", v),
 				Intensity: fmt.Sprintf("%.2f", intensity),
 			}
@@ -68,5 +68,5 @@ func (c *controller) handleMatriz(ctx *gin.Context) {
 	}
 
 	ctx.Status(http.StatusOK)
-	templates.Matriz(data).Render(ctx.Request.Context(), ctx.Writer)
+	templates.Matrix(data).Render(ctx.Request.Context(), ctx.Writer)
 }

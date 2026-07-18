@@ -11,30 +11,30 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-func (c *controller) handleCategorias(ctx *gin.Context) {
+func (c *controller) handleCategories(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
-	data, err := c.buildCategoriasData(userID, "category", nil)
+	data, err := c.buildCategoriesData(userID, "category", nil)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 	ctx.Status(http.StatusOK)
-	templates.Categorias(data).Render(ctx.Request.Context(), ctx.Writer)
+	templates.Categories(data).Render(ctx.Request.Context(), ctx.Writer)
 }
 
-func (c *controller) handleCategoriaDrill(ctx *gin.Context) {
+func (c *controller) handleCategoryDrill(ctx *gin.Context) {
 	category := ctx.Param("category")
 	userID := ctx.GetUint64(contextUserIDKey)
-	data, err := c.buildCategoriasData(userID, "subcategory", &category)
+	data, err := c.buildCategoriesData(userID, "subcategory", &category)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 	ctx.Status(http.StatusOK)
-	templates.SubcategoriaDrill(category, data).Render(ctx.Request.Context(), ctx.Writer)
+	templates.SubcategoryDrill(category, data).Render(ctx.Request.Context(), ctx.Writer)
 }
 
-func (c *controller) buildCategoriasData(userID uint64, groupBy string, category *string) (templates.CategoriasData, error) {
+func (c *controller) buildCategoriesData(userID uint64, groupBy string, category *string) (templates.CategoriesData, error) {
 	expenseType := "expense"
 	now := time.Now()
 	from := now.AddDate(0, -trendMonths, 0)
@@ -46,7 +46,7 @@ func (c *controller) buildCategoriasData(userID uint64, groupBy string, category
 
 	rows, err := c.movements.SumForUser(q, groupBy)
 	if err != nil {
-		return templates.CategoriasData{}, err
+		return templates.CategoriesData{}, err
 	}
 
 	filtered := rows[:0]
@@ -57,11 +57,11 @@ func (c *controller) buildCategoriasData(userID uint64, groupBy string, category
 		filtered = append(filtered, r)
 	}
 
-	out := templates.CategoriasData{Empty: len(filtered) == 0}
+	out := templates.CategoriesData{Empty: len(filtered) == 0}
 	labels := make([]string, len(filtered))
 	values := make([]float64, len(filtered))
 	for i, r := range filtered {
-		out.Rows = append(out.Rows, templates.CategoriaRow{Category: r.Label, Total: r.Total.StringFixed(2)})
+		out.Rows = append(out.Rows, templates.CategoryRow{Category: r.Label, Total: r.Total.StringFixed(2)})
 		labels[i] = r.Label
 		f, _ := r.Total.Float64()
 		values[i] = f

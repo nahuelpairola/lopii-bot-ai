@@ -6,13 +6,13 @@ type AccountSnapshot struct {
 	Currency string
 }
 
-type CuentasData struct {
+type AccountsData struct {
 	Snapshots  []AccountSnapshot
 	TrendChart TrendChartData
 	Empty      bool
 }
 
-templ Cuentas(data CuentasData) {
+templ Accounts(data AccountsData) {
 	<h2>Cuentas</h2>
 	if data.Empty {
 		@EmptyState("Todavía no tenés cuentas.")

@@ -205,7 +205,7 @@ func inititalizeBot(conf *config.Config, engine *gin.Engine) (*bot.Bot, error) {
 			MenuButton: &models.MenuButtonWebApp{
 				Type:   models.MenuButtonTypeWebApp,
 				Text:   "Mis finanzas",
-				WebApp: models.WebAppInfo{URL: conf.Server.BaseHost + "/app/resumen"},
+				WebApp: models.WebAppInfo{URL: conf.Server.BaseHost + "/app/overview"},
 			},
 		}); err != nil {
 			slog.Error("miniapp: SetChatMenuButton failed", "err", err)

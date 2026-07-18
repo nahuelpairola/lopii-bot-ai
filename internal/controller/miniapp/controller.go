@@ -45,9 +45,9 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 
 	authed := app.Group("")
 	authed.Use(authInitData(c.botToken, c.users))
-	authed.GET("/resumen", c.handleResumen)
-	authed.GET("/categorias", c.handleCategorias)
-	authed.GET("/categorias/:category", c.handleCategoriaDrill)
-	authed.GET("/cuentas", c.handleCuentas)
-	authed.GET("/matriz", c.handleMatriz)
+	authed.GET("/overview", c.handleOverview)
+	authed.GET("/categories", c.handleCategories)
+	authed.GET("/categories/:category", c.handleCategoryDrill)
+	authed.GET("/accounts", c.handleAccounts)
+	authed.GET("/matrix", c.handleMatrix)
 }

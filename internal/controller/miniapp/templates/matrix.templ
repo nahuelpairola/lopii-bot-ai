@@ -1,22 +1,22 @@
 package templates
 
-type MatrizCell struct {
+type MatrixCell struct {
 	Value     string
 	Intensity string // "0.0".."1.0", CSS rgba alpha
 }
 
-type MatrizRow struct {
+type MatrixRow struct {
 	Subcategory string
-	Cells       []MatrizCell
+	Cells       []MatrixCell
 }
 
-type MatrizData struct {
+type MatrixData struct {
 	Months []string
-	Rows   []MatrizRow
+	Rows   []MatrixRow
 	Empty  bool
 }
 
-templ Matriz(data MatrizData) {
+templ Matrix(data MatrixData) {
 	<h2>Matriz por mes</h2>
 	if data.Empty {
 		@EmptyState("Sin gastos en este período.")
