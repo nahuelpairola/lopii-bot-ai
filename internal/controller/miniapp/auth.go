@@ -69,7 +69,7 @@ func authInitData(botToken string, users userLookup) gin.HandlerFunc {
 // after "/app/" (e.g. "/app/categories/Comida" → "categories"). The tabbar
 // highlights the tab whose key matches.
 func activeFromPath(path string) string {
-	rest := strings.TrimPrefix(path, "/app/")
+	rest := strings.TrimPrefix(path, templates.AppPrefix+"/")
 	if i := strings.IndexByte(rest, '/'); i >= 0 {
 		return rest[:i]
 	}

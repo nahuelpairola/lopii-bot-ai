@@ -2,29 +2,29 @@ package templates
 
 templ TabBar(active string) {
 	<nav class="tab-bar">
-		<a class="tab-link" href="/app/overview" hx-get="/app/overview" hx-target="#content" hx-push-url="true">
-			if active == "overview" {
+		<a class="tab-link" href={ RouteOverview } hx-get={ RouteOverview } hx-target="#content" hx-push-url="true">
+			if active == TabOverview {
 				<strong>Resumen</strong>
 			} else {
 				Resumen
 			}
 		</a>
-		<a class="tab-link" href="/app/categories" hx-get="/app/categories" hx-target="#content" hx-push-url="true">
-			if active == "categories" {
+		<a class="tab-link" href={ RouteCategories } hx-get={ RouteCategories } hx-target="#content" hx-push-url="true">
+			if active == TabCategories {
 				<strong>Categorías</strong>
 			} else {
 				Categorías
 			}
 		</a>
-		<a class="tab-link" href="/app/matrix" hx-get="/app/matrix" hx-target="#content" hx-push-url="true">
-			if active == "matrix" {
+		<a class="tab-link" href={ RouteMatrix } hx-get={ RouteMatrix } hx-target="#content" hx-push-url="true">
+			if active == TabMatrix {
 				<strong>Matriz</strong>
 			} else {
 				Matriz
 			}
 		</a>
-		<a class="tab-link" href="/app/accounts" hx-get="/app/accounts" hx-target="#content" hx-push-url="true">
-			if active == "accounts" {
+		<a class="tab-link" href={ RouteAccounts } hx-get={ RouteAccounts } hx-target="#content" hx-push-url="true">
+			if active == TabAccounts {
 				<strong>Cuentas</strong>
 			} else {
 				Cuentas

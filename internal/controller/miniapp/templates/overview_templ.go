@@ -83,7 +83,7 @@ func Overview(data OverviewData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if data.NetoStatus == "good" {
+		if data.NetoStatus == NetoGood {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " class=\"money neto-good\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

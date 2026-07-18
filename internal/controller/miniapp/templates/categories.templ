@@ -32,7 +32,7 @@ templ Categories(data CategoriesData) {
 			<tbody>
 				for _, row := range data.Rows {
 					<tr>
-						<td><a href="#" hx-get={ "/app/categories/" + row.Category } hx-target="#content">{ row.Category }</a></td>
+						<td><a href="#" hx-get={ RouteCategories + "/" + row.Category } hx-target="#content">{ row.Category }</a></td>
 						<td class="money">{ row.Total }</td>
 					</tr>
 				}
@@ -43,7 +43,7 @@ templ Categories(data CategoriesData) {
 
 templ SubcategoryDrill(category string, data CategoriesData) {
 	<h2>{ category }</h2>
-	<a href="#" hx-get="/app/categories" hx-target="#content">&larr; Volver a Categorías</a>
+	<a href="#" hx-get={ RouteCategories } hx-target="#content">&larr; Volver a Categorías</a>
 	if data.Empty {
 		@EmptyState("Sin gastos en esta categoría.")
 	} else {

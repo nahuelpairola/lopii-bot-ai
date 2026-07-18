@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/movement"
 )
 
@@ -11,6 +12,14 @@ import (
 // is how the app tells a data-fetch (htmx, carries initData) from a
 // full-page navigation (plain browser, no initData yet).
 const hxRequestHeader = "HX-Request"
+
+// EntryPath is the Mini App landing route (Telegram menu button → here).
+// MenuButtonText is the button's label. Exported for server.go's
+// SetChatMenuButton; single source is templates.
+const (
+	EntryPath      = templates.RouteOverview
+	MenuButtonText = templates.AppName
+)
 
 // movementReader is the movement-repo surface this package needs — repo
 // convention, consumer-local interface (grows as later tasks add views).
@@ -40,14 +49,14 @@ func NewController(movements movementReader, accounts accountReader, users userL
 // authInitData except the static asset mount (CSS/JS need to load before
 // any auth check can run client-side).
 func (c *controller) RegisterRoutes(engine *gin.Engine) {
-	app := engine.Group("/app")
+	app := engine.Group(templates.AppPrefix)
 	registerStatic(app)
 
 	authed := app.Group("")
 	authed.Use(authInitData(c.botToken, c.users))
-	authed.GET("/overview", c.handleOverview)
-	authed.GET("/categories", c.handleCategories)
-	authed.GET("/categories/:category", c.handleCategoryDrill)
-	authed.GET("/accounts", c.handleAccounts)
-	authed.GET("/matrix", c.handleMatrix)
+	authed.GET("/"+templates.TabOverview, c.handleOverview)
+	authed.GET("/"+templates.TabCategories, c.handleCategories)
+	authed.GET("/"+templates.TabCategories+"/:category", c.handleCategoryDrill)
+	authed.GET("/"+templates.TabAccounts, c.handleAccounts)
+	authed.GET("/"+templates.TabMatrix, c.handleMatrix)
 }

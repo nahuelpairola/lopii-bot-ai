@@ -204,8 +204,8 @@ func inititalizeBot(conf *config.Config, engine *gin.Engine) (*bot.Bot, error) {
 		if _, err := tgBot.SetChatMenuButton(context.Background(), &bot.SetChatMenuButtonParams{
 			MenuButton: &models.MenuButtonWebApp{
 				Type:   models.MenuButtonTypeWebApp,
-				Text:   "Mis finanzas",
-				WebApp: models.WebAppInfo{URL: conf.Server.BaseHost + "/app/overview"},
+				Text:   miniappctrl.MenuButtonText,
+				WebApp: models.WebAppInfo{URL: conf.Server.BaseHost + miniappctrl.EntryPath},
 			},
 		}); err != nil {
 			slog.Error("miniapp: SetChatMenuButton failed", "err", err)
