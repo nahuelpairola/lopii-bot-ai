@@ -28,12 +28,43 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 		c.sendText(ctx, b, chatID, msgReminderDisabled)
 		return
 
-	case reminderActionWeeklyOnly:
-		if err := c.reminders.SetWeeklySummary(userID, flag(data, keyWeeklySummary)); err != nil {
+	case reminderActionOffAll:
+		if err := c.reminders.Disable(userID); err != nil {
 			c.sendText(ctx, b, chatID, msgGenericFlowError)
 			return
 		}
-		if flag(data, keyWeeklySummary) {
+		if err := c.reminders.SetWeeklySummary(userID, false); err != nil {
+			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			return
+		}
+		c.sendText(ctx, b, chatID, msgReminderAllOff)
+		return
+
+	case reminderActionSoftExit:
+		c.sendText(ctx, b, chatID, msgReminderHubExit)
+		return
+
+	case reminderActionWeeklyOnly:
+		on := flag(data, keyWeeklySummary)
+		if on && !flag(data, keyHubHasRow) {
+			// no row yet: SetWeeklySummary is UPDATE-only and would no-op.
+			// Create a minimal weekly-only row (daily disabled).
+			if err := c.reminders.Upsert(&reminder.Reminder{
+				UserID:               userID,
+				Enabled:              false,
+				WeeklySummaryEnabled: true,
+			}); err != nil {
+				c.sendText(ctx, b, chatID, msgGenericFlowError)
+				return
+			}
+			c.sendText(ctx, b, chatID, msgWeeklySummaryOn)
+			return
+		}
+		if err := c.reminders.SetWeeklySummary(userID, on); err != nil {
+			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			return
+		}
+		if on {
 			c.sendText(ctx, b, chatID, msgWeeklySummaryOn)
 		} else {
 			c.sendText(ctx, b, chatID, msgWeeklySummaryOff)

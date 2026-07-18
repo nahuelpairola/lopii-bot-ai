@@ -551,7 +551,7 @@ func TestStartAccountCreate_FlowNotRegistered_IsReported(t *testing.T) {
 func TestStartReminderSetup_FlowNotRegistered_IsReported(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" }) // reminder_setup not registered
-	c := &controller{engine: engine}
+	c := &controller{engine: engine, reminders: &fakeReminderRepo{}}
 
 	err := c.startReminderSetup(context.Background(), nil, 0, 1)
 

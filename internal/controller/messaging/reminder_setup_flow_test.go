@@ -128,19 +128,259 @@ func TestReminderSetup_PresetThenWeeklyYes(t *testing.T) {
 }
 
 func TestReminderSetup_WeeklyOnlyOff(t *testing.T) {
-	// manage entry -> weekly step "No" -> SetWeeklySummary(userID,false), no Upsert/Disable.
-	data := onReminderPickWindow(optionWeeklyManage, conversation.Data{conversation.UserIDKey: uint64(7)})
-	data = onReminderWeekly(optionWeeklyOff, data)
-
+	// weekly toggle OFF (row exists) -> SetWeeklySummary(userID,false); no Upsert/Disable.
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), nil, 0, data)
-
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(7),
+		reminderActionKey:      reminderActionWeeklyOnly,
+		keyHubHasRow:           "true",
+		// keyWeeklySummary absent => turning OFF
+	})
 	if repo.weeklySet == nil || *repo.weeklySet != false || repo.weeklySetFor != 7 {
 		t.Fatalf("expected SetWeeklySummary(7,false), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
 	}
 	if repo.upserted != nil || repo.disabled != 0 {
 		t.Fatal("weekly-only path must not Upsert or Disable")
+	}
+}
+
+func TestFinishReminderSetup_OffAll(t *testing.T) {
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(42),
+		reminderActionKey:      reminderActionOffAll,
+	})
+	if repo.disabled != 42 {
+		t.Fatalf("expected Disable(42), got %d", repo.disabled)
+	}
+	if repo.weeklySet == nil || *repo.weeklySet != false || repo.weeklySetFor != 42 {
+		t.Fatalf("expected SetWeeklySummary(42,false), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
+	}
+}
+
+func TestFinishReminderSetup_SoftExit(t *testing.T) {
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(1),
+		reminderActionKey:      reminderActionSoftExit,
+	})
+	if repo.upserted != nil || repo.disabled != 0 || repo.weeklySet != nil {
+		t.Fatal("soft-exit must not touch the repo")
+	}
+}
+
+func TestFinishReminderSetup_WeeklyActivateNoRow(t *testing.T) {
+	// activating weekly for a user with NO reminders row must Upsert a minimal
+	// row (SetWeeklySummary is UPDATE-only and would silently no-op).
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(8),
+		reminderActionKey:      reminderActionWeeklyOnly,
+		keyWeeklySummary:       "true",
+		// keyHubHasRow absent => no row
+	})
+	if repo.upserted == nil || !repo.upserted.WeeklySummaryEnabled || repo.upserted.Enabled {
+		t.Fatalf("expected minimal weekly-only upsert (weekly=true, enabled=false), got %+v", repo.upserted)
+	}
+	if repo.weeklySet != nil {
+		t.Fatal("no-row activate must Upsert, not SetWeeklySummary")
+	}
+}
+
+func TestFinishReminderSetup_WeeklyActivateHasRow(t *testing.T) {
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(9),
+		reminderActionKey:      reminderActionWeeklyOnly,
+		keyWeeklySummary:       "true",
+		keyHubHasRow:           "true",
+	})
+	if repo.weeklySet == nil || *repo.weeklySet != true || repo.weeklySetFor != 9 {
+		t.Fatalf("expected SetWeeklySummary(9,true), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
+	}
+	if repo.upserted != nil {
+		t.Fatal("has-row activate must not Upsert")
+	}
+}
+
+func hubOpt(t *testing.T, opts []conversation.ChoiceOption, value string) conversation.ChoiceOption {
+	t.Helper()
+	for _, o := range opts {
+		if o.Value == value {
+			return o
+		}
+	}
+	t.Fatalf("option %q not found in %+v", value, opts)
+	return conversation.ChoiceOption{}
+}
+
+func TestHubOptions_AllOff(t *testing.T) {
+	opts := hubOptions(conversation.Data{})
+	daily := hubOpt(t, opts, optionHubDaily)
+	if !strings.Contains(daily.Label, "Activar recordatorio diario") {
+		t.Errorf("daily-off label should say Activar recordatorio diario, got %q", daily.Label)
+	}
+	if daily.NextStep != stepReminderPickWindow {
+		t.Errorf("daily option must route to the picker, got %q", daily.NextStep)
+	}
+	weekly := hubOpt(t, opts, optionWeeklyOn)
+	if !strings.Contains(weekly.Label, "Activar resumen") || !weekly.Finish {
+		t.Errorf("weekly-off toggle should say Activar and Finish, got %+v", weekly)
+	}
+	for _, o := range opts {
+		if o.Value == optionOffAll {
+			t.Error("Apagar todo must be hidden when nothing is on")
+		}
+	}
+	_ = hubOpt(t, opts, optionSoftExit) // Salir always present
+}
+
+func TestHubOptions_AllOn(t *testing.T) {
+	data := conversation.Data{
+		keyHubDailyOn:    "true",
+		reminderStartKey: "1200",
+		reminderEndKey:   "1320",
+		keyWeeklySummary: "true",
+	}
+	opts := hubOptions(data)
+	daily := hubOpt(t, opts, optionHubDaily)
+	if !strings.Contains(daily.Label, "Cambiar horario") || !strings.Contains(daily.Label, "20-22") {
+		t.Errorf("daily-on label should show Cambiar horario (20-22), got %q", daily.Label)
+	}
+	weekly := hubOpt(t, opts, optionWeeklyOff)
+	if !strings.Contains(weekly.Label, "Desactivar resumen") || !weekly.Finish {
+		t.Errorf("weekly-on toggle should say Desactivar and Finish, got %+v", weekly)
+	}
+	off := hubOpt(t, opts, optionOffAll)
+	if !off.Finish {
+		t.Errorf("Apagar todo must Finish, got %+v", off)
+	}
+}
+
+func TestOnReminderHub(t *testing.T) {
+	cases := []struct {
+		value      string
+		wantAction string
+		wantWeekly string // "" = flag absent
+	}{
+		{optionHubDaily, "", ""},
+		{optionWeeklyOn, reminderActionWeeklyOnly, "true"},
+		{optionWeeklyOff, reminderActionWeeklyOnly, "false"},
+		{optionOffAll, reminderActionOffAll, ""},
+		{optionSoftExit, reminderActionSoftExit, ""},
+	}
+	for _, c := range cases {
+		got := onReminderHub(c.value, conversation.Data{})
+		if stringOrEmpty(got[reminderActionKey]) != c.wantAction {
+			t.Errorf("%s: action = %q, want %q", c.value, got[reminderActionKey], c.wantAction)
+		}
+		if stringOrEmpty(got[keyWeeklySummary]) != c.wantWeekly {
+			t.Errorf("%s: weekly flag = %q, want %q", c.value, got[keyWeeklySummary], c.wantWeekly)
+		}
+	}
+}
+
+func TestSkipHubIfSeeded(t *testing.T) {
+	if next, ok := skipHubIfSeeded(conversation.Data{keySkipHub: "true"}); !ok || next != stepReminderPickWindow {
+		t.Errorf("seeded skipHub should skip to picker, got (%q,%v)", next, ok)
+	}
+	if _, ok := skipHubIfSeeded(conversation.Data{}); ok {
+		t.Error("no seed => hub must not be skipped")
+	}
+}
+
+func TestPickOptions_NoWeeklyButton(t *testing.T) {
+	// The band picker must not carry the weekly-summary button anymore.
+	flow := NewReminderSetupFlow() // panics if the graph is invalid
+	_ = flow
+	opts := reminderPickOptions(conversation.Data{})
+	for _, o := range opts {
+		if strings.Contains(o.Label, "Resumen semanal") {
+			t.Errorf("picker must not show a weekly button, got %q", o.Label)
+		}
+	}
+	found := false
+	for _, o := range opts {
+		if strings.Contains(o.Label, "Apagar recordatorio diario") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("picker should label the off button 'Apagar recordatorio diario'")
+	}
+}
+
+func TestSkipWeeklyUnlessAsked(t *testing.T) {
+	if next, ok := skipWeeklyUnlessAsked(conversation.Data{}); !ok || next != "" {
+		t.Errorf("hub entry (no askWeekly) must skip weekly and complete, got (%q,%v)", next, ok)
+	}
+	if _, ok := skipWeeklyUnlessAsked(conversation.Data{keyAskWeekly: "true"}); ok {
+		t.Error("onboarding (askWeekly) must NOT skip the weekly step")
+	}
+}
+
+func newReminderTestEngine() (*conversation.Engine, *fakeStateStore) {
+	store := &fakeStateStore{}
+	engine := conversation.NewEngine(store, func(string) string { return "los recordatorios" })
+	engine.Register(NewReminderSetupFlow())
+	return engine, store
+}
+
+func TestReminderFlow_HubBandChange_SkipsWeekly(t *testing.T) {
+	engine, _ := newReminderTestEngine()
+	// hub entry seeded as if the user already had weekly ON and daily OFF
+	seed := conversation.Data{keyWeeklySummary: "true", keyHubHasRow: "true"}
+	if _, err := engine.StartWithData(1, reminderSetupFlowName, seed); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	// tap "Activar recordatorio diario" -> picker
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionHubDaily}); err != nil {
+		t.Fatalf("hub choice: %v", err)
+	}
+	// pick a preset band -> should COMPLETE (weekly skipped), preserving weekly=true
+	res, _, err := engine.Handle(1, conversation.Input{CallbackData: "1200-1320"})
+	if err != nil {
+		t.Fatalf("preset: %v", err)
+	}
+	if !res.Finished {
+		t.Fatal("hub band change must finish without asking the weekly question")
+	}
+	if stringOrEmpty(res.Data[keyWeeklySummary]) != "true" {
+		t.Errorf("weekly flag must be preserved through a band change, got %q", res.Data[keyWeeklySummary])
+	}
+	if stringOrEmpty(res.Data[reminderActionKey]) != reminderActionSet {
+		t.Errorf("expected action=set, got %q", res.Data[reminderActionKey])
+	}
+}
+
+func TestReminderFlow_Onboarding_SkipsHubShowsWeekly(t *testing.T) {
+	engine, _ := newReminderTestEngine()
+	seed := conversation.Data{}
+	setFlag(seed, keySkipHub)
+	setFlag(seed, keyAskWeekly)
+	prompt, err := engine.StartWithData(1, reminderSetupFlowName, seed)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	// hub was skipped -> first prompt is the band picker
+	if !strings.Contains(prompt.Text, "franja") {
+		t.Fatalf("onboarding must land on the band picker, got prompt %q", prompt.Text)
+	}
+	// pick a band -> weekly question shown (NOT finished)
+	res, _, err := engine.Handle(1, conversation.Input{CallbackData: "1200-1320"})
+	if err != nil {
+		t.Fatalf("preset: %v", err)
+	}
+	if res.Finished {
+		t.Fatal("onboarding must show the weekly question after the band, not finish")
+	}
+	if !strings.Contains(res.Prompt.Text, "resumen") {
+		t.Errorf("expected the weekly-summary question, got %q", res.Prompt.Text)
 	}
 }
 
