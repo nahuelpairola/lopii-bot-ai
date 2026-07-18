@@ -14,6 +14,8 @@ require (
 	gorm.io/gorm v1.31.1
 )
 
+require github.com/telegram-mini-apps/init-data-golang v1.5.0
+
 require (
 	github.com/a-h/templ v0.3.1020
 	github.com/bytedance/gopkg v0.1.3 // indirect
