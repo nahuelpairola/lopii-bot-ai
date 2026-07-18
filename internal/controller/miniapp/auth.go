@@ -3,10 +3,12 @@ package miniapp
 import (
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	initdata "github.com/telegram-mini-apps/init-data-golang"
+	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/user"
 )
 
@@ -32,7 +34,12 @@ type userLookup interface {
 func authInitData(botToken string, users userLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.GetHeader(hxRequestHeader) == "" {
-			c.Next() // full-page nav → shell renders unauthenticated
+			// full-page nav: no initData yet. Serve the shell, which self-loads
+			// its content via htmx (that request IS authenticated).
+			c.Status(http.StatusOK)
+			templates.Shell(activeFromPath(c.Request.URL.Path), c.Request.URL.Path).
+				Render(c.Request.Context(), c.Writer)
+			c.Abort()
 			return
 		}
 
@@ -56,4 +63,15 @@ func authInitData(botToken string, users userLookup) gin.HandlerFunc {
 		c.Set(contextUserIDKey, u.ID)
 		c.Next()
 	}
+}
+
+// activeFromPath returns the tab key for a request path — the first segment
+// after "/app/" (e.g. "/app/categorias/Comida" → "categorias"). The tabbar
+// highlights the tab whose key matches.
+func activeFromPath(path string) string {
+	rest := strings.TrimPrefix(path, "/app/")
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		return rest[:i]
+	}
+	return rest
 }

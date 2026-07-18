@@ -15,9 +15,6 @@ import (
 var accountSlotColors = []string{"#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"}
 
 func (c *controller) handleCuentas(ctx *gin.Context) {
-	if serveShellIfNav(ctx, "cuentas", "/app/cuentas") {
-		return
-	}
 	userID := ctx.GetUint64(contextUserIDKey)
 
 	accounts, err := c.accounts.FindByUserID(userID)

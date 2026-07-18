@@ -12,9 +12,6 @@ import (
 )
 
 func (c *controller) handleCategorias(ctx *gin.Context) {
-	if serveShellIfNav(ctx, "categorias", "/app/categorias") {
-		return
-	}
 	userID := ctx.GetUint64(contextUserIDKey)
 	data, err := c.buildCategoriasData(userID, "category", nil)
 	if err != nil {
@@ -27,9 +24,6 @@ func (c *controller) handleCategorias(ctx *gin.Context) {
 
 func (c *controller) handleCategoriaDrill(ctx *gin.Context) {
 	category := ctx.Param("category")
-	if serveShellIfNav(ctx, "categorias", "/app/categorias/"+category) {
-		return
-	}
 	userID := ctx.GetUint64(contextUserIDKey)
 	data, err := c.buildCategoriasData(userID, "subcategory", &category)
 	if err != nil {

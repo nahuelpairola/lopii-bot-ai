@@ -14,9 +14,6 @@ import (
 const trendMonths = 6
 
 func (c *controller) handleResumen(ctx *gin.Context) {
-	if serveShellIfNav(ctx, "resumen", "/app/resumen") {
-		return
-	}
 	userID := ctx.GetUint64(contextUserIDKey)
 	cur := currency.ARS // Phase 1: ARS fixed; currency toggle lands in a later task
 

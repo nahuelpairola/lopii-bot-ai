@@ -13,9 +13,6 @@ import (
 )
 
 func (c *controller) handleMatriz(ctx *gin.Context) {
-	if serveShellIfNav(ctx, "matriz", "/app/matriz") {
-		return
-	}
 	userID := ctx.GetUint64(contextUserIDKey)
 	expenseType := "expense"
 	now := time.Now()
