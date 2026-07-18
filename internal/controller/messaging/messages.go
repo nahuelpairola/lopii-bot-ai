@@ -42,6 +42,8 @@ const (
 	msgInvalidReminderWindow   = "No entendí el horario. Escribilo como \"20 a 21\" (en 24 hs, de menor a mayor)."
 	msgReminderDisabled        = "Dale, no te jodo más con eso 👍 Si querés que vuelva, avisame cuando quieras."
 	msgReminderCancelled       = "Listo, dejé todo como estaba 👌"
+	msgReminderAllOff          = "🔕 Listo, apagué todas las notificaciones: ni recordatorio diario ni resumen semanal. Cuando quieras algo de vuelta, escribime \"notificaciones\"."
+	msgReminderHubExit         = "Listo 👌 Dejé todo como estaba."
 
 	msgAskWeeklySummary = "¿Querés que te mande un resumen de tu semana todos los lunes? 📊"
 	msgWeeklySummaryOn  = "📊 Listo, te mando el resumen todos los lunes."

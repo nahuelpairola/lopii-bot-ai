@@ -128,19 +128,83 @@ func TestReminderSetup_PresetThenWeeklyYes(t *testing.T) {
 }
 
 func TestReminderSetup_WeeklyOnlyOff(t *testing.T) {
-	// manage entry -> weekly step "No" -> SetWeeklySummary(userID,false), no Upsert/Disable.
-	data := onReminderPickWindow(optionWeeklyManage, conversation.Data{conversation.UserIDKey: uint64(7)})
-	data = onReminderWeekly(optionWeeklyOff, data)
-
+	// weekly toggle OFF (row exists) -> SetWeeklySummary(userID,false); no Upsert/Disable.
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), nil, 0, data)
-
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(7),
+		reminderActionKey:      reminderActionWeeklyOnly,
+		keyHubHasRow:           "true",
+		// keyWeeklySummary absent => turning OFF
+	})
 	if repo.weeklySet == nil || *repo.weeklySet != false || repo.weeklySetFor != 7 {
 		t.Fatalf("expected SetWeeklySummary(7,false), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
 	}
 	if repo.upserted != nil || repo.disabled != 0 {
 		t.Fatal("weekly-only path must not Upsert or Disable")
+	}
+}
+
+func TestFinishReminderSetup_OffAll(t *testing.T) {
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(42),
+		reminderActionKey:      reminderActionOffAll,
+	})
+	if repo.disabled != 42 {
+		t.Fatalf("expected Disable(42), got %d", repo.disabled)
+	}
+	if repo.weeklySet == nil || *repo.weeklySet != false || repo.weeklySetFor != 42 {
+		t.Fatalf("expected SetWeeklySummary(42,false), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
+	}
+}
+
+func TestFinishReminderSetup_SoftExit(t *testing.T) {
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(1),
+		reminderActionKey:      reminderActionSoftExit,
+	})
+	if repo.upserted != nil || repo.disabled != 0 || repo.weeklySet != nil {
+		t.Fatal("soft-exit must not touch the repo")
+	}
+}
+
+func TestFinishReminderSetup_WeeklyActivateNoRow(t *testing.T) {
+	// activating weekly for a user with NO reminders row must Upsert a minimal
+	// row (SetWeeklySummary is UPDATE-only and would silently no-op).
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(8),
+		reminderActionKey:      reminderActionWeeklyOnly,
+		keyWeeklySummary:       "true",
+		// keyHubHasRow absent => no row
+	})
+	if repo.upserted == nil || !repo.upserted.WeeklySummaryEnabled || repo.upserted.Enabled {
+		t.Fatalf("expected minimal weekly-only upsert (weekly=true, enabled=false), got %+v", repo.upserted)
+	}
+	if repo.weeklySet != nil {
+		t.Fatal("no-row activate must Upsert, not SetWeeklySummary")
+	}
+}
+
+func TestFinishReminderSetup_WeeklyActivateHasRow(t *testing.T) {
+	repo := &fakeReminderRepo{}
+	c := &controller{reminders: repo}
+	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
+		conversation.UserIDKey: uint64(9),
+		reminderActionKey:      reminderActionWeeklyOnly,
+		keyWeeklySummary:       "true",
+		keyHubHasRow:           "true",
+	})
+	if repo.weeklySet == nil || *repo.weeklySet != true || repo.weeklySetFor != 9 {
+		t.Fatalf("expected SetWeeklySummary(9,true), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
+	}
+	if repo.upserted != nil {
+		t.Fatal("has-row activate must not Upsert")
 	}
 }
 

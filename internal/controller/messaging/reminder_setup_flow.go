@@ -51,11 +51,15 @@ const (
 	reminderActionSet        = "set"
 	reminderActionOff        = "disable"
 	reminderActionWeeklyOnly = "weekly_only"
+	reminderActionOffAll     = "off_all"
+	reminderActionSoftExit   = "soft_exit"
 	optionReminderOff        = "reminder_off"
 	optionReminderOther      = "reminder_other"
 	optionWeeklyManage       = "weekly_manage"
 	optionWeeklyOn           = "weekly_on"
 	optionWeeklyOff          = "weekly_off"
+
+	keyHubHasRow = "hub_has_row" // seeded true when the user already has a reminders row
 )
 
 // window presets, "startMin-endMin" encoded in the option Value.
