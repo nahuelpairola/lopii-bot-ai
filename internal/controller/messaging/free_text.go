@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -63,12 +64,12 @@ func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, tex
 // handleFreeText is the entry point for any message with no flow
 // already in progress: Call 1 (router) decides which of the four
 // intents it is, and every other function in this file handles one.
-func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) {
+func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	result, err := c.orchestrator.ClassifyIntent(ctx, text)
 	if err != nil {
 		slog.ErrorContext(ctx, "intent classification failed", "user_id", userID, "err", err)
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
-		return
+		return fmt.Errorf("classify intent: %w", err)
 	}
 
 	slog.InfoContext(ctx, "intent classified",
@@ -90,8 +91,9 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 			}
 			c.resolveMetric(ctx, userID, outcomeQueryFailed)
 		}
+		return qErr
 	case orchestrator.IntentCreate:
-		c.startMovementCreate(ctx, b, chatID, userID, text, result.NeedsConfirmation)
+		return c.startMovementCreate(ctx, b, chatID, userID, text, result.NeedsConfirmation)
 	case orchestrator.IntentUpdate:
 		c.startMovementUpdate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentDelete:
@@ -105,6 +107,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	default:
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 	}
+	return nil
 }
 
 // startSubcategoryWizard starts the classic 7-step wizard fresh — the
@@ -334,17 +337,17 @@ func (c *controller) accountCreateSeed(ctx context.Context, text string) convers
 // directly (no gaps — the frictionless default) or start
 // movement_create seeded with whatever was resolved, landing on the
 // first real gap.
-func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, needsConfirmation bool) {
+func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, needsConfirmation bool) error {
 	if needsConfirmation {
 		c.startMovementConfirm(ctx, b, chatID, userID)
-		return
+		return nil
 	}
 	slog.InfoContext(ctx, "flow started", "flow", movementCreateFlowName, "user_id", userID)
 
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
-		return
+		return fmt.Errorf("create: find subcategories: %w", err)
 	}
 	taxonomy := make([]orchestrator.TaxonomyEntry, 0, len(subs))
 	for _, s := range subs {
@@ -354,7 +357,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 	accs, err := c.accounts.FindByUserID(userID)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
-		return
+		return fmt.Errorf("create: find accounts: %w", err)
 	}
 	accountOptions := make([]orchestrator.AccountOption, 0, len(accs))
 	for _, a := range accs {
@@ -364,7 +367,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 	result, err := c.orchestrator.ClassifyCreate(ctx, text, taxonomy, accountOptions, time.Now().Format("2006-01-02"))
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
-		return
+		return fmt.Errorf("create: classify: %w", err)
 	}
 	slog.DebugContext(ctx, "create classification result", "result", result)
 
@@ -388,29 +391,31 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 				prompt, serr := c.engine.StartWithData(userID, movementNegativeConfirmFlowName, gateSeed)
 				if serr != nil {
 					c.sendText(ctx, b, chatID, msgGenericFlowError)
-					return
+					return fmt.Errorf("create: start negative-confirm flow: %w", serr)
 				}
 				if b != nil {
 					c.sendPrompt(ctx, b, chatID, prompt)
 				}
-				return
+				return nil
 			}
+			c.resolveMetric(ctx, userID, outcomeCreateFailed)
 			c.sendText(ctx, b, chatID, createErrorCopy(err))
-			return
+			return fmt.Errorf("create insert (%s): %w", guardReason(err), err)
 		}
 		c.resolveMetric(ctx, userID, outcomeCreateInserted)
 		c.sendText(ctx, b, chatID, msgConfirmMovements(inserted))
-		return
+		return nil
 	}
 
 	prompt, err := c.engine.StartWithData(userID, movementCreateFlowName, seed)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
-		return
+		return fmt.Errorf("create: start movement_create flow: %w", err)
 	}
 	if b != nil {
 		c.sendPrompt(ctx, b, chatID, prompt)
 	}
+	return nil
 }
 
 // startMovementUpdate resolves which existing movement(s) the message

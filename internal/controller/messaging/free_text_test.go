@@ -462,6 +462,32 @@ func TestStartMovementCreate_NoGaps_ResolvesInserted(t *testing.T) {
 	}
 }
 
+func TestStartMovementCreate_InsertFailure_IsReported(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Café")
+	subRepo := &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
+		all:              []subcategory.Subcategory{*sub},
+	}
+	metrics := &fakeMetricRepo{}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}, insertErr: context.DeadlineExceeded}
+	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
+		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
+	}}}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}, movements: movRepo, orchestrator: orch, engine: engine, metrics: metrics}
+
+	err := c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
+
+	if err == nil {
+		t.Fatal("startMovementCreate returned nil on insert failure; want error surfaced to the spine")
+	}
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateFailed {
+		t.Errorf("resolved = %+v, want [%q]", metrics.resolved, outcomeCreateFailed)
+	}
+}
+
 func TestFinishMovementConfirmFlow_Rewrite_ResolvesRewrite(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	c := &controller{metrics: metrics}
