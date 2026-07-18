@@ -488,6 +488,78 @@ func TestStartMovementCreate_InsertFailure_IsReported(t *testing.T) {
 	}
 }
 
+func TestStartMovementUpdate_RepoFailure_IsReported(t *testing.T) {
+	movRepo := &fakeMovementRepoFull{similarErr: context.DeadlineExceeded}
+	c := &controller{movements: movRepo, orchestrator: &fakeFullOrchestrator{}, subcategories: &fakeSubcategoryRepoFull{}}
+
+	err := c.startMovementUpdate(context.Background(), nil, 0, 1, "el café en realidad fue 3500")
+
+	if err == nil {
+		t.Fatal("startMovementUpdate returned nil on repo failure; want error surfaced to the spine")
+	}
+}
+
+func TestStartMovementDelete_RepoFailure_IsReported(t *testing.T) {
+	movRepo := &fakeMovementRepoFull{similarErr: context.DeadlineExceeded}
+	c := &controller{movements: movRepo, orchestrator: &fakeFullOrchestrator{}, subcategories: &fakeSubcategoryRepoFull{}}
+
+	err := c.startMovementDelete(context.Background(), nil, 0, 1, "borrá lo de ayer")
+
+	if err == nil {
+		t.Fatal("startMovementDelete returned nil on repo failure; want error surfaced to the spine")
+	}
+}
+
+func TestStartAccountManage_RepoFailure_IsReported(t *testing.T) {
+	accs := &fakeAccountRepoFull{byUserIDErr: context.DeadlineExceeded}
+	c := &controller{accounts: accs, orchestrator: &fakeFullOrchestrator{}}
+
+	err := c.startAccountManage(context.Background(), nil, 0, 1, "cambiá el monto")
+
+	if err == nil {
+		t.Fatal("startAccountManage returned nil on repo failure; want error surfaced to the spine")
+	}
+}
+
+func TestStartSubcategorySetup_RepoAndWizardFailure_IsReported(t *testing.T) {
+	// FindAllForUser fails -> falls back to the wizard; the wizard flow isn't
+	// registered either, so both layers fail and the error must surface.
+	subs := &fakeSubcategoryRepoFull{allErr: context.DeadlineExceeded}
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	c := &controller{subcategories: subs, orchestrator: &fakeFullOrchestrator{}, engine: engine}
+
+	err := c.startSubcategorySetup(context.Background(), nil, 0, 1, "categoría nueva")
+
+	if err == nil {
+		t.Fatal("startSubcategorySetup returned nil when both the LLM path and the wizard fallback failed")
+	}
+}
+
+func TestStartAccountCreate_FlowNotRegistered_IsReported(t *testing.T) {
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" }) // account_create not registered
+	c := &controller{orchestrator: &fakeFullOrchestrator{}, engine: engine}
+
+	err := c.startAccountCreate(context.Background(), nil, 0, 1, "nueva cuenta")
+
+	if err == nil {
+		t.Fatal("startAccountCreate returned nil when the flow could not start; want error surfaced to the spine")
+	}
+}
+
+func TestStartReminderSetup_FlowNotRegistered_IsReported(t *testing.T) {
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" }) // reminder_setup not registered
+	c := &controller{engine: engine}
+
+	err := c.startReminderSetup(context.Background(), nil, 0, 1)
+
+	if err == nil {
+		t.Fatal("startReminderSetup returned nil when the flow could not start; want error surfaced to the spine")
+	}
+}
+
 func TestFinishMovementConfirmFlow_Rewrite_ResolvesRewrite(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	c := &controller{metrics: metrics}

@@ -20,6 +20,7 @@ func uint64Ptr(v uint64) *uint64 { return &v }
 type fakeSubcategoryRepoFull struct {
 	byCategoryAndSub map[string]*subcategory.Subcategory
 	all              []subcategory.Subcategory
+	allErr           error
 	categories       []string
 }
 
@@ -31,7 +32,7 @@ func (r *fakeSubcategoryRepoFull) FindByCategoryAndSubcategory(userID uint64, ca
 	return s, nil
 }
 func (r *fakeSubcategoryRepoFull) FindAllForUser(userID uint64) ([]subcategory.Subcategory, error) {
-	return r.all, nil
+	return r.all, r.allErr
 }
 func (r *fakeSubcategoryRepoFull) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	return r.categories, nil
@@ -45,6 +46,7 @@ func (r *fakeSubcategoryRepoFull) Reload() error                           { ret
 type fakeAccountRepoFull struct {
 	byCurrency   map[currency.Currency]*account.Account
 	byUserID     []account.Account
+	byUserIDErr  error
 	byID         map[uint64]*account.Account
 	inserted     []account.Account
 	balances     map[uint64]string
@@ -72,7 +74,7 @@ func (r *fakeAccountRepoFull) FindDefaultByCurrency(userID uint64, c currency.Cu
 	return a, nil
 }
 func (r *fakeAccountRepoFull) FindByUserID(userID uint64) ([]account.Account, error) {
-	return r.byUserID, nil
+	return r.byUserID, r.byUserIDErr
 }
 func (r *fakeAccountRepoFull) GetAccount(id uint64) (*account.Account, error) {
 	a, ok := r.byID[id]
@@ -105,6 +107,7 @@ type fakeMovementRepoFull struct {
 	replaced       []movement.Movement
 	deletedIDs     []uint
 	similar        []movement.Movement
+	similarErr     error
 	insertErr      error
 	openings       []movement.AccountOpening
 	reassignFrom   uint64
@@ -136,7 +139,7 @@ func (r *fakeMovementRepoFull) FindSimilarForUser(userID uint64, query string, s
 	return r.similar, nil
 }
 func (r *fakeMovementRepoFull) FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]movement.Movement, error) {
-	return r.similar, nil
+	return r.similar, r.similarErr
 }
 func (r *fakeMovementRepoFull) SoftDeleteByIDs(ids []uint) error {
 	r.deletedIDs = ids
