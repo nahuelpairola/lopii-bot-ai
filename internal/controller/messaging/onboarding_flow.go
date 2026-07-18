@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
-	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -55,7 +54,7 @@ func decodeOnboardingRows(data conversation.Data) []onboardingRow {
 func onboardingRowsFromDrafts(drafts []orchestrator.OnboardingAccountDraft) []onboardingRow {
 	rows := make([]onboardingRow, 0, len(drafts))
 	for _, d := range drafts {
-		amt, err := decimal.NewFromString(d.Balance)
+		amt, err := parseARAmount(d.Balance)
 		if err != nil {
 			continue
 		}
@@ -256,7 +255,7 @@ func (c *controller) insertOnboardingAccounts(userID uint64, rows []onboardingRo
 	}
 	items := make([]movement.AccountOpening, 0, len(rows))
 	for _, row := range rows {
-		amount, err := decimal.NewFromString(row.Balance)
+		amount, err := parseARAmount(row.Balance)
 		if err != nil {
 			return err
 		}

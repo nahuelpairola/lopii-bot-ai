@@ -206,7 +206,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
-				c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+				return &uid, c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
 			}
 			return &uid, nil
 		}

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
-	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -60,7 +59,7 @@ func (c *controller) insertAccountOpeningMovement(userID, accountID uint64, cur,
 	if err != nil {
 		return err
 	}
-	amount, err := decimal.NewFromString(balanceText)
+	amount, err := parseARAmount(balanceText)
 	if err != nil {
 		return err
 	}

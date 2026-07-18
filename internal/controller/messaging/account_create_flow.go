@@ -1,7 +1,6 @@
 package messaging
 
 import (
-	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -137,7 +136,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 // validateBalanceAmount validates that text is a valid decimal amount
 // (non-negative). Used in account creation and initial balance flows.
 func validateBalanceAmount(text string, _ conversation.Data) string {
-	amount, err := decimal.NewFromString(text)
+	amount, err := parseARAmount(text)
 	if err != nil || amount.IsNegative() {
 		return account.MsgInvalidAmount
 	}

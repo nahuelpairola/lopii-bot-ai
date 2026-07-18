@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
-	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -68,7 +67,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
 	}
-	newTotal, err := decimal.NewFromString(stringOrEmpty(data[keyNewTotal]))
+	newTotal, err := parseARAmount(stringOrEmpty(data[keyNewTotal]))
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return
