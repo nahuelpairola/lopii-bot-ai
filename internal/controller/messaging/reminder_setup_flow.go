@@ -314,21 +314,3 @@ func (c *controller) startReminderSetup(ctx context.Context, b *bot.Bot, chatID 
 	return nil
 }
 
-// startReminderSetupForOnboarding enters the same flow from onboarding: it skips
-// the hub (the user just said "yes, remind me") and lands on the band picker,
-// then offers the weekly summary as a separate step (askWeekly seed).
-func (c *controller) startReminderSetupForOnboarding(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) error {
-	slog.InfoContext(ctx, "flow started", "flow", reminderSetupFlowName, "user_id", userID, "via", "onboarding")
-	seed := conversation.Data{}
-	setFlag(seed, keySkipHub)
-	setFlag(seed, keyAskWeekly)
-	prompt, err := c.engine.StartWithData(userID, reminderSetupFlowName, seed)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
-		return fmt.Errorf("start reminder_setup (onboarding) flow: %w", err)
-	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
-	return nil
-}

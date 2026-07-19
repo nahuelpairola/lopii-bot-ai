@@ -119,8 +119,6 @@ func InitServer(conf *config.Config) error {
 	})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
-	conversationEngine.Register(messagingctrl.NewOnboardingCollectFlow())
-	conversationEngine.Register(messagingctrl.NewOnboardingConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
 	conversationEngine.Register(messagingctrl.NewMovementConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
@@ -134,7 +132,6 @@ func InitServer(conf *config.Config) error {
 	conversationEngine.Register(messagingctrl.NewCategoryProposalConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewMovementNegativeConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewReminderSetupFlow())
-	conversationEngine.Register(messagingctrl.NewOnboardingReminderOfferFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)

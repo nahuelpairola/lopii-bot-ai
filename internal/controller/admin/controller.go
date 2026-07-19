@@ -8,7 +8,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-telegram/bot"
 	messagingctrl "lopiibot.com/internal/controller/messaging"
-	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/middleware"
 	"lopiibot.com/internal/user"
 )
@@ -21,7 +20,6 @@ type resetter interface {
 }
 type onboardingEngine interface {
 	Clear(userID uint64) error
-	Start(userID uint64, flowName string) (conversation.Prompt, error)
 }
 
 type controller struct {
@@ -63,15 +61,10 @@ func (c *controller) Reset(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "could not clear flow state"})
 		return
 	}
-	prompt, err := c.engine.Start(u.ID, messagingctrl.OnboardingCollectFlowName)
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "could not start onboarding"})
-		return
-	}
 	if c.bot != nil {
 		if chatID, convErr := strconv.ParseInt(telegramID, 10, 64); convErr == nil {
 			c.bot.SendMessage(context.Background(), &bot.SendMessageParams{ChatID: chatID, Text: messagingctrl.MsgAccountReset})
-			c.bot.SendMessage(context.Background(), &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text})
+			c.bot.SendMessage(context.Background(), &bot.SendMessageParams{ChatID: chatID, Text: messagingctrl.MsgWelcome})
 		}
 	}
 	ctx.JSON(http.StatusOK, gin.H{"status": "reset", "telegram_id": telegramID})

@@ -148,24 +148,6 @@ func (c *controller) RegisterHandlers(b *bot.Bot) {
 	b.RegisterHandlerMatchFunc(c.hasIncomingInput, c.handleConversationInput)
 }
 
-// startFlowIfNotBusy arranca cualquier Flow ya registrado en el Engine
-// para un usuario, salvo que ya tenga uno en curso (de cualquier tipo).
-// Este es el único lugar que conoce el mecanismo de "no pisar un flujo
-// activo" — agregar un comando nuevo que arranque otro Flow (como
-// /subcategorias) solo necesita llamar a este método con el nombre
-// correspondiente, sin duplicar la lógica.
-func (c *controller) startFlowIfNotBusy(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string) {
-	if inProgress, err := c.engine.InProgress(userID); err == nil && inProgress {
-		return
-	}
-	prompt, err := c.engine.Start(userID, flowName)
-	if err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
-		return
-	}
-	c.sendPrompt(ctx, b, chatID, prompt)
-}
-
 // hasIncomingInput matchea cualquier mensaje de texto (que no sea
 // comando) o callback de botón — son los únicos tipos de update que el
 // motor de conversaciones puede llegar a procesar.
@@ -229,10 +211,6 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		return
 	}
 	switch result.FlowName {
-	case onboardingCollectFlowName:
-		c.finishOnboardingCollectFlow(ctx, b, chatID, result.Data)
-	case onboardingConfirmFlowName:
-		c.finishOnboardingConfirmFlow(ctx, b, chatID, result.Data)
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
 	case movementConfirmFlowName:
@@ -259,8 +237,6 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	case reminderSetupFlowName:
 		c.finishReminderSetup(ctx, b, chatID, result.Data)
-	case onboardingReminderOfferFlowName:
-		c.finishOnboardingReminderOffer(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}
