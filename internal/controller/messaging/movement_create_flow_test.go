@@ -113,6 +113,7 @@ func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
 
 type fakeMovementRepoFull struct {
 	inserted       []movement.Movement
+	batches        [][]movement.Movement // every InsertBatch call, in order (inserted only tracks the last)
 	balances       map[uint64]string
 	replacedOldIDs []uint
 	replaced       []movement.Movement
@@ -131,6 +132,7 @@ func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
 		return r.insertErr
 	}
 	r.inserted = ms
+	r.batches = append(r.batches, ms)
 	return nil
 }
 func (r *fakeMovementRepoFull) SumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
@@ -269,6 +271,83 @@ func TestResolveAndInsertMovements_PendingAccountCreation(t *testing.T) {
 	}
 	if movRepo.inserted[1].AccountID == nil {
 		t.Error("the movement should reference the newly created account")
+	}
+}
+
+func TestResolveAndInsertMovements_FirstAccount_WithBalance(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Supermercado")
+	openingSub := newSubForTest(9, "Sistema", "Saldo inicial")
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentación|Supermercado": sub,
+		"Sistema|Saldo inicial":     openingSub,
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	// fakeAccountRepoFull.Insert assigns the first created account id 100;
+	// preset its post-opening balance so the insufficient-funds gate sees it.
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{100: "99500"}}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+		keyFirstAccountName:     "Galicia",
+		keyFirstAccountBalance:  "99.500,00",
+	}
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v", err)
+	}
+	if len(movRepo.batches) != 2 {
+		t.Fatalf("expected 2 InsertBatch calls (opening + movement), got %d", len(movRepo.batches))
+	}
+	opening := movRepo.batches[0]
+	if len(opening) != 1 || !opening[0].Amount.Equal(decimal.RequireFromString("99500")) {
+		t.Fatalf("opening batch = %+v, want a single 99500 movement", opening)
+	}
+	if opening[0].SubcategoryID != uint64(openingSub.ID) {
+		t.Errorf("opening subcategory id = %d, want %d (Sistema|Saldo inicial)", opening[0].SubcategoryID, openingSub.ID)
+	}
+	if len(inserted) != 1 || inserted[0].AccountID == nil {
+		t.Fatalf("expected the expense to reference the new account, got %+v", inserted)
+	}
+}
+
+func TestResolveAndInsertMovements_FirstAccount_SkipBalance(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Supermercado")
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentación|Supermercado": sub,
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{} // no balance preset: fresh account starts at 0
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+		keyFirstAccountName:     "Galicia",
+		// keyFirstAccountBalance left unset — the user answered "después".
+	}
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v (the insufficient-funds gate must be skipped)", err)
+	}
+	if len(movRepo.batches) != 1 {
+		t.Fatalf("expected no opening batch, got %d InsertBatch calls", len(movRepo.batches))
+	}
+	if len(inserted) != 1 || inserted[0].AccountID == nil {
+		t.Fatalf("expected the expense to reference the new account, got %+v", inserted)
 	}
 }
 

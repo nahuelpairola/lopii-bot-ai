@@ -282,12 +282,15 @@ func TestMovementCreate_ZeroAccounts_AsksNameCreatesDefault(t *testing.T) {
 		t.Fatalf("expected the flow at %q, got found=%v step=%q", stepCreateFirstAccount, store.found, store.stepName)
 	}
 
-	result, found, err := engine.Handle(1, conversation.Input{Text: "Galicia"})
+	if _, found, err := engine.Handle(1, conversation.Input{Text: "Galicia"}); err != nil || !found {
+		t.Fatalf("engine.Handle (name): found=%v err=%v", found, err)
+	}
+	result, found, err := engine.Handle(1, conversation.Input{CallbackData: optionBalanceLater})
 	if err != nil || !found {
-		t.Fatalf("engine.Handle: found=%v err=%v", found, err)
+		t.Fatalf("engine.Handle (skip balance): found=%v err=%v", found, err)
 	}
 	if !result.Finished {
-		t.Fatalf("expected the flow to finish right after the account name (no other gaps), got Finished=false")
+		t.Fatalf("expected the flow to finish after skipping the balance question (no other gaps), got Finished=false")
 	}
 
 	inserted, err := c.resolveAndInsertMovements(result.Data)

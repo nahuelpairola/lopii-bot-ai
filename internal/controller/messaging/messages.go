@@ -93,6 +93,10 @@ func msgAskFirstAccountName(conversation.Data) string {
 	return "¿De dónde salió? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
 }
 
+func msgAskFirstAccountBalance(name string) string {
+	return "¿Cuánto tenés en " + name + " hoy? Poné el número — o mandá \"después\"."
+}
+
 func msgConfirmMovements(movements []movement.Movement) string {
 	lines := make([]string, 0, len(movements))
 	for _, m := range movements {

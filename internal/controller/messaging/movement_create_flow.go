@@ -18,10 +18,11 @@ import (
 const (
 	movementCreateFlowName = "movement_create"
 
-	stepCreateFirstAccount = "create_first_account"
-	stepResolveCategory    = "resolve_category"
-	stepResolveSubcategory = "resolve_subcategory"
-	stepResolveAccount     = "resolve_account"
+	stepCreateFirstAccount  = "create_first_account"
+	stepFirstAccountBalance = "first_account_balance"
+	stepResolveCategory     = "resolve_category"
+	stepResolveSubcategory  = "resolve_subcategory"
+	stepResolveAccount      = "resolve_account"
 
 	// optionCancel is the escape hatch every gap-fill ChoiceStep offers:
 	// the user realizing mid-flow that the original message was a
@@ -30,6 +31,10 @@ const (
 
 	// optionConfirm is the shared confirm-button value across movement/account flows.
 	optionConfirm = "confirm"
+
+	// optionBalanceLater lets the user skip the opening-balance question for
+	// a freshly lazy-created account.
+	optionBalanceLater = "balance_later"
 )
 
 // cancelOption is the "🚫 Cancelar" button appended to every gap-fill
@@ -63,7 +68,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				}
 				return ""
 			},
-			NextStep:      stepResolveCategory,
+			NextStep:      stepFirstAccountBalance,
 			EscapeOptions: []conversation.ChoiceOption{cancelOption},
 			OnEscape: func(value string, data conversation.Data) conversation.Data {
 				if value != optionCancel {
@@ -71,6 +76,36 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				}
 				next := copyData(data)
 				setFlag(next, keyCancelled)
+				return next
+			},
+		},
+		stepFirstAccountBalance: conversation.TextStep{
+			PromptText: func(data conversation.Data) string {
+				return msgAskFirstAccountBalance(stringOrEmpty(data[keyFirstAccountName]))
+			},
+			DataKey: keyFirstAccountBalance,
+			SkipIf: func(data conversation.Data) (string, bool) {
+				if stringOrEmpty(data[keyFirstAccountName]) == "" {
+					return stepResolveCategory, true // no hubo first-account
+				}
+				return "", false
+			},
+			Validate: func(text string, _ conversation.Data) string {
+				if _, err := parseARAmount(text); err != nil {
+					return account.MsgInvalidAmount
+				}
+				return ""
+			},
+			NextStep: stepResolveCategory,
+			EscapeOptions: []conversation.ChoiceOption{
+				{Label: "⏭️ Después", Value: optionBalanceLater, NextStep: stepResolveCategory},
+				cancelOption,
+			},
+			OnEscape: func(value string, data conversation.Data) conversation.Data {
+				next := copyData(data)
+				if value == optionCancel {
+					setFlag(next, keyCancelled)
+				}
 				return next
 			},
 		},
@@ -311,6 +346,29 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 				defaultByCurrency[cur.String()] = id
 			}
 			rows[i].AccountID = strconv.FormatUint(id, 10)
+
+			if bal := stringOrEmpty(data[keyFirstAccountBalance]); bal != "" {
+				if amt, err := parseARAmount(bal); err == nil && !amt.IsNegative() {
+					sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, "Sistema", "Saldo inicial")
+					if err != nil {
+						return nil, err
+					}
+					opening := movement.Movement{
+						UserID:        userID,
+						AccountID:     &id,
+						SubcategoryID: uint64(sub.ID),
+						Date:          time.Now(),
+						Type:          movement.Transfer,
+						Amount:        amt,
+						Currency:      cur,
+					}
+					if err := c.movements.InsertBatch([]movement.Movement{opening}); err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				setFlag(data, keySkipBalanceCheck) // sin opening: el 1er gasto puede dejar negativo, no alertar
+			}
 		}
 	}
 
