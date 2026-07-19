@@ -18,6 +18,7 @@ import (
 const (
 	movementCreateFlowName = "movement_create"
 
+	stepCreateFirstAccount = "create_first_account"
 	stepResolveCategory    = "resolve_category"
 	stepResolveSubcategory = "resolve_subcategory"
 	stepResolveAccount     = "resolve_account"
@@ -45,6 +46,34 @@ var cancelOption = conversation.ChoiceOption{Label: "🚫 Cancelar", Value: opti
 // at all (see free_text.go).
 func NewMovementCreateFlow(subcategories subcategoryRepository, accounts accountRepository) *conversation.Flow {
 	steps := map[string]conversation.Step{
+		stepCreateFirstAccount: conversation.TextStep{
+			PromptText: msgAskFirstAccountName,
+			DataKey:    keyFirstAccountName,
+			SkipIf: func(data conversation.Data) (string, bool) {
+				if needsFirstAccount(data, func(cur currency.Currency) bool {
+					return accounts.HasDefaultForCurrency(data.UserID(), cur)
+				}) {
+					return "", false // hay que preguntar
+				}
+				return stepResolveCategory, true
+			},
+			Validate: func(text string, _ conversation.Data) string {
+				if strings.TrimSpace(text) == "" {
+					return msgInvalidAccountCreateName
+				}
+				return ""
+			},
+			NextStep:      stepResolveCategory,
+			EscapeOptions: []conversation.ChoiceOption{cancelOption},
+			OnEscape: func(value string, data conversation.Data) conversation.Data {
+				if value != optionCancel {
+					return data
+				}
+				next := copyData(data)
+				setFlag(next, keyCancelled)
+				return next
+			},
+		},
 		stepResolveCategory: conversation.ChoiceStep{
 			PromptText: msgAskCategory,
 			SkipIf: func(data conversation.Data) (string, bool) {
@@ -195,7 +224,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		},
 	}
 
-	flow, err := conversation.NewFlow(movementCreateFlowName, stepResolveCategory, steps)
+	flow, err := conversation.NewFlow(movementCreateFlowName, stepCreateFirstAccount, steps)
 	if err != nil {
 		panic(err)
 	}
@@ -254,6 +283,34 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		accountsByID[uint64(a.ID)] = a
 		if a.IsDefault {
 			defaultByCurrency[a.Currency.String()] = uint64(a.ID)
+		}
+	}
+
+	// Lazy-create: stepCreateFirstAccount asked one name for every row that
+	// had no account and no default in its currency — create it here (at
+	// finish, so a resume never leaves an orphan account) and mark it
+	// default iff the currency still has none.
+	if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
+		for i, row := range rows {
+			if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
+				continue
+			}
+			cur := currency.Currency(row.Currency)
+			newAcc := &account.Account{
+				UserID:    userID,
+				Name:      name,
+				Currency:  cur,
+				IsDefault: !c.accounts.HasDefaultForCurrency(userID, cur),
+			}
+			if err := c.accounts.Insert(newAcc); err != nil {
+				return nil, err
+			}
+			id := uint64(newAcc.ID)
+			accountsByID[id] = *newAcc
+			if newAcc.IsDefault {
+				defaultByCurrency[cur.String()] = id
+			}
+			rows[i].AccountID = strconv.FormatUint(id, 10)
 		}
 	}
 

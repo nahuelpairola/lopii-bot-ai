@@ -89,6 +89,10 @@ func msgAskAccount(data conversation.Data) string {
 	return "¿A qué cuenta corresponde este movimiento?"
 }
 
+func msgAskFirstAccountName(conversation.Data) string {
+	return "¿De dónde salió? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
+}
+
 func msgConfirmMovements(movements []movement.Movement) string {
 	lines := make([]string, 0, len(movements))
 	for _, m := range movements {

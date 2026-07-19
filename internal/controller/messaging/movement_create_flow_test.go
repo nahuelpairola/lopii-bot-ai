@@ -73,6 +73,17 @@ func (r *fakeAccountRepoFull) FindDefaultByCurrency(userID uint64, c currency.Cu
 	}
 	return a, nil
 }
+func (r *fakeAccountRepoFull) HasDefaultForCurrency(userID uint64, c currency.Currency) bool {
+	if _, ok := r.byCurrency[c]; ok {
+		return true
+	}
+	for _, a := range r.byUserID {
+		if a.Currency == c && a.IsDefault {
+			return true
+		}
+	}
+	return false
+}
 func (r *fakeAccountRepoFull) FindByUserID(userID uint64) ([]account.Account, error) {
 	return r.byUserID, r.byUserIDErr
 }

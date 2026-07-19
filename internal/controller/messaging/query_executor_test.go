@@ -55,10 +55,11 @@ func (r *fakeQueryAccounts) Insert(*account.Account) error                  { re
 func (r *fakeQueryAccounts) FindDefaultByCurrency(uint64, currency.Currency) (*account.Account, error) {
 	return nil, nil
 }
-func (r *fakeQueryAccounts) GetAccount(uint64) (*account.Account, error)  { return nil, nil }
-func (r *fakeQueryAccounts) Rename(uint64, string) error                  { return nil }
-func (r *fakeQueryAccounts) UnsetDefault(uint64, currency.Currency) error { return nil }
-func (r *fakeQueryAccounts) SetDefault(uint64) error                      { return nil }
+func (r *fakeQueryAccounts) GetAccount(uint64) (*account.Account, error)     { return nil, nil }
+func (r *fakeQueryAccounts) Rename(uint64, string) error                     { return nil }
+func (r *fakeQueryAccounts) UnsetDefault(uint64, currency.Currency) error    { return nil }
+func (r *fakeQueryAccounts) SetDefault(uint64) error                         { return nil }
+func (r *fakeQueryAccounts) HasDefaultForCurrency(uint64, currency.Currency) bool { return false }
 
 type fakeQuerySubcats struct{ subs []subcategory.Subcategory }
 

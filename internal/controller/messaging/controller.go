@@ -37,6 +37,7 @@ type invitationRepository interface {
 type accountRepository interface {
 	Insert(*account.Account) error
 	FindDefaultByCurrency(userID uint64, currency currency.Currency) (*account.Account, error)
+	HasDefaultForCurrency(userID uint64, currency currency.Currency) bool
 	FindByUserID(userID uint64) ([]account.Account, error)
 	GetAccount(id uint64) (*account.Account, error)
 	Rename(accountID uint64, name string) error

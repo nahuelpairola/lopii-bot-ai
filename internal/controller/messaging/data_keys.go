@@ -69,6 +69,10 @@ const (
 	keyMoveFromBalance dataKey = "move_from_balance"
 	keyMoveToID        dataKey = "move_to_id"
 	keyMoveToName      dataKey = "move_to_name"
+
+	// lazy-create (first account, movement_create flow) keys
+	keyFirstAccountName    dataKey = "first_account_name"
+	keyFirstAccountBalance dataKey = "first_account_balance"
 )
 
 // flag reports whether a "true"/"false" string flag in Data is set to "true".
