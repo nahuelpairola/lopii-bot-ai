@@ -133,6 +133,10 @@ func (r *fakeMovementRepoForResolve) ListForUser(q movement.MovementQuery, limit
 	return nil, nil
 }
 func (r *fakeMovementRepoForResolve) ReassignAccount(fromID, toID uint64) error { return nil }
+func (r *fakeMovementRepoForResolve) CountForUser(userID uint64) (int64, error) { return 0, nil }
+func (r *fakeMovementRepoForResolve) ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error) {
+	return false, nil
+}
 
 func TestResolveCandidates_NoDate_UsesCreatedAtRecencyWindow(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("Nafta YPF")}}}

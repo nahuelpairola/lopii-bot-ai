@@ -26,6 +26,7 @@ import (
 
 type userRepository interface {
 	FindByTelegramID(telegramID string) (*user.User, error)
+	FindByID(id uint64) (*user.User, error)
 	Insert(u *user.User) error
 }
 
@@ -37,6 +38,7 @@ type invitationRepository interface {
 type accountRepository interface {
 	Insert(*account.Account) error
 	FindDefaultByCurrency(userID uint64, currency currency.Currency) (*account.Account, error)
+	HasDefaultForCurrency(userID uint64, currency currency.Currency) bool
 	FindByUserID(userID uint64) ([]account.Account, error)
 	GetAccount(id uint64) (*account.Account, error)
 	Rename(accountID uint64, name string) error
@@ -55,6 +57,8 @@ type movementRepository interface {
 	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
 	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
 	ReassignAccount(fromID, toID uint64) error
+	CountForUser(userID uint64) (int64, error)
+	ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error)
 }
 
 type subcategoryRepository interface {
@@ -100,6 +104,14 @@ type traceRepository interface {
 	InsertRequestTrace(traceID string, userID *uint64, updateType string, receivedAt time.Time, latencyMs int, errMsg string) error
 }
 
+// nudgeRepository is the once-ever/cooldown storage for contextual nudges
+// (internal/nudge). Local interface — see nudge.go.
+type nudgeRepository interface {
+	WasSent(userID uint64, key string) (bool, error)
+	MarkSent(userID uint64, key string) error
+	LastSentAt(userID uint64) (*time.Time, error)
+}
+
 type controller struct {
 	users         userRepository
 	invitations   invitationRepository
@@ -112,6 +124,7 @@ type controller struct {
 	queryHistory  queryHistoryRepository
 	reminders     reminderRepository
 	traces        traceRepository
+	nudges        nudgeRepository
 }
 
 func NewController(
@@ -126,6 +139,7 @@ func NewController(
 	queryHistory queryHistoryRepository,
 	reminders reminderRepository,
 	traces traceRepository,
+	nudges nudgeRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -139,6 +153,7 @@ func NewController(
 		queryHistory:  queryHistory,
 		reminders:     reminders,
 		traces:        traces,
+		nudges:        nudges,
 	}
 }
 
@@ -146,24 +161,6 @@ func (c *controller) RegisterHandlers(b *bot.Bot) {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypePrefix, c.handleStart)
 	b.RegisterHandler(bot.HandlerTypeCallbackQueryData, constants.WeeklySummaryOffData, bot.MatchTypeExact, c.handleWeeklySummaryOff)
 	b.RegisterHandlerMatchFunc(c.hasIncomingInput, c.handleConversationInput)
-}
-
-// startFlowIfNotBusy arranca cualquier Flow ya registrado en el Engine
-// para un usuario, salvo que ya tenga uno en curso (de cualquier tipo).
-// Este es el único lugar que conoce el mecanismo de "no pisar un flujo
-// activo" — agregar un comando nuevo que arranque otro Flow (como
-// /subcategorias) solo necesita llamar a este método con el nombre
-// correspondiente, sin duplicar la lógica.
-func (c *controller) startFlowIfNotBusy(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string) {
-	if inProgress, err := c.engine.InProgress(userID); err == nil && inProgress {
-		return
-	}
-	prompt, err := c.engine.Start(userID, flowName)
-	if err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
-		return
-	}
-	c.sendPrompt(ctx, b, chatID, prompt)
 }
 
 // hasIncomingInput matchea cualquier mensaje de texto (que no sea
@@ -206,12 +203,15 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
-				return &uid, c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+				c.maybeNudge(ctx, b, chatID, u.ID)
+				return &uid, err
 			}
 			return &uid, nil
 		}
 		if result.Finished {
 			c.handleFlowFinished(ctx, b, chatID, result)
+			c.maybeNudge(ctx, b, chatID, u.ID)
 			return &uid, nil
 		}
 		c.sendPrompt(ctx, b, chatID, result.Prompt)
@@ -229,10 +229,6 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		return
 	}
 	switch result.FlowName {
-	case onboardingCollectFlowName:
-		c.finishOnboardingCollectFlow(ctx, b, chatID, result.Data)
-	case onboardingConfirmFlowName:
-		c.finishOnboardingConfirmFlow(ctx, b, chatID, result.Data)
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
 	case movementConfirmFlowName:
@@ -259,8 +255,6 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	case reminderSetupFlowName:
 		c.finishReminderSetup(ctx, b, chatID, result.Data)
-	case onboardingReminderOfferFlowName:
-		c.finishOnboardingReminderOffer(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
 	}

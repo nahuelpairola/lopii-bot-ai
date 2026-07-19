@@ -143,6 +143,26 @@ func (r *repository) FindRecentlyCreatedForUser(userID uint64, since time.Time) 
 	return ms, err
 }
 
+// CountForUser cuenta los movimientos no borrados del usuario. Barato, para
+// condiciones de nudge (no mezcla monedas ni tipos — es un tally crudo).
+func (r *repository) CountForUser(userID uint64) (int64, error) {
+	var n int64
+	err := r.db.DB.Model(&Movement{}).Where("user_id = ?", userID).Count(&n).Error
+	return n, err
+}
+
+// ExistsWithSubcategory reports whether the user has any movement (any type,
+// any currency, all time) under the given subcategory. MovementQuery's
+// ListForUser/SumForUser require a currency + date range and default to
+// excluding transfers — the wrong shape for an "ever done X" nudge check.
+func (r *repository) ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error) {
+	var n int64
+	err := r.db.DB.Model(&Movement{}).
+		Where("user_id = ? AND subcategory_id = ?", userID, subcategoryID).
+		Count(&n).Error
+	return n > 0, err
+}
+
 // SoftDeleteByIDs borra (soft-delete vía deleted_at) todas las filas
 // listadas en un solo UPDATE. Devuelve ErrMovementNotFound si ninguna
 // coincide (0 filas afectadas).

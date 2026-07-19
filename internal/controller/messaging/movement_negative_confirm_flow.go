@@ -56,6 +56,6 @@ func (c *controller) finishMovementNegativeConfirmFlow(ctx context.Context, b *b
 	case "missing":
 		c.sendText(ctx, b, chatID, msgLogMissingFirst)
 	default: // rewrite / anything else: drop it, the user re-sends
-		c.sendText(ctx, b, chatID, msgOnboardingNotUnderstood)
+		c.sendText(ctx, b, chatID, msgNotUnderstood)
 	}
 }

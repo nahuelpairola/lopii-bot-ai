@@ -37,3 +37,32 @@ func TestParseARAmount(t *testing.T) {
 		}
 	}
 }
+
+func TestParseARAmount_UserFormats(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string // decimal.String() esperado
+		ok   bool
+	}{
+		{"2422,9", "2422.9", true},
+		{"5694.08", "5694.08", true},
+		{"1.000.000,50", "1000000.5", true},
+		{"$5694.08", "5694.08", true},
+		{"$ 2.422,90", "2422.9", true},
+		{"5 694,08", "5694.08", true},
+		{"1.000", "1000", true},
+		{"1.000.000", "1000000", true},
+		{"1.5", "1.5", true},
+		{"pan", "", false},
+		{"", "", false},
+	}
+	for _, c := range cases {
+		got, err := parseARAmount(c.in)
+		if c.ok && (err != nil || got.String() != c.want) {
+			t.Errorf("parseARAmount(%q) = %v, %v; want %s", c.in, got, err, c.want)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("parseARAmount(%q) expected error, got %v", c.in, got)
+		}
+	}
+}

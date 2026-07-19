@@ -1,10 +1,15 @@
 package messaging
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"io"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
@@ -73,6 +78,17 @@ func (r *fakeAccountRepoFull) FindDefaultByCurrency(userID uint64, c currency.Cu
 	}
 	return a, nil
 }
+func (r *fakeAccountRepoFull) HasDefaultForCurrency(userID uint64, c currency.Currency) bool {
+	if _, ok := r.byCurrency[c]; ok {
+		return true
+	}
+	for _, a := range r.byUserID {
+		if a.Currency == c && a.IsDefault {
+			return true
+		}
+	}
+	return false
+}
 func (r *fakeAccountRepoFull) FindByUserID(userID uint64) ([]account.Account, error) {
 	return r.byUserID, r.byUserIDErr
 }
@@ -101,18 +117,21 @@ func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
 }
 
 type fakeMovementRepoFull struct {
-	inserted       []movement.Movement
-	balances       map[uint64]string
-	replacedOldIDs []uint
-	replaced       []movement.Movement
-	deletedIDs     []uint
-	similar        []movement.Movement
-	similarErr     error
-	insertErr      error
-	openings       []movement.AccountOpening
-	reassignFrom   uint64
-	reassignTo     uint64
-	reassignCalls  int
+	inserted              []movement.Movement
+	batches               [][]movement.Movement // every InsertBatch call, in order (inserted only tracks the last)
+	balances              map[uint64]string
+	replacedOldIDs        []uint
+	replaced              []movement.Movement
+	deletedIDs            []uint
+	similar               []movement.Movement
+	similarErr            error
+	insertErr             error
+	openings              []movement.AccountOpening
+	reassignFrom          uint64
+	reassignTo            uint64
+	reassignCalls         int
+	countForUser          int64
+	existsWithSubcategory bool
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -120,6 +139,7 @@ func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
 		return r.insertErr
 	}
 	r.inserted = ms
+	r.batches = append(r.batches, ms)
 	return nil
 }
 func (r *fakeMovementRepoFull) SumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
@@ -159,6 +179,12 @@ func (r *fakeMovementRepoFull) ReassignAccount(fromID, toID uint64) error {
 	r.reassignFrom, r.reassignTo = fromID, toID
 	r.reassignCalls++
 	return nil
+}
+func (r *fakeMovementRepoFull) CountForUser(userID uint64) (int64, error) {
+	return r.countForUser, nil
+}
+func (r *fakeMovementRepoFull) ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error) {
+	return r.existsWithSubcategory, nil
 }
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {
@@ -258,6 +284,83 @@ func TestResolveAndInsertMovements_PendingAccountCreation(t *testing.T) {
 	}
 	if movRepo.inserted[1].AccountID == nil {
 		t.Error("the movement should reference the newly created account")
+	}
+}
+
+func TestResolveAndInsertMovements_FirstAccount_WithBalance(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Supermercado")
+	openingSub := newSubForTest(9, "Sistema", "Saldo inicial")
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentación|Supermercado": sub,
+		"Sistema|Saldo inicial":     openingSub,
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	// fakeAccountRepoFull.Insert assigns the first created account id 100;
+	// preset its post-opening balance so the insufficient-funds gate sees it.
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{100: "99500"}}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+		keyFirstAccountName:     "Galicia",
+		keyFirstAccountBalance:  "99.500,00",
+	}
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v", err)
+	}
+	if len(movRepo.batches) != 2 {
+		t.Fatalf("expected 2 InsertBatch calls (opening + movement), got %d", len(movRepo.batches))
+	}
+	opening := movRepo.batches[0]
+	if len(opening) != 1 || !opening[0].Amount.Equal(decimal.RequireFromString("99500")) {
+		t.Fatalf("opening batch = %+v, want a single 99500 movement", opening)
+	}
+	if opening[0].SubcategoryID != uint64(openingSub.ID) {
+		t.Errorf("opening subcategory id = %d, want %d (Sistema|Saldo inicial)", opening[0].SubcategoryID, openingSub.ID)
+	}
+	if len(inserted) != 1 || inserted[0].AccountID == nil {
+		t.Fatalf("expected the expense to reference the new account, got %+v", inserted)
+	}
+}
+
+func TestResolveAndInsertMovements_FirstAccount_SkipBalance(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Supermercado")
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentación|Supermercado": sub,
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{} // no balance preset: fresh account starts at 0
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+		keyFirstAccountName:     "Galicia",
+		// keyFirstAccountBalance left unset — the user answered "después".
+	}
+
+	inserted, err := c.resolveAndInsertMovements(data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v (the insufficient-funds gate must be skipped)", err)
+	}
+	if len(movRepo.batches) != 1 {
+		t.Fatalf("expected no opening batch, got %d InsertBatch calls", len(movRepo.batches))
+	}
+	if len(inserted) != 1 || inserted[0].AccountID == nil {
+		t.Fatalf("expected the expense to reference the new account, got %+v", inserted)
 	}
 }
 
@@ -661,5 +764,60 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 	}
 	if movs.inserted[0].AccountID == nil || *movs.inserted[0].AccountID != 1 {
 		t.Error("expense must attribute to the default ARS account")
+	}
+}
+
+// recordingTransport captures the "text" field of every Telegram sendMessage
+// call, in order — lets a test assert how many messages went out and what
+// each one said, without a live bot. go-telegram/bot sends multipart/form-data.
+type recordingTransport struct{ texts []string }
+
+func (rt *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := req.ParseMultipartForm(1 << 20); err == nil {
+		rt.texts = append(rt.texts, req.FormValue("text"))
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"ok":true,"result":{"message_id":1,"chat":{"id":1},"date":0}}`))),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Supermercado")
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentación|Supermercado": sub,
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+		keyFirstAccountName:     "Galicia",
+	}
+
+	rt := &recordingTransport{}
+	b, err := bot.New("123:ABC", bot.WithSkipGetMe(), bot.WithHTTPClient(time.Second, &http.Client{Transport: rt}))
+	if err != nil {
+		t.Fatalf("bot.New: %v", err)
+	}
+
+	c.finishMovementCreateFlow(context.Background(), b, 1, data)
+
+	if len(rt.texts) != 3 {
+		t.Fatalf("expected 3 messages (recibo + R1 + R2), got %d: %+v", len(rt.texts), rt.texts)
+	}
+	if rt.texts[1] != msgFirstAccountDefault("Galicia") {
+		t.Errorf("R1 = %q, want %q", rt.texts[1], msgFirstAccountDefault("Galicia"))
+	}
+	if rt.texts[2] != msgInviteMoreAccounts {
+		t.Errorf("R2 = %q, want %q", rt.texts[2], msgInviteMoreAccounts)
 	}
 }

@@ -26,7 +26,6 @@ const (
 	// payload containers / queues
 	keyMovements           dataKey = "movements"
 	keyBeforeMovements     dataKey = "before_movements"
-	keyAccounts            dataKey = "accounts"
 	keyOldMovementIDs      dataKey = "old_movement_ids"
 	keyPendingCategoryGaps dataKey = "pending_category_gaps"
 	keyPendingAccountGaps  dataKey = "pending_account_gaps"
@@ -40,7 +39,7 @@ const (
 	// movementRow map fields (encode/decode pair)
 	keyRowType          dataKey = "type"
 	keyRowAmount        dataKey = "amount"
-	keyCurrency         dataKey = "currency"   // shared: movementRow + onboardingRow
+	keyCurrency         dataKey = "currency"
 	keyAccountID        dataKey = "account_id" // shared: movementRow + account/manage flows
 	keyAccountNameGuess dataKey = "account_name_guess"
 	keyAccountName      dataKey = "account_name" // shared: movementRow + account flows + messages
@@ -52,11 +51,6 @@ const (
 	keyDate             dataKey = "date"
 	keyIcon             dataKey = "icon"
 	keyGroup            dataKey = "group"
-
-	// onboardingRow map fields (currency reuses keyCurrency)
-	keyName      dataKey = "name"
-	keyBalance   dataKey = "balance"
-	keyIsDefault dataKey = "is_default"
 
 	// account create/manage flow keys
 	keyAccountCurrency dataKey = "account_currency"
@@ -75,6 +69,10 @@ const (
 	keyMoveFromBalance dataKey = "move_from_balance"
 	keyMoveToID        dataKey = "move_to_id"
 	keyMoveToName      dataKey = "move_to_name"
+
+	// lazy-create (first account, movement_create flow) keys
+	keyFirstAccountName    dataKey = "first_account_name"
+	keyFirstAccountBalance dataKey = "first_account_balance"
 )
 
 // flag reports whether a "true"/"false" string flag in Data is set to "true".

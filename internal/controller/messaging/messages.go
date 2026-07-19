@@ -18,12 +18,25 @@ const (
 	msgInvitationError         = "Hubo un error procesando tu invitación, probá de nuevo en un momento."
 	msgInvitationUsed          = "Esa invitación ya fue utilizada."
 	msgInvitationExpired       = "Esa invitación expiró, pedí una nueva."
-	msgUserCreationError       = "No pude crear tu cuenta, probá de nuevo."
-	msgUserCreatedSuccessfully = "¡Bienvenido/a! 👋 Soy Lopii, tu bot de finanzas.\n\n" +
-		"Acá no hay formularios ni comandos: me hablás normal y yo entiendo. " +
-		"A buen entendedor, pocas palabras 😉 Dame un segundo que te dejo todo listo."
+	msgUserCreationError = "No pude crear tu cuenta, probá de nuevo."
+
+	// MsgWelcome is exported so the admin reset endpoint (controller/admin)
+	// can send it after clearing a user's flow state, without importing
+	// unexported messaging symbols.
+	MsgWelcome = "¡Hola! Soy Lopii 👋 Me hablás normal y yo anoto, corrijo y te respondo lo que preguntes.\n\n" +
+		"Arrancá: mandame tu primer gasto — ej: \"gasté 500 en el súper\".\n\n" +
+		"Cuando quieras, pedime \"ayuda\"."
+	msgWelcome = MsgWelcome
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
+
+	msgHelp = "Conmigo es fácil, me hablás normal:\n\n" +
+		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil»\n" +
+		"✏️ Corregir: «el súper eran 600»\n" +
+		"🗑️ Borrar: «borrá el último gasto»\n" +
+		"🔄 Transferir: «pasé 50 mil del banco a MP»\n" +
+		"❓ Preguntar: «¿cuánto gasté esta semana?»\n" +
+		"🏦 Cuentas y recordatorios: pedímelos cuando quieras."
 
 	// MsgAccountReset is exported so the admin reset endpoint
 	// (controller/admin) can send it before re-firing onboarding — the
@@ -55,21 +68,7 @@ const (
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 
-	msgOnboardingAskDistribution = "¿Cómo tenés hoy tu dinero distribuido? Contámelo como quieras, por ejemplo: «100.000 pesos en el banco HSBC, 10 mil en Mercado Pago, 1 millón en Naranja X y 3 mil dólares también en el banco»."
-
-	msgOnboardingNotUnderstood = "No te entendí 🤔 Probá de nuevo."
-
-	msgCapabilitiesShowcase = "Conmigo es fácil. Escribime así:\n\n" +
-		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil», «café 700»\n" +
-		"✏️ Corregir: «el súper eran 600 en realidad»\n" +
-		"🗑️ Borrar: «borrá el último gasto»\n" +
-		"🔄 Transferir: «pasé 50 mil del banco a Mercado Pago»\n" +
-		"🏦 Nueva cuenta: «quiero una cuenta para mis inversiones»\n" +
-		"📂 Nueva categoría: «creá una categoría para mascotas»\n" +
-		"⏰ Recordatorio: pedime que te avise a determinada hora si no cargaste nada\n\n" +
-		"Poquito vos, el resto yo."
-
-	msgOfferReminder = "¿Querés que te lo active ahora? Elegís el horario en 10 segundos."
+	msgNotUnderstood = "No te entendí 🤔 Probá de nuevo."
 )
 
 // msgReminderSet builds the set/edit receipt. startMin/endMin are minutes
@@ -90,6 +89,20 @@ func msgAskAccount(data conversation.Data) string {
 	return "¿A qué cuenta corresponde este movimiento?"
 }
 
+func msgAskFirstAccountName(conversation.Data) string {
+	return "¿De dónde salió? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
+}
+
+func msgAskFirstAccountBalance(name string) string {
+	return "¿Cuánto tenés en " + name + " hoy? Poné el número — o mandá \"después\"."
+}
+
+func msgFirstAccountDefault(name string) string {
+	return "⭐ Dejé " + name + " como tu cuenta principal — la uso cuando no me aclarás de dónde sale la plata."
+}
+
+const msgInviteMoreAccounts = "Podés tener más cuentas (inversiones, dólares, lo que sea). Decime \"creá una cuenta\" cuando quieras."
+
 func msgConfirmMovements(movements []movement.Movement) string {
 	lines := make([]string, 0, len(movements))
 	for _, m := range movements {
@@ -98,32 +111,6 @@ func msgConfirmMovements(movements []movement.Movement) string {
 	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
 }
 
-func msgOnboardingConfirm(data conversation.Data) string {
-	rows := decodeOnboardingRows(data)
-	lines := make([]string, 0, len(rows))
-	for _, r := range rows {
-		lines = append(lines, fmt.Sprintf("• %s — %s %s", r.Name, r.Balance, r.Currency))
-	}
-	return "Entendí:\n" + strings.Join(lines, "\n") + "\n\n¿Está bien?"
-}
-
-func msgOnboardingReceipt(rows []onboardingRow) string {
-	lines := make([]string, 0, len(rows))
-	starred := false
-	for _, r := range rows {
-		prefix := "• "
-		if r.IsDefault == "true" {
-			prefix = "⭐ "
-			starred = true
-		}
-		lines = append(lines, fmt.Sprintf("%s%s — %s %s", prefix, r.Name, r.Balance, r.Currency))
-	}
-	out := "Listo. Tus cuentas:\n" + strings.Join(lines, "\n")
-	if starred {
-		out += "\n\n⭐ = tu cuenta principal: la uso cuando no me decís de dónde sale la plata."
-	}
-	return out
-}
 
 // movementReceiptLine formats one movement for a receipt/confirmation
 // message: icon, category › subcategory, amount, currency, description,
@@ -389,8 +376,6 @@ func FlowResumeLabel(flowName string) string {
 		return "estabas creando una subcategoría"
 	case categoryMatchOfferFlowName, categoryProposalConfirmFlowName:
 		return "estabas creando una categoría"
-	case onboardingCollectFlowName, onboardingConfirmFlowName:
-		return "estabas cargando tus cuentas"
 	case movementNegativeConfirmFlowName:
 		return "estabas confirmando un movimiento"
 	default:

@@ -26,6 +26,15 @@ func (r *fakeUserRepository) FindByTelegramID(telegramID string) (*user.User, er
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (r *fakeUserRepository) FindByID(id uint64) (*user.User, error) {
+	for _, u := range r.inserted {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
 func (r *fakeUserRepository) Insert(u *user.User) error {
 	if r.insertErr != nil {
 		return r.insertErr
@@ -60,13 +69,10 @@ func (r *fakeInvitationRepository) MarkAsUsed(id uint64, userID uint64) error {
 	return nil
 }
 
-// TestHandleStart_NewUser_CreatesUserStartsOnboarding verifies that a new user
-// goes through the onboarding flow (not account creation, which is the old behavior).
-// This is the regression test for commit 431f95d — handleStart should:
-// 1. Create the user via userRepository.Insert
-// 2. NOT call accountRepository.Insert
-// 3. Start the onboarding_collect flow
-func TestHandleStart_NewUser_CreatesUserStartsOnboarding(t *testing.T) {
+// TestHandleStart_ValueFirst_NoOnboardingFlow verifies the value-first /start:
+// a new user gets created and greeted with msgWelcome, with NO flow started
+// (no bulk-collect barrage) and no account fabricated.
+func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 	const telegramID = "123456789"
 	const validCode = "ABC123"
 
@@ -86,7 +92,6 @@ func TestHandleStart_NewUser_CreatesUserStartsOnboarding(t *testing.T) {
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewOnboardingCollectFlow())
 
 	c := &controller{
 		users:       userRepo,
@@ -118,17 +123,14 @@ func TestHandleStart_NewUser_CreatesUserStartsOnboarding(t *testing.T) {
 		t.Errorf("inserted user telegram_id = %q, want %q", userRepo.inserted[0].TelegramID, telegramID)
 	}
 
-	// Verify: accountRepository.Insert was NOT called (regression test)
-	// This is the key finding — if someone accidentally re-adds account creation,
-	// this test will catch it.
+	// Verify: accountRepository.Insert was NOT called — value-first, no fabricated account.
 	if len(accountRepo.inserted) != 0 {
 		t.Errorf("accountRepository.Insert should not be called, but was called %d times", len(accountRepo.inserted))
 	}
 
-	// Verify: onboarding_collect flow was started
-	if !store.found || store.flowName != onboardingCollectFlowName {
-		t.Errorf("expected flow %q to be started, but got found=%v flowName=%q",
-			onboardingCollectFlowName, store.found, store.flowName)
+	// Verify: NO flow was started — value-first /start is a single greeting.
+	if store.found {
+		t.Errorf("expected no flow to be started, but got found=%v flowName=%q", store.found, store.flowName)
 	}
 
 	// Verify: invitation was marked as used

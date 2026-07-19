@@ -60,8 +60,7 @@ func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models
 			_ = err
 		}
 
-		c.reply(ctx, b, update, msgUserCreatedSuccessfully)
-		c.startFlowIfNotBusy(ctx, b, update.Message.Chat.ID, newUser.ID, OnboardingCollectFlowName)
+		c.reply(ctx, b, update, msgWelcome)
 		uid := newUser.ID
 		return &uid, nil
 	})

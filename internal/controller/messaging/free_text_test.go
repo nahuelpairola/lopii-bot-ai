@@ -229,7 +229,9 @@ func TestStartMovementCreate_NeedsConfirmation_RoutesToConfirmGate(t *testing.T)
 
 func TestStartMovementCreate_WithGaps_StartsEngine(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{categories: []string{"Alimentación"}}
-	accRepo := &fakeAccountRepoFull{}
+	// an existing default account isolates this test to the category gap —
+	// with zero accounts, lazy-create (stepCreateFirstAccount) takes priority.
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
 	movRepo := &fakeMovementRepoFull{}
 	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "PENDING_REVIEW", Subcategory: "PENDING_REVIEW", Date: "2026-07-02"},
@@ -247,6 +249,62 @@ func TestStartMovementCreate_WithGaps_StartsEngine(t *testing.T) {
 	}
 	if !store.found || store.stepName != stepResolveCategory {
 		t.Errorf("expected the engine to be at %q, got found=%v step=%q", stepResolveCategory, store.found, store.stepName)
+	}
+}
+
+// TestMovementCreate_ZeroAccounts_AsksNameCreatesDefault covers the
+// lazy-create híbrido: a user with zero accounts gets asked for the account
+// name before anything else, and answering it creates a default account
+// attributed to the movement. Uses an income row (not expense) to keep this
+// test scoped to Task 4 (creation+default) — the zero-balance insufficient-
+// funds skip is Task 5's concern (keySkipBalanceCheck), tested separately.
+func TestMovementCreate_ZeroAccounts_AsksNameCreatesDefault(t *testing.T) {
+	sub := newSubForTest(1, "Ingresos", "Sueldo")
+	subRepo := &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Ingresos|Sueldo": sub},
+		all:              []subcategory.Subcategory{*sub},
+	}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{}
+	orch := &fakeFullOrchestrator{createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
+		{Type: "income", Amount: "500", Currency: "ARS", Category: "Ingresos", Subcategory: "Sueldo", Date: "2026-07-02"},
+	}}}
+
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewMovementCreateFlow(subRepo, accRepo))
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
+
+	if err := c.startMovementCreate(context.Background(), nil, 0, 1, "me pagaron 500", false); err != nil {
+		t.Fatalf("startMovementCreate: %v", err)
+	}
+	if !store.found || store.stepName != stepCreateFirstAccount {
+		t.Fatalf("expected the flow at %q, got found=%v step=%q", stepCreateFirstAccount, store.found, store.stepName)
+	}
+
+	if _, found, err := engine.Handle(1, conversation.Input{Text: "Galicia"}); err != nil || !found {
+		t.Fatalf("engine.Handle (name): found=%v err=%v", found, err)
+	}
+	result, found, err := engine.Handle(1, conversation.Input{CallbackData: optionBalanceLater})
+	if err != nil || !found {
+		t.Fatalf("engine.Handle (skip balance): found=%v err=%v", found, err)
+	}
+	if !result.Finished {
+		t.Fatalf("expected the flow to finish after skipping the balance question (no other gaps), got Finished=false")
+	}
+
+	inserted, err := c.resolveAndInsertMovements(result.Data)
+	if err != nil {
+		t.Fatalf("resolveAndInsertMovements: %v", err)
+	}
+	if len(accRepo.inserted) != 1 || accRepo.inserted[0].Name != "Galicia" || !accRepo.inserted[0].IsDefault {
+		t.Fatalf("expected 1 default account named Galicia, got %+v", accRepo.inserted)
+	}
+	if accRepo.inserted[0].Currency != currency.ARS {
+		t.Errorf("created account currency = %q, want ARS", accRepo.inserted[0].Currency)
+	}
+	if len(inserted) != 1 || inserted[0].AccountID == nil {
+		t.Fatalf("expected the movement to reference the newly created account, got %+v", inserted)
 	}
 }
 
@@ -437,6 +495,20 @@ func TestHandleFreeText_LogsPendingForQuery(t *testing.T) {
 	// handler terminal (WIP=1) — no longer a direct terminal log.
 	if len(metrics.logged) != 1 || metrics.logged[0].outcome != outcomePending {
 		t.Fatalf("expected one pending query log, got %+v", metrics.logged)
+	}
+}
+
+func TestHandleFreeText_Help(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentHelp}
+	c := &controller{orchestrator: orch, metrics: metrics}
+
+	err := c.handleFreeText(context.Background(), nil, 0, 1, "ayuda")
+	if err != nil {
+		t.Fatalf("handleFreeText: %v", err)
+	}
+	if len(metrics.logged) != 1 || metrics.logged[0].outcome != outcomeHelpShown {
+		t.Fatalf("expected one %q log, got %+v", outcomeHelpShown, metrics.logged)
 	}
 }
 

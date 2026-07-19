@@ -11,10 +11,26 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 )
+
+// needsFirstAccount is true when a non-transfer row has no account_id and the
+// user has no default in that row's currency (zero-account first run) — the
+// lazy-create trigger for stepCreateFirstAccount.
+func needsFirstAccount(seed conversation.Data, has func(cur currency.Currency) bool) bool {
+	for _, r := range decodeMovementRows(seed) {
+		if movement.TypeFromString(r.Type) == movement.Transfer {
+			continue
+		}
+		if r.AccountID == "" && !has(currency.Currency(r.Currency)) {
+			return true
+		}
+	}
+	return false
+}
 
 // createErrorCopy maps a guard rejection to specific user copy, falling back
 // to the generic error. Mirrors finishAccountCreateFlow's ErrAccountAlreadyExists.
@@ -104,6 +120,9 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		return c.startSubcategorySetup(ctx, b, chatID, userID, text)
 	case orchestrator.IntentReminderSet:
 		return c.startReminderSetup(ctx, b, chatID, userID)
+	case orchestrator.IntentHelp:
+		c.sendText(ctx, b, chatID, msgHelp)
+		return nil
 	default:
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 	}
@@ -373,8 +392,11 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 		"account_gaps", len(decodeStringSlice(seed, keyPendingAccountGaps)),
 	)
 	hasGaps := len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 || len(decodeStringSlice(seed, keyPendingAccountGaps)) > 0
+	hasFirst := needsFirstAccount(seed, func(cur currency.Currency) bool {
+		return c.accounts.HasDefaultForCurrency(userID, cur)
+	})
 
-	if !hasGaps {
+	if !hasGaps && !hasFirst {
 		seed[conversation.UserIDKey] = userID
 		inserted, err := c.resolveAndInsertMovements(seed)
 		if err != nil {

@@ -18,9 +18,11 @@ import (
 const (
 	movementCreateFlowName = "movement_create"
 
-	stepResolveCategory    = "resolve_category"
-	stepResolveSubcategory = "resolve_subcategory"
-	stepResolveAccount     = "resolve_account"
+	stepCreateFirstAccount  = "create_first_account"
+	stepFirstAccountBalance = "first_account_balance"
+	stepResolveCategory     = "resolve_category"
+	stepResolveSubcategory  = "resolve_subcategory"
+	stepResolveAccount      = "resolve_account"
 
 	// optionCancel is the escape hatch every gap-fill ChoiceStep offers:
 	// the user realizing mid-flow that the original message was a
@@ -29,6 +31,10 @@ const (
 
 	// optionConfirm is the shared confirm-button value across movement/account flows.
 	optionConfirm = "confirm"
+
+	// optionBalanceLater lets the user skip the opening-balance question for
+	// a freshly lazy-created account.
+	optionBalanceLater = "balance_later"
 )
 
 // cancelOption is the "🚫 Cancelar" button appended to every gap-fill
@@ -45,6 +51,64 @@ var cancelOption = conversation.ChoiceOption{Label: "🚫 Cancelar", Value: opti
 // at all (see free_text.go).
 func NewMovementCreateFlow(subcategories subcategoryRepository, accounts accountRepository) *conversation.Flow {
 	steps := map[string]conversation.Step{
+		stepCreateFirstAccount: conversation.TextStep{
+			PromptText: msgAskFirstAccountName,
+			DataKey:    keyFirstAccountName,
+			SkipIf: func(data conversation.Data) (string, bool) {
+				if needsFirstAccount(data, func(cur currency.Currency) bool {
+					return accounts.HasDefaultForCurrency(data.UserID(), cur)
+				}) {
+					return "", false // hay que preguntar
+				}
+				return stepResolveCategory, true
+			},
+			Validate: func(text string, _ conversation.Data) string {
+				if strings.TrimSpace(text) == "" {
+					return msgInvalidAccountCreateName
+				}
+				return ""
+			},
+			NextStep:      stepFirstAccountBalance,
+			EscapeOptions: []conversation.ChoiceOption{cancelOption},
+			OnEscape: func(value string, data conversation.Data) conversation.Data {
+				if value != optionCancel {
+					return data
+				}
+				next := copyData(data)
+				setFlag(next, keyCancelled)
+				return next
+			},
+		},
+		stepFirstAccountBalance: conversation.TextStep{
+			PromptText: func(data conversation.Data) string {
+				return msgAskFirstAccountBalance(stringOrEmpty(data[keyFirstAccountName]))
+			},
+			DataKey: keyFirstAccountBalance,
+			SkipIf: func(data conversation.Data) (string, bool) {
+				if stringOrEmpty(data[keyFirstAccountName]) == "" {
+					return stepResolveCategory, true // no hubo first-account
+				}
+				return "", false
+			},
+			Validate: func(text string, _ conversation.Data) string {
+				if _, err := parseARAmount(text); err != nil {
+					return account.MsgInvalidAmount
+				}
+				return ""
+			},
+			NextStep: stepResolveCategory,
+			EscapeOptions: []conversation.ChoiceOption{
+				{Label: "⏭️ Después", Value: optionBalanceLater, NextStep: stepResolveCategory},
+				cancelOption,
+			},
+			OnEscape: func(value string, data conversation.Data) conversation.Data {
+				next := copyData(data)
+				if value == optionCancel {
+					setFlag(next, keyCancelled)
+				}
+				return next
+			},
+		},
 		stepResolveCategory: conversation.ChoiceStep{
 			PromptText: msgAskCategory,
 			SkipIf: func(data conversation.Data) (string, bool) {
@@ -195,7 +259,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		},
 	}
 
-	flow, err := conversation.NewFlow(movementCreateFlowName, stepResolveCategory, steps)
+	flow, err := conversation.NewFlow(movementCreateFlowName, stepCreateFirstAccount, steps)
 	if err != nil {
 		panic(err)
 	}
@@ -226,6 +290,15 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 	c.resolveMetric(ctx, data.UserID(), outcomeCreateInserted, collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
+		if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgFirstAccountDefault(name)})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgInviteMoreAccounts})
+			// R1/R2 just fired — mark correct_tip sent (not delivered) so the
+			// post-message nudge hook doesn't stack a 3rd tip on this same turn.
+			if c.nudges != nil {
+				_ = c.nudges.MarkSent(data.UserID(), nudgeCorrectTip)
+			}
+		}
 	}
 }
 
@@ -254,6 +327,57 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		accountsByID[uint64(a.ID)] = a
 		if a.IsDefault {
 			defaultByCurrency[a.Currency.String()] = uint64(a.ID)
+		}
+	}
+
+	// Lazy-create: stepCreateFirstAccount asked one name for every row that
+	// had no account and no default in its currency — create it here (at
+	// finish, so a resume never leaves an orphan account) and mark it
+	// default iff the currency still has none.
+	if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
+		for i, row := range rows {
+			if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
+				continue
+			}
+			cur := currency.Currency(row.Currency)
+			newAcc := &account.Account{
+				UserID:    userID,
+				Name:      name,
+				Currency:  cur,
+				IsDefault: !c.accounts.HasDefaultForCurrency(userID, cur),
+			}
+			if err := c.accounts.Insert(newAcc); err != nil {
+				return nil, err
+			}
+			id := uint64(newAcc.ID)
+			accountsByID[id] = *newAcc
+			if newAcc.IsDefault {
+				defaultByCurrency[cur.String()] = id
+			}
+			rows[i].AccountID = strconv.FormatUint(id, 10)
+
+			if bal := stringOrEmpty(data[keyFirstAccountBalance]); bal != "" {
+				if amt, err := parseARAmount(bal); err == nil && !amt.IsNegative() {
+					sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, "Sistema", "Saldo inicial")
+					if err != nil {
+						return nil, err
+					}
+					opening := movement.Movement{
+						UserID:        userID,
+						AccountID:     &id,
+						SubcategoryID: uint64(sub.ID),
+						Date:          time.Now(),
+						Type:          movement.Transfer,
+						Amount:        amt,
+						Currency:      cur,
+					}
+					if err := c.movements.InsertBatch([]movement.Movement{opening}); err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				setFlag(data, keySkipBalanceCheck) // sin opening: el 1er gasto puede dejar negativo, no alertar
+			}
 		}
 	}
 
