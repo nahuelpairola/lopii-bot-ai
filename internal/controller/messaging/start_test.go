@@ -26,6 +26,15 @@ func (r *fakeUserRepository) FindByTelegramID(telegramID string) (*user.User, er
 	return nil, gorm.ErrRecordNotFound
 }
 
+func (r *fakeUserRepository) FindByID(id uint64) (*user.User, error) {
+	for _, u := range r.inserted {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
 func (r *fakeUserRepository) Insert(u *user.User) error {
 	if r.insertErr != nil {
 		return r.insertErr

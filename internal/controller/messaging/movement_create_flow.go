@@ -293,6 +293,11 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 		if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgFirstAccountDefault(name)})
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgInviteMoreAccounts})
+			// R1/R2 just fired — mark correct_tip sent (not delivered) so the
+			// post-message nudge hook doesn't stack a 3rd tip on this same turn.
+			if c.nudges != nil {
+				_ = c.nudges.MarkSent(data.UserID(), nudgeCorrectTip)
+			}
 		}
 	}
 }

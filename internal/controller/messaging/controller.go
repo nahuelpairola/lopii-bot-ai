@@ -26,6 +26,7 @@ import (
 
 type userRepository interface {
 	FindByTelegramID(telegramID string) (*user.User, error)
+	FindByID(id uint64) (*user.User, error)
 	Insert(u *user.User) error
 }
 
@@ -56,6 +57,8 @@ type movementRepository interface {
 	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
 	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
 	ReassignAccount(fromID, toID uint64) error
+	CountForUser(userID uint64) (int64, error)
+	ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error)
 }
 
 type subcategoryRepository interface {
@@ -101,6 +104,14 @@ type traceRepository interface {
 	InsertRequestTrace(traceID string, userID *uint64, updateType string, receivedAt time.Time, latencyMs int, errMsg string) error
 }
 
+// nudgeRepository is the once-ever/cooldown storage for contextual nudges
+// (internal/nudge). Local interface — see nudge.go.
+type nudgeRepository interface {
+	WasSent(userID uint64, key string) (bool, error)
+	MarkSent(userID uint64, key string) error
+	LastSentAt(userID uint64) (*time.Time, error)
+}
+
 type controller struct {
 	users         userRepository
 	invitations   invitationRepository
@@ -113,6 +124,7 @@ type controller struct {
 	queryHistory  queryHistoryRepository
 	reminders     reminderRepository
 	traces        traceRepository
+	nudges        nudgeRepository
 }
 
 func NewController(
@@ -127,6 +139,7 @@ func NewController(
 	queryHistory queryHistoryRepository,
 	reminders reminderRepository,
 	traces traceRepository,
+	nudges nudgeRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -140,6 +153,7 @@ func NewController(
 		queryHistory:  queryHistory,
 		reminders:     reminders,
 		traces:        traces,
+		nudges:        nudges,
 	}
 }
 
@@ -189,12 +203,15 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
-				return &uid, c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
+				c.maybeNudge(ctx, b, chatID, u.ID)
+				return &uid, err
 			}
 			return &uid, nil
 		}
 		if result.Finished {
 			c.handleFlowFinished(ctx, b, chatID, result)
+			c.maybeNudge(ctx, b, chatID, u.ID)
 			return &uid, nil
 		}
 		c.sendPrompt(ctx, b, chatID, result.Prompt)

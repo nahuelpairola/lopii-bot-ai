@@ -117,19 +117,21 @@ func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
 }
 
 type fakeMovementRepoFull struct {
-	inserted       []movement.Movement
-	batches        [][]movement.Movement // every InsertBatch call, in order (inserted only tracks the last)
-	balances       map[uint64]string
-	replacedOldIDs []uint
-	replaced       []movement.Movement
-	deletedIDs     []uint
-	similar        []movement.Movement
-	similarErr     error
-	insertErr      error
-	openings       []movement.AccountOpening
-	reassignFrom   uint64
-	reassignTo     uint64
-	reassignCalls  int
+	inserted              []movement.Movement
+	batches               [][]movement.Movement // every InsertBatch call, in order (inserted only tracks the last)
+	balances              map[uint64]string
+	replacedOldIDs        []uint
+	replaced              []movement.Movement
+	deletedIDs            []uint
+	similar               []movement.Movement
+	similarErr            error
+	insertErr             error
+	openings              []movement.AccountOpening
+	reassignFrom          uint64
+	reassignTo            uint64
+	reassignCalls         int
+	countForUser          int64
+	existsWithSubcategory bool
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -177,6 +179,12 @@ func (r *fakeMovementRepoFull) ReassignAccount(fromID, toID uint64) error {
 	r.reassignFrom, r.reassignTo = fromID, toID
 	r.reassignCalls++
 	return nil
+}
+func (r *fakeMovementRepoFull) CountForUser(userID uint64) (int64, error) {
+	return r.countForUser, nil
+}
+func (r *fakeMovementRepoFull) ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error) {
+	return r.existsWithSubcategory, nil
 }
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {

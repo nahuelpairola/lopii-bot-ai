@@ -23,6 +23,7 @@ import (
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/notifier"
+	"lopiibot.com/internal/nudge"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/reminder"
@@ -93,6 +94,7 @@ func InitServer(conf *config.Config) error {
 	accountRepo := account.NewRepository(conn)
 	movementRepo := movement.InitRepository(conn)
 	reminderRepo := reminder.NewRepository(conn)
+	nudgeRepo := nudge.NewRepository(conn)
 	metricRepo := metric.InitRepository(conn)
 	queryHistoryRepo := queryhistory.InitRepository(
 		conn,
@@ -140,7 +142,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo, metricRepo,
+		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo, metricRepo, nudgeRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 	miniappController := miniappctrl.NewController(movementRepo, accountRepo, userRepo, conf.Telegram.Token)
