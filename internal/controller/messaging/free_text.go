@@ -104,6 +104,9 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		return c.startSubcategorySetup(ctx, b, chatID, userID, text)
 	case orchestrator.IntentReminderSet:
 		return c.startReminderSetup(ctx, b, chatID, userID)
+	case orchestrator.IntentHelp:
+		c.sendText(ctx, b, chatID, msgHelp)
+		return nil
 	default:
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 	}

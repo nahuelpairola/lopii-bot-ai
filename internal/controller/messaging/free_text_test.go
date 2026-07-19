@@ -440,6 +440,20 @@ func TestHandleFreeText_LogsPendingForQuery(t *testing.T) {
 	}
 }
 
+func TestHandleFreeText_Help(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentHelp}
+	c := &controller{orchestrator: orch, metrics: metrics}
+
+	err := c.handleFreeText(context.Background(), nil, 0, 1, "ayuda")
+	if err != nil {
+		t.Fatalf("handleFreeText: %v", err)
+	}
+	if len(metrics.logged) != 1 || metrics.logged[0].outcome != outcomeHelpShown {
+		t.Fatalf("expected one %q log, got %+v", outcomeHelpShown, metrics.logged)
+	}
+}
+
 func TestStartMovementCreate_NoGaps_ResolvesInserted(t *testing.T) {
 	sub := newSubForTest(1, "Alimentación", "Café")
 	subRepo := &fakeSubcategoryRepoFull{

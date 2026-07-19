@@ -25,6 +25,14 @@ const (
 
 	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
 
+	msgHelp = "Conmigo es fácil, me hablás normal:\n\n" +
+		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil»\n" +
+		"✏️ Corregir: «el súper eran 600»\n" +
+		"🗑️ Borrar: «borrá el último gasto»\n" +
+		"🔄 Transferir: «pasé 50 mil del banco a MP»\n" +
+		"❓ Preguntar: «¿cuánto gasté esta semana?»\n" +
+		"🏦 Cuentas y recordatorios: pedímelos cuando quieras."
+
 	// MsgAccountReset is exported so the admin reset endpoint
 	// (controller/admin) can send it before re-firing onboarding — the
 	// admin package can't reach unexported messaging strings.

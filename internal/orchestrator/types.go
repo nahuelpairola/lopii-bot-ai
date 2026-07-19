@@ -11,6 +11,7 @@ const (
 	IntentAccountManage  Intent = "ACCOUNT_MANAGE"
 	IntentCreateCategory Intent = "CREATE_CATEGORY"
 	IntentReminderSet    Intent = "REMINDER_SET"
+	IntentHelp           Intent = "HELP"
 )
 
 // IntentResult is Call 1 router's output: the classified intent, plus
