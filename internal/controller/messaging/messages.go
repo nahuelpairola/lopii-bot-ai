@@ -97,6 +97,12 @@ func msgAskFirstAccountBalance(name string) string {
 	return "¿Cuánto tenés en " + name + " hoy? Poné el número — o mandá \"después\"."
 }
 
+func msgFirstAccountDefault(name string) string {
+	return "⭐ Dejé " + name + " como tu cuenta principal — la uso cuando no me aclarás de dónde sale la plata."
+}
+
+const msgInviteMoreAccounts = "Podés tener más cuentas para vincular tus movimientos (ej: una para inversiones, otra en dólares). Decime \"creá una cuenta\" cuando quieras."
+
 func msgConfirmMovements(movements []movement.Movement) string {
 	lines := make([]string, 0, len(movements))
 	for _, m := range movements {

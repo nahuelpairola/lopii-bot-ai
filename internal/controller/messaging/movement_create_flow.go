@@ -290,6 +290,10 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 	c.resolveMetric(ctx, data.UserID(), outcomeCreateInserted, collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
+		if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgFirstAccountDefault(name)})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgInviteMoreAccounts})
+		}
 	}
 }
 

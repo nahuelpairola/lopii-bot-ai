@@ -1,10 +1,15 @@
 package messaging
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"io"
+	"net/http"
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
@@ -751,5 +756,60 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 	}
 	if movs.inserted[0].AccountID == nil || *movs.inserted[0].AccountID != 1 {
 		t.Error("expense must attribute to the default ARS account")
+	}
+}
+
+// recordingTransport captures the "text" field of every Telegram sendMessage
+// call, in order — lets a test assert how many messages went out and what
+// each one said, without a live bot. go-telegram/bot sends multipart/form-data.
+type recordingTransport struct{ texts []string }
+
+func (rt *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := req.ParseMultipartForm(1 << 20); err == nil {
+		rt.texts = append(rt.texts, req.FormValue("text"))
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"ok":true,"result":{"message_id":1,"chat":{"id":1},"date":0}}`))),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
+	sub := newSubForTest(1, "Alimentación", "Supermercado")
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Alimentación|Supermercado": sub,
+	}}
+	accRepo := &fakeAccountRepoFull{}
+	movRepo := &fakeMovementRepoFull{}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movementRow{
+		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:  uint64(1),
+		"movements":             encodeMovementRows(rows),
+		"pending_category_gaps": encodeStringSlice(nil),
+		"pending_account_gaps":  encodeStringSlice(nil),
+		keyFirstAccountName:     "Galicia",
+	}
+
+	rt := &recordingTransport{}
+	b, err := bot.New("123:ABC", bot.WithSkipGetMe(), bot.WithHTTPClient(time.Second, &http.Client{Transport: rt}))
+	if err != nil {
+		t.Fatalf("bot.New: %v", err)
+	}
+
+	c.finishMovementCreateFlow(context.Background(), b, 1, data)
+
+	if len(rt.texts) != 3 {
+		t.Fatalf("expected 3 messages (recibo + R1 + R2), got %d: %+v", len(rt.texts), rt.texts)
+	}
+	if rt.texts[1] != msgFirstAccountDefault("Galicia") {
+		t.Errorf("R1 = %q, want %q", rt.texts[1], msgFirstAccountDefault("Galicia"))
+	}
+	if rt.texts[2] != msgInviteMoreAccounts {
+		t.Errorf("R2 = %q, want %q", rt.texts[2], msgInviteMoreAccounts)
 	}
 }
