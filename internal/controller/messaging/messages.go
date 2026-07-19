@@ -101,7 +101,7 @@ func msgFirstAccountDefault(name string) string {
 	return "⭐ Dejé " + name + " como tu cuenta principal — la uso cuando no me aclarás de dónde sale la plata."
 }
 
-const msgInviteMoreAccounts = "Podés tener más cuentas para vincular tus movimientos (ej: una para inversiones, otra en dólares). Decime \"creá una cuenta\" cuando quieras."
+const msgInviteMoreAccounts = "Podés tener más cuentas (inversiones, dólares, lo que sea). Decime \"creá una cuenta\" cuando quieras."
 
 func msgConfirmMovements(movements []movement.Movement) string {
 	lines := make([]string, 0, len(movements))
