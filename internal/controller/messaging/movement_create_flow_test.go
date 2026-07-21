@@ -146,6 +146,7 @@ type fakeMovementRepoFull struct {
 	reassignCalls      int
 	countForUser       int64
 	countBySubcategory int64
+	countErr           error
 	reassignedFrom     uint64
 	reassignedTo       uint64
 	reassignedUser     uint64
@@ -204,7 +205,7 @@ func (r *fakeMovementRepoFull) CountForUser(userID uint64) (int64, error) {
 	return r.countForUser, nil
 }
 func (r *fakeMovementRepoFull) CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error) {
-	return r.countBySubcategory, nil
+	return r.countBySubcategory, r.countErr
 }
 func (r *fakeMovementRepoFull) ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error {
 	r.reassignedFrom, r.reassignedTo, r.reassignedUser = fromID, toID, userID
