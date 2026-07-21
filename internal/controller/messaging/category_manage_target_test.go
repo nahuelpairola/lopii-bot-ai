@@ -512,3 +512,60 @@ func TestTargetFlow_BackFromConfirm_ManualPath_KeepsCategoryAndListsOptions(t *t
 		t.Error("el picker de subcategoría quedó sin opciones elegibles tras volver del confirm")
 	}
 }
+
+// raceTargetLister es el equivalente de raceLister para el flujo 2: devuelve el
+// catálogo completo en las primeras consultas y uno recortado a partir de
+// missAt, simulando un Reload() concurrente en el medio de la elección.
+type raceTargetLister struct {
+	calls  *int
+	before []subcategory.Subcategory
+	after  []subcategory.Subcategory
+	missAt int
+}
+
+func (r raceTargetLister) FindAllForUser(uint64) ([]subcategory.Subcategory, error) {
+	*r.calls++
+	if *r.calls >= r.missAt {
+		return r.after, nil
+	}
+	return r.before, nil
+}
+
+func (r raceTargetLister) DistinctCategoriesForUser(uint64) ([]string, error) {
+	return []string{"Alimentos"}, nil
+}
+
+func (r raceTargetLister) IconForCategory(uint64, string) string { return defaultCategoryIcon }
+
+// Si la fila destino desaparece justo antes de que OnChoice busque su nombre,
+// NO puede quedar un destino con ID y sin nombre: el confirm diría
+// «Alimentos › » y el usuario no podría verificar qué está por confirmar, en
+// una operación que mueve movimientos y borra una fila.
+func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
+	full := targetCatalog()
+	calls := 0
+	lister := raceTargetLister{
+		calls:  &calls,
+		before: full,
+		after:  []subcategory.Subcategory{ownedSub(7, "Comida", "Delivery", "🍕")}, // sin la 3
+		missAt: 2, // dentro de Handle("3"): 1=validación de la opción, 2=lookup del nombre
+	}
+
+	store := &fakeStateStore{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewCategoryManageTargetFlow(lister))
+
+	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	engine.Handle(1, conversation.Input{CallbackData: "Alimentos"})
+	// El prompt del paso de subcategoría ya se renderizó dentro del Handle
+	// anterior, así que el contador arranca de cero recién acá.
+	calls = 0
+
+	engine.Handle(1, conversation.Input{CallbackData: "3"})
+
+	id := stringOrEmpty(store.data[keyTargetSubcategoryID])
+	name := stringOrEmpty(store.data[keyTargetSubcategory])
+	if id != "" && name == "" {
+		t.Errorf("destino a medias: ID=%q sin nombre — el confirm mostraría «Alimentos › »", id)
+	}
+}

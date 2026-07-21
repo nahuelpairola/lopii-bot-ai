@@ -108,8 +108,8 @@ func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID ui
 		return nil
 	}
 	found, err := c.subcategories.FindByCategoryAndSubcategory(userID, res.Match.Category, res.Match.Subcategory)
-	if err != nil || uint64(found.ID) == sourceID {
-		return nil // alucinación, o se propuso a sí misma
+	if err != nil || found == nil || uint64(found.ID) == sourceID {
+		return nil // alucinación, se propuso a sí misma, o no resolvió a nada
 	}
 	return found
 }

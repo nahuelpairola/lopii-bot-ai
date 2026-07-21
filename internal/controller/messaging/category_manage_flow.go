@@ -262,17 +262,23 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				if value == optionCancel || value == optionBack {
 					return onCategoryManageCancel(value, data)
 				}
-				next := copyData(data)
-				next[keyTargetSubcategoryID] = value
+				// Todo-o-nada: el ID y el nombre se escriben juntos o no se
+				// escribe ninguno. Un destino con ID pero sin nombre haría que
+				// el confirm dijera «Alimentos › » y el usuario no podría
+				// verificar qué está por confirmar — en una operación que mueve
+				// movimientos y borra una fila.
 				all, _ := subs.FindAllForUser(data.UserID())
 				for _, s := range all {
-					if strconv.FormatUint(uint64(s.ID), 10) == value {
-						next[keyTargetSubcategory] = s.Subcategory
-						break
+					if strconv.FormatUint(uint64(s.ID), 10) != value {
+						continue
 					}
+					next := copyData(data)
+					next[keyTargetSubcategoryID] = value
+					next[keyTargetSubcategory] = s.Subcategory
+					next[keyTargetOrigin] = targetOriginManual
+					return next
 				}
-				next[keyTargetOrigin] = targetOriginManual
-				return next
+				return data
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
 		},
