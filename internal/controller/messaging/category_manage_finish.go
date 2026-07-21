@@ -1,0 +1,130 @@
+package messaging
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+
+	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/subcategory"
+)
+
+// finishCategoryManagePickFlow corre cuando el usuario eligió (o no) el origen.
+// Si eligió, hace el puente al flujo 2.
+func (c *controller) finishCategoryManagePickFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	if flag(data, keyCancelled) {
+		c.resolveMetric(ctx, data.UserID(), outcomeCategoryManageCancelled)
+		c.sendText(ctx, b, chatID, msgFlowCancelled)
+		return
+	}
+	if err := c.proceedToCategoryTarget(ctx, b, chatID, data); err != nil {
+		slog.ErrorContext(ctx, "category manage: proceed to target", "err", err)
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+	}
+}
+
+// proceedToCategoryTarget es el puente entre los dos flujos: cuenta los
+// movimientos del origen y, solo si hay alguno, pide una sugerencia de destino.
+// Después arranca el flujo 2 con todo eso sembrado.
+func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) error {
+	userID := data.UserID()
+	sourceID, err := strconv.ParseUint(stringOrEmpty(data[keySourceSubcategoryID]), 10, 64)
+	if err != nil {
+		return fmt.Errorf("category manage: source id inválido: %w", err)
+	}
+
+	count, err := c.movements.CountBySubcategory(userID, sourceID)
+	if err != nil {
+		return fmt.Errorf("category manage: contar movimientos: %w", err)
+	}
+
+	seed := conversation.Data{
+		keySourceSubcategoryID: stringOrEmpty(data[keySourceSubcategoryID]),
+		keySourceCategory:      stringOrEmpty(data[keySourceCategory]),
+		keySourceSubcategory:   stringOrEmpty(data[keySourceSubcategory]),
+		keyMovementCount:       strconv.FormatInt(count, 10),
+	}
+
+	if count > 0 {
+		if sug := c.suggestMergeTarget(ctx, userID, sourceID, data); sug != nil {
+			seed[keySuggestedSubcategoryID] = strconv.FormatUint(uint64(sug.ID), 10)
+			seed[keySuggestedCategory] = sug.Category
+			seed[keySuggestedSubcategory] = sug.Subcategory
+		}
+	}
+
+	prompt, err := c.engine.StartWithData(userID, categoryManageTargetFlowName, seed)
+	if err != nil {
+		return fmt.Errorf("start category_manage_target flow: %w", err)
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+	return nil
+}
+
+// suggestMergeTarget le pregunta al LLM a qué subcategoría existente se parece
+// la que el usuario quiere sacar, reusando ClassifyCategoryCreate: ya hace
+// exactamente esa pregunta ("¿esto que me describís ya existe?").
+//
+// Devuelve nil ante cualquier duda — error, timeout, propuesta en vez de match,
+// o un match que resuelve al propio origen. nil significa "sin sugerencia", y
+// el flujo cae al picker manual. Nunca bloquea.
+func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {
+	subs, err := c.subcategories.FindAllForUser(userID)
+	if err != nil {
+		return nil
+	}
+
+	taxonomy := make([]orchestrator.TaxonomyEntry, 0, len(subs))
+	var sourceDescription string
+	for _, s := range subs {
+		if subcategory.IsReserved(s.Category) {
+			continue
+		}
+		if uint64(s.ID) == sourceID {
+			sourceDescription = s.Description
+			continue // sin esta exclusión el LLM se matchearía a sí mismo
+		}
+		taxonomy = append(taxonomy, orchestrator.TaxonomyEntry{
+			Category: s.Category, Subcategory: s.Subcategory, Description: s.Description,
+		})
+	}
+
+	merchants, _ := c.movements.TopMerchantsBySubcategory(userID, sourceID, topMerchantsForSuggestion)
+	text := mergeSuggestionText(
+		stringOrEmpty(data[keySourceCategory]),
+		stringOrEmpty(data[keySourceSubcategory]),
+		sourceDescription,
+		merchants,
+	)
+
+	res, err := c.orchestrator.ClassifyCategoryCreate(ctx, text, taxonomy)
+	if err != nil || res.Match == nil {
+		return nil
+	}
+	found, err := c.subcategories.FindByCategoryAndSubcategory(userID, res.Match.Category, res.Match.Subcategory)
+	if err != nil || uint64(found.ID) == sourceID {
+		return nil // alucinación, o se propuso a sí misma
+	}
+	return found
+}
+
+// mergeSuggestionText arma lo que ve el LLM. Los comercios entran como contexto
+// de la MISMA llamada, no como una clasificación aparte: clasificar movimientos
+// daría una respuesta por movimiento, y esta operación es por subcategoría,
+// todo o nada.
+func mergeSuggestionText(category, subcategoryName, description string, merchants []string) string {
+	text := category + " / " + subcategoryName
+	if description != "" {
+		text += " — " + description
+	}
+	if len(merchants) > 0 {
+		text += " — gastos en: " + strings.Join(merchants, ", ")
+	}
+	return text
+}
