@@ -472,3 +472,43 @@ func TestProceedToCategoryTarget_CountErrorReturnsError(t *testing.T) {
 		t.Errorf("arrancó el flujo (%q) pese al error de conteo", store.stepName)
 	}
 }
+
+// Volver con Atrás desde el confirm por el camino MANUAL tiene que dejar al
+// usuario en el picker de subcategoría con opciones reales. Si la categoría
+// destino se borrara junto con la subcategoría, ese picker no tendría nada que
+// listar (filtra por categoría) y el usuario quedaría en un callejón.
+func TestTargetFlow_BackFromConfirm_ManualPath_KeepsCategoryAndListsOptions(t *testing.T) {
+	engine, store := newTargetEngine()
+	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	engine.Handle(1, conversation.Input{CallbackData: "Alimentos"})
+	engine.Handle(1, conversation.Input{CallbackData: "3"})
+
+	if store.stepName != stepConfirmCategoryManage {
+		t.Fatalf("precondición: stepName = %q, want %q", store.stepName, stepConfirmCategoryManage)
+	}
+
+	result, _, err := engine.Handle(1, conversation.Input{CallbackData: optionBack})
+	if err != nil {
+		t.Fatalf("Handle back: %v", err)
+	}
+	if store.stepName != stepPickTargetSubcategory {
+		t.Fatalf("stepName = %q, want %q", store.stepName, stepPickTargetSubcategory)
+	}
+	if got := stringOrEmpty(store.data[keyTargetCategory]); got != "Alimentos" {
+		t.Errorf("keyTargetCategory = %q tras Atrás, want %q conservada", got, "Alimentos")
+	}
+	if got := stringOrEmpty(store.data[keyTargetSubcategoryID]); got != "" {
+		t.Errorf("keyTargetSubcategoryID = %q tras Atrás, want vacío", got)
+	}
+
+	// lo que realmente importa: el picker tiene algo para elegir
+	picks := 0
+	for _, b := range result.Prompt.Buttons {
+		if b.Data != optionBack && b.Data != optionCancel {
+			picks++
+		}
+	}
+	if picks == 0 {
+		t.Error("el picker de subcategoría quedó sin opciones elegibles tras volver del confirm")
+	}
+}

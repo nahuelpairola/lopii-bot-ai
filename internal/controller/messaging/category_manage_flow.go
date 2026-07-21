@@ -53,9 +53,19 @@ func onCategoryManageCancel(value string, data conversation.Data) conversation.D
 // elección: sin esto, aceptar la sugerencia, volver con Atrás y elegir "otra"
 // arrastraría el destino viejo y fusionaría contra la categoría rechazada.
 func clearTarget(data conversation.Data) conversation.Data {
+	next := clearTargetSubcategory(data)
+	delete(next, keyTargetCategory)
+	return next
+}
+
+// clearTargetSubcategory borra la subcategoría destino pero conserva la
+// categoría. Es lo que hace falta al volver desde el confirm al picker de
+// subcategoría: ese step lista las subcategorías DE una categoría, así que si
+// también se borrara la categoría el usuario aterrizaría en un picker vacío,
+// sin nada que elegir y sin entender por qué.
+func clearTargetSubcategory(data conversation.Data) conversation.Data {
 	next := copyData(data)
 	delete(next, keyTargetSubcategoryID)
-	delete(next, keyTargetCategory)
 	delete(next, keyTargetSubcategory)
 	delete(next, keyTargetOrigin)
 	return next
@@ -295,7 +305,13 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				case optionCancel:
 					return onCategoryManageCancel(optionCancel, data)
 				case optionBack:
-					return clearTarget(data)
+					// Volver a la sugerencia descarta el destino entero; volver
+					// al picker de subcategoría conserva la categoría, que es
+					// justo lo que ese step necesita para tener qué listar.
+					if stringOrEmpty(data[keyTargetOrigin]) == targetOriginSuggested {
+						return clearTarget(data)
+					}
+					return clearTargetSubcategory(data)
 				}
 				next := copyData(data)
 				setFlag(next, keyConfirmed)
