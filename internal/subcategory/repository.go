@@ -85,6 +85,15 @@ func (r *repository) Insert(s *Subcategory) error {
 	return err
 }
 
+// Delete borra (soft-delete vía deleted_at) una subcategoría del usuario. El
+// filtro por user_id es lo que hace imposible borrar una global aunque llegue
+// un ID arbitrario: las globales tienen user_id NULL y nunca matchean.
+func (r *repository) Delete(userID uint64, id uint64) error {
+	return r.conn.DB.
+		Where("id = ? AND user_id = ?", id, userID).
+		Delete(&Subcategory{}).Error
+}
+
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"

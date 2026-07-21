@@ -8,8 +8,13 @@ import (
 )
 
 type fakeSubcatFinishRepo struct {
-	inserted []subcategory.Subcategory
-	reloaded bool
+	inserted      []subcategory.Subcategory
+	reloaded      bool
+	owned         []subcategory.Subcategory
+	deletedUserID uint64
+	deletedID     uint64
+	deleteCalls   int
+	deleteErr     error
 }
 
 func (r *fakeSubcatFinishRepo) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
@@ -29,6 +34,14 @@ func (r *fakeSubcatFinishRepo) Insert(s *subcategory.Subcategory) error {
 func (r *fakeSubcatFinishRepo) Reload() error {
 	r.reloaded = true
 	return nil
+}
+func (r *fakeSubcatFinishRepo) Delete(userID uint64, id uint64) error {
+	r.deletedUserID, r.deletedID = userID, id
+	r.deleteCalls++
+	return r.deleteErr
+}
+func (r *fakeSubcatFinishRepo) FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error) {
+	return r.owned, nil
 }
 
 func TestInsertNewSubcategory_NewCategory_SetsIsGlobalFalseAndIcon(t *testing.T) {

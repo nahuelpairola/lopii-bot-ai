@@ -10,6 +10,7 @@ import "sort"
 type allLoader interface {
 	FindAll() ([]Subcategory, error)
 	Insert(s *Subcategory) error
+	Delete(userID uint64, id uint64) error
 }
 
 // Cache holds every subcategory in memory: global is the shared ~90-row
@@ -125,6 +126,24 @@ func (c *Cache) IconForCategory(userID uint64, category string) string {
 // internal/controller/messaging/subcategory_setup_finish.go).
 func (c *Cache) Insert(s *Subcategory) error {
 	return c.loader.Insert(s)
+}
+
+// FindOwnedByUser devuelve solo las filas que creó el usuario, servidas desde
+// memoria: perUser ya las tiene separadas de las globales. Cero consultas.
+//
+// No filtra reservadas: Sistema y PENDING_REVIEW se siembran como globales, así
+// que Reload las manda a `global` y nunca caen acá.
+func (c *Cache) FindOwnedByUser(userID uint64) ([]Subcategory, error) {
+	own := c.perUser[userID]
+	out := make([]Subcategory, len(own))
+	copy(out, own)
+	return out, nil
+}
+
+// Delete escribe directo a la DB. Igual que Insert, quien llama tiene que
+// seguir con Reload() para que el cache deje de ver la fila borrada.
+func (c *Cache) Delete(userID uint64, id uint64) error {
+	return c.loader.Delete(userID, id)
 }
 
 func iconOrFallback(icon string) string {

@@ -70,6 +70,8 @@ type subcategoryRepository interface {
 	IconForCategory(userID uint64, category string) string
 	Insert(s *subcategory.Subcategory) error
 	Reload() error
+	Delete(userID uint64, id uint64) error
+	FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error)
 }
 
 // movementOrchestrator is the local interface for orchestrator.Orchestrator
