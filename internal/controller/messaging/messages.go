@@ -94,7 +94,7 @@ func msgAskFirstAccountName(conversation.Data) string {
 }
 
 func msgAskFirstAccountBalance(name string) string {
-	return "¿Cuánto tenés en " + name + " hoy? Poné el número — o mandá \"después\"."
+	return "¿Cuánto tenés en " + name + " hoy? Poné el número (ej: 50000) — o mandá \"después\"."
 }
 
 func msgFirstAccountDefault(name string) string {

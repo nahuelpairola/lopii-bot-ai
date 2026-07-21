@@ -181,6 +181,8 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		stepAccountManageConfirmAdjust: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
 				current := accountManageBalance(balances, data)
+				// ponytail: error ignorado a propósito — stepAccountManageAskTotal ya
+				// validó este valor con validateBalanceAmount, así que acá no puede fallar.
 				newTotal, _ := parseARAmount(stringOrEmpty(data[keyNewTotal]))
 				return msgConfirmAccountAdjust(
 					stringOrEmpty(data[keyAccountName]),

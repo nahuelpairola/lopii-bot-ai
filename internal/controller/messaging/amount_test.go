@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/account"
 )
 
 func TestParseARAmount(t *testing.T) {
@@ -64,5 +65,50 @@ func TestParseARAmount_UserFormats(t *testing.T) {
 		if !c.ok && err == nil {
 			t.Errorf("parseARAmount(%q) expected error, got %v", c.in, got)
 		}
+	}
+}
+
+func TestParseARAmount_RejectsLetters(t *testing.T) {
+	// Antes estas entradas se "limpiaban" en silencio ("100k" -> 100), lo que
+	// producía un monto mal en un path de plata. Ahora tienen que fallar.
+	for _, in := range []string{"30k", "100k", "10 mil", "1.5m", "100 xyz", "2 millones", "cien"} {
+		if got, err := parseARAmount(in); err == nil {
+			t.Errorf("parseARAmount(%q) = %s, want error", in, got)
+		}
+	}
+}
+
+func TestParseARAmount_AcceptsValidNumbers(t *testing.T) {
+	cases := map[string]string{
+		"300":          "300",
+		"30000":        "30000",
+		"435,68":       "435.68",
+		"332.79":       "332.79",
+		"$ 2.422,90":   "2422.9",
+		"5 694,08":     "5694.08",
+		"1.000.000,50": "1000000.5",
+		"1.000":        "1000",
+		"1.5":          "1.5",
+	}
+	for in, want := range cases {
+		got, err := parseARAmount(in)
+		if err != nil {
+			t.Errorf("parseARAmount(%q): unexpected error %v", in, err)
+			continue
+		}
+		if got.String() != want {
+			t.Errorf("parseARAmount(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+func TestValidateBalanceAmount_RejectsAbbreviation(t *testing.T) {
+	// El hook que ven los flows: una abreviatura tiene que devolver el mensaje
+	// de error, y un número limpio tiene que pasar.
+	if msg := validateBalanceAmount("30k", nil); msg != account.MsgInvalidAmount {
+		t.Errorf("validateBalanceAmount(%q) = %q, want %q", "30k", msg, account.MsgInvalidAmount)
+	}
+	if msg := validateBalanceAmount("30000", nil); msg != "" {
+		t.Errorf("validateBalanceAmount(%q) = %q, want empty", "30000", msg)
 	}
 }
