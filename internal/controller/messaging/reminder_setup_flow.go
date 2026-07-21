@@ -313,4 +313,3 @@ func (c *controller) startReminderSetup(ctx context.Context, b *bot.Bot, chatID 
 	}
 	return nil
 }
-

@@ -13,12 +13,12 @@ func TestParseARAmount(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"45685,9", "45685.9", false},   // AR comma decimal — the incident value
-		{"1.500,50", "1500.50", false},  // dots = thousands, comma = decimal
-		{"123000", "123000", false},     // plain integer
-		{"45685.9", "45685.9", false},   // already dot-normalized (LLM output)
-		{"  2650 ", "2650", false},      // surrounding whitespace
-		{"abc", "0", true},              // malformed
+		{"45685,9", "45685.9", false},  // AR comma decimal — the incident value
+		{"1.500,50", "1500.50", false}, // dots = thousands, comma = decimal
+		{"123000", "123000", false},    // plain integer
+		{"45685.9", "45685.9", false},  // already dot-normalized (LLM output)
+		{"  2650 ", "2650", false},     // surrounding whitespace
+		{"abc", "0", true},             // malformed
 	}
 	for _, c := range cases {
 		got, err := parseARAmount(c.in)

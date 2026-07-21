@@ -100,4 +100,3 @@ func TestMsgConfirmDelete_IncludesSubcategoryDescriptionDate(t *testing.T) {
 		}
 	}
 }
-

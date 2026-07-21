@@ -258,13 +258,13 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	}
 
 	seed := conversation.Data{
-		keyMode:                 modeUpdate,
-		keyOldMovementIDs:       encodeStringSlice(oldIDs),
-		keyBeforeMovements:      encodeMovementRows(beforeRows),
-		keyMovements:            encodeMovementRows(afterRows),
+		keyMode:                modeUpdate,
+		keyOldMovementIDs:      encodeStringSlice(oldIDs),
+		keyBeforeMovements:     encodeMovementRows(beforeRows),
+		keyMovements:           encodeMovementRows(afterRows),
 		keyPendingCategoryGaps: encodeStringSlice(nil),
 		keyPendingAccountGaps:  encodeStringSlice(nil),
-		keyDeleteInstead:        strconv.FormatBool(correctionIsDeletion(afterRows)),
+		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows)),
 	}
 
 	prompt, err := c.engine.StartWithData(userID, movementUpdateConfirmFlowName, seed)

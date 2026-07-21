@@ -548,7 +548,7 @@ func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
 		calls:  &calls,
 		before: full,
 		after:  []subcategory.Subcategory{ownedSub(7, "Comida", "Delivery", "🍕")}, // sin la 3
-		missAt: 2, // dentro de Handle("3"): 1=validación de la opción, 2=lookup del nombre
+		missAt: 2,                                                                 // dentro de Handle("3"): 1=validación de la opción, 2=lookup del nombre
 	}
 
 	store := &fakeStateStore{}

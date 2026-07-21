@@ -9,7 +9,9 @@ import (
 )
 
 // Run with real Groq creds:
-//   GROQ_API_KEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestCreateEval -v
+//
+//	GROQ_API_KEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestCreateEval -v
+//
 // Excluded from the default `go test ./...` (no tag) so CI needs no API key.
 var evalCases = []struct {
 	msg          string
