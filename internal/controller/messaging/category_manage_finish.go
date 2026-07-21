@@ -128,3 +128,62 @@ func mergeSuggestionText(category, subcategoryName, description string, merchant
 	}
 	return text
 }
+
+// finishCategoryManageTargetFlow aplica lo que el confirm ya le mostró al
+// usuario. Es pura ejecución: el gate de confirmación quedó atrás, dentro del
+// flujo.
+//
+// El orden importa. Primero se mueven los movimientos, después se borra la
+// categoría. Al revés, un fallo intermedio dejaría movimientos apuntando a una
+// fila borrada. En este orden, un fallo del borrado deja la categoría vacía —
+// un estado consistente que el usuario puede reintentar.
+func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	if flag(data, keyCancelled) || !flag(data, keyConfirmed) {
+		c.resolveMetric(ctx, data.UserID(), outcomeCategoryManageCancelled)
+		c.sendText(ctx, b, chatID, msgFlowCancelled)
+		return
+	}
+
+	userID := data.UserID()
+	sourceID, err := strconv.ParseUint(stringOrEmpty(data[keySourceSubcategoryID]), 10, 64)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+
+	targetRaw := stringOrEmpty(data[keyTargetSubcategoryID])
+	if targetRaw != "" {
+		targetID, err := strconv.ParseUint(targetRaw, 10, 64)
+		if err != nil {
+			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			return
+		}
+		if err := c.movements.ReassignSubcategory(userID, sourceID, targetID); err != nil {
+			slog.ErrorContext(ctx, "category manage: reassign", "err", err)
+			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			return
+		}
+	}
+
+	// Delete devuelve ErrSubcategoryNotFound cuando no borró nada (fila ajena,
+	// global o inexistente). Hay que cortar acá: decirle "listo, la saqué" a
+	// alguien cuya categoría sigue estando sería mentirle.
+	if err := c.subcategories.Delete(userID, sourceID); err != nil {
+		slog.ErrorContext(ctx, "category manage: delete", "err", err)
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return
+	}
+	// El Cache es read-through: sin Reload la categoría borrada seguiría
+	// apareciendo hasta el próximo reinicio del server.
+	if err := c.subcategories.Reload(); err != nil {
+		slog.ErrorContext(ctx, "category manage: cache reload", "err", err)
+	}
+
+	c.resolveMetric(ctx, userID, outcomeCategoryManageApplied)
+	if targetRaw == "" {
+		c.sendText(ctx, b, chatID, msgCategoryManageDeleted(sourceLabel(data)))
+		return
+	}
+	c.sendText(ctx, b, chatID, msgCategoryManageMerged(
+		stringOrEmpty(data[keyMovementCount]), sourceLabel(data), targetLabel(data)))
+}

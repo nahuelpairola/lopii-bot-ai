@@ -33,6 +33,7 @@ type fakeSubcategoryRepoFull struct {
 	deletedID        uint64
 	deleteCalls      int
 	deleteErr        error
+	reloadCalls      int
 }
 
 func (r *fakeSubcategoryRepoFull) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
@@ -52,7 +53,10 @@ func (r *fakeSubcategoryRepoFull) IconForCategory(userID uint64, category string
 	return "📂"
 }
 func (r *fakeSubcategoryRepoFull) Insert(s *subcategory.Subcategory) error { return nil }
-func (r *fakeSubcategoryRepoFull) Reload() error                           { return nil }
+func (r *fakeSubcategoryRepoFull) Reload() error {
+	r.reloadCalls++
+	return nil
+}
 func (r *fakeSubcategoryRepoFull) Delete(userID uint64, id uint64) error {
 	r.deletedUserID, r.deletedID = userID, id
 	r.deleteCalls++

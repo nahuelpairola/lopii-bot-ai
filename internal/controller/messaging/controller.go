@@ -255,6 +255,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishCategoryMatchOffer(ctx, b, chatID, result.Data)
 	case categoryProposalConfirmFlowName:
 		c.finishCategoryProposalConfirm(ctx, b, chatID, result.Data)
+	case categoryManagePickFlowName:
+		c.finishCategoryManagePickFlow(ctx, b, chatID, result.Data)
+	case categoryManageTargetFlowName:
+		c.finishCategoryManageTargetFlow(ctx, b, chatID, result.Data)
 	case movementNegativeConfirmFlowName:
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	case reminderSetupFlowName:
