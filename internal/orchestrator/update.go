@@ -81,6 +81,9 @@ func (o *Orchestrator) ResolveUpdate(ctx context.Context, text string, candidate
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return UpdateResult{}, fmt.Errorf("orchestrator: parse update result: %w", err)
 	}
+	for i := range args.Movements {
+		args.Movements[i].normalizeSubcategory()
+	}
 	return UpdateResult{
 		Resolved:          bool(args.Resolved),
 		MentionedDateFrom: args.MentionedDateFrom,
