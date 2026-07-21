@@ -119,6 +119,60 @@ func TestCategoryManagePickFlow_CancelMarksCancelledAndSetsNoSource(t *testing.T
 	}
 }
 
+// raceLister simula la ventana de la corrección de Arreglo 2: el cache
+// devuelve la fila en las dos primeras consultas (armado de botones +
+// validación de la opción elegida, adentro de ChoiceStep) pero ya no en la
+// tercera (la que OnChoice hace para sacar los nombres) — como si un
+// Reload() concurrente la hubiese sacado justo en el medio.
+type raceLister struct {
+	calls  *int
+	before []subcategory.Subcategory
+	after  []subcategory.Subcategory
+	missAt int
+}
+
+func (r raceLister) FindOwnedByUser(uint64) ([]subcategory.Subcategory, error) {
+	*r.calls++
+	if *r.calls >= r.missAt {
+		return r.after, nil
+	}
+	return r.before, nil
+}
+
+func TestCategoryManagePickFlow_RowDisappearsBetweenQueries_NoPartialSource(t *testing.T) {
+	calls := 0
+	lister := raceLister{
+		calls:  &calls,
+		before: twoOwned(),                                                          // fila 7 presente (armado de botones + match)
+		after:  []subcategory.Subcategory{ownedSub(9, "Regalos", "Cumpleaños", "")}, // fila 7 ya no está (lookup de nombres en OnChoice)
+		missAt: 3,
+	}
+	store := &fakeStateStore{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewCategoryManagePickFlow(lister))
+
+	if _, err := engine.StartWithData(1, categoryManagePickFlowName, conversation.Data{}); err != nil {
+		t.Fatalf("StartWithData: %v", err)
+	}
+
+	result, found, err := engine.Handle(1, conversation.Input{CallbackData: "7"})
+	if err != nil || !found {
+		t.Fatalf("Handle: found=%v err=%v", found, err)
+	}
+	if !result.Finished {
+		t.Fatal("elegir un id que matcheó debería terminar el flujo 1")
+	}
+	if got := stringOrEmpty(result.Data[keySourceSubcategoryID]); got != "" {
+		t.Errorf("la fila desapareció en la segunda consulta de OnChoice: no debería quedar keySourceSubcategoryID (got %q)", got)
+	}
+	if got := stringOrEmpty(result.Data[keySourceCategory]); got != "" {
+		t.Errorf("no debería quedar keySourceCategory sin su ID (got %q)", got)
+	}
+	if got := stringOrEmpty(result.Data[keySourceSubcategory]); got != "" {
+		t.Errorf("no debería quedar keySourceSubcategory sin su ID (got %q)", got)
+	}
+}
+
 func TestCategoryManagePickFlow_UnknownCallbackRetries(t *testing.T) {
 	engine, _ := newCategoryManagePickEngine(twoOwned())
 	engine.StartWithData(1, categoryManagePickFlowName, conversation.Data{})

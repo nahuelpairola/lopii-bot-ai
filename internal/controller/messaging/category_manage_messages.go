@@ -5,7 +5,6 @@ import "strings"
 const (
 	msgCategoryManagePickSource    = "¿Cuál querés sacar?"
 	msgCategoryManageNoOwn         = "Solo puedo sacar las categorías que creaste vos — las que vienen de fábrica quedan siempre.\n\nTodavía no creaste ninguna. Si querés una nueva, pedímela: «creá una categoría para mascotas»."
-	msgCategoryManageCancelled     = "Listo, no toqué nada."
 	msgCategoryManagePickTargetCat = "¿A qué categoría los mando?"
 )
 

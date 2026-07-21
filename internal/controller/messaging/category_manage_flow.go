@@ -104,17 +104,22 @@ func NewCategoryManagePickFlow(subs ownedSubcategoryLister) *conversation.Flow {
 				if value == optionCancel {
 					return onCategoryManageCancel(optionCancel, data)
 				}
-				next := copyData(data)
-				next[keySourceSubcategoryID] = value
+				// Todo-o-nada: la fila se busca ANTES de tocar Data. Si esta
+				// segunda consulta no matchea (la vista del cache puede cambiar
+				// entre el armado de opciones y este OnChoice), no dejamos un
+				// origen a medias (ID seteado sin nombres) — devolvemos data
+				// intacta.
 				owned, _ := subs.FindOwnedByUser(data.UserID())
 				for _, s := range owned {
 					if strconv.FormatUint(uint64(s.ID), 10) == value {
+						next := copyData(data)
+						next[keySourceSubcategoryID] = value
 						next[keySourceCategory] = s.Category
 						next[keySourceSubcategory] = s.Subcategory
-						break
+						return next
 					}
 				}
-				return next
+				return data
 			},
 			InvalidChoiceMessage: msgGenericFlowError,
 		},

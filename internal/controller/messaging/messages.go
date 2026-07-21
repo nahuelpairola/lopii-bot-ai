@@ -12,12 +12,12 @@ import (
 
 // Mensajes estáticos, sin variables.
 const (
-	msgAlreadyHasAccount       = "Ya tenés una cuenta activa. Mandame un gasto para registrarlo."
-	msgPrivateBot              = "Este bot es privado. Si tenés una invitación, abrí el link que te compartieron."
-	msgInvalidInvitation       = "Esa invitación no es válida."
-	msgInvitationError         = "Hubo un error procesando tu invitación, probá de nuevo en un momento."
-	msgInvitationUsed          = "Esa invitación ya fue utilizada."
-	msgInvitationExpired       = "Esa invitación expiró, pedí una nueva."
+	msgAlreadyHasAccount = "Ya tenés una cuenta activa. Mandame un gasto para registrarlo."
+	msgPrivateBot        = "Este bot es privado. Si tenés una invitación, abrí el link que te compartieron."
+	msgInvalidInvitation = "Esa invitación no es válida."
+	msgInvitationError   = "Hubo un error procesando tu invitación, probá de nuevo en un momento."
+	msgInvitationUsed    = "Esa invitación ya fue utilizada."
+	msgInvitationExpired = "Esa invitación expiró, pedí una nueva."
 	msgUserCreationError = "No pude crear tu cuenta, probá de nuevo."
 
 	// MsgWelcome is exported so the admin reset endpoint (controller/admin)
@@ -111,7 +111,6 @@ func msgConfirmMovements(movements []movement.Movement) string {
 	}
 	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
 }
-
 
 // movementReceiptLine formats one movement for a receipt/confirmation
 // message: icon, category › subcategory, amount, currency, description,
@@ -306,7 +305,9 @@ func msgConfirmAccountDefault(name, cur string) string {
 	return fmt.Sprintf("⭐ ¿%s pasa a ser tu cuenta en %s por defecto? Los movimientos en %s sin cuenta aclarada van a ir ahí.", name, cur, cur)
 }
 
-const msgAccountManageCancelled = "Listo, no toqué nada."
+// msgFlowCancelled: "cancelaste, no escribí nada" — no es específico de
+// cuentas ni categorías, cualquier flujo de gestión que se cancela lo usa.
+const msgFlowCancelled = "Listo, no toqué nada."
 const msgAccountManageNoChange = "Ya tenías ese saldo, no cambié nada."
 
 // msgAskSubcategoryDescription is deliberately short and concrete: the

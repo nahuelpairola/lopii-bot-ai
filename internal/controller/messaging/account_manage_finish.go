@@ -19,7 +19,7 @@ import (
 func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	if flag(data, keyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeAccountManageCancelled)
-		c.sendText(ctx, b, chatID, msgAccountManageCancelled)
+		c.sendText(ctx, b, chatID, msgFlowCancelled)
 		return
 	}
 
