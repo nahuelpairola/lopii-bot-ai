@@ -48,7 +48,11 @@ func (r *fakeQueryMovements) SoftDeleteByIDs([]uint) error                      
 func (r *fakeQueryMovements) InsertAccountsWithOpenings([]movement.AccountOpening) error { return nil }
 func (r *fakeQueryMovements) ReassignAccount(uint64, uint64) error                       { return nil }
 func (r *fakeQueryMovements) CountForUser(uint64) (int64, error)                         { return 0, nil }
-func (r *fakeQueryMovements) ExistsWithSubcategory(uint64, uint64) (bool, error)         { return false, nil }
+func (r *fakeQueryMovements) CountBySubcategory(uint64, uint64) (int64, error)           { return 0, nil }
+func (r *fakeQueryMovements) ReassignSubcategory(uint64, uint64, uint64) error           { return nil }
+func (r *fakeQueryMovements) TopMerchantsBySubcategory(uint64, uint64, int) ([]string, error) {
+	return nil, nil
+}
 
 type fakeQueryAccounts struct{ accts []account.Account }
 

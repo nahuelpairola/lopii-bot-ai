@@ -58,7 +58,9 @@ type movementRepository interface {
 	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
 	ReassignAccount(fromID, toID uint64) error
 	CountForUser(userID uint64) (int64, error)
-	ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error)
+	CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error)
+	ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error
+	TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
 }
 
 type subcategoryRepository interface {

@@ -151,16 +151,46 @@ func (r *repository) CountForUser(userID uint64) (int64, error) {
 	return n, err
 }
 
-// ExistsWithSubcategory reports whether the user has any movement (any type,
-// any currency, all time) under the given subcategory. MovementQuery's
-// ListForUser/SumForUser require a currency + date range and default to
-// excluding transfers — the wrong shape for an "ever done X" nudge check.
-func (r *repository) ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error) {
+// CountBySubcategory cuenta los movimientos VIVOS del usuario bajo una
+// subcategoría (cualquier tipo, cualquier moneda, todo el tiempo). Cuenta solo
+// vivos a propósito: es lo que el usuario ve en pantalla, y es el número que se
+// le muestra antes de fusionar. MovementQuery no sirve acá — exige moneda y
+// rango de fechas, y excluye transferencias por defecto.
+func (r *repository) CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error) {
 	var n int64
 	err := r.db.DB.Model(&Movement{}).
 		Where("user_id = ? AND subcategory_id = ?", userID, subcategoryID).
 		Count(&n).Error
-	return n > 0, err
+	return n, err
+}
+
+// ReassignSubcategory mueve todos los movimientos de una subcategoría a otra.
+// Es un UPDATE plano, sin la lógica de ReassignAccount: esa colapsa las
+// transferencias entre las dos cuentas fusionadas, algo que no tiene sentido
+// entre subcategorías.
+//
+// Unscoped a propósito: mueve también los movimientos soft-deleteados, para no
+// dejar una fila borrada apuntando a una subcategoría que se está por borrar.
+func (r *repository) ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error {
+	return r.db.DB.Unscoped().Model(&Movement{}).
+		Where("user_id = ? AND subcategory_id = ?", userID, fromID).
+		Update("subcategory_id", toID).Error
+}
+
+// TopMerchantsBySubcategory devuelve los comercios más frecuentes de una
+// subcategoría, del más usado al menos. Alimenta el texto que se le manda al
+// LLM para sugerir un destino de fusión: "Comida / Delivery — gastos en:
+// PedidosYa, Rappi".
+func (r *repository) TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
+	var merchants []string
+	err := r.db.DB.Model(&Movement{}).
+		Where("user_id = ? AND subcategory_id = ?", userID, subcategoryID).
+		Where("merchant IS NOT NULL AND merchant <> ''").
+		Group("merchant").
+		Order("COUNT(*) DESC").
+		Limit(limit).
+		Pluck("merchant", &merchants).Error
+	return merchants, err
 }
 
 // SoftDeleteByIDs borra (soft-delete vía deleted_at) todas las filas

@@ -134,8 +134,14 @@ func (r *fakeMovementRepoForResolve) ListForUser(q movement.MovementQuery, limit
 }
 func (r *fakeMovementRepoForResolve) ReassignAccount(fromID, toID uint64) error { return nil }
 func (r *fakeMovementRepoForResolve) CountForUser(userID uint64) (int64, error) { return 0, nil }
-func (r *fakeMovementRepoForResolve) ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error) {
-	return false, nil
+func (r *fakeMovementRepoForResolve) CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error) {
+	return 0, nil
+}
+func (r *fakeMovementRepoForResolve) ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error {
+	return nil
+}
+func (r *fakeMovementRepoForResolve) TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
+	return nil, nil
 }
 
 func TestResolveCandidates_NoDate_UsesCreatedAtRecencyWindow(t *testing.T) {
