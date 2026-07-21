@@ -4,7 +4,10 @@ const (
 	msgInvalidAccountName   = "Mandame un nombre válido para la cuenta."
 	msgAccountCreationError = "No se pudo crear la cuenta, probá de nuevo."
 
-	MsgInvalidAmount = "Mandame un monto válido (ejemplo: 1500 o 1500.50)."
+	// El ejemplo usa coma decimal a propósito: es la convención argentina que
+	// valida parseARAmount. "sin letras" es la parte que enseña por qué se
+	// rechaza "30k". También cubre el caso de monto negativo (ver spec §3.2).
+	MsgInvalidAmount = "Mandame solo el monto, sin letras (ej: 1500 o 1500,50)."
 
 	btnReplaceYes         = "Sí, reemplazar"
 	btnReplaceNo          = "No, agregar como extra"
