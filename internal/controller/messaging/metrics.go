@@ -38,6 +38,9 @@ const (
 	outcomeAccountDefaultSet      = "account_default_set"
 	outcomeAccountManageCancelled = "account_manage_cancelled"
 
+	// outcomeCategoryManageNoOwn: el usuario pidió sacar una categoría pero no
+	// creó ninguna. El bot entendió y respondió bien; no es una falla.
+	outcomeCategoryManageNoOwn     = "category_manage_no_own"
 	outcomeCategoryManageApplied   = "category_manage_applied"
 	outcomeCategoryManageCancelled = "category_manage_cancelled"
 )

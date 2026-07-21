@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -147,6 +148,9 @@ func (c *Client) send(ctx context.Context, callType, model string, payload []byt
 		}
 		// non-retryable (a non-429 4xx = malformed request, our bug)
 		c.record(ctx, callType, model, start, attempt+1, resp.StatusCode, fmt.Sprintf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body)), resp.Header, nil)
+		if isToolUseFailed(body) {
+			return nil, fmt.Errorf("%w: %s", ErrNothingToExtract, string(body))
+		}
 		return nil, fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
 	}
 	c.record(ctx, callType, model, start, attempt, lastStatus, errStr(lastErr), nil, nil)
@@ -327,4 +331,30 @@ func (c *Client) chatCompletion(ctx context.Context, callType, model, systemProm
 	}
 
 	return json.RawMessage(parsed.Choices[0].Message.ToolCalls[0].Function.Arguments), nil
+}
+
+// ErrNothingToExtract señala que el modelo se negó a llamar a la tool porque el
+// mensaje no traía lo que la tool necesita — "quiero crear una categoría" sin
+// decir cuál, o "ponelo ahí" sin monto.
+//
+// No es un error de infraestructura ni un bug nuestro: el modelo hizo lo
+// correcto al no inventar. Groq lo devuelve como HTTP 400 con code
+// "tool_use_failed" porque mandamos tool_choice=required, así que hay que
+// distinguirlo del 400 genuino (request malformado) para poder pedirle al
+// usuario el dato que falta en vez de mostrarle "algo salió mal".
+var ErrNothingToExtract = errors.New("orchestrator: el modelo no encontró nada que extraer")
+
+// isToolUseFailed reconoce el 400 de Groq que en realidad significa "no había
+// nada que extraer". Se parsea el código en vez de buscar la subcadena para no
+// confundirlo con un mensaje de error que apenas lo mencione.
+func isToolUseFailed(body []byte) bool {
+	var payload struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return false
+	}
+	return payload.Error.Code == "tool_use_failed"
 }
