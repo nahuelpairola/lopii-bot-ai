@@ -28,6 +28,7 @@ type fakeSubcategoryRepoFull struct {
 	allErr           error
 	categories       []string
 	owned            []subcategory.Subcategory
+	ownedErr         error
 	deletedUserID    uint64
 	deletedID        uint64
 	deleteCalls      int
@@ -58,7 +59,7 @@ func (r *fakeSubcategoryRepoFull) Delete(userID uint64, id uint64) error {
 	return r.deleteErr
 }
 func (r *fakeSubcategoryRepoFull) FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error) {
-	return r.owned, nil
+	return r.owned, r.ownedErr
 }
 
 type fakeAccountRepoFull struct {

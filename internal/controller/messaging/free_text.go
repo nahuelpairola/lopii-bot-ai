@@ -118,6 +118,8 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		return c.startAccountManage(ctx, b, chatID, userID, text)
 	case orchestrator.IntentCreateCategory:
 		return c.startSubcategorySetup(ctx, b, chatID, userID, text)
+	case orchestrator.IntentCategoryManage:
+		return c.startCategoryManage(ctx, b, chatID, userID)
 	case orchestrator.IntentReminderSet:
 		return c.startReminderSetup(ctx, b, chatID, userID)
 	case orchestrator.IntentHelp:
@@ -209,6 +211,33 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 	prompt, err := c.engine.StartWithData(userID, categoryProposalConfirmFlowName, seed)
 	if err != nil {
 		return c.startSubcategoryWizard(ctx, b, chatID, userID)
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+	return nil
+}
+
+// startCategoryManage arranca el flujo de sacar una categoría propia. Antes de
+// nada verifica que el usuario tenga alguna: sin eso el picker mostraría solo
+// "Cancelar", que es un callejón sin salida disfrazado de flujo.
+func (c *controller) startCategoryManage(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) error {
+	slog.InfoContext(ctx, "flow started", "flow", categoryManagePickFlowName, "user_id", userID)
+
+	owned, err := c.subcategories.FindOwnedByUser(userID)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return fmt.Errorf("category manage: find owned: %w", err)
+	}
+	if len(owned) == 0 {
+		c.sendText(ctx, b, chatID, msgCategoryManageNoOwn)
+		return nil
+	}
+
+	prompt, err := c.engine.Start(userID, categoryManagePickFlowName)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return fmt.Errorf("start category_manage_pick flow: %w", err)
 	}
 	if b != nil {
 		c.sendPrompt(ctx, b, chatID, prompt)
