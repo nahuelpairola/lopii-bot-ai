@@ -263,3 +263,14 @@ func TestCache_Delete_PropagatesLoaderError(t *testing.T) {
 		t.Errorf("err = %v, want %v", err, wantErr)
 	}
 }
+
+// El repository devuelve ErrSubcategoryNotFound cuando RowsAffected == 0
+// (id ajeno, inexistente, o global); Cache.Delete es passthrough, así que
+// alcanza con fijar que ese error viaja sin transformarse.
+func TestCache_Delete_PropagatesNotFound(t *testing.T) {
+	loader := &fakeLoader{deleteErr: ErrSubcategoryNotFound}
+	cache, _ := NewCache(loader)
+	if err := cache.Delete(1, 42); !errors.Is(err, ErrSubcategoryNotFound) {
+		t.Errorf("err = %v, want ErrSubcategoryNotFound", err)
+	}
+}
