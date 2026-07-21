@@ -12,7 +12,3 @@ const (
 )
 
 const PendingReview = "PENDING_REVIEW"
-
-// WeeklySummaryOffData is the Telegram callback data for the weekly-summary
-// disable button. Shared by the notifier (attaches it) and messaging (handles it).
-const WeeklySummaryOffData = "weekly_summary:off"
