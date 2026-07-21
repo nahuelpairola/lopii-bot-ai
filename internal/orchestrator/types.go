@@ -10,6 +10,7 @@ const (
 	IntentQuery          Intent = "QUERY"
 	IntentAccountManage  Intent = "ACCOUNT_MANAGE"
 	IntentCreateCategory Intent = "CREATE_CATEGORY"
+	IntentCategoryManage Intent = "CATEGORY_MANAGE"
 	IntentReminderSet    Intent = "REMINDER_SET"
 	IntentHelp           Intent = "HELP"
 )
