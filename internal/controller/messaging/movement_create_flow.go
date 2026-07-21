@@ -98,6 +98,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			},
 			NextStep: stepResolveCategory,
 			EscapeOptions: []conversation.ChoiceOption{
+				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepCreateFirstAccount},
 				{Label: "⏭️ Después", Value: optionBalanceLater, NextStep: stepResolveCategory},
 				cancelOption,
 			},
