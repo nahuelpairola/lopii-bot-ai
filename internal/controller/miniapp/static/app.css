@@ -14,6 +14,9 @@ a, button, .tab-link {
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0.05);
 }
 
+/* Telegram draws its own UI at the bottom of the webview, and iOS adds a home
+   indicator. Both are reported as CSS vars; without them the tab bar sits
+   underneath. The 0px fallback covers older clients that don't define them. */
 .tab-bar {
   position: fixed;
   bottom: 0;
@@ -23,7 +26,7 @@ a, button, .tab-link {
   justify-content: space-around;
   border-top: 1px solid var(--pico-muted-border-color);
   background: var(--pico-background-color);
-  padding: 0.5rem 0;
+  padding: 0.5rem 0 calc(0.5rem + var(--tg-safe-area-inset-bottom, 0px));
 }
 
 .tab-link {
@@ -36,10 +39,56 @@ a, button, .tab-link {
 }
 
 .content-area {
-  padding-bottom: 4rem; /* clears the fixed tab bar */
+  /* clears the fixed tab bar, plus whatever Telegram/iOS reserve below it */
+  padding-bottom: calc(4rem + var(--tg-safe-area-inset-bottom, 0px));
   overscroll-behavior: contain;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .chart-canvas { animation: none !important; }
 }
+
+.muted { color: var(--pico-muted-color); }
+
+.period-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: var(--pico-spacing);
+}
+
+.period-cursor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.period-cursor a,
+.period-cursor-off {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  text-decoration: none;
+}
+
+.period-cursor-off { color: var(--pico-muted-color); opacity: 0.4; }
+
+.chips { display: flex; align-items: center; gap: 0.25rem; }
+
+/* pico already styles [aria-current] on [role=button] — the chip only needs
+   to be small enough that the row fits a phone. */
+.chip {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  margin: 0;
+  --pico-border-radius: 1rem;
+}
+
+.chips-sep { flex: 1; }
+
+/* htmx puts .htmx-request on the element named by hx-indicator */
+#content.htmx-request { opacity: 0.55; transition: opacity 0.1s; }

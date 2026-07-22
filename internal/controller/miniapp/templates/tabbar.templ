@@ -1,34 +1,30 @@
 package templates
 
+// TabBar is rendered once, in the shell, and never swapped — so its links
+// cannot carry the current period in their hrefs. hx-include="#app-state"
+// pulls it from the hidden inputs every partial renders (see PeriodHeader),
+// and htmx serializes them into the GET query the normal way, so hx-push-url
+// reflects them too.
 templ TabBar(active string) {
-	<nav class="tab-bar">
-		<a class="tab-link" href={ RouteOverview } hx-get={ RouteOverview } hx-target="#content" hx-push-url="true">
-			if active == TabOverview {
-				<strong>Resumen</strong>
-			} else {
-				Resumen
-			}
-		</a>
-		<a class="tab-link" href={ RouteCategories } hx-get={ RouteCategories } hx-target="#content" hx-push-url="true">
-			if active == TabCategories {
-				<strong>Categorías</strong>
-			} else {
-				Categorías
-			}
-		</a>
-		<a class="tab-link" href={ RouteMatrix } hx-get={ RouteMatrix } hx-target="#content" hx-push-url="true">
-			if active == TabMatrix {
-				<strong>Matriz</strong>
-			} else {
-				Matriz
-			}
-		</a>
-		<a class="tab-link" href={ RouteAccounts } hx-get={ RouteAccounts } hx-target="#content" hx-push-url="true">
-			if active == TabAccounts {
-				<strong>Cuentas</strong>
-			} else {
-				Cuentas
-			}
-		</a>
+	<nav class="tab-bar" hx-include="#app-state" hx-target="#content" hx-push-url="true" hx-indicator="#content">
+		@tabLink(RouteOverview, TabOverview, "Resumen", active)
+		@tabLink(RouteCategories, TabCategories, "Categorías", active)
+		@tabLink(RouteMatrix, TabMatrix, "Matriz", active)
+		@tabLink(RouteAccounts, TabAccounts, "Cuentas", active)
 	</nav>
+}
+
+// tabLink marks the active tab with aria-current rather than <strong>: pico
+// styles [aria-current] already, and app.js can re-mark it after an htmx swap
+// (the tab bar itself never re-renders).
+templ tabLink(route, tab, label, active string) {
+	<a
+		class="tab-link"
+		data-tab={ tab }
+		href={ route }
+		hx-get={ route }
+		if active == tab {
+			aria-current="page"
+		}
+	>{ label }</a>
 }

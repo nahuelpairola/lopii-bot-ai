@@ -1,0 +1,62 @@
+package templates
+
+import "lopiibot.com/internal/currency"
+
+// PeriodHeader renders the window controls and, crucially, #app-state: the
+// hidden inputs the tab bar pulls in via hx-include. That is how a tab
+// navigation keeps the period the user picked without any JS — the tab bar
+// lives in the shell and is rendered once, so it cannot carry fresh state in
+// its own hrefs.
+templ PeriodHeader(p Period) {
+	<div id="app-state" hidden>
+		<input type="hidden" name="p" value={ p.Preset }/>
+		<input type="hidden" name="m" value={ p.AnchorKey() }/>
+		<input type="hidden" name="c" value={ p.Currency.String() }/>
+	</div>
+	<header class="period-header">
+		<div class="period-cursor">
+			if p.PrevQuery != "" {
+				<a href={ p.PrevQuery } hx-get={ p.PrevQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content" aria-label="Período anterior">&lsaquo;</a>
+			} else {
+				<span class="period-cursor-off" aria-hidden="true">&lsaquo;</span>
+			}
+			<strong>{ p.Label }</strong>
+			if p.NextQuery != "" {
+				<a href={ p.NextQuery } hx-get={ p.NextQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content" aria-label="Período siguiente">&rsaquo;</a>
+			} else {
+				<span class="period-cursor-off" aria-hidden="true">&rsaquo;</span>
+			}
+		</div>
+		<div class="chips" role="group">
+			for _, preset := range p.Allowed {
+				<a
+					role="button"
+					class="outline chip"
+					href={ p.WithPreset(preset) }
+					hx-get={ p.WithPreset(preset) }
+					hx-target="#content"
+					hx-push-url="true"
+					hx-indicator="#content"
+					if p.IsPreset(preset) {
+						aria-current="page"
+					}
+				>{ PresetLabel(preset) }</a>
+			}
+			<span class="chips-sep"></span>
+			for _, cur := range currency.SupportedCurrencies {
+				<a
+					role="button"
+					class="outline chip"
+					href={ p.WithCurrency(cur) }
+					hx-get={ p.WithCurrency(cur) }
+					hx-target="#content"
+					hx-push-url="true"
+					hx-indicator="#content"
+					if p.Currency == cur {
+						aria-current="page"
+					}
+				>{ cur.String() }</a>
+			}
+		</div>
+	</header>
+}
