@@ -24,6 +24,7 @@ type TrendDataset struct {
 
 // OverviewData is what Overview renders.
 type OverviewData struct {
+	Period     Period
 	Gastos     string
 	Ingresos   string
 	Neto       string
@@ -32,6 +33,8 @@ type OverviewData struct {
 	TrendChart TrendChartData
 }
 
+// The <h2> the view used to open with is gone: the tab already says where you
+// are, and the period header earns that space by saying *when* you are.
 func Overview(data OverviewData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -53,14 +56,18 @@ func Overview(data OverviewData) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h2>Resumen</h2><div class=\"grid\"><article><p>Gastos</p><p class=\"money\">")
+		templ_7745c5c3_Err = PeriodHeader(data.Period).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"grid\"><article><p>Gastos</p><p class=\"money\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(data.Gastos)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 32, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 35, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -73,7 +80,7 @@ func Overview(data OverviewData) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(data.Ingresos)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 36, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 39, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -101,7 +108,7 @@ func Overview(data OverviewData) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(data.Neto)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 46, Col: 15}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 49, Col: 15}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {

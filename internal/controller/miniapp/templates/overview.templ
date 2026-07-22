@@ -16,6 +16,7 @@ type TrendDataset struct {
 
 // OverviewData is what Overview renders.
 type OverviewData struct {
+	Period     Period
 	Gastos     string
 	Ingresos   string
 	Neto       string
@@ -24,8 +25,10 @@ type OverviewData struct {
 	TrendChart TrendChartData
 }
 
+// The <h2> the view used to open with is gone: the tab already says where you
+// are, and the period header earns that space by saying *when* you are.
 templ Overview(data OverviewData) {
-	<h2>Resumen</h2>
+	@PeriodHeader(data.Period)
 	<div class="grid">
 		<article>
 			<p>Gastos</p>
