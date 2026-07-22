@@ -36,6 +36,29 @@ a, button, .tab-link {
   align-items: center;
   justify-content: center;
   text-decoration: none;
+  /* pico colours EVERY <a> with --pico-primary, so without this all four tabs
+     are the same blue and the active one has nothing to stand out against. */
+  color: var(--pico-muted-color);
+  position: relative; /* anchors the ::before bar below */
+}
+
+.tab-link[aria-current] {
+  color: var(--pico-primary);
+  font-weight: 600;
+  text-decoration: none; /* pico underlines [aria-current] on <a> */
+}
+
+/* A 2px bar sitting on .tab-bar's border-top: top: -0.5rem is exactly its
+   padding-top. A geometric channel, independent of luminance — muted grey
+   against primary blue is only 1.47:1. */
+.tab-link[aria-current]::before {
+  content: "";
+  position: absolute;
+  top: -0.5rem;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--pico-primary);
 }
 
 .content-area {
