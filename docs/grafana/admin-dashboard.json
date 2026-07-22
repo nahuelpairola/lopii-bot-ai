@@ -498,6 +498,417 @@
           "rawSql": "SELECT $__timeGroup(created_at,$__interval) AS time, max(latency_ms) AS \"llm máx\" FROM llm_calls WHERE $__timeFilter(created_at) GROUP BY 1 ORDER BY 1"
         }
       ]
+    },
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Producto",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "panels": [
+        {
+          "id": 101,
+          "type": "table",
+          "title": "Intents × outcomes",
+          "description": "colgado = un pending que nunca se resolvió: el usuario arrancó un flujo y lo dejó tirado. corregido = create_rewrite, el usuario tuvo que corregir lo que el bot entendió, o sea el proxy honesto de calidad del LLM. Limitación conocida: un pending reciente puede ser un flujo en curso ahora mismo, no un abandono.",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 8, "w": 16, "x": 0, "y": 22 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false, "filterable": false },
+              "mappings": [],
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "corregido" },
+                "properties": [
+                  { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        { "color": "text", "value": null },
+                        { "color": "orange", "value": 1 }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "cancelado" },
+                "properties": [
+                  { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        { "color": "text", "value": null },
+                        { "color": "orange", "value": 3 }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": { "id": "byRegexp", "options": "fallo|colgado" },
+                "properties": [
+                  { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        { "color": "text", "value": null },
+                        { "color": "orange", "value": 1 },
+                        { "color": "red", "value": 3 }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" },
+            "sortBy": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT intent, count(*) AS \"total\", count(*) FILTER (WHERE outcome ~ 'inserted|confirmed|applied|answered') AS \"ok\", count(*) FILTER (WHERE outcome LIKE '%cancelled%') AS \"cancelado\", count(*) FILTER (WHERE outcome = 'create_rewrite') AS \"corregido\", count(*) FILTER (WHERE outcome ~ 'failed|no_candidates') AS \"fallo\", count(*) FILTER (WHERE outcome = 'pending') AS \"colgado\" FROM intent_events WHERE $__timeFilter(created_at) GROUP BY intent ORDER BY \"total\" DESC"
+            }
+          ]
+        },
+        {
+          "id": 102,
+          "type": "stat",
+          "title": "Usuarios activos (rango)",
+          "description": "Reemplaza DAU/WAU, que ignoraban el time picker. Este respeta la ventana elegida.",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 4, "w": 8, "x": 16, "y": 22 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "mappings": [], "color": { "mode": "fixed", "fixedColor": "blue" } },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "textMode": "auto",
+            "orientation": "auto",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(DISTINCT user_id) AS \"activos\" FROM request_traces WHERE $__timeFilter(received_at) AND user_id IS NOT NULL"
+            }
+          ]
+        },
+        {
+          "id": 103,
+          "type": "stat",
+          "title": "Movimientos (rango)",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 4, "w": 8, "x": 16, "y": 26 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "mappings": [], "color": { "mode": "fixed", "fixedColor": "green" } },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "textMode": "auto",
+            "orientation": "auto",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) AS \"movimientos\" FROM movements WHERE deleted_at IS NULL AND $__timeFilter(created_at)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 200,
+      "type": "row",
+      "title": "LLM y tokens",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 22 },
+      "panels": [
+        {
+          "id": 201,
+          "type": "stat",
+          "title": "Tokens acumulados",
+          "description": "Sin conversión a USD a propósito: los tokens son el hecho, el precio de Groq cambia y se pudre hardcodeado en un JSON que nadie revisa.",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 23 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "mappings": [], "color": { "mode": "fixed", "fixedColor": "purple" } },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "textMode": "auto",
+            "orientation": "auto",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT coalesce(sum(total_tokens), 0) AS \"tokens\" FROM llm_calls WHERE $__timeFilter(created_at)"
+            }
+          ]
+        },
+        {
+          "id": 202,
+          "type": "stat",
+          "title": "Rate-limit tokens",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 4, "w": 4, "x": 4, "y": 23 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [],
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "orange", "value": 10000 },
+                  { "color": "green", "value": 100000 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "textMode": "auto",
+            "orientation": "auto",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT min(ratelimit_remaining_tokens) AS \"tok restantes\" FROM llm_calls WHERE $__timeFilter(created_at)"
+            }
+          ]
+        },
+        {
+          "id": 203,
+          "type": "table",
+          "title": "Por modelo",
+          "description": "Reemplaza el barchart que ponía calls y reintentos en el mismo eje, donde 3 reintentos junto a 200 calls eran invisibles.",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 8, "w": 16, "x": 8, "y": 23 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false, "filterable": false },
+              "mappings": [],
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byRegexp", "options": "ms prom|ms máx" },
+                "properties": [{ "id": "unit", "value": "ms" }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "reintentos" },
+                "properties": [
+                  { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        { "color": "text", "value": null },
+                        { "color": "orange", "value": 1 },
+                        { "color": "red", "value": 10 }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" },
+            "sortBy": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT model, count(*) AS \"calls\", coalesce(sum(total_tokens), 0) AS \"tokens\", count(*) FILTER (WHERE attempts > 1) AS \"reintentos\", round(avg(latency_ms)) AS \"ms prom\", max(latency_ms) AS \"ms máx\" FROM llm_calls WHERE $__timeFilter(created_at) GROUP BY model ORDER BY \"calls\" DESC"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 300,
+      "type": "row",
+      "title": "Higiene",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "panels": [
+        {
+          "id": 301,
+          "type": "stat",
+          "title": "Zombie flows",
+          "description": "Estados de conversación sin tocar hace más de una hora. No respeta el time picker a propósito: es un 'ahora mismo'.",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 4, "w": 4, "x": 0, "y": 24 },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "mappings": [],
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 },
+                  { "color": "red", "value": 5 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "textMode": "auto",
+            "orientation": "auto",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) AS \"zombies\" FROM conversation_states WHERE updated_at < now() - interval '1 hour'"
+            }
+          ]
+        },
+        {
+          "id": 302,
+          "type": "stat",
+          "title": "Reminders activos",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 4, "w": 4, "x": 4, "y": 24 },
+          "fieldConfig": {
+            "defaults": { "unit": "short", "mappings": [], "color": { "mode": "fixed", "fixedColor": "text" } },
+            "overrides": []
+          },
+          "options": {
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "textMode": "auto",
+            "orientation": "auto",
+            "wideLayout": true,
+            "showPercentChange": false
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT count(*) AS \"reminders\" FROM reminders WHERE enabled"
+            }
+          ]
+        },
+        {
+          "id": 303,
+          "type": "table",
+          "title": "Tamaño tablas de métricas",
+          "description": "Lee del catálogo en O(1) en vez de tres count(*) full-scan cada 5 minutos. La retención la corre el Sweeper en Go (90 días, internal/notifier/sweeper.go), no pg_cron.",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+          "gridPos": { "h": 4, "w": 16, "x": 8, "y": 24 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false, "filterable": false },
+              "mappings": [],
+              "color": { "mode": "thresholds" },
+              "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+            },
+            "overrides": []
+          },
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" },
+            "sortBy": []
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "grafana-postgresql-datasource", "uid": "${DS_POSTGRES}" },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT relname AS \"tabla\", pg_size_pretty(pg_total_relation_size(relid)) AS \"tamaño\", n_live_tup AS \"filas aprox\" FROM pg_stat_user_tables WHERE relname IN ('llm_calls', 'request_traces', 'intent_events') ORDER BY pg_total_relation_size(relid) DESC"
+            }
+          ]
+        }
+      ]
     }
   ]
 }
