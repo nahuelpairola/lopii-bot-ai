@@ -12,6 +12,7 @@
 - **[business-rules.md](business-rules.md)** — currencies, the accounting/money model (full), grouping, taxonomy, reminders.
 - **[recipes.md](recipes.md)** — how to add a migration, flow, LLM intent, scheduled notification, admin command.
 - **[dev-setup.md](dev-setup.md)** — local Postgres, config, run, migrations.
+- **[grafana/README.md](grafana/README.md)** — dashboard de admin: cómo importarlo, cómo leerlo, y la checklist de verificación manual.
 
 For conventions and the condensed money-model warning, see `CLAUDE.md` (always loaded).
 
