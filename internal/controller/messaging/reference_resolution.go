@@ -5,19 +5,13 @@ import (
 	"strings"
 	"time"
 
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/movement"
 )
 
-// argentinaZone is fixed UTC-3. Argentina observes no DST, so a fixed
-// offset avoids depending on the IANA tz database being present on the
-// host (Alpine/scratch images ship without it).
-// ponytail: fixed -3; if Argentina ever restores DST, switch to
-// time.LoadLocation + embedded time/tzdata.
-var argentinaZone = time.FixedZone("ART", -3*60*60)
-
 func startOfTodayArgentina() time.Time {
-	now := time.Now().In(argentinaZone)
-	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, argentinaZone)
+	now := time.Now().In(constants.ArgentinaZone)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, constants.ArgentinaZone)
 }
 
 const (
