@@ -10,6 +10,7 @@ import (
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/controller/miniapp/templates"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -76,14 +77,14 @@ func (c *controller) handleMatrix(ctx *gin.Context) {
 		Months:   months,
 		Expanded: expand,
 		Empty:    len(order) == 0,
-		Totals:   monthTotals(order, byCategory, len(months)),
+		Totals:   monthTotals(order, byCategory, len(months), p.Currency),
 	}
-	for _, row := range buildMatrixRows(order, byCategory) {
+	for _, row := range buildMatrixRows(order, byCategory, p.Currency) {
 		row.Icon = c.subcategories.IconForCategory(userID, row.Label)
 		if row.Label == expand {
 			row.Href = p.Query() // tapping the open row collapses it
 			data.Rows = append(data.Rows, row)
-			for _, sub := range buildMatrixRows(subOrder, bySubcategory) {
+			for _, sub := range buildMatrixRows(subOrder, bySubcategory, p.Currency) {
 				sub.Sub = true
 				data.Rows = append(data.Rows, sub)
 			}
@@ -120,14 +121,14 @@ func collectMonth(rows []movement.CategorySum, month, months int, into map[strin
 // buildMatrixRows turns the pivot into render rows: sorted by period total
 // descending (a Go map iterates in random order, so without this the rows
 // shuffled between loads) and each cell graded against its own row.
-func buildMatrixRows(labels []string, byLabel map[string][]decimal.Decimal) []templates.MatrixRow {
+func buildMatrixRows(labels []string, byLabel map[string][]decimal.Decimal, cur currency.Currency) []templates.MatrixRow {
 	rows := make([]templates.MatrixRow, 0, len(labels))
 	for _, label := range labels {
 		cells := byLabel[label]
 		row := templates.MatrixRow{Label: label, Cells: make([]templates.MatrixCell, len(cells))}
 		for i, v := range cells {
 			row.Cells[i] = templates.MatrixCell{
-				Value:     templates.FormatCompact(v),
+				Value:     templates.FormatCompact(v, cur),
 				Intensity: cellIntensity(cells, i),
 			}
 		}
@@ -173,14 +174,14 @@ func rowTotal(cells []decimal.Decimal) decimal.Decimal {
 }
 
 // monthTotals is the "Total" row: what the whole period cost each month.
-func monthTotals(labels []string, byLabel map[string][]decimal.Decimal, months int) []templates.MatrixCell {
+func monthTotals(labels []string, byLabel map[string][]decimal.Decimal, months int, cur currency.Currency) []templates.MatrixCell {
 	out := make([]templates.MatrixCell, months)
 	for i := 0; i < months; i++ {
 		t := decimal.Zero
 		for _, label := range labels {
 			t = t.Add(byLabel[label][i])
 		}
-		out[i] = templates.MatrixCell{Value: templates.FormatCompact(t)}
+		out[i] = templates.MatrixCell{Value: templates.FormatCompact(t, cur)}
 	}
 	return out
 }

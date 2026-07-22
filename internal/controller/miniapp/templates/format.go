@@ -7,12 +7,11 @@ import (
 	"lopiibot.com/internal/currency"
 )
 
-// millionCutoff is where FormatCompact switches to "M". It sits below 1M on
-// purpose: 999999 rounded at thousands scale would render "1000k".
+// thousandsFloor is the smallest ARS amount that still rounds to 1 at
+// thousands scale. Anything nonzero below it renders "<1": "0" would read as
+// "no spending", and the muted dot already means that.
 var (
-	millionCutoff  = decimal.NewFromInt(999_500)
-	thousandCutoff = decimal.NewFromInt(1_000)
-	oneMillion     = decimal.NewFromInt(1_000_000)
+	thousandsFloor = decimal.NewFromInt(500)
 	oneThousand    = decimal.NewFromInt(1_000)
 )
 
@@ -31,21 +30,34 @@ func FormatMoney(d decimal.Decimal, cur currency.Currency) string {
 	return sign + "$" + groupThousands(abs.StringFixed(0))
 }
 
-// FormatCompact renders a matrix cell: short enough for a phone column. Zero
-// renders as a muted dot — an empty month should not compete for attention
-// with a real number.
-func FormatCompact(d decimal.Decimal) string {
+// FormatCompact renders a matrix cell. ARS is scaled to thousands — at peso
+// magnitudes the full number costs three columns of width, and the table's
+// caption carries the scale. USD is not scaled: those amounts are already
+// short, and dividing them by a thousand would render "0,1". Zero renders as a
+// muted dot — an empty month should not compete for attention with a real
+// number.
+func FormatCompact(d decimal.Decimal, cur currency.Currency) string {
 	v := d.Abs()
 	switch {
 	case v.IsZero():
 		return "·"
-	case v.GreaterThanOrEqual(millionCutoff):
-		return groupThousands(v.Div(oneMillion).StringFixed(1)) + "M"
-	case v.GreaterThanOrEqual(thousandCutoff):
-		return v.Div(oneThousand).StringFixed(0) + "k"
+	case cur == currency.USD:
+		return groupThousands(v.StringFixed(0))
+	case v.LessThan(thousandsFloor):
+		return "<1"
 	default:
-		return v.StringFixed(0)
+		return groupThousands(v.Div(oneThousand).StringFixed(0))
 	}
+}
+
+// ScaleNote is the caption suffix that tells the reader what FormatCompact did
+// to the numbers. It carries its own separator and is empty when nothing was
+// scaled, so the caption can concatenate it without a conditional.
+func ScaleNote(cur currency.Currency) string {
+	if cur == currency.USD {
+		return ""
+	}
+	return " · en miles de $"
 }
 
 // groupThousands turns a plain decimal string ("1234567.89") into AR format

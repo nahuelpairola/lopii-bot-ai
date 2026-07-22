@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/controller/miniapp/templates"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 )
 
@@ -38,6 +39,7 @@ func TestBuildMatrixRows_SortsByPeriodTotalDesc(t *testing.T) {
 			"Vivienda":   {d(400), d(400)},
 			"Ocio":       {d(50), d(300)},
 		},
+		currency.ARS,
 	)
 	want := []string{"Vivienda", "Ocio", "Transporte"}
 	for i, w := range want {
@@ -58,6 +60,7 @@ func TestBuildMatrixRows_ShadesAgainstRowAverage(t *testing.T) {
 			// promedio sobre meses CON movimiento (=30), no sobre 4
 			"Salud": {d(0), d(30), d(0), d(30)},
 		},
+		currency.ARS,
 	)
 	byLabel := map[string]templates.MatrixRow{}
 	for _, r := range rows {
@@ -89,7 +92,7 @@ func TestBuildMatrixRows_SingleMonthWithDataIsNeverShaded(t *testing.T) {
 	// Sin al menos dos meses con movimiento no hay "normal" contra qué comparar.
 	rows := buildMatrixRows([]string{"Viajes"}, map[string][]decimal.Decimal{
 		"Viajes": {d(0), d(0), d(900000)},
-	})
+	}, currency.ARS)
 	for i, c := range rows[0].Cells {
 		if c.Intensity != "" {
 			t.Errorf("celda %d no debe sombrearse: %q", i, c.Intensity)

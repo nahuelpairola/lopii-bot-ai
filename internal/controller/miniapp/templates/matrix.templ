@@ -29,7 +29,7 @@ templ Matrix(data MatrixData) {
 	} else {
 		<div class="matrix-scroll">
 			<table class="matrix">
-				<caption>Gasto por categoría · { data.Period.Label }</caption>
+				<caption>Gasto por categoría · { data.Period.Label }{ ScaleNote(data.Period.Currency) }</caption>
 				<thead>
 					<tr>
 						<th scope="col">Categoría</th>
