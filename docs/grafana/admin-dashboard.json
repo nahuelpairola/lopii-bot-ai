@@ -8,7 +8,19 @@
   "timezone": "browser",
   "refresh": "5m",
   "time": { "from": "now-24h", "to": "now" },
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
   "templating": {
     "list": [
       {
@@ -16,7 +28,6 @@
         "label": "Postgres datasource",
         "type": "datasource",
         "query": "grafana-postgresql-datasource",
-        "pluginId": "grafana-postgresql-datasource",
         "current": {},
         "options": [],
         "hide": 0,
