@@ -79,13 +79,36 @@ a, button, .tab-link {
 
 .chips { display: flex; align-items: center; gap: 0.25rem; }
 
-/* pico already styles [aria-current] on [role=button] — the chip only needs
-   to be small enough that the row fits a phone. */
+/* The active state is painted by the rule below, not by pico — this block only
+   carries the sizing that keeps the row on a phone. */
 .chip {
   padding: 0.25rem 0.6rem;
   font-size: 0.8rem;
   margin: 0;
   --pico-border-radius: 1rem;
+}
+
+/* pico encodes selection as a one-step hue shift (--pico-primary →
+   --pico-primary-hover): 1.32:1 in dark, below the 3:1 WCAG asks for to read a
+   state. Selection becomes a fill instead, and the inactive chip drops to
+   muted so the row carries one accent, not five.
+
+   These set plain properties rather than pico's custom props on purpose: the
+   real declaration (background-color: var(--pico-background-color)) lives in
+   pico's base button rule at ~(0,1,0), and these selectors are (0,2,0). They
+   win without !important and without relying on stylesheet order.
+
+   templ only ever emits aria-current="page" or nothing, never "false" — so
+   bare [aria-current] is enough. */
+.chip:not([aria-current]) {
+  color: var(--pico-muted-color);
+  border-color: var(--pico-muted-border-color);
+}
+
+.chip[aria-current] {
+  background-color: var(--pico-primary-background);
+  border-color: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
 }
 
 .chips-sep { flex: 1; }
