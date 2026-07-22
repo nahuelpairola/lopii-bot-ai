@@ -1,27 +1,32 @@
 package templates
 
 type AccountSnapshot struct {
-	Name     string
-	Balance  string
-	Currency string
+	Name string
+	// Balance already carries its currency symbol (FormatMoney), so the view
+	// never has to re-state which world these numbers live in.
+	Balance string
 }
 
 type AccountsData struct {
+	Period     Period
 	Snapshots  []AccountSnapshot
 	TrendChart TrendChartData
 	Empty      bool
 }
 
 templ Accounts(data AccountsData) {
-	<h2>Cuentas</h2>
+	@PeriodHeader(data.Period)
 	if data.Empty {
-		@EmptyState("Todavía no tenés cuentas.")
+		@EmptyState("Todavía no tenés cuentas en esta moneda.")
 	} else {
+		// The snapshot is today's balance, not the period's — say so, or it
+		// reads as "what I had at the end of the window".
+		<p class="muted">Saldo hoy</p>
 		<div class="grid">
 			for _, a := range data.Snapshots {
 				<article>
 					<p>{ a.Name }</p>
-					<p class="money">{ a.Balance } { a.Currency }</p>
+					<p class="money">{ a.Balance }</p>
 				</article>
 			}
 		</div>

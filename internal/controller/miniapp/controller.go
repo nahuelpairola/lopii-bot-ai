@@ -34,15 +34,28 @@ type accountReader interface {
 	FindByUserID(userID uint64) ([]account.Account, error)
 }
 
-type controller struct {
-	movements movementReader
-	accounts  accountReader
-	users     userLookup
-	botToken  string
+// subcategoryReader is the taxonomy surface this package needs: just the icon
+// lookup, so a category renders with the same emoji the bot uses in chat.
+type subcategoryReader interface {
+	IconForCategory(userID uint64, category string) string
 }
 
-func NewController(movements movementReader, accounts accountReader, users userLookup, botToken string) *controller {
-	return &controller{movements: movements, accounts: accounts, users: users, botToken: botToken}
+type controller struct {
+	movements     movementReader
+	accounts      accountReader
+	subcategories subcategoryReader
+	users         userLookup
+	botToken      string
+}
+
+func NewController(movements movementReader, accounts accountReader, subcategories subcategoryReader, users userLookup, botToken string) *controller {
+	return &controller{
+		movements:     movements,
+		accounts:      accounts,
+		subcategories: subcategories,
+		users:         users,
+		botToken:      botToken,
+	}
 }
 
 // RegisterRoutes mounts every /app route on engine, all guarded by
@@ -55,8 +68,9 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 	authed := app.Group("")
 	authed.Use(authInitData(c.botToken, c.users))
 	authed.GET("/"+templates.TabOverview, c.handleOverview)
+	// The subcategory drill is the same route with a ?category= param, not a
+	// path segment: real category names contain "/".
 	authed.GET("/"+templates.TabCategories, c.handleCategories)
-	authed.GET("/"+templates.TabCategories+"/:category", c.handleCategoryDrill)
 	authed.GET("/"+templates.TabAccounts, c.handleAccounts)
 	authed.GET("/"+templates.TabMatrix, c.handleMatrix)
 }

@@ -147,7 +147,7 @@ func InitServer(conf *config.Config) error {
 		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo, metricRepo, nudgeRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
-	miniappController := miniappctrl.NewController(movementRepo, accountRepo, userRepo, conf.Telegram.Token)
+	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, conf.Telegram.Token)
 
 	healthController.RegisterRoutes(ginEngine)
 	invitationController.RegisterRoutes(ginEngine)

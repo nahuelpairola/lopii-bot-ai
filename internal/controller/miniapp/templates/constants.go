@@ -29,13 +29,19 @@ const (
 )
 
 // Chart palette (dataviz skill — categorical slots + status hues). Hex for
-// Chart.js datasets; HeatmapBaseRGB is the same primary as an "r,g,b" triple
-// for the matrix cell rgba().
+// Chart.js datasets.
 const (
-	ColorExpense   = "#2a78d6" // primary (also categorical slot 0)
-	ColorIncome    = "#1baf7a"
-	ColorBar       = "#2a78d6"
-	HeatmapBaseRGB = "42,120,214" // == #2a78d6
+	ColorExpense = "#2a78d6" // primary (also categorical slot 0)
+	ColorIncome  = "#1baf7a"
+	ColorBar     = "#2a78d6"
+)
+
+// Cell* are the matrix shading steps, as CSS classes rather than an inline
+// rgba(): the shade means "above this row's own average", which is a two-step
+// scale, not a continuous ramp.
+const (
+	CellMild = "cell-mild"
+	CellHigh = "cell-high"
 )
 
 // AccountSlotColors gives each account a stable color by position ("color

@@ -74,16 +74,72 @@ document.addEventListener('htmx:configRequest', (evt) => {
   } catch (e) { /* opened outside Telegram — request goes unauthenticated, server 401s */ }
 });
 
+// The tab bar is rendered once, in the shell, and htmx only swaps #content —
+// so the active tab has to be re-marked client-side after every swap.
+function markActiveTab() {
+  const active = location.pathname.replace(/^\/app\//, '').split('/')[0];
+  document.querySelectorAll('.tab-link').forEach((link) => {
+    if (link.dataset.tab === active) {
+      link.setAttribute('aria-current', 'page');
+    } else {
+      link.removeAttribute('aria-current');
+    }
+  });
+}
+
+// initData expires after 24h. A swap that comes back 401 has to say so, not
+// leave a half-broken partial on screen.
+document.addEventListener('htmx:responseError', (evt) => {
+  if (evt.detail.xhr.status !== 401) return;
+  const content = document.getElementById('content');
+  if (content) {
+    content.innerHTML =
+      '<article><p>Sesión vencida. Volvé a abrir la app desde el botón del chat.</p></article>';
+  }
+});
+
+// Telegram's own light/dark setting, not the OS one: pico reads data-theme.
+function applyTelegramTheme() {
+  try {
+    const scheme = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.colorScheme;
+    if (scheme) document.documentElement.setAttribute('data-theme', scheme);
+  } catch (e) { /* not inside Telegram */ }
+}
+
+// The native back button beats a link for backing out of a drill. htmx pushes
+// the URL, so history.back() restores the previous partial.
+function syncBackButton() {
+  try {
+    const bb = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton;
+    if (!bb) return;
+    const params = new URLSearchParams(location.search);
+    if (params.has('category') || params.has('expand')) {
+      bb.show();
+    } else {
+      bb.hide();
+    }
+  } catch (e) { /* not inside Telegram */ }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+  applyTelegramTheme();
   try {
     if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
+      window.Telegram.WebApp.BackButton.onClick(() => history.back());
+      window.Telegram.WebApp.onEvent('themeChanged', applyTelegramTheme);
     }
   } catch (e) { /* not inside Telegram */ }
   initCharts(document);
+  markActiveTab();
+  syncBackButton();
 });
 
 // htmx events bubble to document — listen there, NOT on document.body (this
 // script is in <head>, where document.body is still null).
-document.addEventListener('htmx:afterSwap', (evt) => initCharts(evt.detail.target));
+document.addEventListener('htmx:afterSwap', (evt) => {
+  initCharts(evt.detail.target);
+  markActiveTab();
+  syncBackButton();
+});

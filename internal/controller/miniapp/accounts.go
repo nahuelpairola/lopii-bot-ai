@@ -2,14 +2,17 @@ package miniapp
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/movement"
 )
 
 func (c *controller) handleAccounts(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
+	p := periodFromQuery(ctx, templates.TrendPresets, templates.Preset6M)
 
 	accounts, err := c.accounts.FindByUserID(userID)
 	if err != nil {
@@ -17,7 +20,14 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 		return
 	}
 
-	data := templates.AccountsData{Empty: len(accounts) == 0}
+	// One currency at a time. ARS and USD never share an axis: a balance of
+	// USD 500 next to ARS 2.000.000 flattens the line into the baseline, and
+	// the two numbers mean nothing to each other anyway.
+	accounts = slices.DeleteFunc(accounts, func(a account.Account) bool {
+		return a.Currency != p.Currency
+	})
+
+	data := templates.AccountsData{Period: p, Empty: len(accounts) == 0}
 	var allMonths []string
 	seenMonths := map[string]bool{}
 	var runningByAccount [][]monthBalance
@@ -29,7 +39,7 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 			return
 		}
 		data.Snapshots = append(data.Snapshots, templates.AccountSnapshot{
-			Name: a.Name, Balance: bal.StringFixed(2), Currency: a.Currency.String(),
+			Name: a.Name, Balance: templates.FormatMoney(bal, a.Currency),
 		})
 
 		deltas, err := c.movements.MonthlyDeltasForAccount(uint64(a.ID))
@@ -37,7 +47,7 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 			ctx.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
-		running := cumulativeBalances(deltas, trendMonths)
+		running := cumulativeBalances(deltas, p.Months)
 		runningByAccount = append(runningByAccount, running)
 		for _, m := range running {
 			if !seenMonths[m.Month] {
