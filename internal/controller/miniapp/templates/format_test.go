@@ -31,18 +31,37 @@ func TestFormatMoney(t *testing.T) {
 
 func TestFormatCompact(t *testing.T) {
 	cases := []struct {
+		name string
 		in   decimal.Decimal
+		cur  currency.Currency
 		want string
 	}{
-		{decimal.Zero, "·"},
-		{decimal.NewFromInt(840), "840"},
-		{decimal.NewFromInt(412000), "412k"},
-		{decimal.NewFromInt(999999), "1,0M"}, // no "1000k"
-		{decimal.NewFromInt(1250000), "1,3M"},
+		{"ARS cero es el punto muted", decimal.Zero, currency.ARS, "·"},
+		{"ARS no-cero que redondea a cero avisa que hubo gasto", decimal.NewFromInt(450), currency.ARS, "<1"},
+		{"ARS en el piso exacto ya redondea a 1", decimal.NewFromInt(500), currency.ARS, "1"},
+		{"ARS redondea hacia arriba", decimal.NewFromInt(840), currency.ARS, "1"},
+		{"ARS caso típico", decimal.NewFromInt(560000), currency.ARS, "560"},
+		{"ARS agrupa miles dentro de la escala de miles", decimal.NewFromInt(1240000), currency.ARS, "1.240"},
+		{"ARS negativo muestra la magnitud", decimal.NewFromInt(-560000), currency.ARS, "560"},
+		{"USD cero es el mismo punto muted", decimal.Zero, currency.USD, "·"},
+		{"USD no se escala", decimal.NewFromInt(120), currency.USD, "120"},
+		{"USD agrupa pero no escala", decimal.NewFromInt(1200), currency.USD, "1.200"},
+		{"USD redondea los centavos", decimal.RequireFromString("1234.56"), currency.USD, "1.235"},
 	}
 	for _, c := range cases {
-		if got := FormatCompact(c.in); got != c.want {
-			t.Errorf("FormatCompact(%s) = %q, want %q", c.in, got, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			if got := FormatCompact(c.in, c.cur); got != c.want {
+				t.Errorf("FormatCompact(%s, %s) = %q, want %q", c.in, c.cur, got, c.want)
+			}
+		})
+	}
+}
+
+func TestScaleNote(t *testing.T) {
+	if got := ScaleNote(currency.ARS); got != " · en miles de $" {
+		t.Errorf("ScaleNote(ARS) = %q, want %q", got, " · en miles de $")
+	}
+	if got := ScaleNote(currency.USD); got != "" {
+		t.Errorf("ScaleNote(USD) = %q, want empty", got)
 	}
 }
