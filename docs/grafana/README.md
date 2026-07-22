@@ -1,7 +1,15 @@
 # Dashboard de Grafana — admin
 
-`admin-dashboard.json` es el dashboard de estado de la app. Schema v1, 18
-paneles: 9 visibles y 3 filas colapsadas de drill-down.
+`admin-dashboard.json` es el dashboard de estado de la app. **Schema V2**
+(`elements` + `layout`), 18 paneles: 9 visibles y 3 filas colapsadas de
+drill-down.
+
+> **Por qué V2 y no el schema clásico.** La instancia corre Grafana 13.2, que
+> rechaza el schema v1 (`panels[]` + `gridPos`) al importar. En V2 los paneles
+> viven en el mapa `elements` y su posición va aparte, en `layout`; el
+> datasource se referencia por `name`, no por `uid`. Si alguna vez hay que
+> volver a v1 para una instancia vieja, la ruta `POST /api/dashboards/db` de la
+> API clásica todavía lo acepta — pero el import por UI de esta instancia, no.
 
 Diseño y justificación de cada panel:
 [`docs/superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md`](../superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md).
@@ -45,13 +53,20 @@ Para alerta de caída: un monitor externo contra `/health/external`.
 
 `dashboard_test.go` corre dentro de `go test ./...` y valida:
 
-- que el JSON parsee y tenga paneles;
+- que el JSON parsee, tenga elementos y use `RowsLayout`;
 - que ningún query combine `$__timeGroupAlias(...)` con un ` AS time` extra
   (**el macro ya emite su propio `AS "time"`** — esa doble alias rompió los 8
   paneles de serie temporal durante semanas sin que nada fallara);
 - que todo `$__timeGroup(...)` sí lleve ` AS time`, porque ese no emite alias;
-- que todo target use `${DS_POSTGRES}` y no un UID literal;
-- que el `gridPos` no se salga de las 24 columnas.
+- que el detector de la doble alias siga reconociendo la query exacta que se
+  rompió, para que un retoque futuro del regex no lo deje inútil;
+- que todo query use el datasource `${DS_POSTGRES}` y no un UID literal;
+- que `elements` y `layout` estén en correspondencia exacta: cada panel
+  colocado una sola vez, ningún panel huérfano, ninguna referencia a un nombre
+  inexistente. Es el modo de falla propio de V2 — un panel puede existir sin
+  que nada lo ubique en pantalla, y eso no es un error de JSON, es un panel
+  invisible;
+- que la geometría no se salga de las 24 columnas.
 
 Después de editar el JSON, correr `go test ./docs/grafana/` y **volver a
 importar en Grafana**: el linter no puede ver si un panel renderiza. Ver la

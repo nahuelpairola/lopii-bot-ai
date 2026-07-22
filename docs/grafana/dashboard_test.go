@@ -6,6 +6,10 @@
 // writing `$__timeGroupAlias(created_at,$__interval) AS time` expands to
 // `... AS "time" AS time` — a Postgres syntax error. That shipped and broke
 // all 8 timeseries panels without a single failing check anywhere.
+//
+// The file is Grafana dashboard schema V2 (elements + layout), which is what
+// Grafana 13 emits and accepts. V1 (panels[] + gridPos) is rejected outright
+// by this instance, so the linter reads V2 only.
 package grafana
 
 import (
@@ -17,42 +21,85 @@ import (
 
 const dashboardPath = "admin-dashboard.json"
 
-// dsVariable is the only datasource reference a panel may use. A literal UID
-// is an environment-specific id inside a versioned file.
+// dsVariable is the only datasource reference an element may use. A literal
+// UID is an environment-specific id inside a versioned file.
 const dsVariable = "${DS_POSTGRES}"
 
-// dashboard is the subset of the Grafana v1 schema this linter asserts on.
-// Unknown fields are ignored by encoding/json, so the real file can carry far
-// more than this without breaking the test.
+// gridWidth is Grafana's fixed column count.
+const gridWidth = 24
+
+// dashboard is the subset of schema V2 this linter asserts on. Unknown fields
+// are ignored by encoding/json, so the real file can carry far more.
 type dashboard struct {
-	Title  string  `json:"title"`
-	Panels []panel `json:"panels"`
+	Title    string             `json:"title"`
+	Elements map[string]element `json:"elements"`
+	Layout   layout             `json:"layout"`
 }
 
-type panel struct {
-	Type    string   `json:"type"`
-	Title   string   `json:"title"`
-	GridPos gridPos  `json:"gridPos"`
-	Targets []target `json:"targets"`
-	// Panels holds the children of a collapsed row panel.
-	Panels []panel `json:"panels"`
+type element struct {
+	Kind string      `json:"kind"`
+	Spec elementSpec `json:"spec"`
 }
 
-type gridPos struct {
-	X int `json:"x"`
-	Y int `json:"y"`
-	W int `json:"w"`
-	H int `json:"h"`
+type elementSpec struct {
+	ID        int       `json:"id"`
+	Title     string    `json:"title"`
+	Data      dataGroup `json:"data"`
+	VizConfig vizConfig `json:"vizConfig"`
 }
 
-type target struct {
-	RefID      string      `json:"refId"`
-	RawSQL     string      `json:"rawSql"`
-	Datasource *datasource `json:"datasource"`
+type vizConfig struct {
+	Group string `json:"group"`
 }
 
-type datasource struct {
-	UID string `json:"uid"`
+type dataGroup struct {
+	Spec struct {
+		Queries []panelQuery `json:"queries"`
+	} `json:"spec"`
+}
+
+type panelQuery struct {
+	Spec struct {
+		RefID string `json:"refId"`
+		Query struct {
+			Datasource struct {
+				Name string `json:"name"`
+			} `json:"datasource"`
+			Spec struct {
+				RawSQL string `json:"rawSql"`
+			} `json:"spec"`
+		} `json:"query"`
+	} `json:"spec"`
+}
+
+type layout struct {
+	Kind string `json:"kind"`
+	Spec struct {
+		Rows []row `json:"rows"`
+	} `json:"spec"`
+}
+
+type row struct {
+	Spec struct {
+		Title  string `json:"title"`
+		Layout struct {
+			Spec struct {
+				Items []gridItem `json:"items"`
+			} `json:"spec"`
+		} `json:"layout"`
+	} `json:"spec"`
+}
+
+type gridItem struct {
+	Spec struct {
+		X       int `json:"x"`
+		Y       int `json:"y"`
+		Width   int `json:"width"`
+		Height  int `json:"height"`
+		Element struct {
+			Name string `json:"name"`
+		} `json:"element"`
+	} `json:"spec"`
 }
 
 func loadDashboard(t *testing.T) dashboard {
@@ -68,27 +115,16 @@ func loadDashboard(t *testing.T) dashboard {
 	return d
 }
 
-// flatPanels returns every panel, walking into collapsed rows. Row headers
-// themselves are dropped: they carry no query and no meaningful gridPos.
-func (d dashboard) flatPanels() []panel {
-	var out []panel
-	for _, p := range d.Panels {
-		if p.Type == "row" {
-			out = append(out, p.Panels...)
-			continue
-		}
-		out = append(out, p)
-	}
-	return out
-}
-
 func TestDashboardParses(t *testing.T) {
 	d := loadDashboard(t)
 	if d.Title == "" {
 		t.Error("dashboard has no title")
 	}
-	if got := len(d.flatPanels()); got == 0 {
-		t.Fatal("dashboard has no panels")
+	if len(d.Elements) == 0 {
+		t.Fatal("dashboard has no elements")
+	}
+	if d.Layout.Kind != "RowsLayout" {
+		t.Errorf("layout kind = %q, want RowsLayout", d.Layout.Kind)
 	}
 }
 
@@ -96,61 +132,119 @@ func TestDashboardParses(t *testing.T) {
 // so a following `AS time` produces `AS "time" AS time`.
 var badAlias = regexp.MustCompile(`(?i)\$__timeGroupAlias\([^)]*\)\s*AS\s+"?time"?`)
 
-func TestNoDoubleTimeAlias(t *testing.T) {
-	for _, p := range loadDashboard(t).flatPanels() {
-		for _, tg := range p.Targets {
-			if badAlias.MatchString(tg.RawSQL) {
-				t.Errorf("panel %q target %s: $__timeGroupAlias already emits AS \"time\"; drop the trailing AS time\n  %s",
-					p.Title, tg.RefID, tg.RawSQL)
-			}
-		}
-	}
-}
-
-// plainGroup matches $__timeGroup( but not $__timeGroupAlias( — the trailing
+// plainGroup matches $__timeGroup( but not $__timeGroupAlias( — the literal
 // paren is what separates them.
 var (
 	plainGroup      = regexp.MustCompile(`(?i)\$__timeGroup\(`)
 	plainGroupAlias = regexp.MustCompile(`(?i)\$__timeGroup\([^)]*\)\s+AS\s+"?time"?`)
 )
 
+// TestBadAliasDetectsTheShippedBug pins the detector against the exact query
+// that shipped broken, so the regex cannot be loosened into uselessness by a
+// later edit. This is the only test here that does not read the dashboard.
+func TestBadAliasDetectsTheShippedBug(t *testing.T) {
+	shipped := `SELECT $__timeGroupAlias(created_at,$__interval) AS time, call_type, count(*) AS value FROM llm_calls WHERE $__timeFilter(created_at) GROUP BY 1, call_type ORDER BY 1`
+	if !badAlias.MatchString(shipped) {
+		t.Error("badAlias no longer detects the query that shipped broken")
+	}
+
+	// The two correct forms must stay clean.
+	fixedCount := `SELECT $__timeGroupAlias(received_at,$__interval,0), count(*) AS "updates" FROM request_traces`
+	if badAlias.MatchString(fixedCount) {
+		t.Errorf("badAlias false-positives on the correct fill-zero form: %s", fixedCount)
+	}
+	if plainGroup.MatchString(fixedCount) {
+		t.Error("plainGroup must not match $__timeGroupAlias(")
+	}
+
+	fixedLatency := `SELECT $__timeGroup(received_at,$__interval) AS time, max(latency_ms) AS "app máx" FROM request_traces`
+	if !plainGroupAlias.MatchString(fixedLatency) {
+		t.Errorf("plainGroupAlias should accept the correct bare-macro form: %s", fixedLatency)
+	}
+}
+
+func TestNoDoubleTimeAlias(t *testing.T) {
+	for name, el := range loadDashboard(t).Elements {
+		for _, q := range el.Spec.Data.Spec.Queries {
+			if badAlias.MatchString(q.Spec.Query.Spec.RawSQL) {
+				t.Errorf("%s (%q) target %s: $__timeGroupAlias already emits AS \"time\"; drop the trailing AS time\n  %s",
+					name, el.Spec.Title, q.Spec.RefID, q.Spec.Query.Spec.RawSQL)
+			}
+		}
+	}
+}
+
 func TestPlainTimeGroupHasAlias(t *testing.T) {
-	for _, p := range loadDashboard(t).flatPanels() {
-		for _, tg := range p.Targets {
-			if plainGroup.MatchString(tg.RawSQL) && !plainGroupAlias.MatchString(tg.RawSQL) {
-				t.Errorf("panel %q target %s: $__timeGroup emits no alias; it needs a trailing AS time\n  %s",
-					p.Title, tg.RefID, tg.RawSQL)
+	for name, el := range loadDashboard(t).Elements {
+		for _, q := range el.Spec.Data.Spec.Queries {
+			sql := q.Spec.Query.Spec.RawSQL
+			if plainGroup.MatchString(sql) && !plainGroupAlias.MatchString(sql) {
+				t.Errorf("%s (%q) target %s: $__timeGroup emits no alias; it needs a trailing AS time\n  %s",
+					name, el.Spec.Title, q.Spec.RefID, sql)
 			}
 		}
 	}
 }
 
 func TestDatasourceIsVariable(t *testing.T) {
-	for _, p := range loadDashboard(t).flatPanels() {
-		if len(p.Targets) == 0 {
-			t.Errorf("panel %q has no targets", p.Title)
+	for name, el := range loadDashboard(t).Elements {
+		if len(el.Spec.Data.Spec.Queries) == 0 {
+			t.Errorf("%s (%q) has no queries", name, el.Spec.Title)
 			continue
 		}
-		for _, tg := range p.Targets {
-			if tg.RawSQL == "" {
-				t.Errorf("panel %q target %s has an empty rawSql", p.Title, tg.RefID)
+		for _, q := range el.Spec.Data.Spec.Queries {
+			if q.Spec.Query.Spec.RawSQL == "" {
+				t.Errorf("%s (%q) target %s has an empty rawSql", name, el.Spec.Title, q.Spec.RefID)
 			}
-			if tg.Datasource == nil || tg.Datasource.UID != dsVariable {
-				t.Errorf("panel %q target %s must use datasource uid %s, got %+v",
-					p.Title, tg.RefID, dsVariable, tg.Datasource)
+			if got := q.Spec.Query.Datasource.Name; got != dsVariable {
+				t.Errorf("%s (%q) target %s must use datasource %s, got %q",
+					name, el.Spec.Title, q.Spec.RefID, dsVariable, got)
 			}
 		}
 	}
 }
 
-func TestGridPosSane(t *testing.T) {
-	for _, p := range loadDashboard(t).flatPanels() {
-		g := p.GridPos
-		if g.W <= 0 || g.H <= 0 {
-			t.Errorf("panel %q has zero-size gridPos %+v", p.Title, g)
+// TestLayoutReferencesEveryElement catches the failure mode unique to schema
+// V2: elements and layout are separate, so a panel can exist with nothing
+// placing it on screen, or the layout can point at a name that does not exist.
+// Neither is a JSON error — both are an invisible panel.
+func TestLayoutReferencesEveryElement(t *testing.T) {
+	d := loadDashboard(t)
+
+	placed := map[string]bool{}
+	for _, r := range d.Layout.Spec.Rows {
+		for _, it := range r.Spec.Layout.Spec.Items {
+			name := it.Spec.Element.Name
+			if _, ok := d.Elements[name]; !ok {
+				t.Errorf("row %q places %q, which is not in elements", r.Spec.Title, name)
+			}
+			if placed[name] {
+				t.Errorf("%q is placed more than once", name)
+			}
+			placed[name] = true
 		}
-		if g.X+g.W > 24 {
-			t.Errorf("panel %q overflows the 24-column grid: x=%d w=%d", p.Title, g.X, g.W)
+	}
+	for name := range d.Elements {
+		if !placed[name] {
+			t.Errorf("%q exists in elements but no layout item places it", name)
+		}
+	}
+}
+
+func TestGridGeometrySane(t *testing.T) {
+	for _, r := range loadDashboard(t).Layout.Spec.Rows {
+		for _, it := range r.Spec.Layout.Spec.Items {
+			s := it.Spec
+			if s.Width <= 0 || s.Height <= 0 {
+				t.Errorf("row %q: %q has zero size (w=%d h=%d)", r.Spec.Title, s.Element.Name, s.Width, s.Height)
+			}
+			if s.X+s.Width > gridWidth {
+				t.Errorf("row %q: %q overflows the %d-column grid (x=%d w=%d)",
+					r.Spec.Title, s.Element.Name, gridWidth, s.X, s.Width)
+			}
+			if s.X < 0 || s.Y < 0 {
+				t.Errorf("row %q: %q has a negative position (x=%d y=%d)", r.Spec.Title, s.Element.Name, s.X, s.Y)
+			}
 		}
 	}
 }
