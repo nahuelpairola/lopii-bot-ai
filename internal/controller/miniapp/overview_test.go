@@ -45,7 +45,7 @@ func TestHandleOverview_RendersOK(t *testing.T) {
 		"":      {{Label: "", Total: decimal.NewFromInt(1000)}},
 		"month": {{Label: "2026-07", Total: decimal.NewFromInt(1000)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 
 	router := gin.New()
 	c.RegisterRoutes(router)
@@ -66,7 +66,7 @@ func TestHandleOverview_MonthWindowUsesDailyGrouping(t *testing.T) {
 		"":    {{Label: "", Total: decimal.NewFromInt(1000)}},
 		"day": {{Label: "2026-07-03", Total: decimal.NewFromInt(400)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -89,7 +89,7 @@ func TestHandleOverview_FormatsMoneyAndShowsPeriod(t *testing.T) {
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"": {{Label: "", Total: decimal.NewFromInt(1234567)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -114,7 +114,7 @@ func TestHandleOverview_FormatsMoneyAndShowsPeriod(t *testing.T) {
 
 func TestHandleOverview_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c := NewController(stubMovements{}, stubAccounts{}, stubUsers{}, testBotToken)
+	c := NewController(stubMovements{}, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -134,7 +134,7 @@ func TestHandleOverview_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
 
 func TestHandleOverview_HTMXWithoutInitData_401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c := NewController(stubMovements{}, stubAccounts{}, stubUsers{}, testBotToken)
+	c := NewController(stubMovements{}, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
 

@@ -9,6 +9,32 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
+type stubIcons struct{}
+
+func (stubIcons) IconForCategory(_ uint64, category string) string {
+	if category == "Alimentación" {
+		return "🍔"
+	}
+	return "📂"
+}
+
+func TestHandleCategories_RendersIcons(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovements{rows: map[string][]movement.CategorySum{
+		"category": {{Label: "Alimentación", Total: decimal.NewFromInt(5000)}},
+	}}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categories"))
+
+	if !bodyContains(w.Body.String(), "🍔") {
+		t.Fatal("cada categoría debe llevar su icono")
+	}
+}
+
 func TestHandleCategories_ExcludesReservedCategories(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
@@ -17,7 +43,7 @@ func TestHandleCategories_ExcludesReservedCategories(t *testing.T) {
 			{Label: "Sistema", Total: decimal.NewFromInt(999999)},
 		},
 	}}
-	c := NewController(movements, stubAccounts{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -42,7 +68,7 @@ func TestHandleCategoryDrill_CategoryWithSlash(t *testing.T) {
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"subcategory": {{Label: "Cuota préstamo", Total: decimal.NewFromInt(8000)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -65,7 +91,7 @@ func TestHandleCategories_ShowsShareOfTotal(t *testing.T) {
 			{Label: "Transporte", Total: decimal.NewFromInt(250)},
 		},
 	}}
-	c := NewController(movements, stubAccounts{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
 

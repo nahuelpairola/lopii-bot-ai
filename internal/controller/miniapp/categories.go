@@ -85,9 +85,11 @@ func (c *controller) buildCategoriesData(userID uint64, p templates.Period, grou
 			Total:    templates.FormatMoney(r.Total, p.Currency),
 			Share:    sharePercent(r.Total, total),
 		}
-		// Only the top level drills: a subcategory has nothing below it.
+		// Only the top level drills — and only categories have an icon; a
+		// subcategory inherits its parent's, which would just repeat.
 		if category == nil {
 			row.Href = p.Query() + "&" + categoryParam + "=" + url.QueryEscape(r.Label)
+			row.Icon = c.subcategories.IconForCategory(userID, r.Label)
 		}
 		out.Rows = append(out.Rows, row)
 		labels[i] = r.Label

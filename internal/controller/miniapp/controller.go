@@ -34,15 +34,28 @@ type accountReader interface {
 	FindByUserID(userID uint64) ([]account.Account, error)
 }
 
-type controller struct {
-	movements movementReader
-	accounts  accountReader
-	users     userLookup
-	botToken  string
+// subcategoryReader is the taxonomy surface this package needs: just the icon
+// lookup, so a category renders with the same emoji the bot uses in chat.
+type subcategoryReader interface {
+	IconForCategory(userID uint64, category string) string
 }
 
-func NewController(movements movementReader, accounts accountReader, users userLookup, botToken string) *controller {
-	return &controller{movements: movements, accounts: accounts, users: users, botToken: botToken}
+type controller struct {
+	movements     movementReader
+	accounts      accountReader
+	subcategories subcategoryReader
+	users         userLookup
+	botToken      string
+}
+
+func NewController(movements movementReader, accounts accountReader, subcategories subcategoryReader, users userLookup, botToken string) *controller {
+	return &controller{
+		movements:     movements,
+		accounts:      accounts,
+		subcategories: subcategories,
+		users:         users,
+		botToken:      botToken,
+	}
 }
 
 // RegisterRoutes mounts every /app route on engine, all guarded by

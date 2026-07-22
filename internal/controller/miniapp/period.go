@@ -17,11 +17,6 @@ const (
 	currencyParam = "c"
 )
 
-// trendMonths is the fixed window the views used before Period existed.
-// ponytail: transitional — deleted once categories, accounts and matrix all
-// read the window off Period.
-const trendMonths = 6
-
 // nowInART is the clock every view reads.
 func nowInART() time.Time { return time.Now().In(constants.ArgentinaZone) }
 
