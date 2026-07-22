@@ -9,53 +9,71 @@ type BarChartData struct {
 
 type CategoryRow struct {
 	Category string
+	Icon     string
+	Href     string // "" on the drill view — a subcategory has nothing below it
 	Total    string
+	Share    string
 }
 
 // CategoriesData renders both the top-level Categorías view and the
 // subcategory drill (same shape, different query).
 type CategoriesData struct {
-	Rows  []CategoryRow
-	Chart BarChartData
-	Empty bool
+	Period Period
+	Rows   []CategoryRow
+	Chart  BarChartData
+	Total  string
+	Drill  string
+	Empty  bool
 }
 
 templ Categories(data CategoriesData) {
-	<h2>Categorías</h2>
+	@PeriodHeader(data.Period)
 	if data.Empty {
 		@EmptyState("Sin gastos en este período.")
 	} else {
 		<canvas id="categorias-bars" data-chart-type="bar-single" data-chart-data-id="categorias-bars-data"></canvas>
 		@templ.JSONScript("categorias-bars-data", data.Chart)
-		<table>
-			<thead><tr><th>Categoría</th><th>Total</th></tr></thead>
-			<tbody>
-				for _, row := range data.Rows {
-					<tr>
-						<td><a href="#" hx-get={ RouteCategories + "/" + row.Category } hx-target="#content">{ row.Category }</a></td>
-						<td class="money">{ row.Total }</td>
-					</tr>
-				}
-			</tbody>
-		</table>
+		@categoryTable(data, "Categoría")
 	}
 }
 
-templ SubcategoryDrill(category string, data CategoriesData) {
-	<h2>{ category }</h2>
-	<a href="#" hx-get={ RouteCategories } hx-target="#content">&larr; Volver a Categorías</a>
+templ SubcategoryDrill(data CategoriesData) {
+	@PeriodHeader(data.Period)
+	<h2>{ data.Drill }</h2>
+	<a href={ data.Period.Query() } hx-get={ data.Period.Query() } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Categorías</a>
 	if data.Empty {
 		@EmptyState("Sin gastos en esta categoría.")
 	} else {
 		<canvas id="subcat-bars" data-chart-type="bar-single" data-chart-data-id="subcat-bars-data"></canvas>
 		@templ.JSONScript("subcat-bars-data", data.Chart)
-		<table>
-			<thead><tr><th>Subcategoría</th><th>Total</th></tr></thead>
-			<tbody>
-				for _, row := range data.Rows {
-					<tr><td>{ row.Category }</td><td class="money">{ row.Total }</td></tr>
-				}
-			</tbody>
-		</table>
+		@categoryTable(data, "Subcategoría")
 	}
+}
+
+// categoryTable is shared by both views: the drill is the same table with a
+// different header and no links.
+templ categoryTable(data CategoriesData, header string) {
+	<table>
+		<thead>
+			<tr><th scope="col">{ header }</th><th scope="col">Total</th><th scope="col">%</th></tr>
+		</thead>
+		<tbody>
+			for _, row := range data.Rows {
+				<tr>
+					<td>
+						if row.Href != "" {
+							<a href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Category }</a>
+						} else {
+							{ row.Icon } { row.Category }
+						}
+					</td>
+					<td class="money">{ row.Total }</td>
+					<td class="money muted">{ row.Share }</td>
+				</tr>
+			}
+		</tbody>
+		<tfoot>
+			<tr><th scope="row">Total</th><td class="money">{ data.Total }</td><td></td></tr>
+		</tfoot>
+	</table>
 }

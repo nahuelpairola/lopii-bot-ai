@@ -55,8 +55,9 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 	authed := app.Group("")
 	authed.Use(authInitData(c.botToken, c.users))
 	authed.GET("/"+templates.TabOverview, c.handleOverview)
+	// The subcategory drill is the same route with a ?category= param, not a
+	// path segment: real category names contain "/".
 	authed.GET("/"+templates.TabCategories, c.handleCategories)
-	authed.GET("/"+templates.TabCategories+"/:category", c.handleCategoryDrill)
 	authed.GET("/"+templates.TabAccounts, c.handleAccounts)
 	authed.GET("/"+templates.TabMatrix, c.handleMatrix)
 }
