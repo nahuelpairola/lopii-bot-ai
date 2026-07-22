@@ -48,14 +48,14 @@ func Shell(active string, loadPath string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><script src=\"https://telegram.org/js/telegram-web-app.js\"></script><link rel=\"stylesheet\" href=\"/app/static/pico.min.css\"><link rel=\"stylesheet\" href=\"/app/static/app.css\"><script src=\"/app/static/chart.umd.min.js\"></script><script src=\"https://unpkg.com/htmx.org@2\"></script><script src=\"/app/static/app.js\"></script></head><body><main class=\"container content-area\" id=\"content\" hx-get=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</title><script src=\"https://telegram.org/js/telegram-web-app.js\"></script><link rel=\"stylesheet\" href=\"/app/static/pico.min.css\"><link rel=\"stylesheet\" href=\"/app/static/app.css\"><script src=\"/app/static/chart.umd.min.js\"></script><script src=\"/app/static/htmx.min.js\"></script><script src=\"/app/static/app.js\"></script></head><body><main class=\"container content-area\" id=\"content\" hx-get=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(loadPath)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/shell.templ`, Line: 24, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/shell.templ`, Line: 28, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {

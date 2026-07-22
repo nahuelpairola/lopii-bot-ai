@@ -17,7 +17,11 @@ templ Shell(active string, loadPath string) {
 			<link rel="stylesheet" href="/app/static/pico.min.css"/>
 			<link rel="stylesheet" href="/app/static/app.css"/>
 			<script src="/app/static/chart.umd.min.js"></script>
-			<script src="https://unpkg.com/htmx.org@2"></script>
+			// htmx is vendored and pinned to 2.0.4. It used to load from
+			// unpkg as "htmx.org@2" — a floating major, so a release could
+			// change behaviour without us touching anything, and the whole
+			// app died if the CDN was unreachable from the webview.
+			<script src="/app/static/htmx.min.js"></script>
 			<script src="/app/static/app.js"></script>
 		</head>
 		<body>
