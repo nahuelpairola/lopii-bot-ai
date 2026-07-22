@@ -7,9 +7,9 @@ import (
 
 type fakeStore struct {
 	flowName, stepName string
-	data                Data
-	updatedAt           time.Time
-	found               bool
+	data               Data
+	updatedAt          time.Time
+	found              bool
 }
 
 func (s *fakeStore) Get(userID uint64) (string, string, Data, time.Time, bool, error) {

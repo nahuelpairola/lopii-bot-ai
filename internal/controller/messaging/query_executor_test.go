@@ -48,7 +48,11 @@ func (r *fakeQueryMovements) SoftDeleteByIDs([]uint) error                      
 func (r *fakeQueryMovements) InsertAccountsWithOpenings([]movement.AccountOpening) error { return nil }
 func (r *fakeQueryMovements) ReassignAccount(uint64, uint64) error                       { return nil }
 func (r *fakeQueryMovements) CountForUser(uint64) (int64, error)                         { return 0, nil }
-func (r *fakeQueryMovements) ExistsWithSubcategory(uint64, uint64) (bool, error)         { return false, nil }
+func (r *fakeQueryMovements) CountBySubcategory(uint64, uint64) (int64, error)           { return 0, nil }
+func (r *fakeQueryMovements) ReassignSubcategory(uint64, uint64, uint64) error           { return nil }
+func (r *fakeQueryMovements) TopMerchantsBySubcategory(uint64, uint64, int) ([]string, error) {
+	return nil, nil
+}
 
 type fakeQueryAccounts struct{ accts []account.Account }
 
@@ -63,7 +67,14 @@ func (r *fakeQueryAccounts) UnsetDefault(uint64, currency.Currency) error       
 func (r *fakeQueryAccounts) SetDefault(uint64) error                              { return nil }
 func (r *fakeQueryAccounts) HasDefaultForCurrency(uint64, currency.Currency) bool { return false }
 
-type fakeQuerySubcats struct{ subs []subcategory.Subcategory }
+type fakeQuerySubcats struct {
+	subs          []subcategory.Subcategory
+	owned         []subcategory.Subcategory
+	deletedUserID uint64
+	deletedID     uint64
+	deleteCalls   int
+	deleteErr     error
+}
 
 func (r *fakeQuerySubcats) FindAllForUser(uint64) ([]subcategory.Subcategory, error) {
 	return r.subs, nil
@@ -75,6 +86,14 @@ func (r *fakeQuerySubcats) DistinctCategoriesForUser(uint64) ([]string, error) {
 func (r *fakeQuerySubcats) IconForCategory(uint64, string) string              { return "📂" }
 func (r *fakeQuerySubcats) Insert(*subcategory.Subcategory) error              { return nil }
 func (r *fakeQuerySubcats) Reload() error                                      { return nil }
+func (r *fakeQuerySubcats) Delete(userID uint64, id uint64) error {
+	r.deletedUserID, r.deletedID = userID, id
+	r.deleteCalls++
+	return r.deleteErr
+}
+func (r *fakeQuerySubcats) FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error) {
+	return r.owned, nil
+}
 
 func newQueryController(m *fakeQueryMovements, a *fakeQueryAccounts, s *fakeQuerySubcats) *controller {
 	return &controller{movements: m, accounts: a, subcategories: s}

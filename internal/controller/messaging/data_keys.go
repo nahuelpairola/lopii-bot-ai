@@ -73,6 +73,26 @@ const (
 	// lazy-create (first account, movement_create flow) keys
 	keyFirstAccountName    dataKey = "first_account_name"
 	keyFirstAccountBalance dataKey = "first_account_balance"
+
+	// category_manage: origen elegido en el flujo 1
+	keySourceSubcategoryID dataKey = "source_subcategory_id"
+	keySourceCategory      dataKey = "source_category"
+	keySourceSubcategory   dataKey = "source_subcategory"
+
+	// category_manage: contexto calculado entre los dos flujos
+	keyMovementCount          dataKey = "movement_count"
+	keySuggestedSubcategoryID dataKey = "suggested_subcategory_id"
+	keySuggestedCategory      dataKey = "suggested_category"
+	keySuggestedSubcategory   dataKey = "suggested_subcategory"
+
+	// category_manage: destino elegido en el flujo 2
+	keyTargetSubcategoryID dataKey = "target_subcategory_id"
+	keyTargetCategory      dataKey = "target_category"
+	keyTargetSubcategory   dataKey = "target_subcategory"
+	// keyTargetOrigin guarda CÓMO se eligió el destino ("suggested"/"manual").
+	// No es derivable comparando destino contra sugerencia: el usuario puede
+	// elegir a mano exactamente la sugerida. Lo necesita el Atrás del confirm.
+	keyTargetOrigin dataKey = "target_origin"
 )
 
 // flag reports whether a "true"/"false" string flag in Data is set to "true".

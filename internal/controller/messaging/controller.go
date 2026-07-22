@@ -12,7 +12,6 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/invitation"
@@ -58,7 +57,9 @@ type movementRepository interface {
 	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
 	ReassignAccount(fromID, toID uint64) error
 	CountForUser(userID uint64) (int64, error)
-	ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error)
+	CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error)
+	ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error
+	TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
 }
 
 type subcategoryRepository interface {
@@ -68,6 +69,8 @@ type subcategoryRepository interface {
 	IconForCategory(userID uint64, category string) string
 	Insert(s *subcategory.Subcategory) error
 	Reload() error
+	Delete(userID uint64, id uint64) error
+	FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error)
 }
 
 // movementOrchestrator is the local interface for orchestrator.Orchestrator
@@ -159,7 +162,6 @@ func NewController(
 
 func (c *controller) RegisterHandlers(b *bot.Bot) {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypePrefix, c.handleStart)
-	b.RegisterHandler(bot.HandlerTypeCallbackQueryData, constants.WeeklySummaryOffData, bot.MatchTypeExact, c.handleWeeklySummaryOff)
 	b.RegisterHandlerMatchFunc(c.hasIncomingInput, c.handleConversationInput)
 }
 
@@ -168,7 +170,7 @@ func (c *controller) RegisterHandlers(b *bot.Bot) {
 // motor de conversaciones puede llegar a procesar.
 func (c *controller) hasIncomingInput(update *models.Update) bool {
 	if update.CallbackQuery != nil {
-		return update.CallbackQuery.Data != constants.WeeklySummaryOffData
+		return true
 	}
 	if update.Message != nil && update.Message.Text != "" && !strings.HasPrefix(update.Message.Text, "/") {
 		return true
@@ -251,6 +253,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		c.finishCategoryMatchOffer(ctx, b, chatID, result.Data)
 	case categoryProposalConfirmFlowName:
 		c.finishCategoryProposalConfirm(ctx, b, chatID, result.Data)
+	case categoryManagePickFlowName:
+		c.finishCategoryManagePickFlow(ctx, b, chatID, result.Data)
+	case categoryManageTargetFlowName:
+		c.finishCategoryManageTargetFlow(ctx, b, chatID, result.Data)
 	case movementNegativeConfirmFlowName:
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
 	case reminderSetupFlowName:

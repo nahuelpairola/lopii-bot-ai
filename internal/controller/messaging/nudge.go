@@ -70,7 +70,8 @@ func (c *controller) hasMultipleAccountsNoTransfer(userID uint64) bool {
 	if err != nil {
 		return false
 	}
-	exists, err := c.movements.ExistsWithSubcategory(userID, uint64(sub.ID))
+	n, err := c.movements.CountBySubcategory(userID, uint64(sub.ID))
+	exists := n > 0
 	return err == nil && !exists
 }
 

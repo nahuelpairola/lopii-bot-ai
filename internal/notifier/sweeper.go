@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
-	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/user"
@@ -187,10 +186,6 @@ func (s *Sweeper) sweepWeeklySummary(ctx context.Context, now time.Time) {
 		return
 	}
 
-	markup := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-		{Text: "🔕 Desactivar resumen", CallbackData: constants.WeeklySummaryOffData},
-	}}}
-
 	for _, r := range due {
 		text, err := s.summaries.Build(r.UserID, from, to, prevFrom, prevTo)
 		if err != nil {
@@ -207,7 +202,7 @@ func (s *Sweeper) sweepWeeklySummary(ctx context.Context, now time.Time) {
 			slog.ErrorContext(ctx, "notifier weekly bad telegram_id", "user_id", r.UserID, "err", err)
 			continue
 		}
-		if err := s.send(ctx, chatID, text, markup); err != nil {
+		if err := s.send(ctx, chatID, text, nil); err != nil {
 			slog.ErrorContext(ctx, "notifier weekly send failed", "user_id", r.UserID, "err", err)
 			continue
 		}

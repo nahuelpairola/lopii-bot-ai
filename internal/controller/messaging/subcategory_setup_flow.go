@@ -66,21 +66,11 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 		stepPickExistingCategory: conversation.ChoiceStep{
 			PromptText: func(conversation.Data) string { return subcategory.MsgChooseCategoryIntro },
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				cats, _ := subcategories.DistinctCategoriesForUser(data.UserID())
-				opts := make([]conversation.ChoiceOption, 0, len(cats)+2)
-				for _, cat := range cats {
-					opts = append(opts, conversation.ChoiceOption{
-						Label:    subcategories.IconForCategory(data.UserID(), cat) + " " + cat,
-						Value:    cat,
-						NextStep: stepSubcategoryName,
-					})
-				}
-				opts = append(opts,
+				return categoryOptions(subcategories, data, stepSubcategoryName,
 					conversation.ChoiceOption{Label: subcategory.BtnNewCategory, Value: optionNewCategory, NextStep: stepNewCategoryName},
 					backOption(stepChooseMode),
 					cancelOption,
 				)
-				return opts
 			},
 			DeclaredNextSteps: []string{stepSubcategoryName, stepNewCategoryName, stepChooseMode},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {

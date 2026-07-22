@@ -10,8 +10,13 @@ import (
 )
 
 type fakeSubcatSetupRepo struct {
-	categories []string
-	existing   *subcategory.Subcategory
+	categories    []string
+	existing      *subcategory.Subcategory
+	owned         []subcategory.Subcategory
+	deletedUserID uint64
+	deletedID     uint64
+	deleteCalls   int
+	deleteErr     error
 }
 
 func (r *fakeSubcatSetupRepo) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
@@ -29,6 +34,14 @@ func (r *fakeSubcatSetupRepo) DistinctCategoriesForUser(userID uint64) ([]string
 func (r *fakeSubcatSetupRepo) IconForCategory(userID uint64, category string) string { return "📂" }
 func (r *fakeSubcatSetupRepo) Insert(s *subcategory.Subcategory) error               { return nil }
 func (r *fakeSubcatSetupRepo) Reload() error                                         { return nil }
+func (r *fakeSubcatSetupRepo) Delete(userID uint64, id uint64) error {
+	r.deletedUserID, r.deletedID = userID, id
+	r.deleteCalls++
+	return r.deleteErr
+}
+func (r *fakeSubcatSetupRepo) FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error) {
+	return r.owned, nil
+}
 
 // fakeConvStore is a minimal conversation.Engine-compatible store — Go
 // interface satisfaction is structural, so this struct (defined in the

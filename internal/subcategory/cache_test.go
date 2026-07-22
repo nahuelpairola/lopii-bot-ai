@@ -6,14 +6,21 @@ import (
 )
 
 type fakeLoader struct {
-	subs []Subcategory
-	err  error
+	subs          []Subcategory
+	err           error
+	deletedUserID uint64
+	deletedID     uint64
+	deleteErr     error
 }
 
 func (f *fakeLoader) FindAll() ([]Subcategory, error) { return f.subs, f.err }
 func (f *fakeLoader) Insert(s *Subcategory) error {
 	f.subs = append(f.subs, *s)
 	return nil
+}
+func (f *fakeLoader) Delete(userID uint64, id uint64) error {
+	f.deletedUserID, f.deletedID = userID, id
+	return f.deleteErr
 }
 
 func u(id uint64) *uint64 { return &id }
@@ -169,5 +176,101 @@ func TestCache_Reload_PicksUpNewRow(t *testing.T) {
 	}
 	if _, err := cache.FindByCategoryAndSubcategory(1, "Mascotas", "Veterinario"); err != nil {
 		t.Errorf("after Reload, expected the new row to be found, got err %v", err)
+	}
+}
+
+func TestCache_FindOwnedByUser_OnlyOwnRows(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Alimentación", Subcategory: "Café", IsGlobal: true},
+		{Category: "Mascotas", Subcategory: "Veterinario", UserID: u(1)},
+		{Category: "Comida", Subcategory: "Delivery", UserID: u(1)},
+		{Category: "Mascotas", Subcategory: "De otro", UserID: u(2)},
+	}}
+	cache, err := NewCache(loader)
+	if err != nil {
+		t.Fatalf("NewCache: %v", err)
+	}
+	got, err := cache.FindOwnedByUser(1)
+	if err != nil {
+		t.Fatalf("FindOwnedByUser: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("FindOwnedByUser(1) = %d filas, want 2 (solo las propias)", len(got))
+	}
+	for _, s := range got {
+		if s.IsGlobal {
+			t.Errorf("devolvió una global: %s/%s", s.Category, s.Subcategory)
+		}
+		if s.UserID == nil || *s.UserID != 1 {
+			t.Errorf("devolvió una fila ajena: %+v", s)
+		}
+	}
+}
+
+func TestCache_FindOwnedByUser_NoOwnRowsIsEmptyNotError(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Alimentación", Subcategory: "Café", IsGlobal: true},
+	}}
+	cache, _ := NewCache(loader)
+	got, err := cache.FindOwnedByUser(1)
+	if err != nil {
+		t.Fatalf("FindOwnedByUser: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("FindOwnedByUser(1) = %d filas, want 0", len(got))
+	}
+}
+
+// Las reservadas se siembran como globales (user_id NULL, is_global TRUE), así
+// que Reload nunca las mete en perUser. Este test fija esa garantía: si alguien
+// cambiara el seed, el picker de origen empezaría a ofrecer "Sistema".
+func TestCache_FindOwnedByUser_NeverReturnsReserved(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Sistema", Subcategory: "Saldo inicial", IsGlobal: true},
+		{Category: "PENDING_REVIEW", Subcategory: "PENDING_REVIEW", IsGlobal: true},
+		{Category: "Comida", Subcategory: "Delivery", UserID: u(1)},
+	}}
+	cache, _ := NewCache(loader)
+	got, _ := cache.FindOwnedByUser(1)
+	for _, s := range got {
+		if IsReserved(s.Category) {
+			t.Errorf("devolvió una reservada: %s", s.Category)
+		}
+	}
+	if len(got) != 1 {
+		t.Errorf("len = %d, want 1", len(got))
+	}
+}
+
+func TestCache_Delete_PassesThroughToLoader(t *testing.T) {
+	loader := &fakeLoader{subs: []Subcategory{
+		{Category: "Comida", Subcategory: "Delivery", UserID: u(1)},
+	}}
+	cache, _ := NewCache(loader)
+	if err := cache.Delete(1, 42); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if loader.deletedUserID != 1 || loader.deletedID != 42 {
+		t.Errorf("loader recibió (%d, %d), want (1, 42)", loader.deletedUserID, loader.deletedID)
+	}
+}
+
+func TestCache_Delete_PropagatesLoaderError(t *testing.T) {
+	wantErr := errors.New("db down")
+	loader := &fakeLoader{deleteErr: wantErr}
+	cache, _ := NewCache(loader)
+	if err := cache.Delete(1, 42); !errors.Is(err, wantErr) {
+		t.Errorf("err = %v, want %v", err, wantErr)
+	}
+}
+
+// El repository devuelve ErrSubcategoryNotFound cuando RowsAffected == 0
+// (id ajeno, inexistente, o global); Cache.Delete es passthrough, así que
+// alcanza con fijar que ese error viaja sin transformarse.
+func TestCache_Delete_PropagatesNotFound(t *testing.T) {
+	loader := &fakeLoader{deleteErr: ErrSubcategoryNotFound}
+	cache, _ := NewCache(loader)
+	if err := cache.Delete(1, 42); !errors.Is(err, ErrSubcategoryNotFound) {
+		t.Errorf("err = %v, want ErrSubcategoryNotFound", err)
 	}
 }

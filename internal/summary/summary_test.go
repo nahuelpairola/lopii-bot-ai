@@ -103,7 +103,10 @@ func TestBuild_ReportARSOnly(t *testing.T) {
 		"domingo",     // top day = the day with count 5 (to = 2026-07-12 is Sunday)
 		"Efectivo",
 		"2500.00",
-		"🔕", // note references the disable button
+		// La salida se explica en palabras, no con un botón: un inline button
+		// de Telegram queda tocable para siempre en el historial. El resumen
+		// tiene que decir la frase que el router entiende.
+		"no quiero más el resumen semanal",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q in:\n%s", want, text)

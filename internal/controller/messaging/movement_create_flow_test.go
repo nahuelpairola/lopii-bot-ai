@@ -27,6 +27,13 @@ type fakeSubcategoryRepoFull struct {
 	all              []subcategory.Subcategory
 	allErr           error
 	categories       []string
+	owned            []subcategory.Subcategory
+	ownedErr         error
+	deletedUserID    uint64
+	deletedID        uint64
+	deleteCalls      int
+	deleteErr        error
+	reloadCalls      int
 }
 
 func (r *fakeSubcategoryRepoFull) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
@@ -46,7 +53,18 @@ func (r *fakeSubcategoryRepoFull) IconForCategory(userID uint64, category string
 	return "📂"
 }
 func (r *fakeSubcategoryRepoFull) Insert(s *subcategory.Subcategory) error { return nil }
-func (r *fakeSubcategoryRepoFull) Reload() error                           { return nil }
+func (r *fakeSubcategoryRepoFull) Reload() error {
+	r.reloadCalls++
+	return nil
+}
+func (r *fakeSubcategoryRepoFull) Delete(userID uint64, id uint64) error {
+	r.deletedUserID, r.deletedID = userID, id
+	r.deleteCalls++
+	return r.deleteErr
+}
+func (r *fakeSubcategoryRepoFull) FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error) {
+	return r.owned, r.ownedErr
+}
 
 type fakeAccountRepoFull struct {
 	byCurrency   map[currency.Currency]*account.Account
@@ -117,21 +135,28 @@ func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
 }
 
 type fakeMovementRepoFull struct {
-	inserted              []movement.Movement
-	batches               [][]movement.Movement // every InsertBatch call, in order (inserted only tracks the last)
-	balances              map[uint64]string
-	replacedOldIDs        []uint
-	replaced              []movement.Movement
-	deletedIDs            []uint
-	similar               []movement.Movement
-	similarErr            error
-	insertErr             error
-	openings              []movement.AccountOpening
-	reassignFrom          uint64
-	reassignTo            uint64
-	reassignCalls         int
-	countForUser          int64
-	existsWithSubcategory bool
+	inserted           []movement.Movement
+	batches            [][]movement.Movement // every InsertBatch call, in order (inserted only tracks the last)
+	balances           map[uint64]string
+	replacedOldIDs     []uint
+	replaced           []movement.Movement
+	deletedIDs         []uint
+	similar            []movement.Movement
+	similarErr         error
+	insertErr          error
+	openings           []movement.AccountOpening
+	reassignFrom       uint64
+	reassignTo         uint64
+	reassignCalls      int
+	countForUser       int64
+	countBySubcategory int64
+	countErr           error
+	reassignedFrom     uint64
+	reassignedTo       uint64
+	reassignedUser     uint64
+	reassignSubCalls   int
+	reassignSubErr     error
+	topMerchants       []string
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -183,8 +208,16 @@ func (r *fakeMovementRepoFull) ReassignAccount(fromID, toID uint64) error {
 func (r *fakeMovementRepoFull) CountForUser(userID uint64) (int64, error) {
 	return r.countForUser, nil
 }
-func (r *fakeMovementRepoFull) ExistsWithSubcategory(userID uint64, subcategoryID uint64) (bool, error) {
-	return r.existsWithSubcategory, nil
+func (r *fakeMovementRepoFull) CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error) {
+	return r.countBySubcategory, r.countErr
+}
+func (r *fakeMovementRepoFull) ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error {
+	r.reassignedFrom, r.reassignedTo, r.reassignedUser = fromID, toID, userID
+	r.reassignSubCalls++
+	return r.reassignSubErr
+}
+func (r *fakeMovementRepoFull) TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
+	return r.topMerchants, nil
 }
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {

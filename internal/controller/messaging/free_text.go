@@ -118,6 +118,8 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		return c.startAccountManage(ctx, b, chatID, userID, text)
 	case orchestrator.IntentCreateCategory:
 		return c.startSubcategorySetup(ctx, b, chatID, userID, text)
+	case orchestrator.IntentCategoryManage:
+		return c.startCategoryManage(ctx, b, chatID, userID)
 	case orchestrator.IntentReminderSet:
 		return c.startReminderSetup(ctx, b, chatID, userID)
 	case orchestrator.IntentHelp:
@@ -209,6 +211,37 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 	prompt, err := c.engine.StartWithData(userID, categoryProposalConfirmFlowName, seed)
 	if err != nil {
 		return c.startSubcategoryWizard(ctx, b, chatID, userID)
+	}
+	if b != nil {
+		c.sendPrompt(ctx, b, chatID, prompt)
+	}
+	return nil
+}
+
+// startCategoryManage arranca el flujo de sacar una categoría propia. Antes de
+// nada verifica que el usuario tenga alguna: sin eso el picker mostraría solo
+// "Cancelar", que es un callejón sin salida disfrazado de flujo.
+func (c *controller) startCategoryManage(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) error {
+	slog.InfoContext(ctx, "flow started", "flow", categoryManagePickFlowName, "user_id", userID)
+
+	owned, err := c.subcategories.FindOwnedByUser(userID)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return fmt.Errorf("category manage: find owned: %w", err)
+	}
+	if len(owned) == 0 {
+		// Se resuelve la métrica: el bot entendió y respondió bien. Sin esto el
+		// evento queda pendiente y el sweeper lo marca "abandoned", que en las
+		// métricas de asertividad se lee como una falla del bot.
+		c.resolveMetric(ctx, userID, outcomeCategoryManageNoOwn)
+		c.sendText(ctx, b, chatID, msgCategoryManageNoOwn)
+		return nil
+	}
+
+	prompt, err := c.engine.Start(userID, categoryManagePickFlowName)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		return fmt.Errorf("start category_manage_pick flow: %w", err)
 	}
 	if b != nil {
 		c.sendPrompt(ctx, b, chatID, prompt)
@@ -379,6 +412,16 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 
 	result, err := c.orchestrator.ClassifyCreate(ctx, text, taxonomy, accountOptions, time.Now().Format("2006-01-02"))
 	if err != nil {
+		// "no había nada que extraer" no es una falla del sistema: el mensaje
+		// no traía el dato (típicamente el monto, o era una referencia como
+		// "ponelo ahí"). Pedirle lo que falta es la respuesta honesta; mostrar
+		// el error genérico deja al usuario sin saber qué hacer.
+		if errors.Is(err, orchestrator.ErrNothingToExtract) {
+			c.resolveMetric(ctx, userID, outcomeCreateRewrite)
+			c.sendText(ctx, b, chatID, msgAskRewrite)
+			return nil
+		}
+		c.resolveMetric(ctx, userID, outcomeCreateFailed)
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 		return fmt.Errorf("create: classify: %w", err)
 	}

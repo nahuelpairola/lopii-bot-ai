@@ -1,5 +1,7 @@
 package orchestrator
 
+import "strings"
+
 // Intent is the router's classification of a free-text message.
 type Intent string
 
@@ -10,6 +12,7 @@ const (
 	IntentQuery          Intent = "QUERY"
 	IntentAccountManage  Intent = "ACCOUNT_MANAGE"
 	IntentCreateCategory Intent = "CREATE_CATEGORY"
+	IntentCategoryManage Intent = "CATEGORY_MANAGE"
 	IntentReminderSet    Intent = "REMINDER_SET"
 	IntentHelp           Intent = "HELP"
 )
@@ -146,4 +149,26 @@ type CategoryCreateResult struct {
 type AccountManageResult struct {
 	MatchedAccountID *uint64
 	WantsNewAccount  bool
+}
+
+// normalizeSubcategory corrige un formato que el modelo devuelve de a ratos:
+// "Categoría | Subcategoría" en el campo subcategoría, en vez de solo el nombre
+// de la subcategoría.
+//
+// No es alucinación, es imitación: la taxonomía se le pasa al modelo como
+// "categoría | subcategoría | descripción", y varias reglas del prompt dicen
+// literalmente subcategoría "Sistema | Transferencia". El modelo copia ese
+// formato de forma intermitente (reproducido ~1 de cada 8 llamadas).
+//
+// El costo de no corregirlo es concreto: el par no matchea ninguna fila, así
+// que el movimiento cae al gap-fill y se le pregunta al usuario la categoría
+// que YA había dicho en su mensaje.
+//
+// Solo se saca el prefijo cuando coincide con la categoría del mismo draft: si
+// una subcategoría legítima llevara un pipe, no se la toca.
+func (d *MovementDraft) normalizeSubcategory() {
+	prefix := strings.TrimSpace(d.Category) + " | "
+	if strings.HasPrefix(d.Subcategory, prefix) {
+		d.Subcategory = strings.TrimSpace(strings.TrimPrefix(d.Subcategory, prefix))
+	}
 }
