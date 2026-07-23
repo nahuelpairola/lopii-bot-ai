@@ -6,12 +6,42 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+const (
+	maxRateLimitRetries = 40
+	maxRateLimitWait    = 20 * time.Minute
+)
+
+var retryAfterRe = regexp.MustCompile(`try again in (?:(\d+)m)?([\d.]+)s`)
+
+// rateLimitWait detecta un 429 de rate-limit en el mensaje de error de Groq y
+// devuelve cuánto esperar (su "try again in Xs" + margen). isRL=false si NO es un
+// rate-limit (un error real que no hay que reintentar en loop).
+func rateLimitWait(errMsg string) (time.Duration, bool) {
+	if !strings.Contains(errMsg, "rate_limit") && !strings.Contains(errMsg, "429") {
+		return 0, false
+	}
+	wait := 90 * time.Second // default si el retry-after no parsea
+	if m := retryAfterRe.FindStringSubmatch(errMsg); m != nil {
+		secs := 0.0
+		if m[1] != "" {
+			min, _ := strconv.Atoi(m[1])
+			secs += float64(min) * 60
+		}
+		if s, err := strconv.ParseFloat(m[2], 64); err == nil {
+			secs += s
+		}
+		wait = time.Duration(secs*float64(time.Second)) + 5*time.Second
+	}
+	return wait, true
+}
 
 // TestRouterHistoryEval corre el router contra mensajes reales del bot (export
 // de intent_events, deduplicado) con throttle para no reventar el TPM/RPM/TPD
@@ -233,6 +263,28 @@ var routerHistoryCases = []struct {
 	{"Que puedo hacer?", IntentHelp}, // curado: pregunta por capacidades
 }
 
+func TestRateLimitWait(t *testing.T) {
+	cases := []struct {
+		in   string
+		want time.Duration
+		isRL bool
+	}{
+		{"groq returned status 429: try again in 16m29.28s rate_limit_exceeded", 16*time.Minute + 34*time.Second, true},
+		{"429: try again in 34.128s rate_limit_exceeded", 39 * time.Second, true},
+		{"orchestrator: parse intent: unexpected token", 0, false},
+	}
+	for _, c := range cases {
+		got, isRL := rateLimitWait(c.in)
+		if isRL != c.isRL {
+			t.Errorf("%q: isRL=%v want %v", c.in, isRL, c.isRL)
+		}
+		// tolerancia ±1s: el retry-after trae decimales + 5s de margen.
+		if isRL && (got < c.want-time.Second || got > c.want+time.Second) {
+			t.Errorf("%q: wait=%v want ~%v", c.in, got, c.want)
+		}
+	}
+}
+
 func TestRouterHistoryEval(t *testing.T) {
 	key := os.Getenv("GROQ_API_KEY")
 	if key == "" {
@@ -279,6 +331,22 @@ func TestRouterHistoryEval(t *testing.T) {
 			time.Sleep(interval)
 		}
 		res, cerr := o.ClassifyIntent(context.Background(), c.msg)
+		// El TPD de Groq es un límite ROLLING que se recupera (~139 tok/min). El
+		// client corta sus reintentos a los 20s, antes del retry-after real (min).
+		// Acá honramos ese retry-after: esperamos y reintentamos el mismo mensaje,
+		// para que el eval trickle-ee solo a medida que el límite se libera.
+		for r := 0; cerr != nil && r < maxRateLimitRetries; r++ {
+			wait, isRL := rateLimitWait(cerr.Error())
+			if !isRL {
+				break // error real, no rate-limit
+			}
+			if wait > maxRateLimitWait {
+				wait = maxRateLimitWait
+			}
+			t.Logf("[429] espero %s y reintento %q", wait.Round(time.Second), truncate(c.msg))
+			time.Sleep(wait)
+			res, cerr = o.ClassifyIntent(context.Background(), c.msg)
+		}
 		if cerr != nil {
 			errs++
 			t.Logf("[ERR] %q: %v", truncate(c.msg), cerr)
