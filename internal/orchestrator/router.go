@@ -54,7 +54,7 @@ var routerTool = toolSchema{
 	Parameters: json.RawMessage(`{
 		"type": "object",
 		"properties": {
-			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY", "ACCOUNT_MANAGE", "CREATE_CATEGORY", "CATEGORY_MANAGE", "REMINDER_SET", "HELP"]},
+			"intent": {"type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "QUERY", "ACCOUNT_MANAGE", "CREATE_CATEGORY", "CATEGORY_MANAGE", "REMINDER_SET", "HELP", "UNCLEAR"]},
 			"needs_confirmation": {"type": ["boolean", "string", "null"]}
 		},
 		"required": ["intent"]
@@ -78,7 +78,7 @@ func (o *Orchestrator) ClassifyIntent(ctx context.Context, text string) (IntentR
 	}
 
 	switch args.Intent {
-	case IntentCreate, IntentUpdate, IntentDelete, IntentQuery, IntentAccountManage, IntentCreateCategory, IntentCategoryManage, IntentReminderSet, IntentHelp:
+	case IntentCreate, IntentUpdate, IntentDelete, IntentQuery, IntentAccountManage, IntentCreateCategory, IntentCategoryManage, IntentReminderSet, IntentHelp, IntentUnclear:
 		return IntentResult{Intent: args.Intent, NeedsConfirmation: bool(args.NeedsConfirmation)}, nil
 	default:
 		return IntentResult{}, fmt.Errorf("orchestrator: unknown intent %q", args.Intent)

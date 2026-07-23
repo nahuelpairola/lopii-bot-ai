@@ -125,6 +125,9 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	case orchestrator.IntentHelp:
 		c.sendText(ctx, b, chatID, msgHelp)
 		return nil
+	case orchestrator.IntentUnclear:
+		c.sendText(ctx, b, chatID, msgAskRewrite)
+		return nil
 	default:
 		c.sendText(ctx, b, chatID, msgGenericFlowError)
 	}

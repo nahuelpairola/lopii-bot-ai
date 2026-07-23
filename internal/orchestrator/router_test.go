@@ -117,3 +117,19 @@ func TestClassifyIntent_ReturnsCategoryManage(t *testing.T) {
 		t.Errorf("intent = %q, want %q", result.Intent, IntentCategoryManage)
 	}
 }
+
+func TestClassifyIntent_ReturnsUnclear(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"intent\":\"UNCLEAR\"}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{BaseURL: server.URL, RouterModel: "test-model", TimeoutSeconds: 5})
+	result, err := o.ClassifyIntent(context.Background(), "asdfgh")
+	if err != nil {
+		t.Fatalf("ClassifyIntent: %v", err)
+	}
+	if result.Intent != IntentUnclear {
+		t.Errorf("intent = %q, want %q", result.Intent, IntentUnclear)
+	}
+}

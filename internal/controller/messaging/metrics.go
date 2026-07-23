@@ -29,6 +29,7 @@ const (
 	outcomeAccountCreateRouted = "account_create_routed"
 	outcomeReminderSetRouted   = "reminder_set_routed"
 	outcomeHelpShown           = "help_shown"
+	outcomeUnclear             = "unclear"
 	outcomeCategoryMatchUsed   = "category_match_used"
 	outcomeCategoryCreated     = "category_created"
 	outcomeCategoryCancelled   = "category_create_cancelled"
@@ -56,6 +57,8 @@ func routerOutcome(intent orchestrator.Intent) string {
 		return outcomeReminderSetRouted
 	case orchestrator.IntentHelp:
 		return outcomeHelpShown
+	case orchestrator.IntentUnclear:
+		return outcomeUnclear
 	default:
 		return outcomePending
 	}
