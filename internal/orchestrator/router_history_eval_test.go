@@ -354,11 +354,14 @@ func TestRouterHistoryEval(t *testing.T) {
 		}
 		if res.Intent == c.want {
 			matches++
+			t.Logf("[%d/%d] OK  %-14s | %s", i+1, len(cases), res.Intent, truncate(c.msg))
 			continue
 		}
 		diffs++
 		confusion[string(c.want)+" -> "+string(res.Intent)]++
-		diffLines = append(diffLines, fmt.Sprintf("  %-14s -> %-14s | %s", c.want, res.Intent, truncate(c.msg)))
+		line := fmt.Sprintf("  %-14s -> %-14s | %s", c.want, res.Intent, truncate(c.msg))
+		diffLines = append(diffLines, line)
+		t.Logf("[%d/%d] ✗   %s", i+1, len(cases), strings.TrimSpace(line))
 	}
 
 	scored := matches + diffs
