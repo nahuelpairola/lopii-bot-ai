@@ -36,8 +36,9 @@ import (
 // el día usá ROUTER_EVAL_LIMIT=N (subconjunto) o Dev tier.
 //
 // Env opcionales:
-//   - ROUTER_EVAL_RPM   (default 15): requests por minuto (throttle simple).
-//   - ROUTER_EVAL_LIMIT (default 0 = todos): cap de mensajes, para gastar poco.
+//   - ROUTER_EVAL_RPM    (default 15): requests por minuto (throttle simple).
+//   - ROUTER_EVAL_OFFSET (default 0): saltea los primeros N (ventana por lotes).
+//   - ROUTER_EVAL_LIMIT  (default 0 = todos): cap de mensajes desde el offset.
 //   - ROUTER_EVAL_MIN_AGREEMENT (default 0 = solo reporta): si se setea (ej. 0.9),
 //     el test falla si el acuerdo cae por debajo.
 //
@@ -180,6 +181,15 @@ func TestRouterHistoryEval(t *testing.T) {
 	}
 
 	cases := routerHistoryCases
+	// OFFSET+LIMIT define una ventana [offset, offset+limit) para correr por
+	// lotes cuando la cuota diaria (TPD) obliga a fraccionar. offset 0 y limit 0
+	// = todos.
+	if offset := envInt("ROUTER_EVAL_OFFSET", 0); offset > 0 {
+		if offset >= len(cases) {
+			offset = len(cases)
+		}
+		cases = cases[offset:]
+	}
 	if limit := envInt("ROUTER_EVAL_LIMIT", 0); limit > 0 && limit < len(cases) {
 		cases = cases[:limit]
 	}
