@@ -25,7 +25,7 @@ const anchorLayout = "2006-01"
 var presetMonths = map[string]int{PresetMonth: 1, Preset3M: 3, Preset6M: 6, PresetYear: 12}
 
 // AllPresets is what a single-period view offers. TrendPresets drops the
-// one-month option: it would leave the matrix with a single column and the
+// one-month option: it would leave the evolution with a single column and the
 // accounts trend with a single point.
 var (
 	AllPresets   = []string{PresetMonth, Preset3M, Preset6M, PresetYear}

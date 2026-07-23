@@ -9,7 +9,7 @@ templ TabBar(active string) {
 	<nav class="tab-bar" hx-include="#app-state" hx-target="#content" hx-push-url="true" hx-indicator="#content">
 		@tabLink(RouteOverview, TabOverview, "Resumen", active)
 		@tabLink(RouteCategories, TabCategories, "Categorías", active)
-		@tabLink(RouteMatrix, TabMatrix, "Matriz", active)
+		@tabLink(RouteEvolution, TabEvolution, "Evolución", active)
 		@tabLink(RouteAccounts, TabAccounts, "Cuentas", active)
 	</nav>
 }

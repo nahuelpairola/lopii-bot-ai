@@ -15,13 +15,13 @@ const (
 	TabOverview   = "overview"
 	TabCategories = "categories"
 	TabAccounts   = "accounts"
-	TabMatrix     = "matrix"
+	TabEvolution     = "evolution"
 
 	// Route* are the full link targets (AppPrefix + "/" + tab key).
 	RouteOverview   = AppPrefix + "/" + TabOverview
 	RouteCategories = AppPrefix + "/" + TabCategories
 	RouteAccounts   = AppPrefix + "/" + TabAccounts
-	RouteMatrix     = AppPrefix + "/" + TabMatrix
+	RouteEvolution     = AppPrefix + "/" + TabEvolution
 
 	// Neto* are the KPI status keys shared with overview.go (status color).
 	NetoGood     = "good"
@@ -36,7 +36,7 @@ const (
 	ColorBar     = "#2a78d6"
 )
 
-// Cell* are the matrix shading steps, as CSS classes rather than an inline
+// Cell* are the evolution shading steps, as CSS classes rather than an inline
 // rgba(): the shade means "above this row's own average", which is a two-step
 // scale, not a continuous ramp.
 const (

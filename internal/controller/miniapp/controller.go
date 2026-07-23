@@ -72,5 +72,5 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 	// path segment: real category names contain "/".
 	authed.GET("/"+templates.TabCategories, c.handleCategories)
 	authed.GET("/"+templates.TabAccounts, c.handleAccounts)
-	authed.GET("/"+templates.TabMatrix, c.handleMatrix)
+	authed.GET("/"+templates.TabEvolution, c.handleEvolution)
 }

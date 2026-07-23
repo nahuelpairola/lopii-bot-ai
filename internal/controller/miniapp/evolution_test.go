@@ -11,13 +11,13 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-type stubMovementsMatrix struct {
+type stubMovementsEvolution struct {
 	stubMovementsWithAccounts
 	byMonth map[string][]movement.CategorySum // keyed by "YYYY-MM" of q.From
 	subs    map[string][]movement.CategorySum // keyed by category
 }
 
-func (s stubMovementsMatrix) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
+func (s stubMovementsEvolution) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
 	if groupBy == movement.GroupBySubcategory && q.Category != nil {
 		return s.subs[*q.Category], nil
 	}
@@ -29,10 +29,10 @@ func (s stubMovementsMatrix) SumForUser(q movement.MovementQuery, groupBy string
 
 func d(v int64) decimal.Decimal { return decimal.NewFromInt(v) }
 
-func TestBuildMatrixRows_SortsByPeriodTotalDesc(t *testing.T) {
+func TestBuildEvolutionRows_SortsByPeriodTotalDesc(t *testing.T) {
 	// El bug: iterar un map de Go randomiza el orden, así que dos cargas de la
 	// misma data mostraban las filas distinto.
-	rows := buildMatrixRows(
+	rows := buildEvolutionRows(
 		[]string{"Transporte", "Vivienda", "Ocio"},
 		map[string][]decimal.Decimal{
 			"Transporte": {d(100), d(100)},
@@ -49,8 +49,8 @@ func TestBuildMatrixRows_SortsByPeriodTotalDesc(t *testing.T) {
 	}
 }
 
-func TestBuildMatrixRows_ShadesAgainstRowAverage(t *testing.T) {
-	rows := buildMatrixRows(
+func TestBuildEvolutionRows_ShadesAgainstRowAverage(t *testing.T) {
+	rows := buildEvolutionRows(
 		[]string{"Ocio", "Vivienda", "Salud"},
 		map[string][]decimal.Decimal{
 			// promedio 125 → 200 es +60% (alto)
@@ -62,7 +62,7 @@ func TestBuildMatrixRows_ShadesAgainstRowAverage(t *testing.T) {
 		},
 		currency.ARS,
 	)
-	byLabel := map[string]templates.MatrixRow{}
+	byLabel := map[string]templates.EvolutionRow{}
 	for _, r := range rows {
 		byLabel[r.Label] = r
 	}
@@ -88,9 +88,9 @@ func TestBuildMatrixRows_ShadesAgainstRowAverage(t *testing.T) {
 	}
 }
 
-func TestBuildMatrixRows_SingleMonthWithDataIsNeverShaded(t *testing.T) {
+func TestBuildEvolutionRows_SingleMonthWithDataIsNeverShaded(t *testing.T) {
 	// Sin al menos dos meses con movimiento no hay "normal" contra qué comparar.
-	rows := buildMatrixRows([]string{"Viajes"}, map[string][]decimal.Decimal{
+	rows := buildEvolutionRows([]string{"Viajes"}, map[string][]decimal.Decimal{
 		"Viajes": {d(0), d(0), d(900000)},
 	}, currency.ARS)
 	for i, c := range rows[0].Cells {
@@ -100,10 +100,10 @@ func TestBuildMatrixRows_SingleMonthWithDataIsNeverShaded(t *testing.T) {
 	}
 }
 
-func TestHandleMatrix_RendersTableFallback(t *testing.T) {
+func TestHandleEvolution_RendersTableFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	current := templates.CurrentMonth(nowInART()).Format("2006-01")
-	movements := stubMovementsMatrix{byMonth: map[string][]movement.CategorySum{
+	movements := stubMovementsEvolution{byMonth: map[string][]movement.CategorySum{
 		current: {{Label: "Alimentación", Total: d(1500)}},
 	}}
 	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken)
@@ -111,7 +111,7 @@ func TestHandleMatrix_RendersTableFallback(t *testing.T) {
 	c.RegisterRoutes(router)
 
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authedHTMXRequest(t, "/app/matrix?p=6m"))
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/evolution?p=6m"))
 
 	body := w.Body.String()
 	if w.Code != 200 {
@@ -125,10 +125,10 @@ func TestHandleMatrix_RendersTableFallback(t *testing.T) {
 	}
 }
 
-func TestHandleMatrix_ExpandShowsSubcategories(t *testing.T) {
+func TestHandleEvolution_ExpandShowsSubcategories(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	current := templates.CurrentMonth(nowInART()).Format("2006-01")
-	movements := stubMovementsMatrix{
+	movements := stubMovementsEvolution{
 		byMonth: map[string][]movement.CategorySum{
 			current: {{Label: "Alimentación", Total: d(1500)}},
 		},
@@ -141,7 +141,7 @@ func TestHandleMatrix_ExpandShowsSubcategories(t *testing.T) {
 	c.RegisterRoutes(router)
 
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authedHTMXRequest(t, "/app/matrix?p=6m&expand=Alimentaci%C3%B3n"))
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/evolution?p=6m&expand=Alimentaci%C3%B3n"))
 
 	if !bodyContains(w.Body.String(), "Supermercado") {
 		t.Fatal("expandir una categoría debe mostrar sus subcategorías")

@@ -139,15 +139,15 @@ a, button, .tab-link {
 /* htmx puts .htmx-request on the element named by hx-indicator */
 #content.htmx-request { opacity: 0.55; transition: opacity 0.1s; }
 
-.matrix-scroll { overflow-x: auto; overscroll-behavior: contain; }
+.evolution-scroll { overflow-x: auto; overscroll-behavior: contain; }
 
 /* pico sets border-collapse:collapse on every table. With collapsed borders
    the borders belong to the table, not the cell, so a sticky cell scrolls
    away from its own border. separate + box-shadow is the fix. pico's rule
    lives in :where(), so this needs no extra specificity. */
-.matrix { border-collapse: separate; border-spacing: 0; width: auto; }
+.evolution { border-collapse: separate; border-spacing: 0; width: auto; }
 
-.matrix th, .matrix td {
+.evolution th, .evolution td {
   /* pico's own td,th padding makes 7 columns overflow a phone even with
      compact numbers. That rule is NOT in :where(), hence the qualifier. */
   padding: 0.35rem 0.4rem;
@@ -156,8 +156,8 @@ a, button, .tab-link {
   text-align: right;
 }
 
-.matrix th[scope="row"],
-.matrix thead th:first-child {
+.evolution th[scope="row"],
+.evolution thead th:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
@@ -166,9 +166,9 @@ a, button, .tab-link {
   box-shadow: inset -1px 0 var(--pico-table-border-color);
 }
 
-.matrix-totals td, .matrix-totals th { font-weight: 600; }
-.matrix-sub th[scope="row"] { padding-left: 1.25rem; font-weight: 400; }
-.matrix-sub td, .matrix-sub th { color: var(--pico-muted-color); }
+.evolution-totals td, .evolution-totals th { font-weight: 600; }
+.evolution-sub th[scope="row"] { padding-left: 1.25rem; font-weight: 400; }
+.evolution-sub td, .evolution-sub th { color: var(--pico-muted-color); }
 
 /* Two steps, one hue, against the row's own average. Alpha caps at 0.45 —
    the old ramp went to 1.0 and dark text on a saturated cell failed
@@ -176,4 +176,4 @@ a, button, .tab-link {
 .cell-mild { background-color: rgba(42, 120, 214, 0.22); }
 .cell-high { background-color: rgba(42, 120, 214, 0.45); }
 
-.matrix-legend { font-size: 0.8rem; }
+.evolution-legend { font-size: 0.8rem; }

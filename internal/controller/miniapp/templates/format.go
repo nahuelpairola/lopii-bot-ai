@@ -30,7 +30,7 @@ func FormatMoney(d decimal.Decimal, cur currency.Currency) string {
 	return sign + "$" + groupThousands(abs.StringFixed(0))
 }
 
-// FormatCompact renders a matrix cell. ARS is scaled to thousands — at peso
+// FormatCompact renders a evolution cell. ARS is scaled to thousands — at peso
 // magnitudes the full number costs three columns of width, and the table's
 // caption carries the scale. USD is not scaled: those amounts are already
 // short, and dividing them by a thousand would render "0,1". Zero renders as a

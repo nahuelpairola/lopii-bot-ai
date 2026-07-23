@@ -1,34 +1,34 @@
 package templates
 
-type MatrixCell struct {
+type EvolutionCell struct {
 	Value     string
 	Intensity string // "" | CellMild | CellHigh
 }
 
-type MatrixRow struct {
+type EvolutionRow struct {
 	Label string
 	Icon  string
 	Href  string
 	Sub   bool // a subcategory row of the expanded category
-	Cells []MatrixCell
+	Cells []EvolutionCell
 }
 
-type MatrixData struct {
+type EvolutionData struct {
 	Period   Period
 	Months   []string
-	Rows     []MatrixRow
-	Totals   []MatrixCell
+	Rows     []EvolutionRow
+	Totals   []EvolutionCell
 	Expanded string
 	Empty    bool
 }
 
-templ Matrix(data MatrixData) {
+templ Evolution(data EvolutionData) {
 	@PeriodHeader(data.Period)
 	if data.Empty {
 		@EmptyState("Sin gastos en este período.")
 	} else {
-		<div class="matrix-scroll">
-			<table class="matrix">
+		<div class="evolution-scroll">
+			<table class="evolution">
 				<caption>Gasto por categoría · { data.Period.Label }{ ScaleNote(data.Period.Currency) }</caption>
 				<thead>
 					<tr>
@@ -37,7 +37,7 @@ templ Matrix(data MatrixData) {
 							<th scope="col">{ ShortMonth(month) }</th>
 						}
 					</tr>
-					<tr class="matrix-totals">
+					<tr class="evolution-totals">
 						<th scope="row">Total</th>
 						for _, cell := range data.Totals {
 							<td class="money">{ cell.Value }</td>
@@ -48,7 +48,7 @@ templ Matrix(data MatrixData) {
 					for _, row := range data.Rows {
 						<tr
 							if row.Sub {
-								class="matrix-sub"
+								class="evolution-sub"
 							}
 						>
 							<th scope="row">
@@ -66,6 +66,6 @@ templ Matrix(data MatrixData) {
 				</tbody>
 			</table>
 		</div>
-		<p class="muted matrix-legend">La sombra marca los meses por encima de tu promedio en esa fila. Tocá una categoría para abrir sus subcategorías.</p>
+		<p class="muted evolution-legend">La sombra marca los meses por encima de tu promedio en esa fila. Tocá una categoría para abrir sus subcategorías.</p>
 	}
 }

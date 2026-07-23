@@ -28,7 +28,7 @@ func TestPeriodFromQuery_DefaultsPerView(t *testing.T) {
 
 	// Un preset que la vista no ofrece cae a su default, no da 400: la URL
 	// puede venir de una tab que estaba en otra vista.
-	p = periodFromQuery(ctxFor(templates.RouteMatrix, "p=month"), templates.TrendPresets, templates.Preset6M)
+	p = periodFromQuery(ctxFor(templates.RouteEvolution, "p=month"), templates.TrendPresets, templates.Preset6M)
 	if p.Preset != templates.Preset6M {
 		t.Errorf("preset no permitido: Preset = %q, want 6m", p.Preset)
 	}

@@ -27,7 +27,7 @@ var (
 	highRatio = decimal.RequireFromString("1.40")
 )
 
-func (c *controller) handleMatrix(ctx *gin.Context) {
+func (c *controller) handleEvolution(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
 	p := periodFromQuery(ctx, templates.TrendPresets, templates.Preset6M)
 	expand := ctx.Query(expandParam)
@@ -72,19 +72,19 @@ func (c *controller) handleMatrix(ctx *gin.Context) {
 		}
 	}
 
-	data := templates.MatrixData{
+	data := templates.EvolutionData{
 		Period:   p,
 		Months:   months,
 		Expanded: expand,
 		Empty:    len(order) == 0,
 		Totals:   monthTotals(order, byCategory, len(months), p.Currency),
 	}
-	for _, row := range buildMatrixRows(order, byCategory, p.Currency) {
+	for _, row := range buildEvolutionRows(order, byCategory, p.Currency) {
 		row.Icon = c.subcategories.IconForCategory(userID, row.Label)
 		if row.Label == expand {
 			row.Href = p.Query() // tapping the open row collapses it
 			data.Rows = append(data.Rows, row)
-			for _, sub := range buildMatrixRows(subOrder, bySubcategory, p.Currency) {
+			for _, sub := range buildEvolutionRows(subOrder, bySubcategory, p.Currency) {
 				sub.Sub = true
 				data.Rows = append(data.Rows, sub)
 			}
@@ -95,7 +95,7 @@ func (c *controller) handleMatrix(ctx *gin.Context) {
 	}
 
 	ctx.Status(http.StatusOK)
-	templates.Matrix(data).Render(ctx.Request.Context(), ctx.Writer)
+	templates.Evolution(data).Render(ctx.Request.Context(), ctx.Writer)
 }
 
 // collectMonth folds one month's grouped rows into the pivot, skipping
@@ -118,23 +118,23 @@ func collectMonth(rows []movement.CategorySum, month, months int, into map[strin
 	}
 }
 
-// buildMatrixRows turns the pivot into render rows: sorted by period total
+// buildEvolutionRows turns the pivot into render rows: sorted by period total
 // descending (a Go map iterates in random order, so without this the rows
 // shuffled between loads) and each cell graded against its own row.
-func buildMatrixRows(labels []string, byLabel map[string][]decimal.Decimal, cur currency.Currency) []templates.MatrixRow {
-	rows := make([]templates.MatrixRow, 0, len(labels))
+func buildEvolutionRows(labels []string, byLabel map[string][]decimal.Decimal, cur currency.Currency) []templates.EvolutionRow {
+	rows := make([]templates.EvolutionRow, 0, len(labels))
 	for _, label := range labels {
 		cells := byLabel[label]
-		row := templates.MatrixRow{Label: label, Cells: make([]templates.MatrixCell, len(cells))}
+		row := templates.EvolutionRow{Label: label, Cells: make([]templates.EvolutionCell, len(cells))}
 		for i, v := range cells {
-			row.Cells[i] = templates.MatrixCell{
+			row.Cells[i] = templates.EvolutionCell{
 				Value:     templates.FormatCompact(v, cur),
 				Intensity: cellIntensity(cells, i),
 			}
 		}
 		rows = append(rows, row)
 	}
-	slices.SortStableFunc(rows, func(a, b templates.MatrixRow) int {
+	slices.SortStableFunc(rows, func(a, b templates.EvolutionRow) int {
 		return rowTotal(byLabel[b.Label]).Compare(rowTotal(byLabel[a.Label]))
 	})
 	return rows
@@ -174,14 +174,14 @@ func rowTotal(cells []decimal.Decimal) decimal.Decimal {
 }
 
 // monthTotals is the "Total" row: what the whole period cost each month.
-func monthTotals(labels []string, byLabel map[string][]decimal.Decimal, months int, cur currency.Currency) []templates.MatrixCell {
-	out := make([]templates.MatrixCell, months)
+func monthTotals(labels []string, byLabel map[string][]decimal.Decimal, months int, cur currency.Currency) []templates.EvolutionCell {
+	out := make([]templates.EvolutionCell, months)
 	for i := 0; i < months; i++ {
 		t := decimal.Zero
 		for _, label := range labels {
 			t = t.Add(byLabel[label][i])
 		}
-		out[i] = templates.MatrixCell{Value: templates.FormatCompact(t, cur)}
+		out[i] = templates.EvolutionCell{Value: templates.FormatCompact(t, cur)}
 	}
 	return out
 }

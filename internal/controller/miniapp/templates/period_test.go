@@ -41,7 +41,7 @@ func TestNewPeriod_MonthWindow(t *testing.T) {
 }
 
 func TestNewPeriod_SixMonthWindowEndingAtAnchor(t *testing.T) {
-	p := NewPeriod(RouteMatrix, Preset6M, art(2026, time.July), art(2026, time.July), currency.ARS, TrendPresets)
+	p := NewPeriod(RouteEvolution, Preset6M, art(2026, time.July), art(2026, time.July), currency.ARS, TrendPresets)
 
 	if !p.From.Equal(art(2026, time.February)) {
 		t.Errorf("From = %s, want 2026-02 (6 meses terminando en julio)", p.From)
@@ -63,15 +63,15 @@ func TestNewPeriod_SixMonthWindowEndingAtAnchor(t *testing.T) {
 
 func TestNewPeriod_CursorStepsByWindowLength(t *testing.T) {
 	// Ancla en enero 2026, ventana de 3 meses, mes corriente julio 2026.
-	p := NewPeriod(RouteMatrix, Preset3M, art(2026, time.January), art(2026, time.July), currency.ARS, TrendPresets)
+	p := NewPeriod(RouteEvolution, Preset3M, art(2026, time.January), art(2026, time.July), currency.ARS, TrendPresets)
 
 	if p.Label != "nov 2025 – ene 2026" {
 		t.Errorf("Label = %q, want %q", p.Label, "nov 2025 – ene 2026")
 	}
-	if p.PrevQuery != "/app/matrix?c=ARS&m=2025-10&p=3m" {
+	if p.PrevQuery != "/app/evolution?c=ARS&m=2025-10&p=3m" {
 		t.Errorf("PrevQuery = %q", p.PrevQuery)
 	}
-	if p.NextQuery != "/app/matrix?c=ARS&m=2026-04&p=3m" {
+	if p.NextQuery != "/app/evolution?c=ARS&m=2026-04&p=3m" {
 		t.Errorf("NextQuery = %q", p.NextQuery)
 	}
 }
@@ -79,7 +79,7 @@ func TestNewPeriod_CursorStepsByWindowLength(t *testing.T) {
 func TestNewPeriod_NextClampedAtCurrentMonth(t *testing.T) {
 	// Ancla mayo, ventana 3m, mes corriente julio: el próximo salto sería
 	// agosto, que es futuro → sin NextQuery.
-	p := NewPeriod(RouteMatrix, Preset3M, art(2026, time.May), art(2026, time.July), currency.ARS, TrendPresets)
+	p := NewPeriod(RouteEvolution, Preset3M, art(2026, time.May), art(2026, time.July), currency.ARS, TrendPresets)
 	if p.NextQuery != "" {
 		t.Errorf("NextQuery = %q, want empty", p.NextQuery)
 	}
