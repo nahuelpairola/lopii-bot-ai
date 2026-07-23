@@ -621,17 +621,6 @@ func TestStartReminderSetup_FlowNotRegistered_IsReported(t *testing.T) {
 	}
 }
 
-func TestFinishMovementConfirmFlow_Rewrite_ResolvesRewrite(t *testing.T) {
-	metrics := &fakeMetricRepo{}
-	c := &controller{metrics: metrics}
-
-	c.finishMovementConfirmFlow(context.Background(), nil, 0, conversation.Data{"choice": "rewrite"})
-
-	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateRewrite {
-		t.Fatalf("expected resolve create_rewrite, got %+v", metrics.resolved)
-	}
-}
-
 func TestFinishMovementCreateFlow_Cancelled_ResolvesCancelled(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	c := &controller{metrics: metrics}

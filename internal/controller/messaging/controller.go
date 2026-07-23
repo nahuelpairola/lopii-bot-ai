@@ -233,8 +233,6 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	switch result.FlowName {
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
-	case movementConfirmFlowName:
-		c.finishMovementConfirmFlow(ctx, b, chatID, result.Data)
 	case movementUpdatePickFlowName:
 		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
 	case movementUpdateConfirmFlowName:

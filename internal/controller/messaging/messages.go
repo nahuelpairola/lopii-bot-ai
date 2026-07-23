@@ -223,14 +223,9 @@ const (
 	msgDeleteCancelled = "Cancelado, no borré nada."
 )
 
-func msgConfirmIntentUnclear(data conversation.Data) string {
-	return "🤔 No estoy seguro de qué es este mensaje. ¿Qué preferís?"
-}
-
 const (
-	msgAskRewrite             = "✍️ Dale, mandalo de nuevo con más detalle (monto, categoría, y si es un movimiento nuevo)."
-	msgConfirmIntentCancelled = "🚫 Cancelado, no hice nada."
-	msgCreateCancelled        = "🚫 Cancelado, no registré nada."
+	msgAskRewrite      = "✍️ Dale, mandalo de nuevo con más detalle (monto, categoría, y si es un movimiento nuevo)."
+	msgCreateCancelled = "🚫 Cancelado, no registré nada."
 )
 
 const (
@@ -363,7 +358,7 @@ const msgLogMissingFirst = "Dale, registrá primero lo que falta y volvé a mand
 // unrecognized name falls back to a generic phrase.
 func FlowResumeLabel(flowName string) string {
 	switch flowName {
-	case movementCreateFlowName, movementConfirmFlowName:
+	case movementCreateFlowName:
 		return "estabas registrando un movimiento"
 	case movementUpdatePickFlowName, movementUpdateConfirmFlowName:
 		return "estabas corrigiendo un movimiento"
