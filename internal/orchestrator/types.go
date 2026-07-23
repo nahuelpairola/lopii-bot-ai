@@ -18,13 +18,9 @@ const (
 	IntentUnclear        Intent = "UNCLEAR"
 )
 
-// IntentResult is Call 1 router's output: the classified intent, plus
-// whether the message was too ambiguous to trust outright. Only
-// meaningful when Intent == IntentCreate — that's the only path with a
-// frictionless (no-confirmation) default to guard.
+// IntentResult is Call 1 router's output: the classified intent.
 type IntentResult struct {
-	Intent            Intent `json:"intent"`
-	NeedsConfirmation bool   `json:"needs_confirmation"`
+	Intent Intent `json:"intent"`
 }
 
 // TaxonomyEntry is one category/subcategory row, fed to Call 2 CREATE

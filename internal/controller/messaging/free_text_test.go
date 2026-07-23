@@ -23,7 +23,6 @@ func (stubQueryHistory) Append(userID uint64, question, answer string) error { r
 
 type fakeFullOrchestrator struct {
 	intent              orchestrator.Intent
-	needsConfirmation   bool
 	createResult        orchestrator.CreateResult
 	onboardingResult    orchestrator.OnboardingResult
 	onboardingErr       error
@@ -39,7 +38,7 @@ type fakeFullOrchestrator struct {
 }
 
 func (o *fakeFullOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
-	return orchestrator.IntentResult{Intent: o.intent, NeedsConfirmation: o.needsConfirmation}, o.intentErr
+	return orchestrator.IntentResult{Intent: o.intent}, o.intentErr
 }
 func (o *fakeFullOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
 	return o.createResult, nil
@@ -199,31 +198,13 @@ func TestStartMovementCreate_NoGaps_InsertsDirectlyNoEngine(t *testing.T) {
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
 
-	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
+	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo")
 
 	if len(movRepo.inserted) != 1 {
 		t.Fatalf("expected a direct insert with no gaps, got %d movements inserted", len(movRepo.inserted))
 	}
 	if store.found {
 		t.Error("a gap-free CREATE should never touch the conversation engine")
-	}
-}
-
-func TestStartMovementCreate_NeedsConfirmation_RoutesToConfirmGate(t *testing.T) {
-	subRepo := &fakeSubcategoryRepoFull{}
-	accRepo := &fakeAccountRepoFull{}
-	movRepo := &fakeMovementRepoFull{}
-	orch := &fakeFullOrchestrator{}
-
-	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementConfirmFlow())
-	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
-
-	c.startMovementCreate(context.Background(), nil, 0, 1, "20k", true)
-
-	if store.flowName != movementConfirmFlowName {
-		t.Errorf("started flow = %q, want %q (router's needs_confirmation should route to the confirm gate)", store.flowName, movementConfirmFlowName)
 	}
 }
 
@@ -242,7 +223,7 @@ func TestStartMovementCreate_WithGaps_StartsEngine(t *testing.T) {
 	engine.Register(NewMovementCreateFlow(subRepo, accRepo))
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
 
-	c.startMovementCreate(context.Background(), nil, 0, 1, "gasté 3000 en algo", false)
+	c.startMovementCreate(context.Background(), nil, 0, 1, "gasté 3000 en algo")
 
 	if len(movRepo.inserted) != 0 {
 		t.Error("a CREATE with a category gap should not insert until the gap is filled")
@@ -275,7 +256,7 @@ func TestMovementCreate_ZeroAccounts_AsksNameCreatesDefault(t *testing.T) {
 	engine.Register(NewMovementCreateFlow(subRepo, accRepo))
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo, orchestrator: orch, engine: engine}
 
-	if err := c.startMovementCreate(context.Background(), nil, 0, 1, "me pagaron 500", false); err != nil {
+	if err := c.startMovementCreate(context.Background(), nil, 0, 1, "me pagaron 500"); err != nil {
 		t.Fatalf("startMovementCreate: %v", err)
 	}
 	if !store.found || store.stepName != stepCreateFirstAccount {
@@ -464,14 +445,22 @@ func TestHandleFreeText_CreateCategory_FallsBackToWizard(t *testing.T) {
 
 func TestHandleFreeText_LogsPendingForCreate(t *testing.T) {
 	metrics := &fakeMetricRepo{}
-	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreate, needsConfirmation: true}
+	sub := newSubForTest(1, "Alimentación", "Café")
+	subRepo := &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Café": sub},
+		all:              []subcategory.Subcategory{*sub},
+	}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
+	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreate, createResult: orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
+		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
+	}}}
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementConfirmFlow())
-	c := &controller{orchestrator: orch, engine: engine, metrics: metrics}
+	c := &controller{orchestrator: orch, engine: engine, metrics: metrics, subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	c.handleFreeText(context.Background(), nil, 0, 1, "20k")
+	c.handleFreeText(context.Background(), nil, 0, 1, "café 3000 efectivo")
 
 	if len(metrics.logged) != 1 {
 		t.Fatalf("expected one router log, got %d", len(metrics.logged))
@@ -527,7 +516,7 @@ func TestStartMovementCreate_NoGaps_ResolvesInserted(t *testing.T) {
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}, movements: &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}, orchestrator: orch, engine: engine, metrics: metrics}
 
-	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
+	c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo")
 
 	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateInserted {
 		t.Fatalf("expected resolve create_inserted, got %+v", metrics.resolved)
@@ -550,7 +539,7 @@ func TestStartMovementCreate_InsertFailure_IsReported(t *testing.T) {
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{subcategories: subRepo, accounts: &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}, movements: movRepo, orchestrator: orch, engine: engine, metrics: metrics}
 
-	err := c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo", false)
+	err := c.startMovementCreate(context.Background(), nil, 0, 1, "café 3000 efectivo")
 
 	if err == nil {
 		t.Fatal("startMovementCreate returned nil on insert failure; want error surfaced to the spine")

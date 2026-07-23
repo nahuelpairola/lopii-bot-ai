@@ -91,10 +91,9 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	slog.InfoContext(ctx, "intent classified",
 		"user_id", userID,
 		"intent", string(result.Intent),
-		"needs_confirmation", result.NeedsConfirmation,
 	)
 
-	c.logIntent(ctx, userID, text, result.Intent, result.NeedsConfirmation)
+	c.logIntent(ctx, userID, text, result.Intent)
 
 	switch result.Intent {
 	case orchestrator.IntentQuery:
@@ -109,7 +108,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		}
 		return qErr
 	case orchestrator.IntentCreate:
-		return c.startMovementCreate(ctx, b, chatID, userID, text, result.NeedsConfirmation)
+		return c.startMovementCreate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentUpdate:
 		return c.startMovementUpdate(ctx, b, chatID, userID, text)
 	case orchestrator.IntentDelete:
@@ -386,11 +385,7 @@ func (c *controller) accountCreateSeed(ctx context.Context, text string) convers
 // directly (no gaps — the frictionless default) or start
 // movement_create seeded with whatever was resolved, landing on the
 // first real gap.
-func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, needsConfirmation bool) error {
-	if needsConfirmation {
-		c.startMovementConfirm(ctx, b, chatID, userID)
-		return nil
-	}
+func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", movementCreateFlowName, "user_id", userID)
 
 	subs, err := c.subcategories.FindAllForUser(userID)

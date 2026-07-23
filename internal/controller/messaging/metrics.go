@@ -67,11 +67,12 @@ func routerOutcome(intent orchestrator.Intent) string {
 // logIntent registra la clasificación del router. Fire-and-forget: una
 // escritura de métrica nunca rompe el flujo del usuario. El nil-guard
 // mantiene verdes los tests que construyen el controller sin metrics.
-func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage string, intent orchestrator.Intent, needsConfirmation bool) {
+func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage string, intent orchestrator.Intent) {
 	if c.metrics == nil {
 		return
 	}
-	if err := c.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), needsConfirmation, routerOutcome(intent)); err != nil {
+	// needs_confirmation quedó vestigial (columna NOT NULL): se escribe false.
+	if err := c.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), false, routerOutcome(intent)); err != nil {
 		slog.ErrorContext(ctx, "metric log intent failed", "err", err)
 	}
 }
