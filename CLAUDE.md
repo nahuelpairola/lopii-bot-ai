@@ -130,6 +130,7 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
 - `accounts` table has a `type DEFAULT 'standard'` column from a prior design — drop with a migration.
 - Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
 - `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
+- `intent_events.needs_confirmation` (NOT NULL) quedó vestigial tras el rediseño UNCLEAR del router: se escribe siempre `false`. Dropear con una migración si se quiere limpiar.
 
 ## 7. Claude Code Session Rules
 
