@@ -379,12 +379,9 @@ func (c *controller) accountCreateSeed(ctx context.Context, text string) convers
 	return seed
 }
 
-// startMovementCreate trusts the router's needsConfirmation verdict:
-// true routes straight to the confirm gate instead of running Call 2
-// CREATE. Only when false does it run Call 2 CREATE and either insert
-// directly (no gaps — the frictionless default) or start
-// movement_create seeded with whatever was resolved, landing on the
-// first real gap.
+// startMovementCreate runs Call 2 CREATE and either inserts directly
+// (no gaps — the frictionless default) or starts movement_create seeded
+// with whatever was resolved, landing on the first real gap.
 func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", movementCreateFlowName, "user_id", userID)
 
