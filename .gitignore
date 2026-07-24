@@ -33,3 +33,9 @@ go.work.sum
 
 db-data/
 __debug_*
+
+# Historical v1 (Google Sheets + Apps Script) — reference only, not tracked
+app_scripts_v1/
+
+# Superpowers scratch (specs/plans, per-session) — not tracked
+docs/superpowers/
