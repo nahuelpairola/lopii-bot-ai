@@ -119,16 +119,29 @@ func msgReminderSet(startMin, endMin int) string {
 	return fmt.Sprintf("Listo 🙌 Te recuerdo cargar gastos entre las %d y las %d, solo los días que no hayas anotado nada.", startMin/60, endMin/60)
 }
 
+// gapPosition renders "(N de M)" for the ask-category/subcategory/account
+// prompts below — idx is 0-based, total is len(rows). Shared literally by
+// all three: same semantics, same format, no reason to repeat the Sprintf.
+func gapPosition(idx, total int) string {
+	return fmt.Sprintf(" (%d de %d)", idx+1, total)
+}
+
 func msgAskCategory(data conversation.Data) string {
-	return "¿A qué categoría pertenece este movimiento?"
+	rows := decodeMovementRows(data)
+	idx, _ := strconv.Atoi(decodeStringSlice(data, keyPendingCategoryGaps)[0])
+	return "¿A qué categoría pertenece " + movementGapDescriptor(rows[idx]) + "?" + gapPosition(idx, len(rows))
 }
 
 func msgAskSubcategory(data conversation.Data) string {
-	return "¿Y la subcategoría?"
+	rows := decodeMovementRows(data)
+	idx, _ := strconv.Atoi(stringOrEmpty(data["gap_active_row"]))
+	return "¿Y la subcategoría de " + movementGapDescriptor(rows[idx]) + ", dentro de " + rows[idx].Category + "?" + gapPosition(idx, len(rows))
 }
 
 func msgAskAccount(data conversation.Data) string {
-	return "¿A qué cuenta corresponde este movimiento?"
+	rows := decodeMovementRows(data)
+	idx, _ := strconv.Atoi(decodeStringSlice(data, keyPendingAccountGaps)[0])
+	return "¿A qué cuenta corresponde " + movementGapDescriptor(rows[idx]) + "?" + gapPosition(idx, len(rows))
 }
 
 func msgAskFirstAccountName(conversation.Data) string {

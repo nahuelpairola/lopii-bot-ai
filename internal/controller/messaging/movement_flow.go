@@ -48,6 +48,19 @@ func stringOrEmpty(v any) string {
 	return s
 }
 
+// movementGapDescriptor names a movementRow for the gap-fill ask-prompts, so
+// a compound message with several pending rows never asks two identical
+// questions in a row — merchant is preferred (concrete: "en Coto"),
+// description is the fallback (description is a required Call 2 CREATE
+// field — always populated, see orchestrator.MovementDraft).
+func movementGapDescriptor(row movementRow) string {
+	detail := row.Merchant
+	if detail == "" {
+		detail = row.Description
+	}
+	return "$" + row.Amount + " · " + detail
+}
+
 func copyData(data conversation.Data) conversation.Data {
 	next := make(conversation.Data, len(data))
 	for k, v := range data {

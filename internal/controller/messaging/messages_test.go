@@ -26,6 +26,65 @@ func TestMsgConfirmUpdateDiff_ShowsAccountChange(t *testing.T) {
 	}
 }
 
+func TestMovementGapDescriptor_PrefersMerchantOverDescription(t *testing.T) {
+	row := movementRow{Amount: "5000", Merchant: "Coto", Description: "compra en el super"}
+	if got := movementGapDescriptor(row); got != "$5000 · Coto" {
+		t.Errorf("want merchant preferred, got %q", got)
+	}
+}
+
+func TestMovementGapDescriptor_FallsBackToDescription(t *testing.T) {
+	row := movementRow{Amount: "50000", Description: "transferencia a Mercado Pago"}
+	if got := movementGapDescriptor(row); got != "$50000 · transferencia a Mercado Pago" {
+		t.Errorf("want description fallback, got %q", got)
+	}
+}
+
+// TestAskPrompts_DistinguishRows is the regression test for the reported bug:
+// a compound message with 2 gapped rows must never show the same
+// category/subcategory ask-prompt twice — each has to name its own row.
+func TestAskPrompts_DistinguishRows(t *testing.T) {
+	rows := []movementRow{
+		{Amount: "5000", Merchant: "Coto", Category: "PENDING_REVIEW"},
+		{Amount: "50000", AccountNameGuess: "Mercado Pago", Description: "transferencia a Mercado Pago", Category: "PENDING_REVIEW"},
+	}
+	data := conversation.Data{
+		keyMovements:           encodeMovementRows(rows),
+		keyPendingCategoryGaps: encodeStringSlice([]string{"0", "1"}),
+	}
+
+	prompt0 := msgAskCategory(data)
+	if !strings.Contains(prompt0, "5000") || !strings.Contains(prompt0, "Coto") {
+		t.Errorf("row 0 prompt missing its own data: %q", prompt0)
+	}
+	if !strings.Contains(prompt0, "1 de 2") {
+		t.Errorf("row 0 prompt missing position counter: %q", prompt0)
+	}
+
+	// Advance past row 0 (mirrors stepResolveCategory's OnChoice: gap stays
+	// queued until the paired subcategory answer pops it).
+	data[keyPendingCategoryGaps] = encodeStringSlice([]string{"1"})
+	prompt1 := msgAskCategory(data)
+	if prompt1 == prompt0 {
+		t.Fatalf("row 1 prompt identical to row 0's — this is the reported bug")
+	}
+	if !strings.Contains(prompt1, "50000") || !strings.Contains(prompt1, "Mercado Pago") {
+		t.Errorf("row 1 prompt missing its own data: %q", prompt1)
+	}
+	if !strings.Contains(prompt1, "2 de 2") {
+		t.Errorf("row 1 prompt missing position counter: %q", prompt1)
+	}
+
+	// Subcategory prompt for row 0, once its category was chosen.
+	data["gap_active_row"] = "0"
+	rows[0].Category = "Alimentación"
+	data[keyMovements] = encodeMovementRows(rows)
+	subPrompt := msgAskSubcategory(data)
+	if !strings.Contains(subPrompt, "Coto") || !strings.Contains(subPrompt, "Alimentación") {
+		t.Errorf("subcategory prompt missing row+category context: %q", subPrompt)
+	}
+}
+
 func TestMovementReceiptLine_ShowsAccountWhenLoaded(t *testing.T) {
 	m := movement.Movement{
 		Type:        movement.Expense,
