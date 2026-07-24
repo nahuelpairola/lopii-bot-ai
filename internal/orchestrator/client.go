@@ -50,17 +50,14 @@ const (
 	maxBackoff = 20 * time.Second
 )
 
-// groqRetryAfterPattern matches Groq's TPM (tokens-per-minute) 429 error
-// message, e.g. "...Please try again in 4.185s." Groq does not set a
-// Retry-After header for token-based rate limits (only for request-count
-// ones), so this free-text wait is the only precise signal available.
-var groqRetryAfterPattern = regexp.MustCompile(`(?i)try again in ([0-9]*\.?[0-9]+)s`)
+// groqRetryAfterPattern captura el token de duración completo del 429 de Groq,
+// e.g. "try again in 4.185s" o "try again in 16m29.28s" (TPD, min+seg).
+var groqRetryAfterPattern = regexp.MustCompile(`(?i)try again in ([0-9smh.]+)`)
 
-// parseGroqRetryAfterSeconds extracts the wait Groq's TPM 429 body
-// recommends. Returns 0 if the body doesn't match (caller falls back to
-// blind exponential backoff) — a malformed/unexpected error body must never
-// panic or block the retry loop.
-func parseGroqRetryAfterSeconds(body []byte) time.Duration {
+// parseBodyRetryAfter extrae el wait que recomienda el body del 429 de Groq.
+// Usa time.ParseDuration (maneja "16m29.28s" nativo). 0 si no matchea o no
+// parsea — un body inesperado nunca panichea ni bloquea el retry.
+func parseBodyRetryAfter(body []byte) time.Duration {
 	var parsed struct {
 		Error struct {
 			Message string `json:"message"`
@@ -73,11 +70,14 @@ func parseGroqRetryAfterSeconds(body []byte) time.Duration {
 	if m == nil {
 		return 0
 	}
-	secs, err := strconv.ParseFloat(m[1], 64)
-	if err != nil || secs <= 0 {
+	// El charset de la regex incluye "." para admitir fracciones ("29.28s"), lo
+	// que también atrapa el punto final de la oración cuando el mensaje termina
+	// justo ahí ("...16m29.28s."). ParseDuration no tolera ese sufijo.
+	d, err := time.ParseDuration(strings.TrimSuffix(m[1], "."))
+	if err != nil || d <= 0 {
 		return 0
 	}
-	return time.Duration(secs * float64(time.Second))
+	return d
 }
 
 // send POSTs payload to Groq's chat/completions and returns the 200 body. It
@@ -93,6 +93,7 @@ func (c *Client) send(ctx context.Context, callType, model string, payload []byt
 	start := time.Now()
 	var lastErr error
 	var lastStatus int
+	var lastRetryAfter time.Duration
 	attempt := 0
 	wait := baseBackoff
 	for attempt = 0; attempt < maxSendAttempts; attempt++ {
@@ -134,9 +135,17 @@ func (c *Client) send(ctx context.Context, callType, model string, payload []byt
 		}
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			lastErr = fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
+			// Prioridad del wait: header Retry-After (req-count) > header reset-tokens
+			// (TPM/TPD) > body "try again in <dur>". Groq no manda Retry-After para
+			// límites por token, de ahí los fallbacks.
 			ra := retryAfter(resp.Header)
 			if ra == 0 && resp.StatusCode == http.StatusTooManyRequests {
-				ra = parseGroqRetryAfterSeconds(body)
+				if ra = parseResetTokens(resp.Header); ra == 0 {
+					ra = parseBodyRetryAfter(body)
+				}
+			}
+			if resp.StatusCode == http.StatusTooManyRequests {
+				lastRetryAfter = ra // el wait crudo de Groq, sin capear (la cola lo usa)
 			}
 			if ra > 0 {
 				wait = ra
@@ -154,6 +163,9 @@ func (c *Client) send(ctx context.Context, callType, model string, payload []byt
 		return nil, fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
 	}
 	c.record(ctx, callType, model, start, attempt, lastStatus, errStr(lastErr), nil, nil)
+	if lastStatus == http.StatusTooManyRequests {
+		return nil, &RateLimitedError{RetryAfter: lastRetryAfter, err: lastErr}
+	}
 	return nil, lastErr
 }
 
@@ -343,6 +355,20 @@ func (c *Client) chatCompletion(ctx context.Context, callType, model, systemProm
 // distinguirlo del 400 genuino (request malformado) para poder pedirle al
 // usuario el dato que falta en vez de mostrarle "algo salió mal".
 var ErrNothingToExtract = errors.New("orchestrator: el modelo no encontró nada que extraer")
+
+// RateLimitedError es el fallo terminal de send cuando el último intento fue un
+// 429: envuelve el wait recomendado por Groq para que la cola de pending jobs
+// (internal/pendingjob) sepa cuándo reintentar. Sube por errors.As por los 9
+// callers sin cambiar ninguna firma.
+type RateLimitedError struct {
+	RetryAfter time.Duration
+	err        error
+}
+
+func (e *RateLimitedError) Error() string {
+	return fmt.Sprintf("orchestrator: rate limited, retry after %s: %v", e.RetryAfter, e.err)
+}
+func (e *RateLimitedError) Unwrap() error { return e.err }
 
 // isToolUseFailed reconoce el 400 de Groq que en realidad significa "no había
 // nada que extraer". Se parsea el código en vez de buscar la subcadena para no
