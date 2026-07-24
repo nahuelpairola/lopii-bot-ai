@@ -25,6 +25,18 @@ var routerEvalCases = []struct {
 	{"el café en realidad era 3000", IntentUpdate},
 	{"rescaté 100k de FCI", IntentCreate},
 	{"me dieron 500 de aguinaldo", IntentCreate},
+	{"se debitaron $610503 de la cuenta del banco", IntentCreate},
+	{"me devolvió 100 por el café", IntentUpdate},
+	{"al final me regalaron el helado", IntentUpdate},
+	{"borrá el gasto del café", IntentDelete},
+	{"quiero cambiarle el nombre al FCI", IntentAccountManage},
+	{"el plazo fijo rindió 5000", IntentCreate},
+	{"¿a qué hora me recordás?", IntentQuery},
+	{"recordame cargar gastos a la noche", IntentReminderSet},
+	{"20k", IntentCreate},                          // monto suelto = movimiento incompleto, no UNCLEAR
+	{"nafta", IntentCreate},                        // ítem sin monto = movimiento incompleto
+	{"dame una receta de galletas", IntentUnclear}, // off-topic, sin intención accionable
+	{"asdfgh", IntentUnclear},                      // gibberish
 }
 
 func TestRouterEval(t *testing.T) {
