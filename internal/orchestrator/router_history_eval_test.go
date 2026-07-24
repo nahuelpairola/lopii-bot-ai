@@ -263,6 +263,22 @@ var routerHistoryCases = []struct {
 	{"Que puedo hacer?", IntentHelp}, // curado: pregunta por capacidades
 }
 
+// routerRetestCases: los 4 que fallaron el txt crudo, para re-testear las guardas.
+var routerRetestCases = []struct {
+	msg  string
+	want Intent
+}{
+	{"La panaderia era 2k", IntentUpdate},
+	{"Actualizar monto de mercado a $891867.82", IntentAccountManage},
+	{"Quiero corregir lo que tengo en una cuenta", IntentAccountManage},
+	{"Que puedo hacer?", IntentHelp},
+}
+
+// tokenRec captura los tokens del último call, para medir consumo in/out.
+type tokenRec struct{ prompt, completion int }
+
+func (r *tokenRec) Record(c LLMCall) { r.prompt = c.PromptTokens; r.completion = c.CompletionTokens }
+
 func TestRateLimitWait(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -295,6 +311,9 @@ func TestRouterHistoryEval(t *testing.T) {
 	if os.Getenv("ROUTER_EVAL_FULL") != "" {
 		cases = routerHistoryCasesFull
 	}
+	if os.Getenv("ROUTER_EVAL_RETEST") != "" {
+		cases = routerRetestCases
+	}
 	// OFFSET+LIMIT define una ventana [offset, offset+limit) para correr por
 	// lotes cuando la cuota diaria (TPD) obliga a fraccionar. offset 0 y limit 0
 	// = todos.
@@ -313,16 +332,18 @@ func TestRouterHistoryEval(t *testing.T) {
 	}
 	interval := time.Minute / time.Duration(rpm)
 
+	rec := &tokenRec{}
 	o := New(Config{
 		APIKey:         key,
 		BaseURL:        os.Getenv("GROQ_BASE_URL"),
 		RouterModel:    os.Getenv("GROQ_ROUTER_MODEL"),
 		TimeoutSeconds: 30,
+		Recorder:       rec,
 	})
 
 	t.Logf("history eval: %d mensajes, %d RPM (1 cada %s)", len(cases), rpm, interval)
 
-	var matches, diffs, errs int
+	var matches, diffs, errs, totalIn, totalOut int
 	confusion := map[string]int{} // "WANT -> GOT" -> count
 	var diffLines []string
 
@@ -352,16 +373,17 @@ func TestRouterHistoryEval(t *testing.T) {
 			t.Logf("[ERR] %q: %v", truncate(c.msg), cerr)
 			continue
 		}
+		totalIn += rec.prompt
+		totalOut += rec.completion
 		if res.Intent == c.want {
 			matches++
-			t.Logf("[%d/%d] OK  %-14s | %s", i+1, len(cases), res.Intent, truncate(c.msg))
+			t.Logf("[%d/%d] OK  %-14s | in=%d out=%d | %s", i+1, len(cases), res.Intent, rec.prompt, rec.completion, truncate(c.msg))
 			continue
 		}
 		diffs++
 		confusion[string(c.want)+" -> "+string(res.Intent)]++
-		line := fmt.Sprintf("  %-14s -> %-14s | %s", c.want, res.Intent, truncate(c.msg))
-		diffLines = append(diffLines, line)
-		t.Logf("[%d/%d] ✗   %s", i+1, len(cases), strings.TrimSpace(line))
+		diffLines = append(diffLines, fmt.Sprintf("  %-14s -> %-14s | %s", c.want, res.Intent, truncate(c.msg)))
+		t.Logf("[%d/%d] ✗   %-14s -> %-14s | in=%d out=%d | %s", i+1, len(cases), c.want, res.Intent, rec.prompt, rec.completion, truncate(c.msg))
 	}
 
 	scored := matches + diffs
@@ -373,6 +395,10 @@ func TestRouterHistoryEval(t *testing.T) {
 	t.Logf("=== RESUMEN ===")
 	t.Logf("clasificados: %d | correctos: %d (%.1f%%) | diffs: %d | errores: %d",
 		scored, matches, agreement*100, diffs, errs)
+	if scored > 0 {
+		t.Logf("tokens: in_total=%d out_total=%d | avg_in=%.0f avg_out=%.0f avg_total=%.0f",
+			totalIn, totalOut, float64(totalIn)/float64(scored), float64(totalOut)/float64(scored), float64(totalIn+totalOut)/float64(scored))
+	}
 
 	if len(confusion) > 0 {
 		t.Logf("=== CONFUSIÓN (esperado -> obtenido) ===")
