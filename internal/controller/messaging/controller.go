@@ -200,7 +200,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 
 		result, found, err := c.engine.Handle(u.ID, input)
 		if err != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 			return &uid, err
 		}
 		if !found {
@@ -260,7 +260,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	case reminderSetupFlowName:
 		c.finishReminderSetup(ctx, b, chatID, result.Data)
 	default:
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 	}
 }
 

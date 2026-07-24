@@ -237,7 +237,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 			OptionsFunc:          hubOptions,
 			DeclaredNextSteps:    []string{stepReminderPickWindow},
 			OnChoice:             onReminderHub,
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 			SkipIf:               skipHubIfSeeded,
 		},
 		stepReminderPickWindow: conversation.ChoiceStep{
@@ -245,7 +245,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 			OptionsFunc:          reminderPickOptions,
 			DeclaredNextSteps:    []string{stepReminderCustomWindow, stepReminderWeekly},
 			OnChoice:             onReminderPickWindow,
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepReminderCustomWindow: conversation.TextStep{
 			PromptText: func(conversation.Data) string { return msgAskReminderCustomWindow },
@@ -274,7 +274,7 @@ func NewReminderSetupFlow() *conversation.Flow {
 				{Label: "No por ahora", Value: optionWeeklyOff, Finish: true},
 			},
 			OnChoice:             onReminderWeekly,
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 			SkipIf:               skipWeeklyUnlessAsked,
 		},
 	}
@@ -305,7 +305,7 @@ func (c *controller) startReminderSetup(ctx context.Context, b *bot.Bot, chatID 
 	}
 	prompt, err := c.engine.StartWithData(userID, reminderSetupFlowName, seed)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("start reminder_setup flow: %w", err)
 	}
 	if b != nil {

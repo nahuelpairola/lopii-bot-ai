@@ -22,7 +22,7 @@ func (c *controller) finishSubcategorySetupFlow(ctx context.Context, b *bot.Bot,
 	}
 
 	if err := c.insertNewSubcategory(data); err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("tu categoría"))
 		return
 	}
 

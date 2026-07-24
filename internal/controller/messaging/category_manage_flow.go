@@ -131,7 +131,7 @@ func NewCategoryManagePickFlow(subs ownedSubcategoryLister) *conversation.Flow {
 				}
 				return data
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 
@@ -202,7 +202,7 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				}
 				return onCategoryManageCancel(value, data)
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 
 		stepPickTargetCategory: conversation.ChoiceStep{
@@ -228,7 +228,7 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				next[keyTargetCategory] = value
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 
 		stepPickTargetSubcategory: conversation.ChoiceStep{
@@ -280,7 +280,7 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				}
 				return data
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 
 		stepConfirmCategoryManage: conversation.ChoiceStep{
@@ -323,7 +323,7 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				setFlag(next, keyConfirmed)
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 

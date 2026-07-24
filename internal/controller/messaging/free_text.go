@@ -45,7 +45,7 @@ func createErrorCopy(err error) string {
 	case errors.Is(err, errTransferLeg):
 		return msgMovementMalformed
 	default:
-		return msgGenericFlowError
+		return msgCouldNotSave("tu movimiento")
 	}
 }
 
@@ -84,7 +84,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 	result, err := c.orchestrator.ClassifyIntent(ctx, text)
 	if err != nil {
 		slog.ErrorContext(ctx, "intent classification failed", "user_id", userID, "err", err)
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("classify intent: %w", err)
 	}
 
@@ -128,7 +128,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		c.sendText(ctx, b, chatID, msgAskRewrite)
 		return nil
 	default:
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 func (c *controller) startSubcategoryWizard(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) error {
 	prompt, err := c.engine.Start(userID, subcategorySetupFlowName)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("start subcategory_setup flow: %w", err)
 	}
 	if b != nil {
@@ -228,7 +228,7 @@ func (c *controller) startCategoryManage(ctx context.Context, b *bot.Bot, chatID
 
 	owned, err := c.subcategories.FindOwnedByUser(userID)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return fmt.Errorf("category manage: find owned: %w", err)
 	}
 	if len(owned) == 0 {
@@ -242,7 +242,7 @@ func (c *controller) startCategoryManage(ctx context.Context, b *bot.Bot, chatID
 
 	prompt, err := c.engine.Start(userID, categoryManagePickFlowName)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("start category_manage_pick flow: %w", err)
 	}
 	if b != nil {
@@ -285,7 +285,7 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 	slog.InfoContext(ctx, "flow started", "flow", accountManageFlowName, "user_id", userID)
 	accs, err := c.accounts.FindByUserID(userID)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return fmt.Errorf("account manage: find accounts: %w", err)
 	}
 	if len(accs) == 0 {
@@ -299,7 +299,7 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 	}
 	res, err := c.orchestrator.ResolveAccountManage(ctx, text, opts)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("account manage: resolve: %w", err)
 	}
 	if res.WantsNewAccount {
@@ -338,7 +338,7 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 
 	prompt, err := c.engine.StartWithData(userID, accountManageFlowName, seed)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("account manage: start account_manage flow: %w", err)
 	}
 	if b != nil {
@@ -352,7 +352,7 @@ func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID 
 	seed := c.accountCreateSeed(ctx, text)
 	prompt, err := c.engine.StartWithData(userID, accountCreateFlowName, seed)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("start account_create flow: %w", err)
 	}
 	if b != nil {
@@ -387,7 +387,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return fmt.Errorf("create: find subcategories: %w", err)
 	}
 	taxonomy := make([]orchestrator.TaxonomyEntry, 0, len(subs))
@@ -397,7 +397,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 
 	accs, err := c.accounts.FindByUserID(userID)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return fmt.Errorf("create: find accounts: %w", err)
 	}
 	accountOptions := make([]orchestrator.AccountOption, 0, len(accs))
@@ -417,7 +417,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 			return nil
 		}
 		c.resolveMetric(ctx, userID, outcomeCreateFailed)
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("create: classify: %w", err)
 	}
 	slog.DebugContext(ctx, "create classification result", "result", result)
@@ -444,7 +444,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 				gateSeed["_gate_prompt"] = msgInsufficientFunds(short.shortfalls)
 				prompt, serr := c.engine.StartWithData(userID, movementNegativeConfirmFlowName, gateSeed)
 				if serr != nil {
-					c.sendText(ctx, b, chatID, msgGenericFlowError)
+					c.sendText(ctx, b, chatID, msgSomethingBroke)
 					return fmt.Errorf("create: start negative-confirm flow: %w", serr)
 				}
 				if b != nil {
@@ -463,7 +463,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 
 	prompt, err := c.engine.StartWithData(userID, movementCreateFlowName, seed)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("create: start movement_create flow: %w", err)
 	}
 	if b != nil {
@@ -479,7 +479,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 	slog.InfoContext(ctx, "flow started", "flow", movementUpdatePickFlowName, "user_id", userID)
 	candidates, err := c.resolveCandidates(userID, text, "", "")
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return fmt.Errorf("update: resolve candidates: %w", err)
 	}
 
@@ -496,7 +496,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 			oldIDs = append(oldIDs, strconv.FormatUint(uint64(m.ID), 10))
 		}
 		if err := c.proceedToUpdateConfirm(ctx, b, chatID, userID, text, candidates[0].TransactionID, oldIDs, rows); err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return fmt.Errorf("update: proceed to confirm: %w", err)
 		}
 	default:
@@ -511,7 +511,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 		}
 		prompt, err := c.engine.StartWithData(userID, movementUpdatePickFlowName, seed)
 		if err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return fmt.Errorf("update: start movement_update_pick flow: %w", err)
 		}
 		if b != nil {
@@ -531,7 +531,7 @@ func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID
 	slog.InfoContext(ctx, "flow started", "flow", movementDeleteFlowName, "user_id", userID)
 	candidates, err := c.resolveCandidates(userID, text, "", "")
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return fmt.Errorf("delete: resolve candidates: %w", err)
 	}
 
@@ -568,7 +568,7 @@ func (c *controller) startMovementDeleteFlowFor(ctx context.Context, b *bot.Bot,
 
 	prompt, err := c.engine.StartWithData(userID, movementDeleteFlowName, seed)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("delete: start movement_delete flow: %w", err)
 	}
 	if b != nil {

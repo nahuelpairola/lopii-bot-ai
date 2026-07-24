@@ -28,7 +28,11 @@ const (
 		"Cuando quieras, pedime \"ayuda\"."
 	msgWelcome = MsgWelcome
 
-	msgGenericFlowError = "Algo salió mal, probá de nuevo en un momento."
+	// Errores por-significado. Cada uno le dice al usuario de quién es la
+	// culpa y qué pasó con su dato. Reemplazan al viejo msgGenericFlowError.
+	msgInvalidChoice  = "Esa opción no está. Tocá un botón de abajo 👇"
+	msgCouldNotLoad   = "No pude traer tus datos ahora. Probá en un momento."
+	msgSomethingBroke = "Se me complicó algo de mi lado, no es por vos. Probá de nuevo."
 
 	msgHelp = "Conmigo es fácil, me hablás normal:\n\n" +
 		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil»\n" +
@@ -68,6 +72,18 @@ const (
 
 	msgNotUnderstood = "No te entendí 🤔 Probá de nuevo."
 )
+
+// msgCouldNotSave nombra qué no quedó guardado, para que el usuario sepa que
+// su acción no se registró. cosa: "tu movimiento", "tu cuenta", "el cambio", etc.
+func msgCouldNotSave(cosa string) string {
+	return "No pude guardar " + cosa + ". No se guardó nada, probá de nuevo."
+}
+
+// msgCouldNotDelete es el gemelo de msgCouldNotSave para borrados: el reaseguro
+// es inverso — la cosa sigue existiendo, no desapareció a medias.
+func msgCouldNotDelete(cosa string) string {
+	return "No pude borrar " + cosa + ". Sigue ahí, probá de nuevo."
+}
 
 // msgReminderSet builds the set/edit receipt. startMin/endMin are minutes
 // since midnight; shown as whole hours.

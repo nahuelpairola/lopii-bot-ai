@@ -31,7 +31,7 @@ func NewMovementNegativeConfirmFlow() *conversation.Flow {
 				next["_gate_choice"] = value
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 	flow, err := conversation.NewFlow(movementNegativeConfirmFlowName, stepNegativeConfirm, steps)

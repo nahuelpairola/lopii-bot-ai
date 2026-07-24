@@ -23,7 +23,7 @@ func (c *controller) finishCategoryManagePickFlow(ctx context.Context, b *bot.Bo
 	}
 	if err := c.proceedToCategoryTarget(ctx, b, chatID, data); err != nil {
 		slog.ErrorContext(ctx, "category manage: proceed to target", "err", err)
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 	}
 }
 
@@ -147,7 +147,7 @@ func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.
 	userID := data.UserID()
 	sourceID, err := strconv.ParseUint(stringOrEmpty(data[keySourceSubcategoryID]), 10, 64)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return
 	}
 
@@ -155,12 +155,12 @@ func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.
 	if targetRaw != "" {
 		targetID, err := strconv.ParseUint(targetRaw, 10, 64)
 		if err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return
 		}
 		if err := c.movements.ReassignSubcategory(userID, sourceID, targetID); err != nil {
 			slog.ErrorContext(ctx, "category manage: reassign", "err", err)
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
 			return
 		}
 	}
@@ -170,7 +170,7 @@ func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.
 	// alguien cuya categoría sigue estando sería mentirle.
 	if err := c.subcategories.Delete(userID, sourceID); err != nil {
 		slog.ErrorContext(ctx, "category manage: delete", "err", err)
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotDelete("tu categoría"))
 		return
 	}
 	// El Cache es read-through: sin Reload la categoría borrada seguiría
