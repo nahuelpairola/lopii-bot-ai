@@ -22,7 +22,7 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 	switch stringOrEmpty(data[reminderActionKey]) {
 	case reminderActionOff:
 		if err := c.reminders.Disable(userID); err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgCouldNotSave("tu recordatorio"))
 			return
 		}
 		c.sendText(ctx, b, chatID, msgReminderDisabled)
@@ -30,11 +30,11 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 
 	case reminderActionOffAll:
 		if err := c.reminders.Disable(userID); err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgCouldNotSave("tu recordatorio"))
 			return
 		}
 		if err := c.reminders.SetWeeklySummary(userID, false); err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgCouldNotSave("el resumen semanal"))
 			return
 		}
 		c.sendText(ctx, b, chatID, msgReminderAllOff)
@@ -54,14 +54,14 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 				Enabled:              false,
 				WeeklySummaryEnabled: true,
 			}); err != nil {
-				c.sendText(ctx, b, chatID, msgGenericFlowError)
+				c.sendText(ctx, b, chatID, msgCouldNotSave("el resumen semanal"))
 				return
 			}
 			c.sendText(ctx, b, chatID, msgWeeklySummaryOn)
 			return
 		}
 		if err := c.reminders.SetWeeklySummary(userID, on); err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgCouldNotSave("el resumen semanal"))
 			return
 		}
 		if on {
@@ -79,7 +79,7 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 	if err != nil || err2 != nil {
 		startMin, endMin, err = parseWindow(stringOrEmpty(data[reminderCustomKey]))
 		if err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return
 		}
 	}
@@ -91,7 +91,7 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 		Enabled:              true,
 		WeeklySummaryEnabled: flag(data, keyWeeklySummary),
 	}); err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("tu recordatorio"))
 		return
 	}
 	c.sendText(ctx, b, chatID, msgReminderSet(startMin, endMin))

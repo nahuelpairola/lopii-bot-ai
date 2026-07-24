@@ -47,7 +47,7 @@ func NewMovementDeleteFlow() *conversation.Flow {
 				next[keyResolvedIndex] = value
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepConfirmDelete: conversation.ChoiceStep{
 			PromptText: msgConfirmDelete,
@@ -60,7 +60,7 @@ func NewMovementDeleteFlow() *conversation.Flow {
 				next[keyConfirmed] = strconv.FormatBool(value == optionConfirm)
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 
@@ -86,7 +86,7 @@ func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, c
 	candidates := decodeCandidateGroups(data)
 	if err != nil || idx < 0 || idx >= len(candidates) {
 		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 		}
 		return
 	}
@@ -94,14 +94,14 @@ func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, c
 	ids, err := parseUintSlice(candidates[idx].OldIDs)
 	if err != nil {
 		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 		}
 		return
 	}
 
 	if err := c.movements.SoftDeleteByIDs(ids); err != nil {
 		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCouldNotDelete("tu movimiento")})
 		}
 		return
 	}

@@ -34,7 +34,7 @@ func NewAccountMoveOfferFlow() *conversation.Flow {
 				next[keyMoveChoice] = value
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 	flow, err := conversation.NewFlow(accountMoveOfferFlowName, stepAccountMoveOffer, steps)

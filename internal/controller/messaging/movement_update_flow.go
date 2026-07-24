@@ -43,7 +43,7 @@ func NewMovementUpdatePickFlow() *conversation.Flow {
 				next["chosen_index"] = value
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 
@@ -70,7 +70,7 @@ func NewMovementUpdateConfirmFlow() *conversation.Flow {
 				next[keyConfirmed] = strconv.FormatBool(value == optionConfirm)
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 
@@ -284,20 +284,20 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	idx, err := strconv.Atoi(stringOrEmpty(data["chosen_index"]))
 	if err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 		return
 	}
 
 	candidates := decodeCandidateGroups(data)
 	if idx < 0 || idx >= len(candidates) {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 		return
 	}
 	chosen := candidates[idx]
 
 	message := stringOrEmpty(data["message"])
 	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows); err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 	}
 }
 
@@ -324,7 +324,7 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 		if err != nil {
 			c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
 			if b != nil {
-				b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgGenericFlowError})
+				b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCouldNotSave("el cambio")})
 			}
 			return
 		}

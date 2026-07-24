@@ -36,7 +36,7 @@ func NewCategoryMatchOfferFlow() *conversation.Flow {
 				next[keyMatchChoice] = value
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 	flow, err := conversation.NewFlow(categoryMatchOfferFlowName, stepCategoryMatchOffer, steps)
@@ -69,7 +69,7 @@ func NewCategoryProposalConfirmFlow() *conversation.Flow {
 				}
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 	flow, err := conversation.NewFlow(categoryProposalConfirmFlowName, stepCategoryProposalConfirm, steps)

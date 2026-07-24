@@ -103,7 +103,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 				}
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 			SkipIf: func(data conversation.Data) (string, bool) {
 				if stringOrEmpty(data[keyAccountID]) != "" {
 					return stepAccountManageMenu, true
@@ -126,7 +126,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 				cancelOption,
 			},
 			OnChoice:             onAccountManageCancel,
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepAccountManageAskName: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
@@ -163,7 +163,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 				}
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepAccountManageAskTotal: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
@@ -203,7 +203,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 				}
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepAccountManageConfirmDefault: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
@@ -222,7 +222,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 				}
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 

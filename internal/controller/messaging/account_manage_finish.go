@@ -34,14 +34,14 @@ func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, ch
 	case opDefault:
 		c.finishAccountDefault(ctx, b, chatID, data) // Task 8
 	default:
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 	}
 }
 
 func (c *controller) finishAccountRename(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	id, err := strconv.ParseUint(stringOrEmpty(data[keyAccountID]), 10, 64)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return
 	}
 	newName := stringOrEmpty(data[keyNewName])
@@ -50,7 +50,7 @@ func (c *controller) finishAccountRename(ctx context.Context, b *bot.Bot, chatID
 			c.sendText(ctx, b, chatID, account.MsgAccountAlreadyExists(newName, stringOrEmpty(data[keyAccountCurrency])))
 			return
 		}
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
 		return
 	}
 	c.resolveMetric(ctx, data.UserID(), outcomeAccountRenamed)
@@ -64,17 +64,17 @@ func (c *controller) finishAccountRename(ctx context.Context, b *bot.Bot, chatID
 func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	accountID, err := strconv.ParseUint(stringOrEmpty(data[keyAccountID]), 10, 64)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return
 	}
 	newTotal, err := parseARAmount(stringOrEmpty(data[keyNewTotal]))
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return
 	}
 	current, err := c.movements.SumAmountForAccount(accountID)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return
 	}
 
@@ -87,7 +87,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 
 	sub, err := c.subcategories.FindByCategoryAndSubcategory(data.UserID(), "Sistema", "Ajuste de saldo")
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return
 	}
 
@@ -107,7 +107,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 		Currency:      currency.Currency(stringOrEmpty(data[keyAccountCurrency])),
 	}
 	if err := c.movements.InsertBatch([]movement.Movement{m}); err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("el ajuste"))
 		return
 	}
 	c.resolveMetric(ctx, data.UserID(), outcomeAccountAdjusted)
@@ -118,7 +118,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	accountID, err := strconv.ParseUint(stringOrEmpty(data[keyAccountID]), 10, 64)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return
 	}
 	cur := currency.Currency(stringOrEmpty(data[keyAccountCurrency]))
@@ -128,11 +128,11 @@ func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatI
 	prev, prevErr := c.accounts.FindDefaultByCurrency(data.UserID(), cur)
 
 	if err := c.accounts.UnsetDefault(data.UserID(), cur); err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
 		return
 	}
 	if err := c.accounts.SetDefault(accountID); err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
 		return
 	}
 	c.resolveMetric(ctx, data.UserID(), outcomeAccountDefaultSet)
@@ -174,11 +174,11 @@ func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, cha
 	fromID, err1 := strconv.ParseUint(stringOrEmpty(data[keyMoveFromID]), 10, 64)
 	toID, err2 := strconv.ParseUint(stringOrEmpty(data[keyMoveToID]), 10, 64)
 	if err1 != nil || err2 != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return
 	}
 	if err := c.movements.ReassignAccount(fromID, toID); err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
 		return
 	}
 	c.sendText(ctx, b, chatID, fmt.Sprintf("Listo: los movimientos de %s ahora están en %s. %s quedó en 0.",

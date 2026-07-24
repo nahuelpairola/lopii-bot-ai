@@ -86,7 +86,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 				next[keyAccountCurrency] = value
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepAccountCreateAskBalance: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
@@ -122,7 +122,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 				cancelOption,
 			},
 			OnChoice:             onAccountCreateEscape,
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 

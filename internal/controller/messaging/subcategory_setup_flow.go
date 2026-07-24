@@ -60,7 +60,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				}
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 
 		stepPickExistingCategory: conversation.ChoiceStep{
@@ -86,7 +86,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				next[keyCategoryIsNew] = "false"
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 
 		stepNewCategoryName: conversation.TextStep{
@@ -209,7 +209,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				cancelOption,
 			},
 			OnChoice:             onAccountCreateEscape,
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 

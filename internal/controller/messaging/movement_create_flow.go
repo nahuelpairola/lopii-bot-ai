@@ -150,7 +150,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				next[keyMovements] = encodeMovementRows(rows)
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepResolveSubcategory: conversation.ChoiceStep{
 			PromptText: msgAskSubcategory,
@@ -194,7 +194,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				next["gap_active_row"] = ""
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepResolveAccount: conversation.ChoiceStep{
 			PromptText: msgAskAccount,
@@ -256,7 +256,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				next[keyPendingAccountGaps] = encodeStringSlice(gaps[1:])
 				return next
 			},
-			InvalidChoiceMessage: msgGenericFlowError,
+			InvalidChoiceMessage: msgInvalidChoice,
 		},
 	}
 

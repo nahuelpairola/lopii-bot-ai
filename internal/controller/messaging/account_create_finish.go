@@ -37,12 +37,12 @@ func (c *controller) finishAccountCreateFlow(ctx context.Context, b *bot.Bot, ch
 			c.sendText(ctx, b, chatID, account.MsgAccountAlreadyExists(name, cur))
 			return
 		}
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("tu cuenta"))
 		return
 	}
 
 	if err := c.insertAccountOpeningMovement(data.UserID(), uint64(newAccount.ID), cur, balance); err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("tu cuenta"))
 		return
 	}
 

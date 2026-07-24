@@ -24,7 +24,7 @@ func (c *controller) finishCategoryMatchOffer(ctx context.Context, b *bot.Bot, c
 		// stays pending in intent_events; the wizard's own terminal resolves it
 		c.startSubcategoryWizard(ctx, b, chatID, data.UserID())
 	default:
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
 	}
 }
 
@@ -47,14 +47,14 @@ func (c *controller) finishCategoryProposalConfirm(ctx context.Context, b *bot.B
 		}
 		prompt, err := c.engine.StartWithData(data.UserID(), subcategorySetupFlowName, seed)
 		if err != nil {
-			c.sendText(ctx, b, chatID, msgGenericFlowError)
+			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return
 		}
 		c.sendPrompt(ctx, b, chatID, prompt)
 		return
 	}
 	if err := c.insertNewSubcategory(data); err != nil {
-		c.sendText(ctx, b, chatID, msgGenericFlowError)
+		c.sendText(ctx, b, chatID, msgCouldNotSave("tu categoría"))
 		return
 	}
 	c.resolveMetric(ctx, data.UserID(), outcomeCategoryCreated)
