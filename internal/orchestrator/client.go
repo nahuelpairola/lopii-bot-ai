@@ -155,6 +155,15 @@ func (c *Client) send(ctx context.Context, callType, model string, payload []byt
 			}
 			continue // transient — retry
 		}
+		// create: Groq's forced tool_choice occasionally no-ops on an otherwise
+		// valid message (confirmed non-deterministic against the live API) —
+		// worth exactly 1 retry before treating it as "nothing to extract".
+		// Scoped to create only: other call types keep 4xx as immediately
+		// non-retryable (a malformed request is our bug, not Groq flakiness).
+		if callType == callTypeCreate && isToolUseFailed(body) && attempt == 0 {
+			lastErr = fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
+			continue
+		}
 		// non-retryable (a non-429 4xx = malformed request, our bug)
 		c.record(ctx, callType, model, start, attempt+1, resp.StatusCode, fmt.Sprintf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body)), resp.Header, nil)
 		if isToolUseFailed(body) {

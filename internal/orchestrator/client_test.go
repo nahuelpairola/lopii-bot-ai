@@ -135,6 +135,65 @@ func TestClient_Send_NoRetryOnClientError(t *testing.T) {
 	}
 }
 
+func TestClient_Send_CreateRetriesOnceOnToolUseFailedThenSucceeds(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&hits, 1) == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":{"message":"Tool choice is required, but model did not call a tool","code":"tool_use_failed"}}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("k", server.URL, 5*time.Second, nil)
+	if _, err := client.send(context.Background(), callTypeCreate, "m", []byte(`{}`)); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if n := atomic.LoadInt32(&hits); n != 2 {
+		t.Errorf("server hits = %d, want 2 (one tool_use_failed then success)", n)
+	}
+}
+
+func TestClient_Send_CreateGivesUpAfterOneRetryOnPersistentToolUseFailed(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"Tool choice is required, but model did not call a tool","code":"tool_use_failed"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("k", server.URL, 5*time.Second, nil)
+	_, err := client.send(context.Background(), callTypeCreate, "m", []byte(`{}`))
+	if !errors.Is(err, ErrNothingToExtract) {
+		t.Fatalf("want ErrNothingToExtract, got %v", err)
+	}
+	if n := atomic.LoadInt32(&hits); n != 2 {
+		t.Errorf("server hits = %d, want 2 (1 retry, then give up — not the full maxSendAttempts)", n)
+	}
+}
+
+func TestClient_Send_NonCreateDoesNotRetryOnToolUseFailed(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"Tool choice is required, but model did not call a tool","code":"tool_use_failed"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("k", server.URL, 5*time.Second, nil)
+	_, err := client.send(context.Background(), callTypeRouter, "m", []byte(`{}`))
+	if !errors.Is(err, ErrNothingToExtract) {
+		t.Fatalf("want ErrNothingToExtract, got %v", err)
+	}
+	if n := atomic.LoadInt32(&hits); n != 1 {
+		t.Errorf("server hits = %d, want 1 (retry is create-only)", n)
+	}
+}
+
 func TestClient_ChatCompletion_ReturnsToolArguments(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
