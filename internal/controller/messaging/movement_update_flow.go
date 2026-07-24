@@ -297,6 +297,9 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 
 	message := stringOrEmpty(data["message"])
 	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows); err != nil {
+		if c.enqueueUpdatePickIfRateLimited(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
+			return
+		}
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 	}
 }

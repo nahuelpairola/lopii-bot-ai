@@ -34,6 +34,15 @@ const (
 	msgCouldNotLoad   = "No pude traer tus datos ahora. Probá en un momento."
 	msgSomethingBroke = "Se me complicó algo de mi lado, no es por vos. Probá de nuevo."
 
+	// Ack de la cola de pending jobs (429 terminal de Groq). Nunca silencioso:
+	// ackShortWaitThreshold decide cuál de las dos rinde (pending_jobs.go).
+	msgAckShortWait   = "Dame un segundo, ya te lo cargo 🙌"
+	msgAckLongWaitFmt = "Estoy sin cupo por ~%d min 🙏 lo cargo apenas se libere y te aviso."
+
+	// msgQueuedBehindPending: distinto del ack del 429 (no repetir), plural implica
+	// que ambos van juntos; sin jerga de cola/pendiente.
+	msgQueuedBehindPending = "Ese también, ya te los cargo 🙌"
+
 	msgHelp = "Conmigo es fácil, me hablás normal:\n\n" +
 		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil»\n" +
 		"✏️ Corregir: «el súper eran 600»\n" +
