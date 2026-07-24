@@ -24,6 +24,7 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/notifier"
 	"lopiibot.com/internal/nudge"
+	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/reminder"
@@ -95,6 +96,7 @@ func InitServer(conf *config.Config) error {
 	movementRepo := movement.InitRepository(conn)
 	reminderRepo := reminder.NewRepository(conn)
 	nudgeRepo := nudge.NewRepository(conn)
+	jobsRepo := pendingjob.NewRepository(conn)
 	metricRepo := metric.InitRepository(conn)
 	queryHistoryRepo := queryhistory.InitRepository(
 		conn,
@@ -143,7 +145,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo, metricRepo, nudgeRepo,
+		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, conf.Telegram.Token)
@@ -157,6 +159,7 @@ func InitServer(conf *config.Config) error {
 	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo)
 	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
+	go messagingController.RunJobDrain(context.Background(), tgBot, messagingctrl.JobDrainInterval)
 
 	server = httpServer{engine: ginEngine}
 	return server.engine.Run(":" + conf.Server.Port)

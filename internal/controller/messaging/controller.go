@@ -158,6 +158,7 @@ func NewController(
 	reminders reminderRepository,
 	traces traceRepository,
 	nudges nudgeRepository,
+	jobs jobsRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -172,6 +173,7 @@ func NewController(
 		reminders:     reminders,
 		traces:        traces,
 		nudges:        nudges,
+		jobs:          jobs,
 	}
 }
 
