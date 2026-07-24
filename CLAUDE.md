@@ -2,7 +2,7 @@
 
 Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language input via Telegram, LLM-based intent classification, PostgreSQL persistence, Argentine financial context (inflation, multiple exchange rates).
 
-**v1:** Google Sheets + Apps Script in `app_scripts_v1/` — historical reference only.  
+**v1:** Google Sheets + Apps Script in `app_scripts_v1/` — historical reference only, git-ignored (kept on disk, not tracked).  
 **v2:** This repo — Go rewrite.
 
 > **For current project state** (package map, data model, features, design decisions):
@@ -17,7 +17,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 - go-telegram/bot in webhook mode
 - Viper for config (TOML per environment; env vars override)
 - shopspring/decimal for money
-- LLM orchestrator via Groq (not yet implemented)
+- LLM orchestrator via Groq (tool calling, plain `net/http`, no SDK)
 - Deployment: Render + Docker
 
 ### Package map (`internal/`)
@@ -37,6 +37,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `metric` | Model + repository: `Log`, `Resolve` — métricas de asertividad LLM (tabla `intent_events`) |
 | `middleware` | `RequireAdmin(adminID)` |
 | `conversation` | Engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, `repository` |
+| `pendingjob` | Model + repository: durable queue (`pending_llm_jobs`) for a message cached after a terminal Groq 429 — `Insert`, `ListByUserOrdered`, `ListPendingUserIDs`, `Delete`, `CountByUser` |
 | `controller/health` | HTTP: `/health/internal`, `/health/external` |
 | `controller/invitation` | HTTP: `POST /invitations` |
 | `controller/messaging` | Telegram: `/start`, catch-all for free text and callbacks |

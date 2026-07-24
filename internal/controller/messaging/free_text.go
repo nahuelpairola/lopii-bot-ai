@@ -83,6 +83,9 @@ func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, tex
 func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	result, err := c.orchestrator.ClassifyIntent(ctx, text)
 	if err != nil {
+		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+			return oerr
+		}
 		slog.ErrorContext(ctx, "intent classification failed", "user_id", userID, "err", err)
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("classify intent: %w", err)
@@ -299,6 +302,9 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 	}
 	res, err := c.orchestrator.ResolveAccountManage(ctx, text, opts)
 	if err != nil {
+		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+			return oerr
+		}
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("account manage: resolve: %w", err)
 	}
@@ -416,6 +422,9 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 			c.sendText(ctx, b, chatID, msgAskRewrite)
 			return nil
 		}
+		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+			return oerr
+		}
 		c.resolveMetric(ctx, userID, outcomeCreateFailed)
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("create: classify: %w", err)
@@ -496,6 +505,9 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 			oldIDs = append(oldIDs, strconv.FormatUint(uint64(m.ID), 10))
 		}
 		if err := c.proceedToUpdateConfirm(ctx, b, chatID, userID, text, candidates[0].TransactionID, oldIDs, rows); err != nil {
+			if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+				return oerr
+			}
 			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return fmt.Errorf("update: proceed to confirm: %w", err)
 		}

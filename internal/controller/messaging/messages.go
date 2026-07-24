@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/pendingjob"
 )
 
 // Mensajes estáticos, sin variables.
@@ -33,6 +35,15 @@ const (
 	msgInvalidChoice  = "Esa opción no está. Tocá un botón de abajo 👇"
 	msgCouldNotLoad   = "No pude traer tus datos ahora. Probá en un momento."
 	msgSomethingBroke = "Se me complicó algo de mi lado, no es por vos. Probá de nuevo."
+
+	// Ack de la cola de pending jobs (429 terminal de Groq). Nunca silencioso:
+	// ackShortWaitThreshold decide cuál de las dos rinde (pending_jobs.go).
+	msgAckShortWait   = "Dame un segundo, ya te lo cargo 🙌"
+	msgAckLongWaitFmt = "Estoy sin cupo por ~%d min 🙏 lo cargo apenas se libere y te aviso."
+
+	// msgQueuedBehindPending: distinto del ack del 429 (no repetir), plural implica
+	// que ambos van juntos; sin jerga de cola/pendiente.
+	msgQueuedBehindPending = "Ese también, ya te los cargo 🙌"
 
 	msgHelp = "Conmigo es fácil, me hablás normal:\n\n" +
 		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil»\n" +
@@ -77,6 +88,23 @@ const (
 // su acción no se registró. cosa: "tu movimiento", "tu cuenta", "el cambio", etc.
 func msgCouldNotSave(cosa string) string {
 	return "No pude guardar " + cosa + ". No se guardó nada, probá de nuevo."
+}
+
+// msgJobGaveUp: el drain se rindió con un job (429 permanente). Reusa
+// msgCouldNotSave — el caso es exactamente el suyo ("no se guardó nada") y así
+// hereda el tono de los 5 mensajes por-significado en vez de inventar copy
+// paralela. Para free_text echoa el texto para que el usuario copie y pegue.
+func msgJobGaveUp(job pendingjob.PendingJob) string {
+	if job.Kind != kindFreeText {
+		return msgCouldNotSave("el cambio")
+	}
+	var p freeTextPayload
+	_ = json.Unmarshal(job.Payload, &p)
+	txt := p.Text
+	if len([]rune(txt)) > 40 {
+		txt = string([]rune(txt)[:40]) + "…"
+	}
+	return msgCouldNotSave("«" + txt + "»")
 }
 
 // msgCouldNotDelete es el gemelo de msgCouldNotSave para borrados: el reaseguro

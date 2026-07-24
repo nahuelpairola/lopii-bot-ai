@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // parseUsage extrae el bloque usage estándar (OpenAI-compatible) del body de
@@ -62,6 +63,17 @@ const (
 	callTypeCategoryCreate = "category_create"
 	callTypeAccountManage  = "account_manage"
 )
+
+// parseResetTokens lee el header x-ratelimit-reset-tokens de Groq (string de
+// duración, e.g. "16m29.28s"), el reset confiable para límites por token
+// (TPM/TPD). 0 si ausente o no parseable.
+func parseResetTokens(h http.Header) time.Duration {
+	d, err := time.ParseDuration(strings.TrimSpace(h.Get("x-ratelimit-reset-tokens")))
+	if err != nil || d <= 0 {
+		return 0
+	}
+	return d
+}
 
 func atoiPtr(s string) *int {
 	if s == "" {

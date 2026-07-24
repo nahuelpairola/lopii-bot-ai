@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -11,6 +12,50 @@ import (
 
 	"lopiibot.com/internal/trace"
 )
+
+func TestParseBodyRetryAfter_MinutesAndSeconds(t *testing.T) {
+	body := []byte(`{"error":{"message":"Rate limit reached. Please try again in 16m29.28s."}}`)
+	got := parseBodyRetryAfter(body)
+	want := 16*time.Minute + 29280*time.Millisecond
+	if got < want-time.Second || got > want+time.Second {
+		t.Fatalf("got %v, want ~%v", got, want)
+	}
+}
+
+func TestParseBodyRetryAfter_SecondsOnly(t *testing.T) {
+	body := []byte(`{"error":{"message":"try again in 4.185s"}}`)
+	if got := parseBodyRetryAfter(body); got < 4*time.Second || got > 5*time.Second {
+		t.Fatalf("got %v, want ~4.185s", got)
+	}
+}
+
+func TestParseResetTokens(t *testing.T) {
+	h := http.Header{}
+	h.Set("x-ratelimit-reset-tokens", "7.66s")
+	if got := parseResetTokens(h); got < 7*time.Second || got > 8*time.Second {
+		t.Fatalf("got %v, want ~7.66s", got)
+	}
+}
+
+func TestSend_TerminalRateLimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("x-ratelimit-reset-tokens", "12s")
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error":{"message":"Rate limit reached. Please try again in 12s."}}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("k", srv.URL, 5*time.Second, nil)
+	_, err := c.send(context.Background(), "router", "m", []byte(`{}`))
+
+	var rl *RateLimitedError
+	if !errors.As(err, &rl) {
+		t.Fatalf("want RateLimitedError, got %v", err)
+	}
+	if rl.RetryAfter < 10*time.Second || rl.RetryAfter > 13*time.Second {
+		t.Fatalf("RetryAfter = %v, want ~12s", rl.RetryAfter)
+	}
+}
 
 func TestClient_Send_RetriesTransientThenSucceeds(t *testing.T) {
 	var hits int32
@@ -87,6 +132,65 @@ func TestClient_Send_NoRetryOnClientError(t *testing.T) {
 	}
 	if n := atomic.LoadInt32(&hits); n != 1 {
 		t.Errorf("server hits = %d, want 1 (400 must not retry)", n)
+	}
+}
+
+func TestClient_Send_CreateRetriesOnceOnToolUseFailedThenSucceeds(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&hits, 1) == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":{"message":"Tool choice is required, but model did not call a tool","code":"tool_use_failed"}}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{}"}}]}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("k", server.URL, 5*time.Second, nil)
+	if _, err := client.send(context.Background(), callTypeCreate, "m", []byte(`{}`)); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if n := atomic.LoadInt32(&hits); n != 2 {
+		t.Errorf("server hits = %d, want 2 (one tool_use_failed then success)", n)
+	}
+}
+
+func TestClient_Send_CreateGivesUpAfterOneRetryOnPersistentToolUseFailed(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"Tool choice is required, but model did not call a tool","code":"tool_use_failed"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("k", server.URL, 5*time.Second, nil)
+	_, err := client.send(context.Background(), callTypeCreate, "m", []byte(`{}`))
+	if !errors.Is(err, ErrNothingToExtract) {
+		t.Fatalf("want ErrNothingToExtract, got %v", err)
+	}
+	if n := atomic.LoadInt32(&hits); n != 2 {
+		t.Errorf("server hits = %d, want 2 (1 retry, then give up — not the full maxSendAttempts)", n)
+	}
+}
+
+func TestClient_Send_NonCreateDoesNotRetryOnToolUseFailed(t *testing.T) {
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"Tool choice is required, but model did not call a tool","code":"tool_use_failed"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("k", server.URL, 5*time.Second, nil)
+	_, err := client.send(context.Background(), callTypeRouter, "m", []byte(`{}`))
+	if !errors.Is(err, ErrNothingToExtract) {
+		t.Fatalf("want ErrNothingToExtract, got %v", err)
+	}
+	if n := atomic.LoadInt32(&hits); n != 1 {
+		t.Errorf("server hits = %d, want 1 (retry is create-only)", n)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -17,6 +18,7 @@ import (
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -115,6 +117,16 @@ type nudgeRepository interface {
 	LastSentAt(userID uint64) (*time.Time, error)
 }
 
+// jobsRepository is the pending_llm_jobs storage (internal/pendingjob) —
+// the durable cache for a user message that hit a terminal Groq 429.
+type jobsRepository interface {
+	Insert(job *pendingjob.PendingJob) error
+	ListByUserOrdered(userID uint64) ([]pendingjob.PendingJob, error)
+	ListPendingUserIDs() ([]uint64, error)
+	Delete(id uint64) error
+	CountByUser(userID uint64) (int64, error)
+}
+
 type controller struct {
 	users         userRepository
 	invitations   invitationRepository
@@ -128,6 +140,9 @@ type controller struct {
 	reminders     reminderRepository
 	traces        traceRepository
 	nudges        nudgeRepository
+	jobs          jobsRepository
+	nextDrainAt   time.Time
+	drainMu       sync.Mutex
 }
 
 func NewController(
@@ -143,6 +158,7 @@ func NewController(
 	reminders reminderRepository,
 	traces traceRepository,
 	nudges nudgeRepository,
+	jobs jobsRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -157,6 +173,7 @@ func NewController(
 		reminders:     reminders,
 		traces:        traces,
 		nudges:        nudges,
+		jobs:          jobs,
 	}
 }
 
@@ -205,6 +222,9 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
+				if c.enqueueBehindPending(ctx, b, chatID, u.ID, input.Text) {
+					return &uid, nil
+				}
 				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
 				c.maybeNudge(ctx, b, chatID, u.ID)
 				return &uid, err
