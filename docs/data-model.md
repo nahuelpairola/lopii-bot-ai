@@ -13,6 +13,7 @@
 | `intent_events` | `id`, `created_at`, `user_id`→users, `raw_message`, `intent`, `needs_confirmation`, `outcome`, `resolved_at`, `was_correct`, `movement_ids` (bigint[], nullable) | Correlación por "último pending" vía WIP=1; `was_correct` etiquetado a mano; `movement_ids` = ids con los que terminó la operación (create/update insertados, delete borrados) para trazabilidad mensaje→filas |
 | `query_turns` | `id`, `user_id`→users, `question`, `answer`, `created_at` | QUERY conversation thread. Ephemeral — hard-pruned by `Append` past the TTL, never soft-deleted. Read only within the TTL window, capped at N turns |
 | `reminders` | `user_id` (PK)→users, `window_start_min`, `window_end_min` (minutes since ART midnight), `enabled`, `last_reminded_on` (date, nullable), `created_at`, `updated_at` | One row per user. Fire target (`MidpointMin()`) is derived, never stored. Delete == disable (`enabled=false`) — no `deleted_at` |
+| `pending_llm_jobs` | `id`, `user_id`→users, `kind` (`free_text`/`update_pick`), `payload` (JSONB, opaque per `kind`), `created_at` | Durable queue: a user message cached after a terminal Groq 429 (rate limit), drained FIFO per user (`created_at` order, index `(user_id, created_at)`) once quota frees up. No `chat_id` — resolved at drain time via `users.FindByID`. Operational table (the queue itself), not metrics — reading it for display/observability is fine, reading it for feature logic elsewhere is not |
 
 ### Key relationships
 
