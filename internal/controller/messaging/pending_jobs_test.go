@@ -42,3 +42,23 @@ func TestHandleFreeText_RateLimited_Enqueues(t *testing.T) {
 		t.Fatalf("want 1 free_text job, got %+v", jobs.inserted)
 	}
 }
+
+func TestOrderingInvariant_EnqueuesBehindPending(t *testing.T) {
+	jobs := &fakeJobs{count: 1} // ya hay un pending
+	c := &controller{jobs: jobs}
+
+	if !c.enqueueBehindPending(context.Background(), nil, 100, 7, "uh no, eran 600") {
+		t.Fatal("want enqueued (true)")
+	}
+	if len(jobs.inserted) != 1 || jobs.inserted[0].Kind != kindFreeText {
+		t.Fatalf("want 1 free_text job, got %+v", jobs.inserted)
+	}
+}
+
+func TestOrderingInvariant_NoPending_PassesThrough(t *testing.T) {
+	jobs := &fakeJobs{count: 0}
+	c := &controller{jobs: jobs}
+	if c.enqueueBehindPending(context.Background(), nil, 100, 7, "gasté 500") {
+		t.Fatal("want false (nothing pending → process live)")
+	}
+}

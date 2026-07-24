@@ -220,6 +220,9 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
+				if c.enqueueBehindPending(ctx, b, chatID, u.ID, input.Text) {
+					return &uid, nil
+				}
 				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
 				c.maybeNudge(ctx, b, chatID, u.ID)
 				return &uid, err
