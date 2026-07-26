@@ -149,7 +149,7 @@ func msgAskFirstAccountName(conversation.Data) string {
 }
 
 func msgAskFirstAccountBalance(name string) string {
-	return "¿Cuánto tenés en " + name + " hoy? Poné el número (ej: 50000) — o mandá \"después\"."
+	return "¿Cuánto saldo tenés en " + name + " ahora? Poné el saldo que ves en tu cuenta (ej: 50000) — o mandá \"después\"."
 }
 
 func msgFirstAccountDefault(name string) string {

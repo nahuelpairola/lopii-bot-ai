@@ -330,7 +330,8 @@ func TestResolveAndInsertMovements_FirstAccount_WithBalance(t *testing.T) {
 	accRepo := &fakeAccountRepoFull{}
 	// fakeAccountRepoFull.Insert assigns the first created account id 100;
 	// preset its post-opening balance so the insufficient-funds gate sees it.
-	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{100: "99500"}}
+	// opening = stated (99500) - netDelta (-500) = 100000
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{100: "100000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movementRow{
@@ -353,8 +354,8 @@ func TestResolveAndInsertMovements_FirstAccount_WithBalance(t *testing.T) {
 		t.Fatalf("expected 2 InsertBatch calls (opening + movement), got %d", len(movRepo.batches))
 	}
 	opening := movRepo.batches[0]
-	if len(opening) != 1 || !opening[0].Amount.Equal(decimal.RequireFromString("99500")) {
-		t.Fatalf("opening batch = %+v, want a single 99500 movement", opening)
+	if len(opening) != 1 || !opening[0].Amount.Equal(decimal.RequireFromString("100000")) {
+		t.Fatalf("opening batch = %+v, want a single 100000 movement (stated 99500 - netDelta -500)", opening)
 	}
 	if opening[0].SubcategoryID != uint64(openingSub.ID) {
 		t.Errorf("opening subcategory id = %d, want %d (Sistema|Saldo inicial)", opening[0].SubcategoryID, openingSub.ID)

@@ -336,6 +336,26 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	// finish, so a resume never leaves an orphan account) and mark it
 	// default iff the currency still has none.
 	if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
+		// netDelta is the sum of movement amounts for rows that will use
+		// the first account. The user enters their CURRENT balance
+		// ("¿cuánto saldo tenés ahora?"), which already reflects the
+		// movements being recorded, so the opening balance must compensate:
+		// opening = stated - netDelta.
+		var netDelta decimal.Decimal
+		for _, row := range rows {
+			if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
+				continue
+			}
+			if amt, err := parseARAmount(row.Amount); err == nil {
+				switch movement.TypeFromString(row.Type) {
+				case movement.Expense:
+					netDelta = netDelta.Add(amt.Neg())
+				case movement.Income:
+					netDelta = netDelta.Add(amt)
+				}
+			}
+		}
+
 		for i, row := range rows {
 			if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
 				continue
@@ -363,13 +383,14 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 					if err != nil {
 						return nil, err
 					}
+					openingAmount := amt.Sub(netDelta)
 					opening := movement.Movement{
 						UserID:        userID,
 						AccountID:     &id,
 						SubcategoryID: uint64(sub.ID),
 						Date:          time.Now(),
 						Type:          movement.Transfer,
-						Amount:        amt,
+						Amount:        openingAmount,
 						Currency:      cur,
 					}
 					if err := c.movements.InsertBatch([]movement.Movement{opening}); err != nil {
