@@ -7,6 +7,7 @@ import (
 
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 )
 
 func startOfTodayArgentina() time.Time {
@@ -21,6 +22,11 @@ const (
 	// ponytail: 48h covers same-session + "recorded last night, fixing this
 	// morning" without naming a date; widen if corrections routinely lag longer.
 	recencyWindow = 48 * time.Hour
+	// justCreatedWindow: dentro de esta ventana, un mensaje SIN referente
+	// textual se resuelve al último movimiento cargado en vez de abrir un
+	// picker. Generosa a propósito — solo se consulta cuando no hay ninguna
+	// otra señal, y el confirm sigue pidiendo el OK del usuario.
+	justCreatedWindow = 10 * time.Minute
 )
 
 // transactionGroup is a set of movements sharing one transaction_id (or
@@ -101,6 +107,21 @@ func descOrMerchantTokenInMessage(field *string, lowerMessage string) bool {
 	return false
 }
 
+// dropReservedGroups saca los grupos cuya categoría es interna (Sistema,
+// PENDING_REVIEW). Solo se usa en el fallback de resolveCandidates — ver el
+// comentario ahí.
+func dropReservedGroups(groups []transactionGroup) []transactionGroup {
+	out := make([]transactionGroup, 0, len(groups))
+	for _, g := range groups {
+		if len(g.Movements) > 0 && g.Movements[0].Subcategory != nil &&
+			subcategory.IsReserved(g.Movements[0].Subcategory.Category) {
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
 // resolveCandidates finds the transaction group(s) a message could refer
 // to for UPDATE/DELETE. Default window is today (America/Argentina/
 // Buenos_Aires); a mentioned dateFrom/dateTo anchors it instead. It fetches
@@ -149,10 +170,30 @@ func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo 
 		return candidates, nil
 	}
 
-	// Nothing matched textually. Rather than dead-end, offer the most
-	// recent movements in the window as a picker. groups is already ordered
-	// newest-first by the window query (created_at DESC in the default
-	// no-date path, date DESC when a date was mentioned).
+	// Nada matchó textualmente: esto ya no es resolver una referencia, es "te
+	// muestro lo reciente". Los movimientos de una categoría reservada (Sistema:
+	// saldos iniciales, ajustes, transferencias internas) no son candidatos de
+	// una corrección — el usuario nunca los nombró, y encima no tienen
+	// descripción, así que el botón sale como "21528105 ARS · · 2".
+	// Se filtran SOLO acá: si el usuario nombra una transferencia, el match
+	// textual de arriba ya la encontró y ahí sí es un candidato legítimo.
+	groups = dropReservedGroups(groups)
+
+	// Antes de ofrecer un picker: si el usuario acaba
+	// de cargar un movimiento, casi seguro se refiere a ese. El caso real es
+	// "Pan 2 mil" y treinta segundos después "Eran 1500" — un mensaje así no
+	// tiene NINGÚN referente textual ("Pan" son 3 caracteres, y el 1500 es el
+	// monto nuevo), así que la recencia de carga es la mejor señal disponible, y
+	// mucho mejor que hacerlo elegir entre cinco movimientos cualesquiera.
+	// El usuario confirma igual antes de que se aplique nada.
+	if len(groups) > 0 && time.Since(groups[0].Movements[0].CreatedAt) <= justCreatedWindow {
+		return groups[:1], nil
+	}
+
+	// Rather than dead-end, offer the most recent movements in the window as a
+	// picker. groups is already ordered newest-first by the window query
+	// (created_at DESC in the default no-date path, date DESC when a date was
+	// mentioned).
 	if len(groups) > fallbackRecentCap {
 		groups = groups[:fallbackRecentCap]
 	}

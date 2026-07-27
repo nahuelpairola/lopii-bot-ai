@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 )
 
 func TestMatchesMessage_MultiWordDescription_SharedToken(t *testing.T) {
@@ -210,5 +211,119 @@ func TestResolveCandidates_EmptyWindow_ReturnsNoCandidates(t *testing.T) {
 	}
 	if len(candidates) != 0 {
 		t.Fatalf("got %d candidates, want 0 (nothing in window)", len(candidates))
+	}
+}
+
+// TestResolveCandidates_NoTextMatch_JustCreated_ResolvesToThatOne reproduce el
+// caso real capturado en Telegram: el usuario carga "Pan 2 mil", el bot lo
+// registra, y 30 segundos después escribe "Eran 1500".
+//
+// Ese mensaje no matchea nada: "Pan" tiene 3 caracteres (< minMatchTokenLen) y
+// el 1500 es el monto NUEVO, no el guardado. Antes caía al fallback y le
+// mostraba un picker de 5 movimientos recientes —incluidos saldos de sistema—
+// entre los que había que cazar el correcto. Pero acaba de cargarlo: ese es.
+func TestResolveCandidates_NoTextMatch_JustCreated_ResolvesToThatOne(t *testing.T) {
+	now := time.Now()
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
+		{Model: gorm.Model{ID: 9, CreatedAt: now.Add(-30 * time.Second)}, Description: strPtr("Pan")},
+		{Model: gorm.Model{ID: 8, CreatedAt: now.Add(-5 * time.Hour)}, Description: strPtr("Helado")},
+		{Model: gorm.Model{ID: 7, CreatedAt: now.Add(-6 * time.Hour)}, Description: strPtr("Nafta")},
+	}}
+	c := &controller{movements: fake}
+
+	candidates, err := c.resolveCandidates(2, "Eran 1500", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("got %d candidates, want 1: lo acaba de cargar, no hay que preguntarle cuál", len(candidates))
+	}
+	if candidates[0].Movements[0].ID != 9 {
+		t.Errorf("candidate ID = %d, want 9 (el más recién creado)", candidates[0].Movements[0].ID)
+	}
+}
+
+// TestResolveCandidates_Fallback_SkipsSystemMovements: en la captura real, el
+// picker de "¿cuál es?" ofrecía la jubilación y un FCI (movimientos de la
+// categoría reservada "Sistema": saldos iniciales, ajustes, transferencias
+// internas). Una corrección de monto no se refiere jamás a esos, y encima se
+// muestran sin descripción, así que el botón queda como "21528105 ARS · · 2".
+//
+// Solo se filtran en el FALLBACK: si el usuario NOMBRA una transferencia, el
+// match textual la encuentra y ahí sí es un candidato legítimo.
+func TestResolveCandidates_Fallback_SkipsSystemMovements(t *testing.T) {
+	old := time.Now().Add(-5 * time.Hour) // fuera de justCreatedWindow
+	sys := func(sub string) *subcategory.Subcategory {
+		return &subcategory.Subcategory{Category: "Sistema", Subcategory: sub}
+	}
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
+		{Model: gorm.Model{ID: 3, CreatedAt: old}, Description: strPtr("Jubilación"), Subcategory: sys("Saldo inicial")},
+		{Model: gorm.Model{ID: 2, CreatedAt: old}, Description: strPtr("FCI"), Subcategory: sys("Transferencia")},
+		{Model: gorm.Model{ID: 1, CreatedAt: old}, Description: strPtr("Helado"),
+			Subcategory: &subcategory.Subcategory{Category: "Ocio y salidas", Subcategory: "Salir a comer"}},
+	}}
+	c := &controller{movements: fake}
+
+	candidates, err := c.resolveCandidates(2, "era 700", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("got %d candidates, want 1: los movimientos de Sistema no van al picker", len(candidates))
+	}
+	if candidates[0].Movements[0].ID != 1 {
+		t.Errorf("candidate ID = %d, want 1 (el único que no es de Sistema)", candidates[0].Movements[0].ID)
+	}
+}
+
+// TestCandidateLabel cubre los defectos visibles en la captura de Telegram:
+// monto crudo ("2000 ARS", "21528105 ARS"), fecha ISO, y el doble separador
+// "· ·" cuando el movimiento no tiene descripción ni merchant.
+func TestCandidateLabel(t *testing.T) {
+	today := startOfTodayArgentina()
+	sub := func(cat, s string) *subcategory.Subcategory {
+		return &subcategory.Subcategory{Category: cat, Subcategory: s}
+	}
+	mk := func(amount string, cur currency.Currency, desc *string, s *subcategory.Subcategory, d time.Time) transactionGroup {
+		return transactionGroup{Movements: []movement.Movement{{
+			Type: movement.Expense, Amount: mustDecimal(t, amount), Currency: cur,
+			Description: desc, Subcategory: s, Date: d,
+		}}}
+	}
+
+	cases := []struct {
+		name  string
+		group transactionGroup
+		want  string
+	}{
+		{
+			name:  "monto en formato argentino y fecha relativa",
+			group: mk("2000", currency.ARS, strPtr("Pan"), sub("Alimentación", "Almacén / barrio"), today),
+			want:  "🔴 Pan · $2.000 · hoy",
+		},
+		{
+			name:  "sin descripción cae a la subcategoría, nunca deja '· ·'",
+			group: mk("21528105", currency.ARS, nil, sub("Sistema", "Saldo inicial"), today.AddDate(0, 0, -1)),
+			want:  "🔴 Saldo inicial · $21.528.105 · ayer",
+		},
+		{
+			name:  "USD conserva los centavos y lleva su símbolo",
+			group: mk("3614.66", currency.USD, nil, sub("Inversiones", "FCI"), today.AddDate(0, 0, -3)),
+			want:  "🔴 FCI · US$3.614,66 · " + today.AddDate(0, 0, -3).Format("02/01"),
+		},
+		{
+			// Los movimientos vienen de la DB con el signo contable (un expense
+			// se guarda negativo). Ese signo NUNCA se le muestra al usuario: la
+			// dirección la da el tipo, no un menos.
+			name:  "el signo almacenado no llega al usuario",
+			group: mk("-2000", currency.ARS, strPtr("Pan"), sub("Alimentación", "Almacén / barrio"), today),
+			want:  "🔴 Pan · $2.000 · hoy",
+		},
+	}
+
+	for _, tc := range cases {
+		if got := candidateLabel(tc.group); got != tc.want {
+			t.Errorf("%s:\n got  %q\n want %q", tc.name, got, tc.want)
+		}
 	}
 }
