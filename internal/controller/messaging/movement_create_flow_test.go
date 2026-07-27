@@ -238,7 +238,7 @@ func TestResolveAndInsertMovements_SimpleSingleMovement_NilTransactionID(t *test
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
 	}}
-	data := buildCreateSeed(result)
+	data := buildCreateSeed(result, nil)
 	data[conversation.UserIDKey] = uint64(1)
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -268,7 +268,7 @@ func TestResolveAndInsertMovements_Compound_SharesTransactionID(t *testing.T) {
 		{Type: "transfer", Amount: "140000", Currency: "ARS", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(1), Group: "g1"},
 		{Type: "transfer", Amount: "100", Currency: "USD", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(7), Group: "g1"},
 	}}
-	data := buildCreateSeed(result)
+	data := buildCreateSeed(result, nil)
 	data[conversation.UserIDKey] = uint64(1)
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
@@ -624,7 +624,7 @@ func TestResolveAndInsertMovements_PopulatesSubcategoryAssociation(t *testing.T)
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
 	}}
-	data := buildCreateSeed(result)
+	data := buildCreateSeed(result, nil)
 	data[conversation.UserIDKey] = uint64(1)
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {

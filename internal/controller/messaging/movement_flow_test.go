@@ -51,7 +51,7 @@ func TestBuildCreateSeed_QueuesCategoryAndAccountGaps(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result)
+	data := buildCreateSeed(result, nil)
 
 	categoryGaps := decodeStringSlice(data, "pending_category_gaps")
 	if len(categoryGaps) != 1 || categoryGaps[0] != "0" {
@@ -73,13 +73,59 @@ func TestBuildCreateSeed_NoGaps_EmptyQueues(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result)
+	data := buildCreateSeed(result, nil)
 
 	if len(decodeStringSlice(data, "pending_category_gaps")) != 0 {
 		t.Error("expected no category gaps")
 	}
 	if len(decodeStringSlice(data, "pending_account_gaps")) != 0 {
 		t.Error("expected no account gaps")
+	}
+}
+
+// TestBuildCreateSeed_UnknownCategoryPair_QueuesGap cubre la causa raíz de los
+// create_failed observados en intent_events ("Carne 10 mil" falló dos veces): el
+// modelo devuelve un par que NO existe en la taxonomía del usuario en vez de
+// PENDING_REVIEW. Sin gap, el flujo va derecho a insertar y
+// FindByCategoryAndSubcategory falla — el movimiento se pierde y el usuario ve un
+// error genérico. Un par desconocido tiene que caer al gap-fill, igual que
+// PENDING_REVIEW.
+func TestBuildCreateSeed_UnknownCategoryPair_QueuesGap(t *testing.T) {
+	taxonomy := []orchestrator.TaxonomyEntry{
+		{Category: "Alimentación", Subcategory: "Café"},
+		{Category: "Supermercado", Subcategory: "Almacén"},
+	}
+	result := orchestrator.CreateResult{
+		Movements: []orchestrator.MovementDraft{
+			{Type: "expense", Amount: "10000", Currency: "ARS", Category: "Comida", Subcategory: "Carnicería"},
+		},
+	}
+
+	data := buildCreateSeed(result, taxonomy)
+
+	gaps := decodeStringSlice(data, "pending_category_gaps")
+	if len(gaps) != 1 || gaps[0] != "0" {
+		t.Errorf("category gaps = %v, want [0]: un par inexistente debe caer al gap-fill, no al insert", gaps)
+	}
+}
+
+// TestBuildCreateSeed_KnownCategoryPair_NoGap es la guarda del riesgo inverso: la
+// validación no debe abrir gaps donde hoy se inserta bien. El delta del fix tiene
+// que ser estrictamente error → pregunta, nunca inserto-OK → pregunta.
+func TestBuildCreateSeed_KnownCategoryPair_NoGap(t *testing.T) {
+	taxonomy := []orchestrator.TaxonomyEntry{
+		{Category: "Alimentación", Subcategory: "Café"},
+	}
+	result := orchestrator.CreateResult{
+		Movements: []orchestrator.MovementDraft{
+			{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"},
+		},
+	}
+
+	data := buildCreateSeed(result, taxonomy)
+
+	if gaps := decodeStringSlice(data, "pending_category_gaps"); len(gaps) != 0 {
+		t.Errorf("category gaps = %v, want []: un par que existe no debe preguntar nada", gaps)
 	}
 }
 

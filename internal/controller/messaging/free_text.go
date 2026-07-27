@@ -431,7 +431,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 	}
 	slog.DebugContext(ctx, "create classification result", "result", result)
 
-	seed := buildCreateSeed(result)
+	seed := buildCreateSeed(result, taxonomy)
 	slog.InfoContext(ctx, "create seed built",
 		"user_id", userID,
 		"movements", len(result.Movements),
