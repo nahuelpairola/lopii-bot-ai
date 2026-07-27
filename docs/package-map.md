@@ -14,6 +14,10 @@
 | `internal/constants/` | `constants.go` | Movement type strings (`expense`, `income`) |
 | `internal/health/` | `health.go` | `HealthChecker` — DB ping |
 | `internal/middleware/` | `auth.go` | `RequireAdmin(adminID)` Gin middleware |
+| `internal/logging/` | `logging.go` | Installs the process-wide `slog` logger. Its handler stamps the ctx's `trace_id` onto every record, so a log line can always be joined to its `request_traces` / `llm_calls` / `intent_events` rows |
+| `internal/trace/` | `trace.go` | `NewID()` — 16 random bytes → 32 hex, via `crypto/rand` (deliberately no `google/uuid` dependency) + the ctx carrier (`WithID`/`FromContext`) for the correlation id |
+| `internal/nudge/` | `repository.go` | `UserNudge` model + repository (`WasSent`, `MarkSent`, `LastSentAt`) — once-ever-per-(user,key) storage for contextual tips; the primary key doubles as the dedup guard. The tip definitions themselves live in `messaging/nudge.go` |
+| `internal/summary/` | `summary.go`, `messages.go` | Weekly-summary builder + its Argentine-Spanish copy (kept in one file so copy edits touch one place). Declares consumer-local `MovementReader`/`AccountReader` interfaces per the repo convention; driven by `notifier`'s sweeper |
 | `internal/user/` | `user.go` | `User` GORM model + repository (`FindByTelegramID`, `FindByID`, `Insert`) |
 | `internal/invitation/` | `repository.go` | `Invitation` model + repository (`Create`, `FindByCode`, `MarkAsUsed`) |
 | `internal/account/` | `repository.go`, `messages.go` | `Account` model + full repository (`Insert`, `FindByUserID`, `FindDefaultByCurrency`, `UnsetDefault`, `SoftDeleteByUserID`) + Spanish UI strings |
@@ -29,9 +33,33 @@
 | `internal/controller/health/` | `controller.go` | `GET /health/internal`, `HEAD /health/external` |
 | `internal/controller/invitation/` | `controller.go` | `POST /invitations` (admin-only) |
 | `internal/controller/admin/` | `controller.go` | `POST /admin/users/:telegramID/reset` (admin-only) — soft-deletes user's accounts+movements, clears flow state, re-fires onboarding |
-| `internal/controller/messaging/` | `controller.go`, `start.go`, `messages.go`, `free_text.go`, `movement_flow.go`, `movement_create_flow.go`, `movement_confirm_flow.go`, `movement_update_flow.go`, `movement_delete_flow.go`, `reference_resolution.go`, `account_create_flow.go`, `account_create_finish.go`, `subcategory_setup_flow.go`, `subcategory_setup_finish.go`, `onboarding_flow.go`, `query.go`, `reminder_setup_flow.go`, `reminder_setup_finish.go`, `pending_jobs.go`, `job_drain.go` | Telegram handlers: `/start` + catch-all for free text and callbacks; onboarding flows (`onboarding_collect`/`onboarding_confirm`, ClassifyOnboarding wiring, atomic InsertAccountsWithOpenings; `onboarding_reminder_offer` — single binary `ChoiceStep`, Sí/No, chained after the capabilities showcase, "Sí" reuses `startReminderSetup` verbatim); `free_text.go` routes every free-text message through Call 1 into CREATE/UPDATE/DELETE/ACCOUNT_CREATE/CREATE_CATEGORY/REMINDER_SET, and QUERY into `query.go`'s `handleQuery` (the read-only agent loop: 5 typed tools + `execute` closure scoped to the user, invariants in Go); `query.go` (QUERY tools incl. `get_reminder`, executor, system prompt with today's ART date, `queryMovementLine` abs-renderer, `describeReminder`); `movement_create_flow.go` (frictionless insert or gap-fill `ChoiceStep`s, each with a Cancelar bail-out), `movement_confirm_flow.go` (the `movement_confirm_intent` gate — reescribir/cancelar only, no reroute — shown for an ambiguous CREATE), `movement_update_flow.go` + `movement_delete_flow.go` (two-hop pick→confirm flow chains), `reference_resolution.go` (`resolveCandidates` — the single `pg_trgm` candidate-lookup mechanism shared by UPDATE, DELETE, and CREATE's duplicate-check); `account_create_flow.go` + `account_create_finish.go` (ACCOUNT_CREATE intent — create an additional, purpose-specific account: investment, retirement, savings, etc. — cancelable/back-able at every step, never IsDefault); `subcategory_setup_flow.go` + `subcategory_setup_finish.go` (CREATE_CATEGORY intent — create a custom category/subcategory pair, in an existing category or a brand-new one, including a required description step that feeds `orchestrator.TaxonomyEntry.Description` for future CREATE classification — cancelable/back-able at every step, reuses `TextStep.EscapeOptions`/`OnEscape` and `account_create_flow.go`'s `onAccountCreateEscape` rather than introducing a new mechanism); `reminder_setup_flow.go` + `reminder_setup_finish.go` (REMINDER_SET intent — a deterministic `ChoiceStep` flow: time-band presets, a custom-window text step (`parseWindow`, 24h whole-hours only), or disable — no Call 2, no LLM parsing beyond the router; delete == disable, no confirm gate); `pending_jobs.go` (`handleGroqError`/`enqueueIfRateLimited`/`enqueueUpdatePickIfRateLimited` — enqueue a `pendingjob.PendingJob` + ack when a Groq call at a webhook site returns `orchestrator.RateLimitedError`; `enqueueBehindPending` — the FIFO ordering invariant, called only from `handleConversationInput` (webhook boundary, not `handleFreeText`, so drain replay never re-enqueues itself); `isReplaying`/`withReplaying` ctx flag distinguishes a webhook call from a drain replay) + `job_drain.go` (`RunJobDrain`/`drainTick`/`drainUser`/`replayJob` — the worker goroutine, FIFO per user, replays a job through the exact same handler (`handleFreeText`/`proceedToUpdateConfirm`) the webhook would have used, gated by an in-memory `nextDrainAt`; give-up past `maxJobAge` deletes + notifies instead of retrying forever) |
+| `internal/controller/messaging/` | ~35 files, one per flow (`*_flow.go` builds the graph, `*_finish.go` runs the terminal action) | Telegram handlers: `/start` + catch-all for free text and callbacks. **For the file/symbol inventory use `codegraph_explore` — it returns the current source.** The non-obvious parts are below. |
+| `internal/controller/miniapp/` | `controller.go`, `auth.go`, `static.go`, `overview.go`, `accounts.go`, `categories.go`, `period.go`, `evolution.go`, `templates/` | Telegram Mini App: server-rendered HTML views (templ) over the same Go service — no React, no JSON API. `auth.go` validates Telegram `initData` (HMAC over the bot token) on every request; that check is the only thing standing between a URL and another user's finances |
 | `migrations/` | `*.sql` | Goose migrations — **authoritative DB schema**; includes `pg_trgm` extension + GIN trigram indexes on `movements.description`/`merchant` (`20260702120000`) |
 | `config/` | `local.toml`, `dev.toml`, `prd.toml` | Environment configs (secrets go here, git-ignored for local); `[groq]` section — per-call-type model name, API key, base URL, timeout |
+
+### `messaging` — lo no obvio
+
+Lo que no se deduce leyendo los archivos. La estructura sí se deduce: usá `codegraph_explore`.
+
+- **Un solo punto de entrada.** `handleFreeText` corre Call 1 (router) y despacha a un
+  `start*` por intent. QUERY es la excepción: no abre flow, va al agent loop de `query.go`
+  (tools tipadas + `execute` scopeado al usuario, invariantes en Go, nunca en el prompt).
+- **Una sola resolución de referencias.** `resolveCandidates` (`reference_resolution.go`) es
+  el único mecanismo de búsqueda de candidatos, compartido por UPDATE y DELETE. No agregar
+  un segundo — la relevancia textual se decide en proceso (`matchesMessage`), no en la DB.
+- **La cola de 429 tiene un invariante de orden.** `enqueueBehindPending` se llama **solo
+  desde `handleConversationInput`** (el borde del webhook), nunca desde `handleFreeText`.
+  Si se llamara desde ahí, el replay del drain se re-encolaría a sí mismo. El flag de ctx
+  `isReplaying`/`withReplaying` es lo que distingue una llamada del webhook de un replay.
+- **El drain reusa el handler real.** `replayJob` reproduce el mensaje por el mismo handler
+  que hubiera usado el webhook, no por una copia. Pasado `maxJobAge` borra y avisa, en vez
+  de reintentar para siempre.
+- **REMINDER_SET no usa Call 2.** Es un `ChoiceStep` determinista (presets + ventana custom
+  en horas enteras). Borrar == deshabilitar, sin gate de confirmación.
+- **La descripción de una subcategoría no es decorativa.** Alimenta
+  `orchestrator.TaxonomyEntry.Description`, o sea la clasificación CREATE futura. Por eso el
+  paso de descripción es obligatorio al crear una categoría.
 
 ### Do NOT read
 
