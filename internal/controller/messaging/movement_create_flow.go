@@ -352,7 +352,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 
 	// Group by the LLM tag, compute the FCI gain (inherits the leg's
 	// transaction_id), then enforce the invariants on the complete set.
-	assignTransactionIDs(movements, groups)
+	movement.AssignTransactionIDs(movements, groups)
 	gain, ok, err := fciRedemptionGain(c, movements)
 	if err != nil {
 		return nil, fmt.Errorf("fci redemption gain: %w", err)
@@ -362,7 +362,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	}
 	// Sin envolver: los sentinels del guard se matchean con errors.Is arriba
 	// (createErrorCopy/guardReason) y no ganan nada con más contexto.
-	movements, err = normalizeMovements(movements, idx.byID, idx.defaultByCurrency)
+	movements, err = movement.Normalize(movements, idx.byID, idx.defaultByCurrency)
 	if err != nil {
 		return nil, err
 	}
@@ -631,7 +631,7 @@ func (c *controller) persistMovements(data conversation.Data, movs []movement.Mo
 			balances[id] = bal
 		}
 		// Sin envolver: el caller lo detecta con errors.As para desviar al gate.
-		if short := checkResultingBalances(movs, balances, idx.byID); len(short) > 0 {
+		if short := movement.CheckBalances(movs, balances, idx.byID); len(short) > 0 {
 			return nil, &insufficientFunds{shortfalls: short}
 		}
 	}

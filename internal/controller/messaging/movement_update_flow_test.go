@@ -180,3 +180,23 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 		t.Errorf("started flow = %q, want %q", store.flowName, movementUpdateConfirmFlowName)
 	}
 }
+
+func TestCorrectionIsDeletion(t *testing.T) {
+	cases := []struct {
+		name string
+		rows []movementRow
+		want bool
+	}{
+		{"empty set is not a deletion", nil, false},
+		{"single zero row deletes", []movementRow{{Amount: "0"}}, true},
+		{"zero with decimals deletes", []movementRow{{Amount: "0.00"}}, true},
+		{"non-zero is a real correction", []movementRow{{Amount: "600"}}, false},
+		{"mixed zero and non-zero is not a deletion", []movementRow{{Amount: "0"}, {Amount: "500"}}, false},
+		{"unparseable amount is not a deletion", []movementRow{{Amount: ""}}, false},
+	}
+	for _, tc := range cases {
+		if got := correctionIsDeletion(tc.rows); got != tc.want {
+			t.Errorf("%s: correctionIsDeletion = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

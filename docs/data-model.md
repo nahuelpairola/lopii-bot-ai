@@ -23,4 +23,4 @@
   ```sql
   SELECT SUM(amount) FROM movements WHERE account_id = $id AND deleted_at IS NULL
   ```
-  > Migration status: enforced as of commit `2597c1e` (`normalizeMovements` validates every CREATE/UPDATE before insert). Legacy rows written before that land may still carry the old `account_id = NULL` / positive-expense shape — cleared via `/admin/users/:telegramID/reset`, not a retroactive migration.
+  > Migration status: enforced as of commit `2597c1e` (`movement.Normalize` validates every CREATE/UPDATE before insert). Legacy rows written before that land may still carry the old `account_id = NULL` / positive-expense shape — cleared via `/admin/users/:telegramID/reset`, not a retroactive migration.

@@ -428,7 +428,7 @@ const msgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae
 
 const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 
-func msgInsufficientFunds(short []accountShortfall) string {
+func msgInsufficientFunds(short []movement.AccountShortfall) string {
 	s := short[0]
 	falta := s.After.Abs().String()
 	return fmt.Sprintf("⚠️ Ojo: %s quedaría en −%s %s (te faltan %s %s). ¿Cómo lo registro?",

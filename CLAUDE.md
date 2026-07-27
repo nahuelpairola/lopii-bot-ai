@@ -33,7 +33,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `invitation` | Model + repository: `Create` (generates random code), `FindByCode`, `MarkAsUsed` |
 | `account` | Model + full repository + messages for flows |
 | `subcategory` | Model + repository + messages for flows |
-| `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates) |
+| `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates) + **el guard** (`guard.go`: `Normalize`, `AssignTransactionIDs`, `CheckBalances`, los sentinels `Err*`) — los invariantes de plata viven al lado del tipo que protegen, y son puros: no tocan la DB |
 | `metric` | Model + repository: `Log`, `Resolve` — métricas de asertividad LLM (tabla `intent_events`) |
 | `middleware` | `RequireAdmin(adminID)` |
 | `conversation` | Engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, `repository` |
@@ -143,7 +143,7 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
 - `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
 - `intent_events.needs_confirmation` (NOT NULL) quedó vestigial tras el rediseño UNCLEAR del router: se escribe siempre `false`. Dropear con una migración si se quiere limpiar.
 - **3 de las 4 escrituras de movimientos saltean el guard.** Solo el CREATE/UPDATE principal
-  pasa por `normalizeMovements`. Insertan directo: el opening de primera cuenta
+  pasa por `movement.Normalize`. Insertan directo: el opening de primera cuenta
   (`movement_create_flow.go`), el saldo inicial (`account_create_finish.go`) y el ajuste de
   saldo (`account_manage_finish.go`). Arman el movimiento en código de la app, así que el
   **signo** está bien; lo que no se valida es monto-cero y moneda-vs-cuenta. Rutearlos
