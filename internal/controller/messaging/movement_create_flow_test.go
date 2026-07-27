@@ -855,3 +855,76 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 		t.Errorf("R2 = %q, want %q", rt.texts[2], msgInviteMoreAccounts)
 	}
 }
+
+// TestFirstAccountNetDelta cubre la aritmética que compensa el saldo de
+// apertura. El usuario responde con el saldo que tiene AHORA, que ya incluye
+// los movimientos de este mismo mensaje, así que apertura = declarado - netDelta.
+// Un signo invertido acá deja la cuenta abierta con el saldo equivocado, y como
+// el balance se computa sumando movimientos, el error no se corrige nunca solo.
+//
+// El camino de resolveAndInsertMovements solo ejercita una fila de gasto, así
+// que las ramas de income, transfer y fila-ya-asignada no tenían assert propio.
+func TestFirstAccountNetDelta(t *testing.T) {
+	tests := []struct {
+		name string
+		rows []movementRow
+		want string
+	}{
+		{
+			name: "un gasto resta",
+			rows: []movementRow{{Type: "expense", Amount: "500"}},
+			want: "-500",
+		},
+		{
+			name: "un ingreso suma",
+			rows: []movementRow{{Type: "income", Amount: "1000"}},
+			want: "1000",
+		},
+		{
+			name: "gasto e ingreso se netean",
+			rows: []movementRow{
+				{Type: "income", Amount: "1000"},
+				{Type: "expense", Amount: "300"},
+			},
+			want: "700",
+		},
+		{
+			name: "las transferencias no cuentan: no van a la primera cuenta",
+			rows: []movementRow{
+				{Type: "expense", Amount: "500"},
+				{Type: "transfer", Amount: "9999"},
+			},
+			want: "-500",
+		},
+		{
+			name: "una fila con cuenta ya asignada no cuenta",
+			rows: []movementRow{
+				{Type: "expense", Amount: "500"},
+				{Type: "expense", Amount: "9999", AccountID: "42"},
+			},
+			want: "-500",
+		},
+		{
+			name: "un monto ilegible se saltea en vez de romper",
+			rows: []movementRow{
+				{Type: "expense", Amount: "500"},
+				{Type: "expense", Amount: "no es un número"},
+			},
+			want: "-500",
+		},
+		{
+			name: "sin filas es cero",
+			rows: nil,
+			want: "0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := firstAccountNetDelta(tt.rows)
+			if !got.Equal(decimal.RequireFromString(tt.want)) {
+				t.Errorf("firstAccountNetDelta() = %s, want %s", got, tt.want)
+			}
+		})
+	}
+}

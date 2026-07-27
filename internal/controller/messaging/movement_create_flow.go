@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -313,119 +314,224 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 	}
 }
 
-// resolveAndInsertMovements does the real work: creates any
-// account_pending_create accounts (deduped by name+currency), parses
-// every movementRow into a movement.Movement, assigns a shared
-// transaction_id only when there's more than one row, computes the FCI
-// redemption gain (app code, never the LLM — see the CREATE spec's
-// deterministic full-vs-partial-redemption rule), and inserts
-// everything via InsertBatch (mode=create) or ReplaceMovements
-// (mode=update, replacing data["old_movement_ids"] — see
-// movement_update_flow.go).
+// resolveAndInsertMovements convierte las filas resueltas del flujo en
+// movimientos reales y los persiste. Cada paso está abajo, en su propia
+// función; acá queda solo el orden, que es lo que importa: primero se
+// materializan las cuentas que faltan (porque los movimientos necesitan
+// apuntar a algo), después se arman los movimientos, después se aplican las
+// reglas sobre el set completo, y recién al final se escribe.
 func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error) {
-	userID := data.UserID()
-	rows := decodeMovementRows(data)
+	userID, rows := data.UserID(), decodeMovementRows(data)
 
-	// Account maps (one fetch): id->account for currency checks, currency->default
-	// account id for nil-account resolution.
+	idx, err := c.loadAccountIndex(userID)
+	if err != nil {
+		return nil, fmt.Errorf("load accounts: %w", err)
+	}
+
+	// skipBalanceCheck tiene DOS orígenes y hay que respetar los dos. El gate de
+	// saldo negativo lo deja en data cuando el usuario ya dijo "sí, dale igual"
+	// (ver movement_negative_confirm_flow.go), y createFirstAccount lo devuelve
+	// cuando creó la primera cuenta sin saldo de apertura. Mirar solo uno haría
+	// que confirmar el gate vuelva a disparar el gate.
+	skipBalanceCheck := flag(data, keySkipBalanceCheck)
+
+	openedWithoutBalance, err := c.createFirstAccount(data, rows, idx)
+	if err != nil {
+		return nil, fmt.Errorf("create first account: %w", err)
+	}
+	skipBalanceCheck = skipBalanceCheck || openedWithoutBalance
+
+	if err := c.createCounterpartyAccounts(userID, rows, idx); err != nil {
+		return nil, fmt.Errorf("create counterparty account: %w", err)
+	}
+
+	movements, groups, err := c.buildMovements(userID, rows)
+	if err != nil {
+		return nil, fmt.Errorf("build movements: %w", err)
+	}
+
+	// Group by the LLM tag, compute the FCI gain (inherits the leg's
+	// transaction_id), then enforce the invariants on the complete set.
+	assignTransactionIDs(movements, groups)
+	gain, ok, err := fciRedemptionGain(c, movements)
+	if err != nil {
+		return nil, fmt.Errorf("fci redemption gain: %w", err)
+	}
+	if ok {
+		movements = append(movements, gain)
+	}
+	// Sin envolver: los sentinels del guard se matchean con errors.Is arriba
+	// (createErrorCopy/guardReason) y no ganan nada con más contexto.
+	movements, err = normalizeMovements(movements, idx.byID, idx.defaultByCurrency)
+	if err != nil {
+		return nil, err
+	}
+	idx.attachAccounts(movements)
+
+	return c.persistMovements(data, movements, idx, skipBalanceCheck)
+}
+
+// accountIndex es el estado de cuentas compartido por toda la resolución: las
+// del usuario indexadas por id, y cuál es la default de cada moneda.
+//
+// Los dos mapas van juntos en un struct, y no como dos parámetros sueltos, justo
+// porque se mutan de a pares cada vez que se crea una cuenta a mitad del
+// proceso: pasarlos por separado es cómo se desincronizan.
+type accountIndex struct {
+	byID              map[uint64]account.Account
+	defaultByCurrency map[string]uint64
+}
+
+// add registra una cuenta en los dos mapas de una sola vez.
+func (idx *accountIndex) add(a account.Account) {
+	id := uint64(a.ID)
+	idx.byID[id] = a
+	if a.IsDefault {
+		idx.defaultByCurrency[a.Currency.String()] = id
+	}
+}
+
+// attachAccounts cuelga de cada movimiento la cuenta que le tocó, para que el
+// recibo de confirmación pueda nombrarla. Estos movimientos se arman en memoria
+// y nunca se leen de la DB, así que no hay ningún Preload en el que apoyarse.
+func (idx *accountIndex) attachAccounts(movs []movement.Movement) {
+	for i := range movs {
+		if movs[i].AccountID == nil {
+			continue
+		}
+		if acc, ok := idx.byID[*movs[i].AccountID]; ok {
+			a := acc
+			movs[i].Account = &a
+		}
+	}
+}
+
+// loadAccountIndex trae las cuentas del usuario en UNA consulta y las indexa.
+func (c *controller) loadAccountIndex(userID uint64) (*accountIndex, error) {
 	accs, err := c.accounts.FindByUserID(userID)
 	if err != nil {
 		return nil, err
 	}
-	accountsByID := make(map[uint64]account.Account, len(accs))
-	defaultByCurrency := make(map[string]uint64)
+	idx := &accountIndex{
+		byID:              make(map[uint64]account.Account, len(accs)),
+		defaultByCurrency: make(map[string]uint64),
+	}
 	for _, a := range accs {
-		accountsByID[uint64(a.ID)] = a
-		if a.IsDefault {
-			defaultByCurrency[a.Currency.String()] = uint64(a.ID)
+		idx.add(a)
+	}
+	return idx, nil
+}
+
+// createFirstAccount materializa la cuenta que stepCreateFirstAccount pidió por
+// nombre. Se crea acá, al terminar el flujo, y no cuando el usuario tipeó el
+// nombre: así abandonar a mitad de camino no deja una cuenta huérfana. Queda
+// como default si la moneda todavía no tenía ninguna.
+//
+// Devuelve skipBalanceCheck=true cuando la cuenta se creó SIN saldo de apertura.
+// En ese caso el primer gasto la deja en negativo por construcción, así que
+// avisar sería ruido y no información.
+func (c *controller) createFirstAccount(data conversation.Data, rows []movementRow, idx *accountIndex) (skipBalanceCheck bool, err error) {
+	name := stringOrEmpty(data[keyFirstAccountName])
+	if name == "" {
+		return false, nil
+	}
+	userID := data.UserID()
+	netDelta := firstAccountNetDelta(rows)
+
+	for i, row := range rows {
+		if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
+			continue
+		}
+		cur := currency.Currency(row.Currency)
+		newAcc := &account.Account{
+			UserID:    userID,
+			Name:      name,
+			Currency:  cur,
+			IsDefault: !c.accounts.HasDefaultForCurrency(userID, cur),
+		}
+		if err := c.accounts.Insert(newAcc); err != nil {
+			return false, err
+		}
+		idx.add(*newAcc)
+		rows[i].AccountID = strconv.FormatUint(uint64(newAcc.ID), 10)
+
+		bal := stringOrEmpty(data[keyFirstAccountBalance])
+		if bal == "" {
+			skipBalanceCheck = true
+			continue
+		}
+		amt, perr := parseARAmount(bal)
+		if perr != nil || amt.IsNegative() {
+			continue
+		}
+		if err := c.insertOpeningMovement(userID, uint64(newAcc.ID), cur, amt.Sub(netDelta)); err != nil {
+			return false, err
 		}
 	}
+	return skipBalanceCheck, nil
+}
 
-	// Lazy-create: stepCreateFirstAccount asked one name for every row that
-	// had no account and no default in its currency — create it here (at
-	// finish, so a resume never leaves an orphan account) and mark it
-	// default iff the currency still has none.
-	if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
-		// netDelta is the sum of movement amounts for rows that will use
-		// the first account. The user enters their CURRENT balance
-		// ("¿cuánto saldo tenés ahora?"), which already reflects the
-		// movements being recorded, so the opening balance must compensate:
-		// opening = stated - netDelta.
-		var netDelta decimal.Decimal
-		for _, row := range rows {
-			if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
-				continue
-			}
-			if amt, err := parseARAmount(row.Amount); err == nil {
-				switch movement.TypeFromString(row.Type) {
-				case movement.Expense:
-					netDelta = netDelta.Add(amt.Neg())
-				case movement.Income:
-					netDelta = netDelta.Add(amt)
-				}
-			}
+// firstAccountNetDelta suma el efecto neto de los movimientos que van a caer en
+// la primera cuenta.
+//
+// Hace falta porque la pregunta es "¿cuánto saldo tenés AHORA?", y esa respuesta
+// ya incluye los movimientos que el usuario está cargando en este mismo mensaje.
+// La apertura tiene que compensarlos: apertura = saldo declarado − netDelta.
+func firstAccountNetDelta(rows []movementRow) decimal.Decimal {
+	var netDelta decimal.Decimal
+	for _, row := range rows {
+		if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
+			continue
 		}
-
-		for i, row := range rows {
-			if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
-				continue
-			}
-			cur := currency.Currency(row.Currency)
-			newAcc := &account.Account{
-				UserID:    userID,
-				Name:      name,
-				Currency:  cur,
-				IsDefault: !c.accounts.HasDefaultForCurrency(userID, cur),
-			}
-			if err := c.accounts.Insert(newAcc); err != nil {
-				return nil, err
-			}
-			id := uint64(newAcc.ID)
-			accountsByID[id] = *newAcc
-			if newAcc.IsDefault {
-				defaultByCurrency[cur.String()] = id
-			}
-			rows[i].AccountID = strconv.FormatUint(id, 10)
-
-			if bal := stringOrEmpty(data[keyFirstAccountBalance]); bal != "" {
-				if amt, err := parseARAmount(bal); err == nil && !amt.IsNegative() {
-					sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
-					if err != nil {
-						return nil, err
-					}
-					openingAmount := amt.Sub(netDelta)
-					opening := movement.Movement{
-						UserID:        userID,
-						AccountID:     &id,
-						SubcategoryID: uint64(sub.ID),
-						Date:          time.Now(),
-						Type:          movement.Transfer,
-						Amount:        openingAmount,
-						Currency:      cur,
-					}
-					if err := c.movements.InsertBatch([]movement.Movement{opening}); err != nil {
-						return nil, err
-					}
-				}
-			} else {
-				setFlag(data, keySkipBalanceCheck) // sin opening: el 1er gasto puede dejar negativo, no alertar
-			}
+		amt, err := parseARAmount(row.Amount)
+		if err != nil {
+			continue
+		}
+		switch movement.TypeFromString(row.Type) {
+		case movement.Expense:
+			netDelta = netDelta.Add(amt.Neg())
+		case movement.Income:
+			netDelta = netDelta.Add(amt)
 		}
 	}
+	return netDelta
+}
 
-	// Counterparty-named account creation is for TRANSFER legs only — an
-	// expense/income never creates an account named after a person.
-	createdAccounts := make(map[string]uint64) // "name|currency" -> new account id
+// insertOpeningMovement escribe el movimiento de saldo inicial de una cuenta.
+func (c *controller) insertOpeningMovement(userID, accountID uint64, cur currency.Currency, amount decimal.Decimal) error {
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
+	if err != nil {
+		return err
+	}
+	return c.movements.InsertBatch([]movement.Movement{{
+		UserID:        userID,
+		AccountID:     &accountID,
+		SubcategoryID: uint64(sub.ID),
+		Date:          time.Now(),
+		Type:          movement.Transfer,
+		Amount:        amount,
+		Currency:      cur,
+	}})
+}
+
+// createCounterpartyAccounts resuelve las filas marcadas PENDING_CREATE.
+//
+// Crear una cuenta con el nombre de la contraparte es SOLO para transferencias:
+// un gasto o un ingreso nunca crea una cuenta que se llama como una persona
+// ("pizza con Juan" no es la cuenta de Juan). Las filas que no son transferencia
+// se dejan sin cuenta, para que el guard las resuelva a la default de su moneda.
+func (c *controller) createCounterpartyAccounts(userID uint64, rows []movementRow, idx *accountIndex) error {
+	created := make(map[string]uint64) // "nombre|moneda" -> id, para no crear dos veces la misma
 	for i, row := range rows {
 		if row.AccountID != accountPendingCreate {
 			continue
 		}
 		if movement.TypeFromString(row.Type) != movement.Transfer {
-			rows[i].AccountID = "" // let normalize resolve to the currency default
+			rows[i].AccountID = ""
 			continue
 		}
 		key := row.AccountNameGuess + "|" + row.Currency
-		if id, ok := createdAccounts[key]; ok {
+		if id, ok := created[key]; ok {
 			rows[i].AccountID = strconv.FormatUint(id, 10)
 			continue
 		}
@@ -435,40 +541,51 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 			Currency: currency.Currency(row.Currency),
 		}
 		if err := c.accounts.Insert(newAccount); err != nil {
-			return nil, err
+			return err
 		}
 		id := uint64(newAccount.ID)
-		createdAccounts[key] = id
-		accountsByID[id] = *newAccount
+		created[key] = id
+		idx.add(*newAccount)
 		rows[i].AccountID = strconv.FormatUint(id, 10)
 	}
+	return nil
+}
 
+// buildMovements traduce cada movementRow (todo strings, por el round-trip de
+// JSONB) al movement.Movement real. No aplica ninguna regla de plata: resuelve
+// la subcategoría, parsea monto y fecha, y devuelve en paralelo los tags de
+// grupo que después usa assignTransactionIDs.
+//
+// Cada error dice qué campo lo causó: antes todos estos fallos llegaban al log
+// como "other" (ver guardReason), o sea que una subcategoría inexistente y una
+// fecha mal parseada eran indistinguibles en producción.
+func (c *controller) buildMovements(userID uint64, rows []movementRow) ([]movement.Movement, []string, error) {
 	movements := make([]movement.Movement, 0, len(rows)+1)
 	groups := make([]string, 0, len(rows)+1)
 	for _, row := range rows {
 		sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, row.Category, row.Subcategory)
 		if err != nil {
-			return nil, err
+			return nil, nil, fmt.Errorf("subcategoría %q/%q: %w", row.Category, row.Subcategory, err)
 		}
 		amount, err := parseARAmount(row.Amount)
 		if err != nil {
-			return nil, err
+			return nil, nil, fmt.Errorf("monto %q: %w", row.Amount, err)
 		}
 		date, err := time.Parse("2006-01-02", row.Date)
 		if err != nil {
-			return nil, err
+			return nil, nil, fmt.Errorf("fecha %q: %w", row.Date, err)
 		}
 
 		var accountID *uint64
 		if row.AccountID != "" {
 			id, err := strconv.ParseUint(row.AccountID, 10, 64)
 			if err != nil {
-				return nil, err
+				return nil, nil, fmt.Errorf("account_id %q: %w", row.AccountID, err)
 			}
 			accountID = &id
 		}
 
-		m := movement.Movement{
+		movements = append(movements, movement.Movement{
 			UserID:        userID,
 			AccountID:     accountID,
 			SubcategoryID: uint64(sub.ID),
@@ -480,67 +597,49 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 			PaymentMethod: optionalString(row.PaymentMethod),
 			Merchant:      optionalString(row.Merchant),
 			Description:   optionalString(row.Description),
-		}
-		movements = append(movements, m)
+		})
 		groups = append(groups, row.Group)
 	}
+	return movements, groups, nil
+}
 
-	// Group by the LLM tag, compute the FCI gain (inherits the leg's
-	// transaction_id), then enforce the invariants on the complete set.
-	assignTransactionIDs(movements, groups)
-	gain, ok, err := fciRedemptionGain(c, movements)
-	if err != nil {
-		return nil, err
-	}
-	if ok {
-		movements = append(movements, gain)
-	}
-	movements, err = normalizeMovements(movements, accountsByID, defaultByCurrency)
-	if err != nil {
-		return nil, err
-	}
-	// Attach the resolved account so the confirmation receipt can name it —
-	// these movements are built in memory (never DB-loaded), so there is no
-	// Preload to lean on. accountsByID already holds every candidate account.
-	for i := range movements {
-		if movements[i].AccountID == nil {
-			continue
-		}
-		if acc, ok := accountsByID[*movements[i].AccountID]; ok {
-			a := acc
-			movements[i].Account = &a
-		}
-	}
-
+// persistMovements es el único punto donde este camino escribe movimientos.
+//
+// UPDATE reemplaza el set viejo ENTERO (nunca un patch parcial, ver
+// ReplaceMovements). CREATE inserta, previo chequeo de que la operación no deje
+// ninguna cuenta en negativo — salvo que ese chequeo ya se haya salteado
+// explícitamente (ver skipBalanceCheck en resolveAndInsertMovements).
+func (c *controller) persistMovements(data conversation.Data, movs []movement.Movement, idx *accountIndex, skipBalanceCheck bool) ([]movement.Movement, error) {
 	if stringOrEmpty(data[keyMode]) == modeUpdate {
 		oldIDs, err := parseUintSlice(decodeStringSlice(data, keyOldMovementIDs))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("parse old movement ids: %w", err)
 		}
-		if err := c.movements.ReplaceMovements(oldIDs, movements); err != nil {
-			return nil, err
+		if err := c.movements.ReplaceMovements(oldIDs, movs); err != nil {
+			return nil, fmt.Errorf("replace movements: %w", err)
 		}
-		return movements, nil
+		return movs, nil
 	}
 
-	if !flag(data, keySkipBalanceCheck) {
-		balances := make(map[uint64]decimal.Decimal, len(accountsByID))
-		for id := range accountsByID {
+	if !skipBalanceCheck {
+		balances := make(map[uint64]decimal.Decimal, len(idx.byID))
+		for id := range idx.byID {
 			bal, err := c.movements.SumAmountForAccount(id)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("sum account %d: %w", id, err)
 			}
 			balances[id] = bal
 		}
-		if short := checkResultingBalances(movements, balances, accountsByID); len(short) > 0 {
+		// Sin envolver: el caller lo detecta con errors.As para desviar al gate.
+		if short := checkResultingBalances(movs, balances, idx.byID); len(short) > 0 {
 			return nil, &insufficientFunds{shortfalls: short}
 		}
 	}
 
-	if err := c.movements.InsertBatch(movements); err != nil {
-		return nil, err
+	if err := c.movements.InsertBatch(movs); err != nil {
+		return nil, fmt.Errorf("insert movements: %w", err)
 	}
-	return movements, nil
+	return movs, nil
 }
 
 // fciRedemptionGain detects an FCI-redemption outflow leg among the
