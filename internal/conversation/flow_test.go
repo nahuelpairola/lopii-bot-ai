@@ -233,3 +233,36 @@ func TestTextStep_PossibleNextSteps_IncludesEscapeDestinations(t *testing.T) {
 		}
 	}
 }
+
+// TestCloneDataNeverReturnsNil fija el invariante que hace que cloneData no sea
+// un maps.Clone pelado.
+//
+// Un `data: null` en la columna JSONB deserializa a un Data nil SIN que
+// json.Unmarshal reporte error (ver repository.Get), y maps.Clone(nil) devuelve
+// nil. Como todos los call sites escriben sobre la copia, sin la guarda el
+// primer write paniquea y se lleva puesto el request.
+func TestCloneDataNeverReturnsNil(t *testing.T) {
+	got := cloneData(nil)
+	if got == nil {
+		t.Fatal("cloneData(nil) devolvió nil: el próximo write va a paniquear")
+	}
+	got["k"] = "v" // no debe paniquear
+	if got["k"] != "v" {
+		t.Errorf("la copia no es escribible: %v", got)
+	}
+}
+
+func TestWithPendingErrorOnNilData(t *testing.T) {
+	got := WithPendingError(nil, "algo salió mal")
+	if PrependPendingError(got, "texto") != "algo salió mal\n\ntexto" {
+		t.Errorf("PrependPendingError = %q", PrependPendingError(got, "texto"))
+	}
+}
+
+func TestWithPendingErrorDoesNotMutateSource(t *testing.T) {
+	src := Data{"a": "1"}
+	WithPendingError(src, "boom")
+	if _, leaked := src[pendingErrorKey]; leaked {
+		t.Error("WithPendingError escribió sobre el Data original en vez de una copia")
+	}
+}
