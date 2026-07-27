@@ -2,6 +2,7 @@ package conversation
 
 import (
 	"fmt"
+	"maps"
 	"time"
 )
 
@@ -231,6 +232,18 @@ func (e *Engine) resumeGateResult(flowName string) Result {
 	}
 }
 
+// cloneData copia Data garantizando que el resultado NUNCA es nil. La garantía
+// es load-bearing: `maps.Clone(nil)` devuelve nil, y un `data: null` en la
+// columna JSONB deserializa a un Data nil sin que json.Unmarshal reporte error
+// (ver repository.Get). Sin la guarda, la primera escritura sobre esa copia
+// paniquea — el `make()` que había antes acá nunca tuvo ese problema.
+func cloneData(data Data) Data {
+	if data == nil {
+		return Data{}
+	}
+	return maps.Clone(data)
+}
+
 func retryCount(data Data) int {
 	switch v := data[retryCountKey].(type) {
 	case int:
@@ -242,10 +255,3 @@ func retryCount(data Data) int {
 	}
 }
 
-func cloneData(data Data) Data {
-	next := make(Data, len(data)+1)
-	for k, v := range data {
-		next[k] = v
-	}
-	return next
-}

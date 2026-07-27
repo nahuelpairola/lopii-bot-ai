@@ -271,9 +271,7 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	if err != nil {
 		return err
 	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
+	c.sendPrompt(ctx, b, chatID, prompt)
 	return nil
 }
 

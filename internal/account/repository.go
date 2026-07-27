@@ -24,7 +24,6 @@ type accountType string
 
 const (
 	StandardType accountType = "standard"
-	SystemType   accountType = "system"
 )
 
 func (c accountType) String() string {
@@ -63,13 +62,6 @@ func (r *repository) HasDefaultForCurrency(userID uint64, currency currency.Curr
 	return err == nil
 }
 
-// CountByUserID cuenta cuántas cuentas tiene el usuario en total.
-func (r *repository) CountByUserID(userID uint64) (int64, error) {
-	var count int64
-	err := r.conn.DB.Model(&Account{}).Where("user_id = ?", userID).Count(&count).Error
-	return count, err
-}
-
 // UnsetDefault saca el flag default de la cuenta que hoy lo tiene en esa
 // moneda, dejando lugar para que otra pase a ser la nueva default.
 func (r *repository) UnsetDefault(userID uint64, currency currency.Currency) error {
@@ -92,11 +84,6 @@ func (r *repository) Insert(a *Account) error {
 // can re-create same-named defaults without colliding.
 func (r *repository) SoftDeleteByUserID(userID uint64) error {
 	return r.conn.DB.Where("user_id = ?", userID).Delete(&Account{}).Error
-}
-
-// GetForUser devuelve todas las cuentas del usuario (alias para FindByUserID).
-func (r *repository) GetForUser(userID uint64) ([]Account, error) {
-	return r.FindByUserID(userID)
 }
 
 // GetAccount obtiene una cuenta específica por ID.

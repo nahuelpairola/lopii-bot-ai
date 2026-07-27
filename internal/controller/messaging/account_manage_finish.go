@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -107,6 +108,11 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 		Currency:      currency.Currency(stringOrEmpty(data[keyAccountCurrency])),
 	}
 	if err := c.movements.InsertBatch([]movement.Movement{m}); err != nil {
+		// Mismo motivo que en account_create_finish: función void, el error no
+		// sube a withTrace. Sin este log, un ajuste de saldo fallido es
+		// invisible en producción.
+		slog.ErrorContext(ctx, "balance adjustment insert failed",
+			"user_id", data.UserID(), "account_id", accountID, "err", err)
 		c.sendText(ctx, b, chatID, msgCouldNotSave("el ajuste"))
 		return
 	}
@@ -161,9 +167,7 @@ func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatI
 	if err != nil {
 		return
 	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
+	c.sendPrompt(ctx, b, chatID, prompt)
 }
 
 func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {

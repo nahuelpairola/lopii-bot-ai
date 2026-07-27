@@ -140,15 +140,7 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 // startSubcategoryWizard starts the classic 7-step wizard fresh — the
 // fallback whenever the LLM path can't produce a trustworthy match/proposal.
 func (c *controller) startSubcategoryWizard(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) error {
-	prompt, err := c.engine.Start(userID, subcategorySetupFlowName)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
-		return fmt.Errorf("start subcategory_setup flow: %w", err)
-	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
-	return nil
+	return c.startFlow(ctx, b, chatID, userID, subcategorySetupFlowName, nil, "start subcategory_setup flow")
 }
 
 // startSubcategorySetup resolves a CREATE_CATEGORY message with the LLM
@@ -218,9 +210,7 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 	if err != nil {
 		return c.startSubcategoryWizard(ctx, b, chatID, userID)
 	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
+	c.sendPrompt(ctx, b, chatID, prompt)
 	return nil
 }
 
@@ -244,15 +234,7 @@ func (c *controller) startCategoryManage(ctx context.Context, b *bot.Bot, chatID
 		return nil
 	}
 
-	prompt, err := c.engine.Start(userID, categoryManagePickFlowName)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
-		return fmt.Errorf("start category_manage_pick flow: %w", err)
-	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
-	return nil
+	return c.startFlow(ctx, b, chatID, userID, categoryManagePickFlowName, nil, "start category_manage_pick flow")
 }
 
 // startCategoryMatchOffer seeds and starts category_match_offer from an
@@ -268,9 +250,7 @@ func (c *controller) startCategoryMatchOffer(ctx context.Context, b *bot.Bot, ch
 	if err != nil {
 		return c.startSubcategoryWizard(ctx, b, chatID, userID)
 	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
+	c.sendPrompt(ctx, b, chatID, prompt)
 	return nil
 }
 
@@ -343,29 +323,13 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 		}
 	}
 
-	prompt, err := c.engine.StartWithData(userID, accountManageFlowName, seed)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
-		return fmt.Errorf("account manage: start account_manage flow: %w", err)
-	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
-	return nil
+	return c.startFlow(ctx, b, chatID, userID, accountManageFlowName, seed, "account manage: start account_manage flow")
 }
 
 func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", accountCreateFlowName, "user_id", userID)
 	seed := c.accountCreateSeed(ctx, text)
-	prompt, err := c.engine.StartWithData(userID, accountCreateFlowName, seed)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
-		return fmt.Errorf("start account_create flow: %w", err)
-	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
-	return nil
+	return c.startFlow(ctx, b, chatID, userID, accountCreateFlowName, seed, "start account_create flow")
 }
 
 // accountCreateSeed extracts a prefill seed from the account-create message.
@@ -452,15 +416,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 			if errors.As(err, &short) {
 				gateSeed := copyData(seed)
 				gateSeed["_gate_prompt"] = msgInsufficientFunds(short.shortfalls)
-				prompt, serr := c.engine.StartWithData(userID, movementNegativeConfirmFlowName, gateSeed)
-				if serr != nil {
-					c.sendText(ctx, b, chatID, msgSomethingBroke)
-					return fmt.Errorf("create: start negative-confirm flow: %w", serr)
-				}
-				if b != nil {
-					c.sendPrompt(ctx, b, chatID, prompt)
-				}
-				return nil
+				return c.startFlow(ctx, b, chatID, userID, movementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow")
 			}
 			c.resolveMetric(ctx, userID, outcomeCreateFailed)
 			c.sendText(ctx, b, chatID, createErrorCopy(err))
@@ -471,15 +427,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 		return nil
 	}
 
-	prompt, err := c.engine.StartWithData(userID, movementCreateFlowName, seed)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
-		return fmt.Errorf("create: start movement_create flow: %w", err)
-	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
-	return nil
+	return c.startFlow(ctx, b, chatID, userID, movementCreateFlowName, seed, "create: start movement_create flow")
 }
 
 // redirect* son los destinos de redirectTargetFor.
@@ -581,14 +529,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 			keyCandidateLabels: encodeStringSlice(labels),
 			keyCandidateGroups: encodeCandidateGroups(candidates),
 		}
-		prompt, err := c.engine.StartWithData(userID, movementUpdatePickFlowName, seed)
-		if err != nil {
-			c.sendText(ctx, b, chatID, msgSomethingBroke)
-			return fmt.Errorf("update: start movement_update_pick flow: %w", err)
-		}
-		if b != nil {
-			c.sendPrompt(ctx, b, chatID, prompt)
-		}
+		return c.startFlow(ctx, b, chatID, userID, movementUpdatePickFlowName, seed, "update: start movement_update_pick flow")
 	}
 	return nil
 }
@@ -641,15 +582,7 @@ func (c *controller) startMovementDeleteFlowFor(ctx context.Context, b *bot.Bot,
 		seed[keyResolvedIndex] = strconv.Itoa(resolvedIndex)
 	}
 
-	prompt, err := c.engine.StartWithData(userID, movementDeleteFlowName, seed)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
-		return fmt.Errorf("delete: start movement_delete flow: %w", err)
-	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
-	return nil
+	return c.startFlow(ctx, b, chatID, userID, movementDeleteFlowName, seed, "delete: start movement_delete flow")
 }
 
 // candidateLabel builds the short display line shown per option in both

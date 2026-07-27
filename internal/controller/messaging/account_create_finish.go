@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -42,6 +43,11 @@ func (c *controller) finishAccountCreateFlow(ctx context.Context, b *bot.Bot, ch
 	}
 
 	if err := c.insertAccountOpeningMovement(data.UserID(), uint64(newAccount.ID), cur, balance); err != nil {
+		// Se loguea porque acá se corta: esta función no devuelve error, así que
+		// sin esto un saldo de apertura que falla no deja rastro en ningún lado
+		// (ni en slog ni en request_traces) y la cuenta queda creada sin él.
+		slog.ErrorContext(ctx, "account opening movement failed",
+			"user_id", data.UserID(), "account_id", newAccount.ID, "err", err)
 		c.sendText(ctx, b, chatID, msgCouldNotSave("tu cuenta"))
 		return
 	}
