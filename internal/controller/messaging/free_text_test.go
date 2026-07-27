@@ -794,3 +794,66 @@ func TestStartAccountCreate_GarbageBalance_SeedsNameOnly(t *testing.T) {
 		t.Error("unparseable balance must not be seeded")
 	}
 }
+
+// TestRedirectTargetFor cubre los mensajes reales de intent_events que el router
+// mandó a UPDATE/DELETE siendo pedidos sobre una CUENTA o una CATEGORÍA. Sin esta
+// red el flujo busca movimientos: o marca no_candidates, o —peor, porque
+// resolveCandidates cae al fallback de los 5 más recientes— muestra un picker de
+// movimientos que no tienen nada que ver, y el usuario abandona.
+//
+// La regla es deliberadamente conservadora: si el mensaje nombra un movimiento,
+// NO se redirige, aunque también nombre una cuenta ("mover este movimiento a la
+// cuenta de Mercado Pago" es un UPDATE legítimo).
+func TestRedirectTargetFor(t *testing.T) {
+	cases := []struct {
+		message string
+		want    string
+	}{
+		// pedidos sobre cuentas mal ruteados a UPDATE
+		{"Quiero modificar el monto de la cuenta Wallet ARS", redirectAccount},
+		{"Quiero dejar en cero algunas cuentas", redirectAccount},
+		{"Quiero corregir lo que tengo en una cuenta", redirectAccount},
+		{"Quiero modificar los valores de las cuentas", redirectAccount},
+		{"Quisiera cambiar el nombre del Fondo común de inversión Balanz por FCI", ""},
+
+		// pedidos sobre categorías mal ruteados a UPDATE/DELETE
+		{"Quiero eliminar una categoría", redirectCategory},
+
+		// legítimos: nombran un movimiento -> no se tocan
+		{"Quiero mover este último movimiento a la cuenta de Mercado pago", ""},
+		{"Quiero cambiar la categoría de un movimiento", ""},
+		{"Perdon, el asado eran 15 mil", ""},
+		{"La panaderia era 2k", ""},
+		{"Le erre eran 1500", ""},
+	}
+
+	for _, tc := range cases {
+		if got := redirectTargetFor(tc.message); got != tc.want {
+			t.Errorf("redirectTargetFor(%q) = %q, want %q", tc.message, got, tc.want)
+		}
+	}
+}
+
+// TestStartMovementUpdate_AccountRequest_RedirectsToAccountManage: el repo tiene un
+// movimiento reciente, así que SIN la red startMovementUpdate resolvería un
+// candidato y arrancaría el flujo de update sobre un movimiento que el usuario
+// nunca mencionó. Con la red, el pedido va al flujo de cuentas.
+func TestStartMovementUpdate_AccountRequest_RedirectsToAccountManage(t *testing.T) {
+	movRepo := &fakeMovementRepoFull{similar: []movement.Movement{
+		{SubcategoryID: 1, Amount: mustDecimal(t, "3000"), Currency: "ARS", Description: strPtr("café")},
+	}}
+	orch := &fakeFullOrchestrator{accountManageResult: orchestrator.AccountManageResult{WantsNewAccount: true}}
+	engine, store := newManageDispatchEngine()
+	c := &controller{movements: movRepo, orchestrator: orch, engine: engine,
+		subcategories: &fakeSubcategoryRepoFull{},
+		accounts:      &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}}
+
+	c.startMovementUpdate(context.Background(), nil, 0, 1, "Quiero dejar en cero algunas cuentas")
+
+	if store.flowName == movementUpdatePickFlowName || store.flowName == movementUpdateConfirmFlowName {
+		t.Fatalf("started flow = %q: un pedido sobre cuentas no debe abrir el flujo de movimientos", store.flowName)
+	}
+	if store.flowName != accountCreateFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, accountCreateFlowName)
+	}
+}
