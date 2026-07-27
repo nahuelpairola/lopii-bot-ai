@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -686,14 +687,29 @@ func candidateLabel(g transactionGroup) string {
 
 // relativeDate rinde una fecha como la diría una persona. Sin año: los
 // candidatos salen de una ventana de días, no de meses.
+//
+// Compara DÍAS CALENDARIO, no instantes. La fecha de un movimiento es una fecha
+// civil que entra por time.Parse("2006-01-02"), o sea medianoche UTC, mientras
+// que la medianoche argentina son las 03:00 UTC: comparadas como instantes, todo
+// lo cargado hoy caía 3 horas antes del corte y salía "ayer" (visto en Telegram).
+// Convertir la fecha a ART tampoco sirve — la corre un día para atrás.
 func relativeDate(d time.Time) string {
-	today := startOfTodayArgentina()
+	day := civilDay(d)
+	today := civilDay(time.Now().In(constants.ArgentinaZone))
 	switch {
-	case !d.Before(today):
+	case !day.Before(today):
 		return "hoy"
-	case !d.Before(today.AddDate(0, 0, -1)):
+	case !day.Before(today.AddDate(0, 0, -1)):
 		return "ayer"
 	default:
 		return d.Format("02/01")
 	}
+}
+
+// civilDay descarta la hora y la zona: deja solo el día del calendario, anclado
+// a UTC para que dos fechas se puedan comparar entre sí sin que el huso mueva
+// ninguna de las dos.
+func civilDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }

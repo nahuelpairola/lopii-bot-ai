@@ -6,6 +6,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
@@ -282,7 +283,12 @@ func TestResolveCandidates_Fallback_SkipsSystemMovements(t *testing.T) {
 // monto crudo ("2000 ARS", "21528105 ARS"), fecha ISO, y el doble separador
 // "· ·" cuando el movimiento no tiene descripción ni merchant.
 func TestCandidateLabel(t *testing.T) {
-	today := startOfTodayArgentina()
+	// Fecha construida como en produccion: parse de "YYYY-MM-DD", o sea
+	// medianoche UTC. Construirla con startOfTodayArgentina() -el mismo valor
+	// contra el que compara relativeDate- ocultaba el bug de huso que se vio en
+	// Telegram (un movimiento de hoy salia "ayer").
+	nowART := time.Now().In(constants.ArgentinaZone)
+	today, _ := time.Parse("2006-01-02", nowART.Format("2006-01-02"))
 	sub := func(cat, s string) *subcategory.Subcategory {
 		return &subcategory.Subcategory{Category: cat, Subcategory: s}
 	}
@@ -386,5 +392,36 @@ func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 	// volumen no alcanza sus propios movimientos de la semana pasada.
 	if recencyWindow < 30*24*time.Hour {
 		t.Errorf("recencyWindow = %v, want >= 30 días: es un techo contra fósiles, no la ventana real", recencyWindow)
+	}
+}
+
+// TestRelativeDate_MovementDateIsCivilNotInstant reproduce el bug visto en
+// Telegram: un movimiento cargado HOY salía como "(ayer)" en el recibo.
+//
+// La fecha de un movimiento es una FECHA civil que llega por time.Parse, o sea
+// medianoche UTC. startOfTodayArgentina() es medianoche ART = 03:00 UTC. Comparar
+// los dos como instantes deja la fecha de hoy 3 horas ANTES del corte, así que
+// "hoy" no se cumplía nunca. Convertirla a ART tampoco sirve: la corre un día
+// para atrás. Hay que comparar días calendario.
+func TestRelativeDate_MovementDateIsCivilNotInstant(t *testing.T) {
+	// exactamente como llega desde la DB / el flow: parse de "YYYY-MM-DD"
+	parseDay := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			t.Fatalf("parse %q: %v", s, err)
+		}
+		return d
+	}
+	now := time.Now().In(constants.ArgentinaZone)
+
+	cases := []struct{ date, want string }{
+		{now.Format("2006-01-02"), "hoy"},
+		{now.AddDate(0, 0, -1).Format("2006-01-02"), "ayer"},
+		{now.AddDate(0, 0, -4).Format("2006-01-02"), now.AddDate(0, 0, -4).Format("02/01")},
+	}
+	for _, tc := range cases {
+		if got := relativeDate(parseDay(tc.date)); got != tc.want {
+			t.Errorf("relativeDate(%s) = %q, want %q", tc.date, got, tc.want)
+		}
 	}
 }
