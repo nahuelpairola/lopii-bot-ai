@@ -41,7 +41,7 @@ func (r *fakeQueryMovements) ReplaceMovements([]uint, []movement.Movement) error
 func (r *fakeQueryMovements) FindSimilarForUser(uint64, string, time.Time, *time.Time) ([]movement.Movement, error) {
 	return nil, nil
 }
-func (r *fakeQueryMovements) FindRecentlyCreatedForUser(uint64, time.Time) ([]movement.Movement, error) {
+func (r *fakeQueryMovements) FindRecentlyCreatedForUser(uint64, time.Time, int) ([]movement.Movement, error) {
 	return nil, nil
 }
 func (r *fakeQueryMovements) SoftDeleteByIDs([]uint) error                               { return nil }

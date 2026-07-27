@@ -93,6 +93,7 @@ type fakeMovementRepoForResolve struct {
 	capturedSince        time.Time
 	capturedUntil        *time.Time
 	capturedRecencySince time.Time
+	capturedLimit        int
 	recencyCalled        bool
 }
 
@@ -114,9 +115,10 @@ func (r *fakeMovementRepoForResolve) FindSimilarForUser(userID uint64, query str
 	return r.result, nil
 }
 
-func (r *fakeMovementRepoForResolve) FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]movement.Movement, error) {
+func (r *fakeMovementRepoForResolve) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error) {
 	r.recencyCalled = true
 	r.capturedRecencySince = since
+	r.capturedLimit = limit
 	return r.result, nil
 }
 
@@ -325,5 +327,64 @@ func TestCandidateLabel(t *testing.T) {
 		if got := candidateLabel(tc.group); got != tc.want {
 			t.Errorf("%s:\n got  %q\n want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// TestResolveCandidates_ManyTextMatches_IsCapped: el cap de fallbackRecentCap
+// solo se aplicaba al fallback, así que un mensaje ambiguo ("el super") sobre una
+// base con historia devolvía TODOS los que matchean. Con 20 candidatos el picker
+// son 20 botones de a 2 por fila, y encima conversation_states guarda los 20
+// grupos completos en JSONB. Se corta por recencia: groups ya viene newest-first.
+func TestResolveCandidates_ManyTextMatches_IsCapped(t *testing.T) {
+	now := time.Now()
+	var many []movement.Movement
+	for i := 0; i < 20; i++ {
+		many = append(many, movement.Movement{
+			// created_at viejo a propósito: sin esto el atajo del recién-creado
+			// se lleva el caso y no probaríamos el cap.
+			Model:       gorm.Model{ID: uint(100 + i), CreatedAt: now.Add(-time.Duration(i+2) * time.Hour)},
+			Description: strPtr("compra en el super"),
+		})
+	}
+	fake := &fakeMovementRepoForResolve{result: many}
+	c := &controller{movements: fake}
+
+	candidates, err := c.resolveCandidates(2, "el super era 8 mil", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) > fallbackRecentCap {
+		t.Fatalf("got %d candidates, want <= %d: un picker no puede tener 20 botones", len(candidates), fallbackRecentCap)
+	}
+	if candidates[0].Movements[0].ID != 100 {
+		t.Errorf("primer candidato = %d, want 100 (el corte tiene que dejar los más recientes)", candidates[0].Movements[0].ID)
+	}
+}
+
+// TestResolveCandidates_NoDate_WindowIsDynamic: la ventana fija de 48h servía o
+// no según el ritmo de carga de cada uno. Quien carga 20 por día tenía 40
+// candidatos; quien carga 3 por semana no llegaba ni a lo del miércoles pasado.
+//
+// El criterio real no es el tiempo sino cuántos movimientos tenés frescos, así
+// que la ventana pasa a ser "los últimos N cargados", con un techo temporal
+// generoso para no arrastrar fósiles. Se ajusta sola al ritmo de cada usuario
+// sin calcular nada.
+func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
+		{Model: gorm.Model{ID: 1}, Description: strPtr("Café")},
+	}}
+	c := &controller{movements: fake}
+
+	if _, err := c.resolveCandidates(42, "era 700", "", ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if fake.capturedLimit != recencyLimit {
+		t.Errorf("limit = %d, want %d: la ventana se acota por cantidad, no solo por tiempo", fake.capturedLimit, recencyLimit)
+	}
+	// El techo temporal tiene que ser holgado: con 48h, un usuario de bajo
+	// volumen no alcanza sus propios movimientos de la semana pasada.
+	if recencyWindow < 30*24*time.Hour {
+		t.Errorf("recencyWindow = %v, want >= 30 días: es un techo contra fósiles, no la ventana real", recencyWindow)
 	}
 }

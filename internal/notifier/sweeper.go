@@ -31,7 +31,7 @@ type reminderStore interface {
 }
 
 type movementReader interface {
-	FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]movement.Movement, error)
+	FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error)
 }
 
 type userReader interface {
@@ -134,7 +134,7 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 		if nowMin < r.MidpointMin() {
 			continue // not time yet
 		}
-		moved, err := s.movements.FindRecentlyCreatedForUser(r.UserID, startOfDay)
+		moved, err := s.movements.FindRecentlyCreatedForUser(r.UserID, startOfDay, 0)
 		if err != nil {
 			slog.ErrorContext(ctx, "notifier movements lookup failed", "user_id", r.UserID, "err", err)
 			continue

@@ -19,9 +19,19 @@ const (
 	dateAnchorMargin  = 24 * time.Hour
 	minMatchTokenLen  = 4
 	fallbackRecentCap = 5
-	// ponytail: 48h covers same-session + "recorded last night, fixing this
-	// morning" without naming a date; widen if corrections routinely lag longer.
-	recencyWindow = 48 * time.Hour
+	// recencyLimit / recencyWindow acotan la ventana de "lo que tengo fresco".
+	//
+	// El límite REAL es por cantidad, no por tiempo: una ventana fija servía o no
+	// según el ritmo de cada usuario. Quien carga 20 por día tenía 40 candidatos
+	// para elegir; quien carga 3 por semana no llegaba ni a lo del miércoles
+	// pasado. Con "los últimos N cargados" la ventana se ajusta sola: al que
+	// carga mucho le cubre un día, al que carga poco le cubre semanas.
+	//
+	// recencyWindow queda como techo contra fósiles, no como la ventana real: sin
+	// él, un usuario con 5 movimientos en total vería uno del año pasado como
+	// candidato de "eran 1500".
+	recencyLimit  = 30
+	recencyWindow = 90 * 24 * time.Hour
 	// justCreatedWindow: dentro de esta ventana, un mensaje SIN referente
 	// textual se resuelve al último movimiento cargado en vez de abrir un
 	// picker. Generosa a propósito — solo se consulta cuando no hay ninguna
@@ -137,7 +147,7 @@ func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo 
 		// No date named → "what did I just do": recency of ENTRY (created_at),
 		// not business date. A movement entered now but dated in the past
 		// ("le pagué el asado de ayer") must still be a candidate.
-		matches, err = c.movements.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow))
+		matches, err = c.movements.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow), recencyLimit)
 	} else {
 		since := startOfTodayArgentina()
 		if dateFrom != "" {
@@ -167,6 +177,16 @@ func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo 
 		}
 	}
 	if len(candidates) > 0 {
+		// Mismo techo que el fallback: un mensaje ambiguo ("el super") puede
+		// matchear decenas de movimientos en una base con historia, y un picker
+		// de veinte botones no se lee — además de que conversation_states
+		// guardaría los veinte grupos enteros en JSONB. El corte es por
+		// recencia porque candidates hereda el orden newest-first de groups.
+		// ponytail: si el correcto queda afuera del corte seguido, el paso
+		// siguiente es rankear por similitud en vez de cortar por recencia.
+		if len(candidates) > fallbackRecentCap {
+			candidates = candidates[:fallbackRecentCap]
+		}
 		return candidates, nil
 	}
 

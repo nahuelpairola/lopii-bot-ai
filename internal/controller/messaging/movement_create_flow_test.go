@@ -183,7 +183,7 @@ func (r *fakeMovementRepoFull) ReplaceMovements(oldIDs []uint, newMovements []mo
 func (r *fakeMovementRepoFull) FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error) {
 	return r.similar, nil
 }
-func (r *fakeMovementRepoFull) FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]movement.Movement, error) {
+func (r *fakeMovementRepoFull) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error) {
 	return r.similar, r.similarErr
 }
 func (r *fakeMovementRepoFull) SoftDeleteByIDs(ids []uint) error {
