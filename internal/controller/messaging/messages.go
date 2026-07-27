@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/pendingjob"
 )
@@ -181,19 +183,45 @@ func movementReceiptLine(m movement.Movement) string {
 	if m.Description != nil {
 		desc = *m.Description
 	}
+	amount := currency.FormatMoney(m.Amount.Abs(), m.Currency)
 	if m.Account != nil && m.Account.Name != "" {
-		return fmt.Sprintf("%s %s › %s — %s %s · %s · %s (%s)",
-			movement.IconForType(m.Type), category, sub, displayAmount(m.Amount), m.Currency.String(), desc, m.Account.Name, m.Date.Format("2006-01-02"))
+		return fmt.Sprintf("%s %s › %s — %s · %s · %s (%s)",
+			movement.IconForType(m.Type), category, sub, amount, desc, m.Account.Name, relativeDate(m.Date))
 	}
-	return fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
-		movement.IconForType(m.Type), category, sub, displayAmount(m.Amount), m.Currency.String(), desc, m.Date.Format("2006-01-02"))
+	return fmt.Sprintf("%s %s › %s — %s · %s (%s)",
+		movement.IconForType(m.Type), category, sub, amount, desc, relativeDate(m.Date))
 }
 
 // displayAmount renders a movement amount for any audience outside storage —
 // the user and the LLM (as an UPDATE/DELETE candidate). The stored sign is
 // internal; everyone sees the magnitude, direction comes from the type.
+//
+// Sin formato de miles: lo consume también el LLM (como candidato de
+// UPDATE/DELETE) y ahí un "$3.000" es peor que un "3000" — para el usuario está
+// rowMoney/currency.FormatMoney.
 func displayAmount(d decimal.Decimal) string {
 	return d.Abs().String()
+}
+
+// rowMoney formatea el monto de una fila para mostrárselo al usuario. La fila
+// carga el monto como string (viaja por JSONB hacia conversation_states), así
+// que hay que reparsearlo. Si no parsea se muestra crudo: un monto raro no debe
+// romper el mensaje entero.
+func rowMoney(r movementRow) string {
+	amt, err := parseARAmount(r.Amount)
+	if err != nil {
+		return r.Amount + " " + r.Currency
+	}
+	return currency.FormatMoney(amt.Abs(), currency.Currency(r.Currency))
+}
+
+// rowDate rinde la fecha de una fila en relativo ("hoy"/"ayer"/"04/07").
+func rowDate(r movementRow) string {
+	d, err := time.Parse("2006-01-02", r.Date)
+	if err != nil {
+		return r.Date
+	}
+	return relativeDate(d)
 }
 
 func msgPickUpdateCandidate(data conversation.Data) string {
@@ -208,8 +236,8 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 	if flag(data, keyDeleteInstead) {
 		lines := []string{"🗑️ Quedó gratis, así que lo voy a borrar:"}
 		for _, b := range before {
-			lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
-				iconOrDefault(b.Icon), b.Category, b.Subcategory, b.Amount, b.Currency, b.Description, b.Date))
+			lines = append(lines, fmt.Sprintf("%s %s › %s — %s · %s (%s)",
+				iconOrDefault(b.Icon), b.Category, b.Subcategory, rowMoney(b), b.Description, rowDate(b)))
 		}
 		return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
 	}
@@ -222,12 +250,12 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 		if i < len(before) {
 			b = before[i]
 		}
-		line := fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
-			iconOrDefault(a.Icon), a.Category, a.Subcategory, a.Amount, a.Currency, a.Description, a.Date)
+		line := fmt.Sprintf("%s %s › %s — %s · %s (%s)",
+			iconOrDefault(a.Icon), a.Category, a.Subcategory, rowMoney(a), a.Description, rowDate(a))
 		if a.AccountName != "" {
 			line += " · " + a.AccountName
 		}
-		changed := fmt.Sprintf("antes: %s %s", b.Amount, b.Currency)
+		changed := "antes: " + rowMoney(b)
 		if b.AccountName != "" && b.AccountName != a.AccountName {
 			changed += " · " + b.AccountName
 		}

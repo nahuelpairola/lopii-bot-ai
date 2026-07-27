@@ -115,10 +115,14 @@ func TestMovementReceiptLine_IncludesCategorySubcategoryDescriptionDate(t *testi
 	}
 
 	line := movementReceiptLine(m)
-	for _, want := range []string{"Alimentación", "Café", "Café con Juan", "2026-07-04", "3000", "ARS"} {
+	for _, want := range []string{"Alimentación", "Café", "Café con Juan", "04/07", "$3.000"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("receipt line %q missing %q", line, want)
 		}
+	}
+	// El símbolo ya dice la moneda: "$3.000 ARS" es ruido.
+	if strings.Contains(line, "ARS") {
+		t.Errorf("receipt line %q repite la moneda al lado del símbolo", line)
 	}
 }
 
@@ -131,7 +135,14 @@ func TestMsgConfirmUpdateDiff_IncludesSubcategoryDescriptionDate(t *testing.T) {
 	}
 
 	msg := msgConfirmUpdateDiff(data)
-	for _, want := range []string{"Alimentación", "Café", "Café con Juan", "2026-07-04"} {
+	for _, want := range []string{"Alimentación", "Café", "Café con Juan", "04/07"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("diff message %q missing %q", msg, want)
+		}
+	}
+	// El diff es la pantalla que más se ve tras el atajo del recién-creado:
+	// el monto nuevo y el viejo tienen que leerse de un vistazo.
+	for _, want := range []string{"$3.500", "antes: $3.000"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("diff message %q missing %q", msg, want)
 		}
