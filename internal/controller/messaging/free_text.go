@@ -415,7 +415,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 			var short *insufficientFunds
 			if errors.As(err, &short) {
 				gateSeed := copyData(seed)
-				gateSeed["_gate_prompt"] = msgInsufficientFunds(short.shortfalls)
+				gateSeed[keyGatePrompt] = msgInsufficientFunds(short.shortfalls)
 				return c.startFlow(ctx, b, chatID, userID, movementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow")
 			}
 			c.resolveMetric(ctx, userID, outcomeCreateFailed)

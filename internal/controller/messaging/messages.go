@@ -136,7 +136,7 @@ func msgAskCategory(data conversation.Data) string {
 
 func msgAskSubcategory(data conversation.Data) string {
 	rows := decodeMovementRows(data)
-	idx, _ := strconv.Atoi(stringOrEmpty(data["gap_active_row"]))
+	idx, _ := strconv.Atoi(stringOrEmpty(data[keyGapActiveRow]))
 	return "¿Y la subcategoría de " + movementGapDescriptor(rows[idx]) + ", dentro de " + rows[idx].Category + "?" + gapPosition(idx, len(rows))
 }
 

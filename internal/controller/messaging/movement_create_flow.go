@@ -13,6 +13,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 )
 
 const (
@@ -35,6 +36,15 @@ const (
 	// optionBalanceLater lets the user skip the opening-balance question for
 	// a freshly lazy-created account.
 	optionBalanceLater = "balance_later"
+
+	// accountChoiceExistingPrefix marca el botón de una cuenta que YA existe,
+	// contra optionAccountCreate. El valor se arma con este prefijo y se
+	// desarma con TrimPrefix — el par clásico que se desincroniza si cada lado
+	// escribe el literal por su cuenta.
+	accountChoiceExistingPrefix = "existing:"
+
+	// optionAccountCreate es el botón "crear la cuenta que adivinó el LLM".
+	optionAccountCreate = "create"
 )
 
 // cancelOption is the "🚫 Cancelar" button appended to every gap-fill
@@ -143,7 +153,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 					return data
 				}
 				next := copyData(data)
-				next["gap_active_row"] = gaps[0]
+				next[keyGapActiveRow] = gaps[0]
 				rows := decodeMovementRows(data)
 				idx, _ := strconv.Atoi(gaps[0])
 				rows[idx].Category = value
@@ -155,7 +165,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		stepResolveSubcategory: conversation.ChoiceStep{
 			PromptText: msgAskSubcategory,
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				rowIdx, _ := strconv.Atoi(stringOrEmpty(data["gap_active_row"]))
+				rowIdx, _ := strconv.Atoi(stringOrEmpty(data[keyGapActiveRow]))
 				rows := decodeMovementRows(data)
 				category := rows[rowIdx].Category
 
@@ -183,7 +193,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				}
 				next := copyData(data)
 				gaps := decodeStringSlice(data, keyPendingCategoryGaps)
-				rowIdx, _ := strconv.Atoi(stringOrEmpty(data["gap_active_row"]))
+				rowIdx, _ := strconv.Atoi(stringOrEmpty(data[keyGapActiveRow]))
 
 				rows := decodeMovementRows(data)
 				rows[rowIdx].Subcategory = value
@@ -191,7 +201,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				if len(gaps) > 0 {
 					next[keyPendingCategoryGaps] = encodeStringSlice(gaps[1:])
 				}
-				next["gap_active_row"] = ""
+				next[keyGapActiveRow] = ""
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -220,13 +230,13 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 					}
 					opts = append(opts, conversation.ChoiceOption{
 						Label:    a.Name,
-						Value:    "existing:" + strconv.FormatUint(uint64(a.ID), 10),
+						Value:    accountChoiceExistingPrefix + strconv.FormatUint(uint64(a.ID), 10),
 						NextStep: stepResolveAccount,
 					})
 				}
 				opts = append(opts, conversation.ChoiceOption{
 					Label:    "➕ Crear cuenta \"" + rows[rowIdx].AccountNameGuess + "\"",
-					Value:    "create",
+					Value:    optionAccountCreate,
 					NextStep: stepResolveAccount,
 				})
 				opts = append(opts, cancelOption)
@@ -247,10 +257,10 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				rowIdx, _ := strconv.Atoi(gaps[0])
 
 				rows := decodeMovementRows(data)
-				if value == "create" {
+				if value == optionAccountCreate {
 					rows[rowIdx].AccountID = accountPendingCreate
 				} else {
-					rows[rowIdx].AccountID = strings.TrimPrefix(value, "existing:")
+					rows[rowIdx].AccountID = strings.TrimPrefix(value, accountChoiceExistingPrefix)
 				}
 				next[keyMovements] = encodeMovementRows(rows)
 				next[keyPendingAccountGaps] = encodeStringSlice(gaps[1:])
@@ -379,7 +389,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 
 			if bal := stringOrEmpty(data[keyFirstAccountBalance]); bal != "" {
 				if amt, err := parseARAmount(bal); err == nil && !amt.IsNegative() {
-					sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, "Sistema", "Saldo inicial")
+					sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
 					if err != nil {
 						return nil, err
 					}
@@ -589,7 +599,7 @@ func fciRedemptionGain(c *controller, movements []movement.Movement) (movement.M
 			continue
 		}
 
-		gainSub, err := c.subcategories.FindByCategoryAndSubcategory(m.UserID, "Sistema", "Rendimiento inversión")
+		gainSub, err := c.subcategories.FindByCategoryAndSubcategory(m.UserID, subcategory.CategorySystem, "Rendimiento inversión")
 		if err != nil {
 			return movement.Movement{}, false, err
 		}

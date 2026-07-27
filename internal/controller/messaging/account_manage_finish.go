@@ -13,6 +13,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 )
 
 // finishAccountManageFlow applies the confirmed operation. Every branch
@@ -86,7 +87,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 		return
 	}
 
-	sub, err := c.subcategories.FindByCategoryAndSubcategory(data.UserID(), "Sistema", "Ajuste de saldo")
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(data.UserID(), subcategory.CategorySystem, "Ajuste de saldo")
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return

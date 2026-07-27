@@ -11,6 +11,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 )
 
 // finishAccountCreateFlow is the Telegram-facing wrapper around the real
@@ -61,7 +62,7 @@ func (c *controller) finishAccountCreateFlow(ctx context.Context, b *bot.Bot, ch
 // inserted even when balance is "0", for the same reason: the balance is
 // always computed from movements, never stored (see movement.SumAmountForAccount).
 func (c *controller) insertAccountOpeningMovement(userID, accountID uint64, cur, balanceText string) error {
-	sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, "Sistema", "Saldo inicial")
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
 	if err != nil {
 		return err
 	}

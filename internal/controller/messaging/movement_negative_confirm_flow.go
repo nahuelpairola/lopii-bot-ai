@@ -20,7 +20,7 @@ const (
 func NewMovementNegativeConfirmFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepNegativeConfirm: conversation.ChoiceStep{
-			PromptText: func(data conversation.Data) string { return stringOrEmpty(data["_gate_prompt"]) },
+			PromptText: func(data conversation.Data) string { return stringOrEmpty(data[keyGatePrompt]) },
 			Options: []conversation.ChoiceOption{
 				{Label: "✅ Registrar igual", Value: "register", Finish: true},
 				{Label: "✍️ Reescribir", Value: "rewrite", Finish: true},
