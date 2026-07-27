@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -431,7 +432,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 	}
 	slog.DebugContext(ctx, "create classification result", "result", result)
 
-	seed := buildCreateSeed(result)
+	seed := buildCreateSeed(result, taxonomy)
 	slog.InfoContext(ctx, "create seed built",
 		"user_id", userID,
 		"movements", len(result.Movements),
@@ -481,10 +482,69 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 	return nil
 }
 
+// redirect* son los destinos de redirectTargetFor.
+const (
+	redirectAccount  = "account"
+	redirectCategory = "category"
+)
+
+// redirectTargetFor detecta un mensaje que el router mandó a UPDATE/DELETE pero
+// que en realidad pide algo sobre una CUENTA o una CATEGORÍA, no sobre un
+// movimiento ("quiero dejar en cero algunas cuentas"). Devuelve "" cuando no hay
+// que redirigir.
+//
+// Sin esta red el flujo va a buscar movimientos igual, y como resolveCandidates
+// no dead-endea —cae al fallback de los N más recientes— el usuario termina
+// viendo un picker de movimientos que no tienen nada que ver con lo que pidió.
+//
+// La regla es conservadora a propósito: si el mensaje nombra un movimiento, NO se
+// redirige aunque también nombre una cuenta, porque "mover este movimiento a la
+// cuenta de Mercado Pago" es un UPDATE legítimo. Preferimos no redirigir de más:
+// un falso positivo manda al usuario a un flujo equivocado, un falso negativo
+// solo lo deja como está hoy.
+//
+// ponytail: keywords, no LLM — es determinista, cuesta cero tokens y cero
+// latencia. No cubre una cuenta nombrada sin la palabra "cuenta" ("cambiar el
+// nombre del Fondo común de inversión Balanz"); eso pediría matchear contra los
+// nombres de cuentas del usuario, con el riesgo de pisar un merchant homónimo.
+func redirectTargetFor(message string) string {
+	lower := strings.ToLower(message)
+	if strings.Contains(lower, "movimiento") {
+		return "" // nombra un movimiento: es UPDATE/DELETE de verdad
+	}
+	if strings.Contains(lower, "categoría") || strings.Contains(lower, "categoria") {
+		return redirectCategory
+	}
+	if strings.Contains(lower, "cuenta") {
+		return redirectAccount
+	}
+	return ""
+}
+
+// redirectMisroutedRequest desvía al flujo que corresponde un mensaje que el
+// router mandó a UPDATE/DELETE pero que en realidad pide algo sobre una cuenta o
+// una categoría. Devuelve handled=true si ya se ocupó del mensaje; el caller
+// hace `return err` sin seguir con la resolución de candidatos. Mismo contrato
+// que handleGroqError.
+func (c *controller) redirectMisroutedRequest(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
+	switch redirectTargetFor(text) {
+	case redirectAccount:
+		slog.InfoContext(ctx, "misrouted request redirected", "to", redirectAccount, "user_id", userID)
+		return true, c.startAccountManage(ctx, b, chatID, userID, text)
+	case redirectCategory:
+		slog.InfoContext(ctx, "misrouted request redirected", "to", redirectCategory, "user_id", userID)
+		return true, c.startCategoryManage(ctx, b, chatID, userID)
+	}
+	return false, nil
+}
+
 // startMovementUpdate resolves which existing movement(s) the message
 // refers to via resolveCandidates (pg_trgm search, default 7-day
 // window) and branches on how many candidates come back.
 func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+	if handled, err := c.redirectMisroutedRequest(ctx, b, chatID, userID, text); handled {
+		return err
+	}
 	slog.InfoContext(ctx, "flow started", "flow", movementUpdatePickFlowName, "user_id", userID)
 	candidates, err := c.resolveCandidates(userID, text, "", "")
 	if err != nil {
@@ -540,6 +600,9 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 // candidate, letting the flow's Skip mechanism bypass the picker
 // entirely.
 func (c *controller) startMovementDelete(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+	if handled, err := c.redirectMisroutedRequest(ctx, b, chatID, userID, text); handled {
+		return err
+	}
 	slog.InfoContext(ctx, "flow started", "flow", movementDeleteFlowName, "user_id", userID)
 	candidates, err := c.resolveCandidates(userID, text, "", "")
 	if err != nil {
@@ -589,17 +652,64 @@ func (c *controller) startMovementDeleteFlowFor(ctx context.Context, b *bot.Bot,
 	return nil
 }
 
-// candidateLabel builds the short display line shown per option in
-// both UPDATE's and DELETE's ambiguous-candidate pickers.
+// candidateLabel builds the short display line shown per option in both
+// UPDATE's and DELETE's ambiguous-candidate pickers.
+//
+// Formato: "🔴 Pan · $2.000 · hoy". Telegram corta los labels largos, así que
+// cada parte se gana el lugar: qué fue, cuánto, cuándo. El monto va en formato
+// argentino (antes salía "2000 ARS", y un saldo grande como "21528105 ARS"),
+// la fecha en relativo (antes "2026-07-27"), y siempre hay un nombre: sin
+// descripción ni merchant caía a "· ·", que no le dice nada a nadie.
+//
+// El monto va SIEMPRE en positivo: los movimientos vienen de la DB con el signo
+// contable, y ese signo no escapa de storage — la dirección la da el tipo.
 func candidateLabel(g transactionGroup) string {
 	if len(g.Movements) == 0 {
 		return "?"
 	}
 	m := g.Movements[0]
-	row := movementToRow(m)
-	desc := row.Description
-	if desc == "" {
-		desc = row.Merchant
+
+	name := ""
+	if m.Description != nil {
+		name = strings.TrimSpace(*m.Description)
 	}
-	return movement.IconForType(m.Type) + " " + row.Amount + " " + row.Currency + " · " + desc + " · " + row.Date
+	if name == "" && m.Merchant != nil {
+		name = strings.TrimSpace(*m.Merchant)
+	}
+	if name == "" && m.Subcategory != nil {
+		name = m.Subcategory.Subcategory
+	}
+
+	return movement.IconForType(m.Type) + " " + name +
+		" · " + currency.FormatMoney(m.Amount.Abs(), m.Currency) +
+		" · " + relativeDate(m.Date)
+}
+
+// relativeDate rinde una fecha como la diría una persona. Sin año: los
+// candidatos salen de una ventana de días, no de meses.
+//
+// Compara DÍAS CALENDARIO, no instantes. La fecha de un movimiento es una fecha
+// civil que entra por time.Parse("2006-01-02"), o sea medianoche UTC, mientras
+// que la medianoche argentina son las 03:00 UTC: comparadas como instantes, todo
+// lo cargado hoy caía 3 horas antes del corte y salía "ayer" (visto en Telegram).
+// Convertir la fecha a ART tampoco sirve — la corre un día para atrás.
+func relativeDate(d time.Time) string {
+	day := civilDay(d)
+	today := civilDay(time.Now().In(constants.ArgentinaZone))
+	switch {
+	case !day.Before(today):
+		return "hoy"
+	case !day.Before(today.AddDate(0, 0, -1)):
+		return "ayer"
+	default:
+		return d.Format("02/01")
+	}
+}
+
+// civilDay descarta la hora y la zona: deja solo el día del calendario, anclado
+// a UTC para que dos fechas se puedan comparar entre sí sin que el huso mueva
+// ninguna de las dos.
+func civilDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }

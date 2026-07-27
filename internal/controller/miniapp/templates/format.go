@@ -1,8 +1,6 @@
 package templates
 
 import (
-	"strings"
-
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/currency"
 )
@@ -15,19 +13,12 @@ var (
 	oneThousand    = decimal.NewFromInt(1_000)
 )
 
-// FormatMoney renders an amount the way an Argentine reader expects: "." for
-// thousands, "," for decimals. ARS drops the cents — at peso scale they are
-// noise on a dashboard. The sign goes outside the symbol ("-$560.000").
+// FormatMoney renders an amount the way an Argentine reader expects.
+// La implementación vive en internal/currency porque el mismo formato lo usan
+// los mensajes de Telegram; acá queda el alias para no tocar los 11 call sites
+// de la Mini App (uno de ellos es código generado por templ).
 func FormatMoney(d decimal.Decimal, cur currency.Currency) string {
-	sign := ""
-	if d.IsNegative() {
-		sign = "-"
-	}
-	abs := d.Abs()
-	if cur == currency.USD {
-		return sign + "US$" + groupThousands(abs.StringFixed(2))
-	}
-	return sign + "$" + groupThousands(abs.StringFixed(0))
+	return currency.FormatMoney(d, cur)
 }
 
 // FormatCompact renders a evolution cell. ARS is scaled to thousands — at peso
@@ -60,19 +51,4 @@ func ScaleNote(cur currency.Currency) string {
 	return " · en miles de $"
 }
 
-// groupThousands turns a plain decimal string ("1234567.89") into AR format
-// ("1.234.567,89").
-func groupThousands(s string) string {
-	intPart, frac, hasFrac := strings.Cut(s, ".")
-	var b strings.Builder
-	for i := range intPart {
-		if i > 0 && (len(intPart)-i)%3 == 0 {
-			b.WriteByte('.')
-		}
-		b.WriteByte(intPart[i])
-	}
-	if hasFrac {
-		return b.String() + "," + frac
-	}
-	return b.String()
-}
+func groupThousands(s string) string { return currency.GroupThousands(s) }

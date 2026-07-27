@@ -62,7 +62,7 @@ func TestGapPromptEval(t *testing.T) {
 	}
 	t.Logf("classified: %+v", result.Movements)
 
-	data := buildCreateSeed(result)
+	data := buildCreateSeed(result, nil)
 	gaps := decodeStringSlice(data, keyPendingCategoryGaps)
 	if len(gaps) != 2 {
 		t.Fatalf("want both rows PENDING_REVIEW (2 gaps), got %d — taxonomy wasn't sparse enough to force it: %+v", len(gaps), result.Movements)

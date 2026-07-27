@@ -134,12 +134,15 @@ func (r *repository) FindSimilarForUser(userID uint64, query string, since time.
 // past ("le pagué el asado de ayer") must still be a candidate.
 // created_at is timestamptz, so a time.Time binds directly (no DATE-cast
 // trap; see FindSimilarForUser's note on why `date` needs a string bind).
-func (r *repository) FindRecentlyCreatedForUser(userID uint64, since time.Time) ([]Movement, error) {
+func (r *repository) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]Movement, error) {
 	var ms []Movement
-	err := r.db.DB.Preload("Subcategory").Preload("Account").
+	q := r.db.DB.Preload("Subcategory").Preload("Account").
 		Where("user_id = ? AND created_at >= ?", userID, since).
-		Order("created_at DESC, id DESC").
-		Find(&ms).Error
+		Order("created_at DESC, id DESC")
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
+	err := q.Find(&ms).Error
 	return ms, err
 }
 

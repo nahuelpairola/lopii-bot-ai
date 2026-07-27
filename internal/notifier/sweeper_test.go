@@ -29,7 +29,7 @@ func (f *fakeReminders) SetLastSummaryOn(uint64, time.Time) error             { 
 
 type fakeMovements struct{ byUser map[uint64]int }
 
-func (f *fakeMovements) FindRecentlyCreatedForUser(userID uint64, _ time.Time) ([]movement.Movement, error) {
+func (f *fakeMovements) FindRecentlyCreatedForUser(userID uint64, _ time.Time, limit int) ([]movement.Movement, error) {
 	return make([]movement.Movement, f.byUser[userID]), nil
 }
 

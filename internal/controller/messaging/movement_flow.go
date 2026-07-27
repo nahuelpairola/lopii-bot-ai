@@ -146,9 +146,20 @@ func encodeStringSlice(items []string) []interface{} {
 // movement_update_flow.go builds its own seed (buildUpdateSeed) since an
 // UPDATE's shape differs — before/after movements, no gap-filling in
 // this feature's scope — rather than reusing this function.
-func buildCreateSeed(result orchestrator.CreateResult) conversation.Data {
+func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry) conversation.Data {
 	rows := make([]movementRow, 0, len(result.Movements))
 	var categoryGaps, accountGaps []string
+
+	// known indexa los pares (categoría, subcategoría) que el usuario realmente
+	// tiene. El modelo debería devolver PENDING_REVIEW cuando duda, pero a veces
+	// inventa un par que no existe; sin este set eso no marcaba gap, el flujo
+	// insertaba derecho y FindByCategoryAndSubcategory fallaba — el movimiento se
+	// perdía con un error genérico (causa de los create_failed en intent_events).
+	// Taxonomía vacía = no validar: sin con qué comparar, no se inventan gaps.
+	known := make(map[string]bool, len(taxonomy))
+	for _, t := range taxonomy {
+		known[t.Category+"\x00"+t.Subcategory] = true
+	}
 
 	for i, draft := range result.Movements {
 		row := movementRow{
@@ -169,7 +180,7 @@ func buildCreateSeed(result orchestrator.CreateResult) conversation.Data {
 		}
 
 		idx := strconv.Itoa(i)
-		if draft.Category == constants.PendingReview {
+		if draft.Category == constants.PendingReview || (len(known) > 0 && !known[draft.Category+"\x00"+draft.Subcategory]) {
 			categoryGaps = append(categoryGaps, idx)
 		}
 		if draft.Type == constants.Transfer && draft.AccountID == nil {
