@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 )
 
 // finishAccountManageFlow applies the confirmed operation. Every branch
@@ -85,28 +87,57 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 		return
 	}
 
-	sub, err := c.subcategories.FindByCategoryAndSubcategory(data.UserID(), "Sistema", "Ajuste de saldo")
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(data.UserID(), subcategory.CategorySystem, "Ajuste de saldo")
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return
 	}
 
+	// La cuenta se relee de la DB para que el guard compare la moneda del
+	// movimiento contra la verdad de la base, y no contra lo que dice la Data del
+	// flujo. Si las dos discrepan, el ajuste se rechaza en vez de escribir un
+	// movimiento en una moneda distinta a la de su cuenta — que es el error que
+	// corrompe un balance en silencio, porque el saldo es SUM(amount) y no mira
+	// la moneda de cada fila.
+	acc, err := c.accounts.GetAccount(accountID)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgCouldNotLoad)
+		return
+	}
+
+	// El tipo lo decide el signo del delta; el signo del amount lo re-deriva el
+	// guard a partir del tipo. Antes esa derivación estaba copiada acá a mano,
+	// duplicando la regla que movement.Normalize ya es dueño de aplicar.
 	mType := movement.Income
-	amount := delta.Abs()
 	if delta.IsNegative() {
 		mType = movement.Expense
-		amount = delta.Abs().Neg()
 	}
-	m := movement.Movement{
-		UserID:        data.UserID(),
-		AccountID:     &accountID,
-		SubcategoryID: uint64(sub.ID),
-		Date:          time.Now(),
-		Type:          mType,
-		Amount:        amount,
-		Currency:      currency.Currency(stringOrEmpty(data[keyAccountCurrency])),
+	movs, err := movement.Normalize(
+		[]movement.Movement{{
+			UserID:        data.UserID(),
+			AccountID:     &accountID,
+			SubcategoryID: uint64(sub.ID),
+			Date:          time.Now(),
+			Type:          mType,
+			Amount:        delta.Abs(),
+			Currency:      currency.Currency(stringOrEmpty(data[keyAccountCurrency])),
+		}},
+		map[uint64]account.Account{accountID: *acc},
+		nil, // sin fallback a la default: la cuenta del ajuste siempre es explícita
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "balance adjustment rejected by guard",
+			"user_id", data.UserID(), "account_id", accountID, "reason", guardReason(err))
+		c.sendText(ctx, b, chatID, createErrorCopy(err))
+		return
 	}
-	if err := c.movements.InsertBatch([]movement.Movement{m}); err != nil {
+
+	if err := c.movements.InsertBatch(movs); err != nil {
+		// Mismo motivo que en account_create_finish: función void, el error no
+		// sube a withTrace. Sin este log, un ajuste de saldo fallido es
+		// invisible en producción.
+		slog.ErrorContext(ctx, "balance adjustment insert failed",
+			"user_id", data.UserID(), "account_id", accountID, "err", err)
 		c.sendText(ctx, b, chatID, msgCouldNotSave("el ajuste"))
 		return
 	}
@@ -161,9 +192,7 @@ func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatI
 	if err != nil {
 		return
 	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
+	c.sendPrompt(ctx, b, chatID, prompt)
 }
 
 func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {

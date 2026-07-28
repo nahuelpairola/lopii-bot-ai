@@ -33,14 +33,24 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `invitation` | Model + repository: `Create` (generates random code), `FindByCode`, `MarkAsUsed` |
 | `account` | Model + full repository + messages for flows |
 | `subcategory` | Model + repository + messages for flows |
-| `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates) |
+| `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates) + **el guard** (`guard.go`: `Normalize`, `AssignTransactionIDs`, `CheckBalances`, los sentinels `Err*`) — los invariantes de plata viven al lado del tipo que protegen, y son puros: no tocan la DB |
 | `metric` | Model + repository: `Log`, `Resolve` — métricas de asertividad LLM (tabla `intent_events`) |
 | `middleware` | `RequireAdmin(adminID)` |
 | `conversation` | Engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, `repository` |
 | `pendingjob` | Model + repository: durable queue (`pending_llm_jobs`) for a message cached after a terminal Groq 429 — `Insert`, `ListByUserOrdered`, `ListPendingUserIDs`, `Delete`, `CountByUser` |
+| `orchestrator` | Groq tool-calling HTTP client (plain `net/http`, no SDK). One chokepoint `Client.send` with retry/backoff + `RateLimitedError`. `ClassifyIntent` (router), `ClassifyCreate`, `ResolveUpdate`, `ResolveDelete`, `ClassifyOnboarding`, `ClassifyCategoryCreate`, `ResolveAccountManage`, `AnswerQuery` (read-only agent loop) |
+| `queryhistory` | Model + repository: ephemeral QUERY conversation thread (`Append`, `Recent`), hard-pruned by TTL, no `deleted_at` |
+| `reminder` | Model + repository: one row per user, minutes-since-ART-midnight window + weekly-summary flags. `Upsert`, `Disable`, `ListDue`, `ListWeeklyDue`, `SetWeeklySummary` |
+| `notifier` | `Sweeper` — in-process `time.Ticker` goroutine driving every scheduled system→user notification (daily reminder, weekly summary, trace retention) |
+| `nudge` | Model + repository: once-ever/cooldown storage for contextual tips (`WasSent`, `MarkSent`, `LastSentAt`) |
+| `summary` | Weekly-summary builder + its Spanish copy. Consumer-local `MovementReader`/`AccountReader` interfaces |
+| `trace` | `NewID` (crypto/rand, 32 hex) + ctx carrier for the correlation id shared by `request_traces`/`llm_calls`/`intent_events` |
+| `logging` | Installs the process-wide `slog` logger; its handler stamps the ctx `trace_id` onto every record |
 | `controller/health` | HTTP: `/health/internal`, `/health/external` |
 | `controller/invitation` | HTTP: `POST /invitations` |
+| `controller/admin` | HTTP: `POST /admin/users/:telegramID/reset` (admin-only) |
 | `controller/messaging` | Telegram: `/start`, catch-all for free text and callbacks |
+| `controller/miniapp` | Telegram Mini App: templ-rendered HTML views (overview, accounts, categories, period, evolution) + `auth.go` initData validation |
 | `server` | Bootstrap: DB, migrations, bot, webhook, controllers, Gin |
 
 ## 2. Conventions
@@ -132,10 +142,16 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
 - Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
 - `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
 - `intent_events.needs_confirmation` (NOT NULL) quedó vestigial tras el rediseño UNCLEAR del router: se escribe siempre `false`. Dropear con una migración si se quiere limpiar.
+- Los dos movimientos de **apertura** de cuenta no pasan por `movement.Normalize` y no
+  pueden: son una pata suelta tipada `Transfer` sin contraparte ni `transaction_id`, y el
+  guard rechaza toda transferencia que no sea un grupo de 2 patas — rechazaría *toda*
+  apertura, con cualquier monto. En vez de eso reciben el `*account.Account` entero, así el
+  desajuste de moneda es irrepresentable. No es deuda, es una decisión; está documentada en
+  el anti-pattern de [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#anti-patterns--what-not-to-do).
 
 ## 7. Claude Code Session Rules
 
-- **Subagents run on `haiku`.** Any `Agent` tool call spawned in this project (any `subagent_type`) must pass `model: "haiku"` explicitly, unless the user asks otherwise for a specific task. Exception: `subagent_type: "fork"` always inherits the parent session's model — a `model` override is ignored for forks, so this rule doesn't apply to them.
+- **Subagents run on `sonnet`.** Any `Agent` tool call spawned in this project (any `subagent_type`) must pass `model: "sonnet"` explicitly, unless the user asks otherwise for a specific task. Exception: `subagent_type: "fork"` always inherits the parent session's model — a `model` override is ignored for forks, so this rule doesn't apply to them.
 - **Codegraph overrides skill-default exploration.** This repo has `.codegraph/` indexed. Any superpowers skill step that says "explore the codebase", "read relevant files", or spawns an `Explore`/`general-purpose` subagent for code lookup must use `codegraph_explore` first instead — one call returns verbatim source + call graph, versus dozens of raw `Read`/`Grep` round-trips a generic skill step defaults to. This applies mid-skill (brainstorming, writing-plans, systematic-debugging, etc.), not just standalone questions — skills don't know codegraph exists, so the substitution has to be made manually every time.
 - **Stack mandate, always.** Codegraph before manual grep/read. The matching superpowers skill (brainstorming / systematic-debugging / writing-plans / TDD) before any feature or fix. Ponytail discipline (minimum code, no premature abstraction) on every diff. Caveman-compressed communication for agent/subagent output. None of these are skippable for a "simple" task — that rationalization is exactly what each skill/mode already warns against.
 - **WIP=1 for delegated work.** One flow/fix active per subagent at a time. Don't activate a second task before the first has completion evidence (below). Parallel activation dilutes the reasoning budget available to each task — nothing finishes properly if it's split too thin.

@@ -61,9 +61,7 @@ func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, ch
 	if err != nil {
 		return fmt.Errorf("start category_manage_target flow: %w", err)
 	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
+	c.sendPrompt(ctx, b, chatID, prompt)
 	return nil
 }
 

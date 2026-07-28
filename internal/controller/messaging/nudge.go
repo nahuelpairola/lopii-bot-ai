@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/subcategory"
 )
 
 const (
@@ -66,7 +67,7 @@ func (c *controller) hasMultipleAccountsNoTransfer(userID uint64) bool {
 	if err != nil || len(accs) < transferTipMin {
 		return false
 	}
-	sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, "Sistema", "Transferencia")
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, subcategory.CategorySystem, "Transferencia")
 	if err != nil {
 		return false
 	}

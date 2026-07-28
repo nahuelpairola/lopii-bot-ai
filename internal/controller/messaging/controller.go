@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -290,17 +291,10 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 const buttonsPerRow = 2
 
 func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton {
-	if len(buttons) == 0 {
-		return nil
-	}
-	rows := make([][]models.InlineKeyboardButton, 0, (len(buttons)+buttonsPerRow-1)/buttonsPerRow)
-	for i := 0; i < len(buttons); i += buttonsPerRow {
-		end := i + buttonsPerRow
-		if end > len(buttons) {
-			end = len(buttons)
-		}
-		row := make([]models.InlineKeyboardButton, 0, end-i)
-		for _, btn := range buttons[i:end] {
+	var rows [][]models.InlineKeyboardButton
+	for chunk := range slices.Chunk(buttons, buttonsPerRow) {
+		row := make([]models.InlineKeyboardButton, 0, len(chunk))
+		for _, btn := range chunk {
 			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: btn.Data})
 		}
 		rows = append(rows, row)
@@ -321,6 +315,28 @@ func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, p
 	}
 
 	b.SendMessage(ctx, params)
+}
+
+// startFlow arranca un flow sembrado y manda su primer prompt. Absorbe el bloque
+// que se repetía en los sitios que resuelven un fallo de arranque de la misma
+// forma: avisarle al usuario y devolver el error envuelto.
+//
+// errCtx es el prefijo del error. No es cosmético: ese string sube hasta
+// withTrace y termina en la columna request_traces.error, así que es lo único
+// que distingue "no arrancó el flujo de cuentas" de "no arrancó el de
+// movimientos" cuando se mira la traza después.
+//
+// Los call sites que fallan distinto (los que caen al wizard, los que no
+// devuelven error, los que no le avisan al usuario) NO usan este helper — meter
+// esas variantes acá pediría un callback por caso y sería más código, no menos.
+func (c *controller) startFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
+	prompt, err := c.engine.StartWithData(userID, flowName, seed)
+	if err != nil {
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		return fmt.Errorf("%s: %w", errCtx, err)
+	}
+	c.sendPrompt(ctx, b, chatID, prompt)
+	return nil
 }
 
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {

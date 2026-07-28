@@ -136,7 +136,7 @@ func msgAskCategory(data conversation.Data) string {
 
 func msgAskSubcategory(data conversation.Data) string {
 	rows := decodeMovementRows(data)
-	idx, _ := strconv.Atoi(stringOrEmpty(data["gap_active_row"]))
+	idx, _ := strconv.Atoi(stringOrEmpty(data[keyGapActiveRow]))
 	return "¿Y la subcategoría de " + movementGapDescriptor(rows[idx]) + ", dentro de " + rows[idx].Category + "?" + gapPosition(idx, len(rows))
 }
 
@@ -428,7 +428,7 @@ const msgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae
 
 const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 
-func msgInsufficientFunds(short []accountShortfall) string {
+func msgInsufficientFunds(short []movement.AccountShortfall) string {
 	s := short[0]
 	falta := s.After.Abs().String()
 	return fmt.Sprintf("⚠️ Ojo: %s quedaría en −%s %s (te faltan %s %s). ¿Cómo lo registro?",

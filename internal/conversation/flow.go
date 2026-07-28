@@ -168,10 +168,7 @@ const pendingErrorKey = "_pending_error"
 // WithPendingError devuelve una copia de Data con un mensaje de error
 // que el próximo Prompt va a mostrar (ver PrependPendingError).
 func WithPendingError(data Data, message string) Data {
-	next := Data{}
-	for k, v := range data {
-		next[k] = v
-	}
+	next := cloneData(data)
 	next[pendingErrorKey] = message
 	return next
 }

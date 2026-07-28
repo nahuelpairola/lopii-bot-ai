@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"maps"
 	"strconv"
 
 	"lopiibot.com/internal/constants"
@@ -61,12 +62,15 @@ func movementGapDescriptor(row movementRow) string {
 	return "$" + row.Amount + " · " + detail
 }
 
+// copyData es maps.Clone con una garantía extra: el resultado nunca es nil.
+// `maps.Clone(nil)` devuelve nil y todos los call sites escriben sobre la copia,
+// así que sin la guarda un Data nil (posible: `data: null` en JSONB deserializa
+// a nil sin error) haría panic. Se queda como wrapper por los ~36 call sites.
 func copyData(data conversation.Data) conversation.Data {
-	next := make(conversation.Data, len(data))
-	for k, v := range data {
-		next[k] = v
+	if data == nil {
+		return conversation.Data{}
 	}
-	return next
+	return maps.Clone(data)
 }
 
 func decodeMovementRows(data conversation.Data) []movementRow {

@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -26,9 +28,14 @@ func newAdjustController(currentBalance string) (*controller, *fakeMovementRepoF
 	sub.ID = 9
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{5: currentBalance}}
 	metrics := &fakeMetricRepo{}
+	// La cuenta 5 tiene que existir en el repo: finishAccountAdjust la relee para
+	// que el guard valide la moneda del movimiento contra la de la DB, y no
+	// contra la que dice la Data del flujo.
+	acc5 := acct(5, currency.ARS, true)
 	c := &controller{
 		movements:     movRepo,
 		metrics:       metrics,
+		accounts:      &fakeAccountRepoFull{byID: map[uint64]*account.Account{5: &acc5}},
 		subcategories: &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Sistema|Ajuste de saldo": sub}},
 	}
 	return c, movRepo, metrics
@@ -125,5 +132,24 @@ func TestFinishAccountAdjust_DecimalPrecision(t *testing.T) {
 	want, _ := decimal.NewFromString("0.25")
 	if m.Type != movement.Income || !m.Amount.Equal(want) {
 		t.Errorf("movement = %s %s, want Income +0.25", m.Type, m.Amount)
+	}
+}
+
+// TestFinishAccountAdjust_CurrencyMismatchRejected cubre lo que este camino gana
+// al pasar por el guard: si la moneda que arrastra la Data del flujo no es la de
+// la cuenta en la DB, el ajuste NO se escribe.
+//
+// Sin el guard el movimiento entraba igual, en una moneda distinta a la de su
+// cuenta, y el balance quedaba corrupto en silencio: el saldo es SUM(amount) y no
+// mira la moneda de cada fila, así que sumaría USD contra pesos sin chistar.
+func TestFinishAccountAdjust_CurrencyMismatchRejected(t *testing.T) {
+	c, movRepo, _ := newAdjustController("50000") // la cuenta 5 es ARS
+	data := adjustData("52000")
+	data["account_currency"] = "USD" // la Data dice otra cosa
+
+	c.finishAccountAdjust(context.Background(), nil, 0, data)
+
+	if len(movRepo.inserted) != 0 {
+		t.Fatalf("no se debe escribir nada con la moneda equivocada, se escribió %+v", movRepo.inserted)
 	}
 }

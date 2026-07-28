@@ -308,8 +308,6 @@ func (c *controller) startReminderSetup(ctx context.Context, b *bot.Bot, chatID 
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("start reminder_setup flow: %w", err)
 	}
-	if b != nil {
-		c.sendPrompt(ctx, b, chatID, prompt)
-	}
+	c.sendPrompt(ctx, b, chatID, prompt)
 	return nil
 }

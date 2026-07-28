@@ -74,6 +74,16 @@ const (
 	keyFirstAccountName    dataKey = "first_account_name"
 	keyFirstAccountBalance dataKey = "first_account_balance"
 
+	// keyGapActiveRow guarda el índice de la fila que el gap-fill está
+	// resolviendo ahora mismo: lo escribe el paso de categoría y lo leen el de
+	// subcategoría y el prompt. Cruza tres archivos.
+	keyGapActiveRow dataKey = "gap_active_row"
+
+	// keyGatePrompt lleva el texto ya formateado del gate de saldo negativo.
+	// Lo escribe free_text y lo lee movement_negative_confirm_flow, que no
+	// tiene con qué recalcularlo.
+	keyGatePrompt dataKey = "_gate_prompt"
+
 	// category_manage: origen elegido en el flujo 1
 	keySourceSubcategoryID dataKey = "source_subcategory_id"
 	keySourceCategory      dataKey = "source_category"
