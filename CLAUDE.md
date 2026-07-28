@@ -142,13 +142,12 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
 - Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
 - `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
 - `intent_events.needs_confirmation` (NOT NULL) quedó vestigial tras el rediseño UNCLEAR del router: se escribe siempre `false`. Dropear con una migración si se quiere limpiar.
-- **3 de las 4 escrituras de movimientos saltean el guard.** Solo el CREATE/UPDATE principal
-  pasa por `movement.Normalize`. Insertan directo: el opening de primera cuenta
-  (`movement_create_flow.go`), el saldo inicial (`account_create_finish.go`) y el ajuste de
-  saldo (`account_manage_finish.go`). Arman el movimiento en código de la app, así que el
-  **signo** está bien; lo que no se valida es monto-cero y moneda-vs-cuenta. Rutearlos
-  requiere resolver antes qué hacer con el opening de monto 0, que hoy es deliberado
-  (ver el docstring de `insertAccountOpeningMovement`).
+- Los dos movimientos de **apertura** de cuenta no pasan por `movement.Normalize` y no
+  pueden: son una pata suelta tipada `Transfer` sin contraparte ni `transaction_id`, y el
+  guard rechaza toda transferencia que no sea un grupo de 2 patas — rechazaría *toda*
+  apertura, con cualquier monto. En vez de eso reciben el `*account.Account` entero, así el
+  desajuste de moneda es irrepresentable. No es deuda, es una decisión; está documentada en
+  el anti-pattern de [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#anti-patterns--what-not-to-do).
 
 ## 7. Claude Code Session Rules
 

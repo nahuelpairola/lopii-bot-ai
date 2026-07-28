@@ -464,7 +464,7 @@ func (c *controller) createFirstAccount(data conversation.Data, rows []movementR
 		if perr != nil || amt.IsNegative() {
 			continue
 		}
-		if err := c.insertOpeningMovement(userID, uint64(newAcc.ID), cur, amt.Sub(netDelta)); err != nil {
+		if err := c.insertOpeningMovement(newAcc, amt.Sub(netDelta)); err != nil {
 			return false, err
 		}
 	}
@@ -498,19 +498,26 @@ func firstAccountNetDelta(rows []movementRow) decimal.Decimal {
 }
 
 // insertOpeningMovement escribe el movimiento de saldo inicial de una cuenta.
-func (c *controller) insertOpeningMovement(userID, accountID uint64, cur currency.Currency, amount decimal.Decimal) error {
-	sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
+//
+// Toma la cuenta entera por el mismo motivo que insertAccountOpeningMovement: id
+// y moneda salen de la misma fila, así que el movimiento no puede terminar en una
+// moneda distinta a la de su cuenta. Y por el mismo motivo tampoco pasa por
+// movement.Normalize — una apertura es una pata suelta sin contraparte, y el
+// guard rechaza toda transferencia que no sea un grupo de 2.
+func (c *controller) insertOpeningMovement(acc *account.Account, amount decimal.Decimal) error {
+	sub, err := c.subcategories.FindByCategoryAndSubcategory(acc.UserID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
 	if err != nil {
 		return err
 	}
+	accountID := uint64(acc.ID)
 	return c.movements.InsertBatch([]movement.Movement{{
-		UserID:        userID,
+		UserID:        acc.UserID,
 		AccountID:     &accountID,
 		SubcategoryID: uint64(sub.ID),
 		Date:          time.Now(),
 		Type:          movement.Transfer,
 		Amount:        amount,
-		Currency:      cur,
+		Currency:      acc.Currency,
 	}})
 }
 
