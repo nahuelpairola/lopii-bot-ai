@@ -10,6 +10,20 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
+// accentFolder strips the Spanish diacritics so a word typed without them still
+// matches text stored with them ("panaderia" vs "panadería"). Seven runes cover
+// the whole language, which is why this is a replacer and not
+// golang.org/x/text/unicode/norm — that package is an indirect dependency today
+// and promoting it to direct would be a lot of machinery for seven characters.
+//
+// ñ folds to n on purpose: this is only ever used for substring matching inside
+// a message, never for storage or display, so "nino" finding "niño" is a feature.
+var accentFolder = strings.NewReplacer(
+	"á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ü", "u", "ñ", "n",
+)
+
+func foldAccents(s string) string { return accentFolder.Replace(s) }
+
 func startOfTodayArgentina() time.Time {
 	now := time.Now().In(constants.ArgentinaZone)
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, constants.ArgentinaZone)
@@ -82,7 +96,7 @@ func groupByTransaction(ms []movement.Movement) []transactionGroup {
 // pre-filters by similarity (see FindSimilarForUser / resolveCandidates),
 // so this is the primary textual relevance check.
 func matchesMessage(group transactionGroup, message string) bool {
-	lower := strings.ToLower(message)
+	lower := foldAccents(strings.ToLower(message))
 	for _, m := range group.Movements {
 		if descOrMerchantTokenInMessage(m.Description, lower) {
 			return true
@@ -104,7 +118,7 @@ func descOrMerchantTokenInMessage(field *string, lowerMessage string) bool {
 	if field == nil || *field == "" {
 		return false
 	}
-	for _, tok := range strings.Fields(strings.ToLower(*field)) {
+	for _, tok := range strings.Fields(foldAccents(strings.ToLower(*field))) {
 		// ponytail: length>=4 skips es stopwords (de/en/el/con/por) without a
 		// stopword list; standalone <=3-char descriptions like "pan"/"ypf"
 		// won't match as tokens — revisit if that bites.
