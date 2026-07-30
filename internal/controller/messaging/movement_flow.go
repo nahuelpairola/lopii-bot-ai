@@ -187,7 +187,16 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 		if draft.Category == constants.PendingReview || (len(known) > 0 && !known[draft.Category+"\x00"+draft.Subcategory]) {
 			categoryGaps = append(categoryGaps, idx)
 		}
-		if draft.Type == constants.Transfer && draft.AccountID == nil {
+		// Un gap de cuenta significa "no puedo saber a qué cuenta va esta fila y
+		// tengo que preguntar". Lo abren dos casos: una transferencia con una pata
+		// sin resolver, y cualquier fila que nombró una cuenta que el modelo no pudo
+		// matchear con una existente. Sin el segundo caso esa fila cae callada en la
+		// cuenta default de la moneda y la cuenta nombrada nunca se crea — la
+		// intención declarada por el usuario se descarta.
+		//
+		// Una fila sin AccountNameGuess y sin AccountID NO es un gap: es el camino
+		// normal "usá mi default" y tiene que seguir siendo mudo.
+		if draft.AccountID == nil && (draft.Type == constants.Transfer || draft.AccountNameGuess != "") {
 			accountGaps = append(accountGaps, idx)
 		}
 
