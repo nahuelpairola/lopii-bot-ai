@@ -172,6 +172,29 @@ func TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap(t *testing.T
 	}
 }
 
+// TestBuildCreateSeed_AccountNameEqualsMerchant_NoAccountGap: "pizza con Pablo"
+// deja AccountNameGuess Y Merchant en "Pablo" — Pablo es la contraparte, no una
+// cuenta. Ese gasto hoy se guarda solo contra la default y no puede ganar una
+// pregunta, ni terminar creando una cuenta que se llama como una persona
+// (la fila que ya fija TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount).
+func TestBuildCreateSeed_AccountNameEqualsMerchant_NoAccountGap(t *testing.T) {
+	result := orchestrator.CreateResult{
+		Movements: []orchestrator.MovementDraft{
+			{
+				Type: "expense", Amount: "100000", Currency: "ARS",
+				AccountNameGuess: "Pablo", Merchant: "Pablo",
+				Category: "Ocio y salidas", Subcategory: "Restaurante",
+			},
+		},
+	}
+
+	data := buildCreateSeed(result, nil)
+
+	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
+		t.Errorf("account gaps = %v, want []: el nombre de la contraparte no es una cuenta", gaps)
+	}
+}
+
 func TestParseUintSlice(t *testing.T) {
 	got, err := parseUintSlice([]string{"1", "2", "30"})
 	if err != nil {

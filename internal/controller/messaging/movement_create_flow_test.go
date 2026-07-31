@@ -801,6 +801,42 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 	}
 }
 
+// TestResolveAndInsert_NonTransferCreatesNamedOwnAccount es la otra punta de
+// TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount: cuando la cuenta
+// nombrada NO es el merchant ("me pagaron en Brubank"), el usuario tocó
+// "➕ Crear cuenta Brubank" en el gap-fill y hay que crearla. Sin esto el bot
+// pregunta, ofrece crearla y después tira la respuesta: el movimiento cae en la
+// default igual, que es peor que no haber preguntado.
+//
+// Es un income y no un gasto a propósito: una cuenta recién creada arranca en 0,
+// así que un gasto contra ella chocaría contra el guard de saldos y el test
+// estaría midiendo eso en vez de la creación. El camino que se ejercita —no es
+// transferencia, el guess no es el merchant— es el mismo.
+func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
+	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Ingresos|Sueldo": newSubForTest(7, "Ingresos", "Sueldo"),
+	}}
+	accts := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movs := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
+	c := &controller{subcategories: subs, accounts: accts, movements: movs}
+
+	rows := []movementRow{{Type: "income", Amount: "200000", Currency: "ARS",
+		Category: "Ingresos", Subcategory: "Sueldo",
+		AccountNameGuess: "Brubank", AccountID: accountPendingCreate, Date: "2026-07-07"}}
+	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": encodeMovementRows(rows), "old_movement_ids": encodeStringSlice(nil)}
+
+	if _, err := c.resolveAndInsertMovements(data); err != nil {
+		t.Fatalf("resolveAndInsert: %v", err)
+	}
+	if len(accts.inserted) != 1 || accts.inserted[0].Name != "Brubank" {
+		t.Fatalf("created %+v, want exactly one account named Brubank", accts.inserted)
+	}
+	created := uint64(accts.inserted[0].ID)
+	if movs.inserted[0].AccountID == nil || *movs.inserted[0].AccountID != created {
+		t.Error("the movement must point at the account the user asked to create, not the default")
+	}
+}
+
 // recordingTransport captures the "text" field of every Telegram sendMessage
 // call, in order — lets a test assert how many messages went out and what
 // each one said, without a live bot. go-telegram/bot sends multipart/form-data.
