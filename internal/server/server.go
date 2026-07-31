@@ -9,6 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/config"
 	adminctrl "lopiibot.com/internal/controller/admin"
 	healthctrl "lopiibot.com/internal/controller/health"
@@ -26,7 +27,6 @@ import (
 	"lopiibot.com/internal/nudge"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingjob"
-	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/summary"
@@ -98,7 +98,7 @@ func InitServer(conf *config.Config) error {
 	nudgeRepo := nudge.NewRepository(conn)
 	jobsRepo := pendingjob.NewRepository(conn)
 	metricRepo := metric.InitRepository(conn)
-	queryHistoryRepo := queryhistory.InitRepository(
+	chatHistoryRepo := chathistory.InitRepository(
 		conn,
 		time.Duration(conf.Query.HistoryTtlMinutes)*time.Minute,
 		conf.Query.HistoryLimit,
@@ -146,7 +146,7 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator, metricRepo, queryHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo,
+		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, conf.Telegram.Token)

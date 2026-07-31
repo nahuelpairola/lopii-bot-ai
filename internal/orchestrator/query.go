@@ -37,7 +37,7 @@ type AgentTool struct {
 // QueryTurn is one prior question/answer pair fed back to the loop so a
 // follow-up keeps its referent. Textual context only — tools re-run every
 // call, so numbers are always fresh. The messaging controller maps
-// queryhistory.Turn to this (keeps the orchestrator dependency-free).
+// chathistory.Turn to this (keeps the orchestrator dependency-free).
 type QueryTurn struct {
 	Question string
 	Answer   string

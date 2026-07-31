@@ -1,4 +1,4 @@
-package queryhistory
+package chathistory
 
 import (
 	"time"
@@ -6,11 +6,15 @@ import (
 	"lopiibot.com/internal/database"
 )
 
-// QueryTurn is one answered QUERY: the user's question and the bot's
-// answer. Ephemeral by design — pruned, never soft-deleted (a turn carries
-// no accounting value and must actually disappear so a stale conversation
-// can never be re-read). CreatedAt is autopopulated by GORM (autoCreateTime).
-type QueryTurn struct {
+// ChatTurn is one answered turn: the user's message and the bot's reply.
+// It used to be QUERY-only, which is what the package was named after; from
+// stage 2 of the agent loop every intent shares the same thread, so the old
+// name lied.
+//
+// Ephemeral by design — pruned, never soft-deleted (a turn carries no
+// accounting value and must actually disappear so a stale conversation can
+// never be re-read). CreatedAt is autopopulated by GORM (autoCreateTime).
+type ChatTurn struct {
 	ID        uint64    `gorm:"primaryKey"`
 	UserID    uint64    `gorm:"column:user_id;not null"`
 	Question  string    `gorm:"column:question;not null"`
@@ -18,8 +22,8 @@ type QueryTurn struct {
 	CreatedAt time.Time `gorm:"column:created_at"`
 }
 
-func (QueryTurn) TableName() string {
-	return "query_turns"
+func (ChatTurn) TableName() string {
+	return "chat_turns"
 }
 
 // Turn is the read shape the loop needs — just the two strings, no DB metadata.
@@ -48,8 +52,8 @@ func InitRepository(conn *database.Connection, ttl time.Duration, limit int) *re
 // dead rows Recent already ignores; never user data.
 func (r *repository) Append(userID uint64, question, answer string) error {
 	r.db.DB.Where("user_id = ? AND created_at < ?", userID, time.Now().Add(-r.ttl)).
-		Delete(&QueryTurn{})
-	return r.db.DB.Create(&QueryTurn{
+		Delete(&ChatTurn{})
+	return r.db.DB.Create(&ChatTurn{
 		UserID:   userID,
 		Question: question,
 		Answer:   answer,
@@ -60,7 +64,7 @@ func (r *repository) Append(userID uint64, question, answer string) error {
 // caller appends them to the message list in reading order. The query orders
 // created_at DESC + LIMIT to grab the newest N, then reverses to chronological.
 func (r *repository) Recent(userID uint64) ([]Turn, error) {
-	var rows []QueryTurn
+	var rows []ChatTurn
 	err := r.db.DB.
 		Where("user_id = ? AND created_at > ?", userID, time.Now().Add(-r.ttl)).
 		Order("created_at DESC").
