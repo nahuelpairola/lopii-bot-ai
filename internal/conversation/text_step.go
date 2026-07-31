@@ -22,6 +22,17 @@ type TextStep struct {
 	// de EscapeOptions (ej. marcar cancelación). nil = Data pasa sin
 	// cambios — mismo contrato que ChoiceStep.OnChoice.
 	OnEscape func(value string, data Data) Data
+	// OnText transforma Data después de aceptar el texto válido y ANTES de
+	// avanzar — el simétrico de OnChoice (ChoiceStep) y OnEscape, que solo
+	// cubren botones. Recibe Data con DataKey ya escrito.
+	//
+	// Existe para el paso auto-recursivo de ask_user: un paso que se pregunta
+	// a sí mismo necesita consumir la respuesta (anotarla contra la pregunta
+	// abierta y sacarla de la cola) en cada vuelta. Sin esto cada respuesta
+	// pisa a la anterior en DataKey y solo sobrevive la última.
+	//
+	// nil = Data pasa sin cambios más allá de DataKey.
+	OnText func(text string, data Data) Data
 	// EscapeOptionsFunc, if set, returns EXTRA escape buttons computed from
 	// Data (e.g. a "confirm the prefilled value" button whose label shows the
 	// seeded value). Its buttons are appended after the static EscapeOptions.
@@ -84,6 +95,9 @@ func (s TextStep) Process(input Input, data Data) Transition {
 		next[k] = v
 	}
 	next[s.DataKey] = text
+	if s.OnText != nil {
+		next = s.OnText(text, next)
+	}
 
 	return Advance(s.NextStep, next)
 }

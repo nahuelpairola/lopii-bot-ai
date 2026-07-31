@@ -35,3 +35,62 @@ func TestTextStep_EscapeOptionsFunc_RendersAndProcesses(t *testing.T) {
 		t.Errorf("seed lost: balance = %v, want %q", tr.data["balance"], "1000")
 	}
 }
+
+// TestTextStep_OnTextTransformsDataAfterTheAnswer covers what ask_user's
+// self-looping step needs: a text answer that is consumed, not just stored.
+// Without the hook every round overwrites DataKey and only the last answer
+// survives, so a flow asking two questions loses the first.
+func TestTextStep_OnTextTransformsDataAfterTheAnswer(t *testing.T) {
+	step := TextStep{
+		PromptText: func(Data) string { return "¿en qué categoría?" },
+		DataKey:    "answer",
+		NextStep:   "ask",
+		OnText: func(text string, data Data) Data {
+			next := Data{}
+			for k, v := range data {
+				next[k] = v
+			}
+			// What ask_user really does: file the answer against the question
+			// it belongs to, and drop the raw scratch key.
+			next["answered_"+stringOrEmptyForTest(data["pending"])] = text
+			delete(next, "answer")
+			return next
+		},
+	}
+
+	tr := step.Process(Input{Text: "Comida"}, Data{"pending": "categoria"})
+
+	if got := tr.data["answered_categoria"]; got != "Comida" {
+		t.Errorf("answered_categoria = %v, want Comida", got)
+	}
+	if _, still := tr.data["answer"]; still {
+		t.Error("OnText must be able to drop the raw DataKey it received")
+	}
+	if tr.nextStep != "ask" {
+		t.Errorf("nextStep = %q, want ask (the self-loop)", tr.nextStep)
+	}
+}
+
+// TestTextStep_NoOnTextKeepsTodaysBehaviour is the guard: every existing
+// TextStep leaves OnText nil and must be unaffected.
+func TestTextStep_NoOnTextKeepsTodaysBehaviour(t *testing.T) {
+	step := TextStep{
+		PromptText: func(Data) string { return "¿nombre?" },
+		DataKey:    "name",
+		NextStep:   "next",
+	}
+
+	tr := step.Process(Input{Text: "Brubank"}, Data{})
+
+	if tr.data["name"] != "Brubank" {
+		t.Errorf("name = %v, want Brubank", tr.data["name"])
+	}
+	if tr.nextStep != "next" {
+		t.Errorf("nextStep = %q, want next", tr.nextStep)
+	}
+}
+
+func stringOrEmptyForTest(v any) string {
+	s, _ := v.(string)
+	return s
+}
