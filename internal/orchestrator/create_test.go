@@ -255,14 +255,19 @@ func seededTaxonomy(t *testing.T) (full, pruned []TaxonomyEntry) {
 
 func TestBuildTaxonomyBlock_PrunedBlockStaysSmall(t *testing.T) {
 	// Guards the pruning migration: if someone re-adds prose to the global seed,
-	// the CREATE prompt silently gets more expensive on every single call. The
-	// number is the measured post-pruning size with headroom, not a target to
-	// optimise against — pruning further means deleting contrast notes, which
-	// degrades categorization instead of just costing tokens.
+	// the CREATE prompt silently gets more expensive on every single call.
+	//
+	// The ceiling is deliberately loose. It exists to catch a SYSTEMIC regression
+	// — the unpruned block is 5764 runes — not to police individual notes. Five
+	// pruned pairs are still unverified by TestCreatePruningEval (it ran out of
+	// daily Groq quota mid-corpus), and restoring any of them is the CORRECT
+	// outcome of that eval, so a threshold hugging today's 4584 would fail on the
+	// right fix. Pruning further is not a goal: it means deleting the contrast
+	// notes and the Argentine vocabulary that decide the category.
 	_, pruned := seededTaxonomy(t)
 	block := buildTaxonomyBlock(pruned)
 
-	if got := len([]rune(block)); got > 4600 {
-		t.Errorf("taxonomy block = %d runes, want <= 4600 after pruning", got)
+	if got := len([]rune(block)); got > 5000 {
+		t.Errorf("taxonomy block = %d runes, want <= 5000 — the unpruned block was 5764", got)
 	}
 }

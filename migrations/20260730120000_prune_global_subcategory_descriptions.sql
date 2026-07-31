@@ -15,17 +15,31 @@
 -- Acotado a is_global = TRUE: las subcategorías propias de un usuario llevan
 -- descripciones que él escribió o confirmó, y esas no son nuestras para editar.
 --
--- Los 29 nombres de abajo son únicos entre las 64 globales, por eso alcanza un IN
+-- Los nombres de abajo son únicos entre las 65 globales, por eso alcanza un IN
 -- plano sin par (categoría, subcategoría).
+--
+-- QUÉ ESTÁ VERIFICADO. El corte lo decide TestCreatePruningEval, que le pasa al
+-- modelo el mismo mensaje con el bloque de antes y el de después y compara el par
+-- que elige. De las 26 podadas hay 21 confirmadas sin cambio. Quedan 5 SIN PROBAR
+-- porque el eval se quedó sin cuota diaria de Groq a mitad de corpus:
+--
+--   Cuota préstamo · Cripto · Dólares · Otros activos · Plazo fijo ·
+--   Cargos / comisiones bancarias · Regalos / donaciones
+--
+-- Antes de mergear esto conviene correr el eval de nuevo con cuota fresca. La
+-- regla que salió de la corrida: rompe la descripción que aporta una palabra que
+-- el nombre NO contiene y que tiene una hermana plausible.
 UPDATE subcategories
 SET description = ''
 WHERE is_global = TRUE
   AND deleted_at IS NULL
   AND subcategory IN (
-    -- Ingresos: los nombres ya separan dependencia de independiente.
+    -- Ingresos: el nombre ya dice "relación de dependencia".
+    -- NO se podan 'Freelance / honorarios' ni 'Reintegros': el eval diferencial
+    -- los vio romper ("cobré una changa" → Sueldo, "me reintegraron 20 mil" →
+    -- Otros ingresos). "changa" y "reintegro/reembolso" son palabras que el
+    -- nombre no contiene y que tienen una hermana plausible.
     'Sueldo',
-    'Freelance / honorarios',
-    'Reintegros',
     -- Vivienda: quedan Luz/Gas/Agua (mapean Edesur, Metrogas, AySA),
     -- Internet / cable, Impuestos inmueble (ABL) y Mantenimiento hogar.
     'Alquiler',
@@ -37,11 +51,13 @@ WHERE is_global = TRUE
     'Peaje',
     -- Salud: queda solo Medicamentos / farmacia, que decide dónde va higiene
     -- y skincare frente a Bienestar / Cuidado personal.
+    -- NO se poda 'Óptica': sin la nota, "compré anteojos" cae en PENDING_REVIEW.
+    -- 'Odontología' y 'Psicología' sí se podan: el eval confirmó que "dentista"
+    -- y "terapia" llegan igual sin nota.
     'Consulta médica',
     'Estudios / análisis',
     'Obra social / prepaga',
     'Odontología',
-    'Óptica',
     'Psicología',
     -- Ocio y salidas: quedan Salir a comer y Delivery (se contrastan entre sí),
     -- Hobby (separa de Entretenimiento) y Deporte (NO gimnasio).
