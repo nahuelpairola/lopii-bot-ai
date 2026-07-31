@@ -8,13 +8,30 @@ import (
 	"strings"
 )
 
-// AgentTool is a tool exposed to the query loop. Same shape as toolSchema,
-// but public so the messaging controller can define the read tools and hold
-// the executor — the orchestrator stays dependency-free (no repo imports).
+// AgentToolKind is a tool's execution class. It decides the order the loop
+// runs a round's calls in (see agent.go orderCallsByKind) — never the order
+// the model happened to list them in.
+type AgentToolKind string
+
+const (
+	// KindRead queries the DB and returns a string. Idempotent.
+	KindRead AgentToolKind = "read"
+	// KindWrite mutates. Only record_movements, and only when it resolves clean.
+	KindWrite AgentToolKind = "write"
+	// KindAction parks an intent on the queue and touches nothing itself.
+	KindAction AgentToolKind = "action"
+)
+
+// AgentTool is a tool exposed to the agent loop. Same shape as toolSchema,
+// but public so the messaging controller can define the tools and hold the
+// executor — the orchestrator stays dependency-free (no repo imports).
 type AgentTool struct {
 	Name        string
 	Description string
 	Parameters  json.RawMessage
+	// Kind classes the tool for execution order. The zero value sorts as
+	// KindRead, which is what the read-only AnswerQuery tools want.
+	Kind AgentToolKind
 }
 
 // QueryTurn is one prior question/answer pair fed back to the loop so a

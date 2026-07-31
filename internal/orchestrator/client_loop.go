@@ -42,7 +42,10 @@ type loopRequest struct {
 
 // maxQueryCompletionTokens caps narration length — a cost guard (the loop
 // multiplies Groq calls; a runaway narration would multiply tokens too).
-const maxQueryCompletionTokens = 1024
+// 2048 because the unified loop's assistant message can carry a batch of
+// tool_calls AND the narration in the same response (the turn cut), which does
+// not fit the read-only query's budget.
+const maxQueryCompletionTokens = 2048
 
 type loopResponse struct {
 	Choices []struct {
