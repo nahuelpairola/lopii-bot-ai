@@ -195,7 +195,12 @@ const globalSeedEpoch = "20260710130000_reseed_global_subcategories.sql"
 // way), and the prune that blanks the descriptions which do not disambiguate.
 // Reading the real files is the point — a hand-copied literal here would drift
 // from the seed silently, which is exactly the regression this guards against.
-func seededTaxonomy(t *testing.T) []TaxonomyEntry {
+//
+// It returns both states: `full` is what the prompt carried before the pruning
+// migration, `pruned` is what it carries now. The pruning eval needs both to
+// compare what the model picks with each block; the size guard only needs the
+// second.
+func seededTaxonomy(t *testing.T) (full, pruned []TaxonomyEntry) {
 	t.Helper()
 
 	files, err := filepath.Glob(filepath.Join("..", "..", "migrations", "*.sql"))
@@ -204,7 +209,7 @@ func seededTaxonomy(t *testing.T) []TaxonomyEntry {
 	}
 	sort.Strings(files)
 
-	pruned := make(map[string]bool)
+	blanked := make(map[string]bool)
 	var entries []TaxonomyEntry
 
 	for _, f := range files {
@@ -226,7 +231,7 @@ func seededTaxonomy(t *testing.T) []TaxonomyEntry {
 		}
 		for _, line := range strings.Split(string(body), "\n") {
 			if m := prunedNameRe.FindStringSubmatch(line); m != nil {
-				pruned[m[1]] = true
+				blanked[m[1]] = true
 			}
 		}
 	}
@@ -234,16 +239,18 @@ func seededTaxonomy(t *testing.T) []TaxonomyEntry {
 	if len(entries) == 0 {
 		t.Fatal("no seeded subcategories parsed — the migration's INSERT shape changed")
 	}
-	if len(pruned) == 0 {
+	if len(blanked) == 0 {
 		t.Fatal("no pruned names parsed — the prune migration's IN list shape changed")
 	}
 
-	for i := range entries {
-		if pruned[entries[i].Subcategory] {
-			entries[i].Description = ""
+	pruned = make([]TaxonomyEntry, len(entries))
+	copy(pruned, entries)
+	for i := range pruned {
+		if blanked[pruned[i].Subcategory] {
+			pruned[i].Description = ""
 		}
 	}
-	return entries
+	return entries, pruned
 }
 
 func TestBuildTaxonomyBlock_PrunedBlockStaysSmall(t *testing.T) {
@@ -252,7 +259,8 @@ func TestBuildTaxonomyBlock_PrunedBlockStaysSmall(t *testing.T) {
 	// number is the measured post-pruning size with headroom, not a target to
 	// optimise against — pruning further means deleting contrast notes, which
 	// degrades categorization instead of just costing tokens.
-	block := buildTaxonomyBlock(seededTaxonomy(t))
+	_, pruned := seededTaxonomy(t)
+	block := buildTaxonomyBlock(pruned)
 
 	if got := len([]rune(block)); got > 4600 {
 		t.Errorf("taxonomy block = %d runes, want <= 4600 after pruning", got)
