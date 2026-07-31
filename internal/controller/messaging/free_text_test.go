@@ -55,6 +55,12 @@ func (o *fakeFullOrchestrator) ClassifyOnboarding(ctx context.Context, text stri
 func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return o.queryAnswer, o.queryErr
 }
+
+// Run fails loudly on purpose: nothing routes through the agent loop in stage
+// 1, so a call here means a code path migrated ahead of its stage.
+func (o *fakeFullOrchestrator) Run(context.Context, string, string, []orchestrator.QueryTurn, []orchestrator.AgentTool, func(string, json.RawMessage) (string, error)) (string, error) {
+	return "", errRunNotWiredInStage1
+}
 func (o *fakeFullOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
 	return o.categoryResult, o.categoryErr
 }

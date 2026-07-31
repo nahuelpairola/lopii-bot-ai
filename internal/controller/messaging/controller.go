@@ -87,6 +87,11 @@ type movementOrchestrator interface {
 	ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error)
 	ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error)
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
+	// Run is the unified agent loop. Added in stage 1 and called by nothing
+	// yet: stage 2 routes UPDATE/DELETE through it. The interface deliberately
+	// grows before it shrinks (9 → 3 in stage 5) — that is what lets each
+	// stage be bisected on its own.
+	Run(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
 type metricRepository interface {

@@ -16,7 +16,7 @@ type drainJobs struct {
 	deleted []uint64
 }
 
-func (d *drainJobs) Insert(*pendingjob.PendingJob) error { return nil }
+func (d *drainJobs) Insert(*pendingjob.PendingJob) error                       { return nil }
 func (d *drainJobs) ListByUserOrdered(uint64) ([]pendingjob.PendingJob, error) { return d.jobs, nil }
 func (d *drainJobs) ListPendingUserIDs() ([]uint64, error)                     { return []uint64{7}, nil }
 func (d *drainJobs) Delete(id uint64) error                                    { d.deleted = append(d.deleted, id); return nil }
