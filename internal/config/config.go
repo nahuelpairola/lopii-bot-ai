@@ -35,13 +35,17 @@ type server struct {
 }
 
 type groq struct {
-	APIKey         string `mapstructure:"apiKey"`
-	BaseURL        string `mapstructure:"baseUrl"`
-	RouterModel    string `mapstructure:"routerModel"`
-	CreateModel    string `mapstructure:"createModel"`
-	UpdateModel    string `mapstructure:"updateModel"`
-	DeleteModel    string `mapstructure:"deleteModel"`
-	QueryModel     string `mapstructure:"queryModel"`
+	APIKey      string `mapstructure:"apiKey"`
+	BaseURL     string `mapstructure:"baseUrl"`
+	RouterModel string `mapstructure:"routerModel"`
+	CreateModel string `mapstructure:"createModel"`
+	UpdateModel string `mapstructure:"updateModel"`
+	DeleteModel string `mapstructure:"deleteModel"`
+	QueryModel  string `mapstructure:"queryModel"`
+	// AgentModel es el modelo del loop unificado (orchestrator.Run). Es un
+	// sexto campo, no un reemplazo: los cinco por tipo de llamada siguen
+	// sirviendo el camino viejo hasta la etapa 5.
+	AgentModel     string `mapstructure:"agentModel"`
 	TimeoutSeconds int    `mapstructure:"timeoutSeconds"`
 }
 

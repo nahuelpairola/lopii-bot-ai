@@ -24,8 +24,8 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/notifier"
 	"lopiibot.com/internal/nudge"
-	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -118,6 +118,7 @@ func InitServer(conf *config.Config) error {
 		UpdateModel:    conf.Groq.UpdateModel,
 		DeleteModel:    conf.Groq.DeleteModel,
 		QueryModel:     conf.Groq.QueryModel,
+		AgentModel:     conf.Groq.AgentModel,
 		TimeoutSeconds: conf.Groq.TimeoutSeconds,
 		Recorder:       llmCallRecorder{insert: metricRepo.InsertLLMCall},
 	})
