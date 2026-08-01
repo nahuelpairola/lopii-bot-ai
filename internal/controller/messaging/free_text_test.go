@@ -35,6 +35,7 @@ type fakeFullOrchestrator struct {
 	categoryErr         error
 	accountManageResult orchestrator.AccountManageResult
 	accountManageErr    error
+	runFn               func(execute func(string, json.RawMessage) (string, error)) (string, error)
 }
 
 func (o *fakeFullOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
@@ -56,10 +57,14 @@ func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, us
 	return o.queryAnswer, o.queryErr
 }
 
-// Run fails loudly on purpose: nothing routes through the agent loop in stage
-// 1, so a call here means a code path migrated ahead of its stage.
-func (o *fakeFullOrchestrator) Run(context.Context, string, string, []orchestrator.QueryTurn, []orchestrator.AgentTool, func(string, json.RawMessage) (string, error)) (string, error) {
-	return "", errRunNotWiredInStage1
+// Run falla fuerte salvo que el test lo programe: sólo UPDATE y DELETE van por
+// el loop en la etapa 2, así que llegar acá sin quererlo es haber migrado un
+// camino antes de tiempo.
+func (o *fakeFullOrchestrator) Run(_ context.Context, _, _ string, _ []orchestrator.QueryTurn, _ []orchestrator.AgentTool, execute func(string, json.RawMessage) (string, error)) (string, error) {
+	if o.runFn == nil {
+		return "", errRunNotWired
+	}
+	return o.runFn(execute)
 }
 func (o *fakeFullOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
 	return o.categoryResult, o.categoryErr

@@ -229,10 +229,11 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		return err
 	}
 	if !result.Resolved {
-		c.resolveMetric(ctx, userID, outcomeNoCandidates)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgNoCandidatesFound})
-		}
+		// El candidato ya está resuelto acá: lo que falló es entender el CAMBIO.
+		// Decirle "no tengo movimientos de ese día" sería mentira, y desde el
+		// agent loop se llega a este punto justo después de que eligió cuál era.
+		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.sendText(ctx, b, chatID, msgCorrectionNotUnderstood)
 		return nil
 	}
 

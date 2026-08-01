@@ -277,6 +277,12 @@ const (
 	// Shown only when the window (today, or the mentioned day) has no
 	// movements at all — the fallback picker covers every other case.
 	msgNoCandidatesFound = "No tengo movimientos de ese día para tocar. ¿De qué fecha era?"
+
+	// msgCorrectionNotUnderstood es lo que va cuando el movimiento SÍ se
+	// encontró pero no se pudo armar la corrección. Decir "no tengo movimientos"
+	// ahí sería mentira — y por el agent loop ese camino se llega justo después
+	// de que el usuario eligió cuál era.
+	msgCorrectionNotUnderstood = "Encontré el movimiento, pero no me quedó claro qué querés cambiarle. ¿Me lo decís de nuevo?"
 )
 
 func msgPickDeleteCandidate(data conversation.Data) string {

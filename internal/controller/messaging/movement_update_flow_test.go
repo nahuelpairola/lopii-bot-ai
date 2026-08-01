@@ -19,6 +19,11 @@ type fakeOrchestrator struct {
 	updateResult      orchestrator.UpdateResult
 	updateErr         error
 	gotUpdateAccounts []orchestrator.AccountOption
+	// runFn deja que un test maneje el loop unificado. Sin setear, Run falla
+	// fuerte: un camino que llegue ahí sin quererlo migró antes de su etapa.
+	runFn        func(execute func(string, json.RawMessage) (string, error)) (string, error)
+	gotRunPrompt string
+	gotRunTools  []orchestrator.AgentTool
 }
 
 func (o *fakeOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
@@ -41,14 +46,18 @@ func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userTe
 	return "", nil
 }
 
-// errRunNotWiredInStage1 is what both full fakes return from Run. Stage 1 adds
-// the method to the interface and wires it to nothing; a test that reaches it
-// has migrated a path ahead of its stage, and should fail loudly rather than
-// get a plausible empty answer.
-var errRunNotWiredInStage1 = errors.New("Run is not wired in stage 1")
+// errRunNotWired es lo que devuelven los fakes cuando el test no programó el
+// loop. Un camino que llegue ahí sin querer migró antes de su etapa, y tiene que
+// fallar fuerte en vez de recibir una respuesta vacía plausible.
+var errRunNotWired = errors.New("Run is not wired in this test")
 
-func (o *fakeOrchestrator) Run(context.Context, string, string, []orchestrator.QueryTurn, []orchestrator.AgentTool, func(string, json.RawMessage) (string, error)) (string, error) {
-	return "", errRunNotWiredInStage1
+func (o *fakeOrchestrator) Run(_ context.Context, systemPrompt, _ string, _ []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(string, json.RawMessage) (string, error)) (string, error) {
+	o.gotRunPrompt = systemPrompt
+	o.gotRunTools = tools
+	if o.runFn == nil {
+		return "", errRunNotWired
+	}
+	return o.runFn(execute)
 }
 func (o *fakeOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
 	return orchestrator.CategoryCreateResult{}, nil

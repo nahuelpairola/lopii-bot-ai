@@ -59,10 +59,12 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		return qErr
 	case orchestrator.IntentCreate:
 		return c.startMovementCreate(ctx, b, chatID, userID, text)
-	case orchestrator.IntentUpdate:
-		return c.startMovementUpdate(ctx, b, chatID, userID, text)
-	case orchestrator.IntentDelete:
-		return c.startMovementDelete(ctx, b, chatID, userID, text)
+	// UPDATE y DELETE son los dos intents que van por el loop unificado en la
+	// etapa 2 — los dos más rotos (9,5% y 62%), y el conjunto más chico que
+	// ejercita parking, cola, un gate de plata y respuestas de texto libre.
+	// Los otros ocho siguen por su camino de siempre.
+	case orchestrator.IntentUpdate, orchestrator.IntentDelete:
+		return c.startAgentLoop(ctx, b, chatID, userID, text)
 	case orchestrator.IntentAccountManage:
 		return c.startAccountManage(ctx, b, chatID, userID, text)
 	case orchestrator.IntentCreateCategory:
