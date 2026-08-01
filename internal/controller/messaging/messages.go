@@ -156,33 +156,38 @@ func msgAskAccount(data conversation.Data) string {
 // de cuenta es por moneda. Sin eso, alguien que ya tiene una cuenta en pesos y
 // carga un gasto en dólares lee "tu cuenta principal" y entiende que le pisamos
 // la que ya tenía. cur vacío (no debería pasar) cae en la redacción vieja.
+//
+// Se nombra con Label() —"pesos", "dólares"— y nunca con el código ISO.
 
 func msgAskFirstAccountName(cur string) string {
 	if cur == "" {
 		return "¿De dónde salió? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
 	}
-	return "¿De dónde salieron esos " + cur + "? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
+	return "¿De dónde salieron esos " + currency.Currency(cur).Label() + "? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
 }
 
 func msgAskFirstAccountBalance(name, cur string) string {
 	if cur == "" {
 		return "¿Cuánto saldo tenés en " + name + " ahora? Poné el saldo que ves en tu cuenta (ej: 50000) — o mandá \"después\"."
 	}
-	return "¿Cuánto saldo tenés en " + name + " ahora, en " + cur + "? Poné el saldo que ves en tu cuenta — o mandá \"después\"."
+	return "¿Cuánto saldo tenés en " + name + " ahora, en " + currency.Currency(cur).Label() + "? Poné el saldo que ves en tu cuenta — o mandá \"después\"."
 }
 
 // msgFirstAccountDefault nombra las monedas de las cuentas recién creadas. Son
 // varias cuando un mismo mensaje trae filas en dos monedas: createFirstAccount
 // crea UNA CUENTA POR MONEDA, todas con el nombre que dio el usuario.
 func msgFirstAccountDefault(name string, currencies []string) string {
-	switch len(currencies) {
+	labels := make([]string, 0, len(currencies))
+	for _, c := range currencies {
+		labels = append(labels, currency.Currency(c).Label())
+	}
+	switch len(labels) {
 	case 0:
 		return "⭐ Dejé " + name + " como tu cuenta principal — la uso cuando no me aclarás de dónde sale la plata."
 	case 1:
-		cur := currencies[0]
-		return "⭐ Dejé " + name + " como tu cuenta en " + cur + " por defecto — la uso para los movimientos en " + cur + " cuando no me aclarás de dónde sale la plata."
+		return "⭐ Dejé " + name + " como tu cuenta en " + labels[0] + " por defecto — la uso para los movimientos en " + labels[0] + " cuando no me aclarás de dónde sale la plata."
 	default:
-		list := strings.Join(currencies[:len(currencies)-1], ", ") + " y " + currencies[len(currencies)-1]
+		list := strings.Join(labels[:len(labels)-1], ", ") + " y " + labels[len(labels)-1]
 		return "⭐ Creé " + name + " en " + list + ", y las dejé por defecto para cada una — las uso cuando no me aclarás de dónde sale la plata."
 	}
 }
@@ -239,7 +244,7 @@ func displayAmount(d decimal.Decimal) string {
 func rowMoney(r movementRow) string {
 	amt, err := parseARAmount(r.Amount)
 	if err != nil {
-		return r.Amount + " " + r.Currency
+		return r.Amount + " " + currency.Currency(r.Currency).Label()
 	}
 	return currency.FormatMoney(amt.Abs(), currency.Currency(r.Currency))
 }
@@ -337,8 +342,9 @@ func msgConfirmDelete(data conversation.Data) string {
 
 	lines := []string{"🗑️ Se borraría:"}
 	for _, row := range candidates[idx].Rows {
-		lines = append(lines, fmt.Sprintf("%s %s › %s — %s %s · %s (%s)",
-			iconOrDefault(row.Icon), row.Category, row.Subcategory, row.Amount, row.Currency, row.Description, row.Date))
+		// rowMoney y no "monto + código": el usuario lee "$3.000", no "3000 ARS".
+		lines = append(lines, fmt.Sprintf("%s %s › %s — %s · %s (%s)",
+			iconOrDefault(row.Icon), row.Category, row.Subcategory, rowMoney(row), row.Description, row.Date))
 	}
 	return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
 }
@@ -382,28 +388,30 @@ func msgConfirmAccountCreate(data conversation.Data) string {
 	balance := stringOrEmpty(data[keyAccountBalance])
 	return "Confirmá la cuenta nueva:\n\n" +
 		"📛 Nombre: " + name + "\n" +
-		"💱 Moneda: " + cur + "\n" +
+		"💱 Moneda: " + currency.Currency(cur).Label() + "\n" +
 		"💰 Saldo inicial: " + balance + "\n\n" +
 		"¿Confirmamos?"
 }
 
 func msgAccountCreateSuccess(name, cur, balance string) string {
-	return "✅ Cuenta \"" + name + "\" creada en " + cur + " con saldo inicial " + balance + "."
+	return "✅ Cuenta \"" + name + "\" creada en " + currency.Currency(cur).Label() + " con saldo inicial " + balance + "."
 }
 
 // --- ACCOUNT_MANAGE ---
-// Voz: qué necesito · ejemplo · qué hago con eso. Los saldos se muestran con
-// .String() directo — un saldo puede ser negativo y el usuario tiene que
-// verlo tal cual (NO displayAmount, que hace Abs(): esa es para magnitudes de
-// movimientos).
+// Voz: qué necesito · ejemplo · qué hago con eso. Los saldos van por
+// currency.FormatMoney, que conserva el signo — un saldo puede ser negativo y
+// el usuario tiene que verlo tal cual (NO displayAmount, que hace Abs(): esa es
+// para magnitudes de movimientos). Y como FormatMoney ya trae el símbolo
+// ("$" / "US$"), el código de moneda no se repite al lado del número.
 
 func msgAccountManagePick(data conversation.Data) string {
 	return "¿De cuál de tus cuentas me hablás? Elegila acá abajo y te muestro qué se puede hacer."
 }
 
 func msgAccountManageMenu(name, cur string, balance decimal.Decimal) string {
-	return fmt.Sprintf("Cuenta: %s (%s) — saldo actual %s %s.\n¿Qué querés hacer con ella?",
-		name, cur, balance.String(), cur)
+	c := currency.Currency(cur)
+	return fmt.Sprintf("Cuenta: %s (%s) — saldo actual %s.\n¿Qué querés hacer con ella?",
+		name, c.Label(), currency.FormatMoney(balance, c))
 }
 
 func msgAskAccountNewName(current string) string {
@@ -424,12 +432,14 @@ func msgConfirmAccountAdjust(name, cur string, current, newTotal decimal.Decimal
 	if delta.IsNegative() {
 		sign = "-"
 	}
-	return fmt.Sprintf("%s: %s %s → %s %s (ajuste %s%s %s)\n¿Confirmás?",
-		name, current.String(), cur, newTotal.String(), cur, sign, delta.Abs().String(), cur)
+	c := currency.Currency(cur)
+	return fmt.Sprintf("%s: %s → %s (ajuste %s%s)\n¿Confirmás?",
+		name, currency.FormatMoney(current, c), currency.FormatMoney(newTotal, c), sign, currency.FormatMoney(delta.Abs(), c))
 }
 
 func msgConfirmAccountDefault(name, cur string) string {
-	return fmt.Sprintf("⭐ ¿%s pasa a ser tu cuenta en %s por defecto? Los movimientos en %s sin cuenta aclarada van a ir ahí.", name, cur, cur)
+	label := currency.Currency(cur).Label()
+	return fmt.Sprintf("⭐ ¿%s pasa a ser tu cuenta en %s por defecto? Los movimientos en %s sin cuenta aclarada van a ir ahí.", name, label, label)
 }
 
 // msgFlowCancelled: "cancelaste, no escribí nada" — no es específico de
@@ -480,9 +490,10 @@ const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 
 func msgInsufficientFunds(short []movement.AccountShortfall) string {
 	s := short[0]
-	falta := s.After.Abs().String()
-	return fmt.Sprintf("⚠️ Ojo: %s quedaría en −%s %s (te faltan %s %s). ¿Cómo lo registro?",
-		s.Name, s.After.Abs().String(), s.Currency, falta, s.Currency)
+	c := currency.Currency(s.Currency)
+	// FormatMoney sobre el valor SIN Abs: el signo es parte de lo que se avisa.
+	return fmt.Sprintf("⚠️ Ojo: %s quedaría en %s (te faltan %s). ¿Cómo lo registro?",
+		s.Name, currency.FormatMoney(s.After, c), currency.FormatMoney(s.After.Abs(), c))
 }
 
 const msgLogMissingFirst = "Dale, registrá primero lo que falta y volvé a mandarme esto."

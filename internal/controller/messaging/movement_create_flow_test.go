@@ -891,8 +891,12 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	if rt.texts[1] != want {
 		t.Errorf("R1 = %q, want %q", rt.texts[1], want)
 	}
-	if !strings.Contains(rt.texts[1], "ARS") {
+	if !strings.Contains(rt.texts[1], "pesos") {
 		t.Errorf("R1 no nombra la moneda: %q", rt.texts[1])
+	}
+	// Y la nombra hablado, no en jerga: "ARS" no lo lee nadie.
+	if strings.Contains(rt.texts[1], "ARS") {
+		t.Errorf("R1 muestra el código ISO en vez del nombre: %q", rt.texts[1])
 	}
 	if rt.texts[2] != msgInviteMoreAccounts {
 		t.Errorf("R2 = %q, want %q", rt.texts[2], msgInviteMoreAccounts)
@@ -905,14 +909,20 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 // el default es por moneda, y la de dólares no recibe ningún movimiento en pesos.
 func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
 	one := msgFirstAccountDefault("Galicia", []string{"USD"})
-	if !strings.Contains(one, "USD") {
+	if !strings.Contains(one, "dólares") {
 		t.Errorf("una moneda: no la nombra: %q", one)
 	}
 
 	two := msgFirstAccountDefault("Galicia", []string{"ARS", "USD"})
-	for _, cur := range []string{"ARS", "USD"} {
-		if !strings.Contains(two, cur) {
-			t.Errorf("dos monedas: falta %s: %q", cur, two)
+	for _, label := range []string{"pesos", "dólares"} {
+		if !strings.Contains(two, label) {
+			t.Errorf("dos monedas: falta %s: %q", label, two)
+		}
+	}
+	// Ninguna de las dos formas muestra el código ISO: es jerga contable.
+	for _, msg := range []string{one, two} {
+		if strings.Contains(msg, "ARS") || strings.Contains(msg, "USD") {
+			t.Errorf("quedó el código ISO en la copy: %q", msg)
 		}
 	}
 

@@ -1,5 +1,7 @@
 package account
 
+import "lopiibot.com/internal/currency"
+
 const (
 	msgInvalidAccountName   = "Mandame un nombre válido para la cuenta."
 	msgAccountCreationError = "No se pudo crear la cuenta, probá de nuevo."
@@ -27,19 +29,23 @@ const (
 		"(por ejemplo, una inversión) o en otra distinta. Si ya terminaste, tocá \"Listo\"."
 )
 
-func msgAskAccountName(currency string) string {
-	return "¿Cómo querés llamar a esta cuenta en " + currency + "? (ej: Wallet, FCI, Ahorros)"
+// Las cuatro nombran la moneda con currency.Label() —"pesos", "dólares"— y
+// nunca con el código ISO: "ARS" es jerga contable y el usuario no la lee.
+// El parámetro sigue llegando como código porque es lo que guarda el modelo.
+
+func msgAskAccountName(cur string) string {
+	return "¿Cómo querés llamar a esta cuenta en " + currency.Currency(cur).Label() + "? (ej: Wallet, FCI, Ahorros)"
 }
 
-func msgConfirmReplaceDefault(currency, accountName string) string {
-	return "Ya tenés una cuenta principal en " + currency + ". ¿Querés que \"" + accountName +
+func msgConfirmReplaceDefault(cur, accountName string) string {
+	return "Ya tenés una cuenta principal en " + currency.Currency(cur).Label() + ". ¿Querés que \"" + accountName +
 		"\" la reemplace como principal, o la agregamos como una cuenta más sin que cambie tu cuenta principal actual?"
 }
 
-func MsgAskInitialBalance(accountName, currency string) string {
-	return "¿Cuánto tenés hoy en \"" + accountName + "\" (" + currency + ")? Tirame el número (ej: 50000)."
+func MsgAskInitialBalance(accountName, cur string) string {
+	return "¿Cuánto tenés hoy en \"" + accountName + "\" (en " + currency.Currency(cur).Label() + ")? Tirame el número (ej: 50000)."
 }
 
-func MsgAccountAlreadyExists(name, currency string) string {
-	return "Ya tenés una cuenta llamada \"" + name + "\" en " + currency + ". Probá con otro nombre."
+func MsgAccountAlreadyExists(name, cur string) string {
+	return "Ya tenés una cuenta llamada \"" + name + "\" en " + currency.Currency(cur).Label() + ". Probá con otro nombre."
 }
