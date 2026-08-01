@@ -222,3 +222,35 @@ func TestRun_ToolUseFailedFallsBackToAuto(t *testing.T) {
 		t.Errorf("tool_choice sequence = %v, want [required auto]", choices)
 	}
 }
+
+// TestCompletionCapsAreSeparate fija el invariante que la etapa 1 promete:
+// cero cambio de comportamiento en el camino vivo. Run y AnswerQuery comparten
+// chatCompletionLoop, así que subir un cap compartido para darle aire al loop
+// habría duplicado el techo de respuesta de las consultas EN PRODUCCIÓN — más
+// largas y más caras, sin que nadie lo pidiera.
+func TestCompletionCapsAreSeparate(t *testing.T) {
+	if maxQueryCompletionTokens != 1024 {
+		t.Errorf("el cap de AnswerQuery = %d, want 1024: es el camino vivo y no se toca en esta etapa", maxQueryCompletionTokens)
+	}
+	if maxAgentCompletionTokens <= maxQueryCompletionTokens {
+		t.Errorf("el cap del loop (%d) tiene que ser mayor que el de query (%d): una sola respuesta puede traer todas las tool_calls de la ronda MÁS la narración",
+			maxAgentCompletionTokens, maxQueryCompletionTokens)
+	}
+}
+
+// TestRun_SendsItsOwnCompletionCap comprueba que el cap del loop llega al
+// request, no solo que la constante exista.
+func TestRun_SendsItsOwnCompletionCap(t *testing.T) {
+	srv, reqs := loopServer(t, `{"choices":[{"message":{"content":"ok","tool_calls":[
+		{"id":"c1","type":"function","function":{"name":"sum_movements","arguments":"{}"}}]}}]}`)
+	defer srv.Close()
+	o := New(Config{BaseURL: srv.URL, AgentModel: "m", TimeoutSeconds: 5})
+
+	if _, err := o.Run(context.Background(), "sys", "x", nil, agentToolsForTest(),
+		func(string, json.RawMessage) (string, error) { return "ok", nil }); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := (*reqs)[0].MaxCompletionTokens; got != maxAgentCompletionTokens {
+		t.Errorf("max_completion_tokens = %d, want %d", got, maxAgentCompletionTokens)
+	}
+}

@@ -87,7 +87,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		if i == 0 {
 			choice = "required"
 		}
-		assistant, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, toolDefs, choice)
+		assistant, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, toolDefs, choice, maxQueryCompletionTokens)
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: answer query: %w", err)
 		}
@@ -117,7 +117,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	// attempts a tool call while tool_choice is "none" — a real failure seen
 	// with gpt-oss-120b, not just the weak models. With no tool schemas in
 	// the request there's nothing for the model to call.
-	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, nil, "none")
+	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, nil, "none", maxQueryCompletionTokens)
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: answer query (final): %w", err)
 	}

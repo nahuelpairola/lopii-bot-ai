@@ -102,7 +102,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 		if i == 0 {
 			choice = "required"
 		}
-		assistant, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.agentModel, messages, toolDefs, choice)
+		assistant, err := o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, toolDefs, choice, maxAgentCompletionTokens)
 		if errors.Is(err, ErrNothingToExtract) && choice == "required" {
 			// The model refused to call anything under tool_choice:"required",
 			// and Groq turns that into a hard 400. Observed on real correction
@@ -118,7 +118,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 			// declined to call a tool, so there was nothing to record; the risk
 			// it now claims to have recorded something is what the prompt's
 			// "no repitas el detalle" rule and an empty receipt guard against.
-			assistant, err = o.client.chatCompletionLoop(ctx, callTypeQuery, o.agentModel, messages, toolDefs, "auto")
+			assistant, err = o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, toolDefs, "auto", maxAgentCompletionTokens)
 		}
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: agent run: %w", err)
@@ -151,7 +151,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 	// Cap reached while the model still wanted tools. Force one narration from
 	// the results already gathered. Tools are omitted (nil, not toolDefs):
 	// Groq 400s hard if the model attempts a call while tool_choice is "none".
-	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.agentModel, messages, nil, "none")
+	final, err := o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, nil, "none", maxAgentCompletionTokens)
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: agent run (final): %w", err)
 	}

@@ -42,10 +42,18 @@ type loopRequest struct {
 
 // maxQueryCompletionTokens caps narration length — a cost guard (the loop
 // multiplies Groq calls; a runaway narration would multiply tokens too).
-// 2048 because the unified loop's assistant message can carry a batch of
-// tool_calls AND the narration in the same response (the turn cut), which does
-// not fit the read-only query's budget.
-const maxQueryCompletionTokens = 2048
+//
+// It stays at 1024 for AnswerQuery. The agent loop needs more headroom
+// (maxAgentCompletionTokens) because its assistant message can carry a batch of
+// tool_calls AND the narration in the same response, but raising the shared
+// constant would have doubled the cap on the LIVE query path — a behaviour
+// change smuggled into a stage that promises none.
+const maxQueryCompletionTokens = 1024
+
+// maxAgentCompletionTokens is Run's own cap. Higher than the query loop's
+// because of the turn cut: one assistant message may carry every tool call of a
+// round plus the final narration.
+const maxAgentCompletionTokens = 2048
 
 type loopResponse struct {
 	Choices []struct {
@@ -59,14 +67,14 @@ type loopResponse struct {
 // toolChoice is "auto" for normal rounds and "none" on a forced-narration
 // final call (Groq's documented way to make the model emit text instead of
 // another tool round).
-func (c *Client) chatCompletionLoop(ctx context.Context, callType, model string, messages []loopMessage, tools []toolDef, toolChoice string) (loopMessage, error) {
+func (c *Client) chatCompletionLoop(ctx context.Context, callType, model string, messages []loopMessage, tools []toolDef, toolChoice string, maxTokens int) (loopMessage, error) {
 	reqBody := loopRequest{
 		Model:               model,
 		Messages:            messages,
 		Tools:               tools,
 		ToolChoice:          toolChoice,
 		Temperature:         0.1,
-		MaxCompletionTokens: maxQueryCompletionTokens,
+		MaxCompletionTokens: maxTokens,
 	}
 
 	payload, err := json.Marshal(reqBody)
