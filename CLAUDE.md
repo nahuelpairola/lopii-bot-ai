@@ -152,15 +152,6 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
 - `internal/controller/messaging` is ~7.5k non-test lines across 43 files, 3.7× the next
   package. Splitting it is the real fix (see `docs/decisions.md`); the per-package `CLAUDE.md`
   is the stopgap until the agent-loop migration settles the seams.
-- **A correction that names the movement but not the new value is routed `UNCLEAR`** — deferred
-  to agent-loop stage 3, on purpose. `"el café estaba mal"` matches no router rule: `UPDATE`'s
-  examples all carry a correction (`"en realidad"`, `"me devolvieron"`), and the shared
-  tie-breaker is *"copulativo en pasado **sobre un monto**"*, so a message with no amount falls
-  through to `UNCLEAR`. Reproduced 4× in `intent_events` on 2026-08-01 (ids 115/116, 132/133).
-  Patching the router alone does **not** fix it: the message would reach the loop, ask which
-  movement, and then die in `ResolveUpdate` with nothing to change — the failure just moves
-  later. The real fix is stage 3, where `correct_movement` can ask *what* to change, not only
-  *which*. Do not touch the shared tie-breakers for this; they are also production's router.
 
 ## 7. Claude Code Session Rules
 

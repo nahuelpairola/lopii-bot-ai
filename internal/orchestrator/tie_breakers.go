@@ -20,6 +20,7 @@ const tieBreakerRules = `- Monto o ítem solo → {{record}}.
 - Rendimiento de inversión → {{record}}.
 - No confundir {{record}} con {{delete}}.
 - Copulativo en pasado sobre un monto (era, eran, fue) → {{correct}}, aunque no diga "en realidad".
+- Queja sobre un movimiento previo sin decir el valor nuevo ("estaba mal", "no era así") → {{correct}}: la app le pregunta qué cambiar.
 - Ajustar/corregir el saldo o monto de una CUENTA → {{account}} ({{correct}} es solo sobre un movimiento).
 - "¿Qué puedo hacer?" / "¿cómo funcionás?" → {{help}} (no {{query}}).`
 
