@@ -1,0 +1,223 @@
+//go:build llm_eval
+
+package orchestrator
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+)
+
+// This is the cheapest honest answer to "does the unified loop actually fix
+// UPDATE?", and it is available BEFORE stage 2 exists.
+//
+// Run, BuildAgentPrompt and AgentTools all landed in stage 1, and Run takes its
+// executor as a closure — so the real prompt and the real 15 tool schemas can be
+// driven against real production failures with a FAKE executor returning canned
+// results. No database, no ask_user, no parked actions.
+//
+// What it measures is TOOL SELECTION, which is exactly where UPDATE fails today:
+// the router picks the wrong intent, or UpdateResult cannot say "I found it but
+// I am missing the amount". It does not measure end-to-end correctness — the
+// executor is a stub — and it is not meant to.
+//
+// The corpus is verbatim from the production export (spec §2.2-2.4). Every one
+// of these FAILED for a real user.
+//
+//	GROQ_API_KEY=... GROQ_BASE_URL=https://api.groq.com/openai/v1 \
+//	GROQ_AGENT_MODEL=openai/gpt-oss-20b \
+//	go test -tags llm_eval ./internal/orchestrator/ -run TestAgentLoopEval -v -timeout 30m
+
+type agentEvalCase struct {
+	id      string
+	msg     string
+	history []QueryTurn
+	// wantFirst is the tool the model must reach for first.
+	wantFirst string
+	// forbidden is the tool that must NOT be called — usually the one that
+	// produced the real-world damage.
+	forbidden string
+	why       string
+}
+
+var agentEvalCases = []agentEvalCase{
+	// --- Class A: weak referent / no new value (9 real failures) ---
+	// Cause: UpdateResult carries one bit, Resolved. "I found which one but I
+	// am missing the new amount" is not representable. The loop can just ask.
+	{
+		id: "le_erre_eran_1500", msg: "Le erre eran 1500",
+		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		why: "corrección sin referente explícito: hay que buscar, no registrar",
+	},
+	{
+		id: "panaderia_era_2k", msg: "La panaderia era 2k",
+		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		why: "el caso del acento, ya arreglado en f0; acá se mide la elección de tool",
+	},
+	{
+		id: "corregir_ultimo", msg: "Corregir monto último movimiento",
+		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		why: "id 203: hoy contesta 'no tengo movimientos de ese día', que es falso",
+	},
+	{
+		id: "asado_eran_15mil", msg: "Perdon, el asado eran 15 mil",
+		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		why: "corrección con monto nuevo y referente textual",
+	},
+
+	// --- Class B: account messages the router sent to UPDATE (6 real failures) ---
+	// Cause: the router cannot see the accounts. The last two do not even
+	// contain the word "cuenta", so redirectTargetFor misses them too.
+	{
+		id: "modificar_cuenta_wallet", msg: "Quiero modificar el monto de la cuenta Wallet ARS",
+		wantFirst: ToolManageAccount, forbidden: ToolCorrectMovement,
+		why: "es una CUENTA, no un movimiento",
+	},
+	{
+		id: "actualizar_mercado", msg: "Actualizar monto de mercado a $891867.82",
+		wantFirst: ToolManageAccount, forbidden: ToolRecordMovements,
+		why: "no dice 'cuenta' en ningún lado; hoy ni el router ni redirectTargetFor lo agarran",
+	},
+	{
+		id: "renombrar_balanz", msg: "Quiero cambiar el nombre del Fondo común de inversión Balanz por FCI",
+		wantFirst: ToolManageAccount, forbidden: ToolRecordMovements,
+		why: "renombrar una cuenta, sin la palabra 'cuenta'",
+	},
+
+	// --- Class C: needs history (sequence B, ids 208-211) ---
+	// 210 is the worst outcome in the whole export: it RECORDED a duplicate.
+	// Without history the message is unintelligible; with history it is trivial.
+	{
+		id:  "cafe_era_en_el_bar",
+		msg: "El café era en el bar",
+		history: []QueryTurn{
+			{Question: "3 mil café", Answer: "Registré: ☕ Ocio y salidas › Salir a comer — $3.000 · café · Mercado Pago (hoy)"},
+		},
+		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		why: "id 210 registró un duplicado — peor que no hacer nada. Con historial es trivial",
+	},
+	{
+		id:  "es_cafe_en_bar",
+		msg: "Es café en bar",
+		history: []QueryTurn{
+			{Question: "3 mil café", Answer: "Registré: ☕ Ocio y salidas › Salir a comer — $3.000 · café · Mercado Pago (hoy)"},
+		},
+		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		why: "id 209: hoy cae en UNCLEAR",
+	},
+
+	// --- Control: a plain CREATE must stay a plain CREATE ---
+	// The 74% path. If the loop starts second-guessing it, the whole thing is
+	// a regression no matter what it fixes.
+	{
+		id: "control_gasto_simple", msg: "gasté 500 en el súper",
+		wantFirst: ToolRecordMovements, forbidden: ToolFindMovementsToCorrect,
+		why: "el camino del 74%: no puede volverse una corrección",
+	},
+	{
+		id: "control_query", msg: "cuánto gasté esta semana",
+		wantFirst: ToolSumMovements, forbidden: ToolRecordMovements,
+		why: "una consulta no puede registrar nada",
+	},
+}
+
+// fakeCandidates is what find_movements_to_correct returns in this eval: one
+// plausible recent movement, enough for the model to proceed to correct_movement
+// without a real DB.
+const fakeCandidates = `[{"transaction_id":"tx-1","fecha":"hoy","detalle":"café · $3.000 · Ocio y salidas | Salir a comer"}]`
+
+func TestAgentLoopEval(t *testing.T) {
+	key := os.Getenv("GROQ_API_KEY")
+	if key == "" {
+		t.Skip("GROQ_API_KEY unset — real-LLM eval skipped")
+	}
+
+	_, taxonomy := seededTaxonomy(t)
+	accounts := []AccountOption{
+		{ID: 1, Name: "Mercado Pago", Currency: "ARS"},
+		{ID: 2, Name: "Wallet ARS", Currency: "ARS"},
+		{ID: 3, Name: "Fondo común de inversión Balanz", Currency: "ARS"},
+	}
+	prompt := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "")
+	t.Logf("prompt unificado: %d runas (~%d tokens estimados) · %d tools",
+		len([]rune(prompt)), len([]rune(prompt))/4, len(AgentTools()))
+
+	model := os.Getenv("GROQ_AGENT_MODEL")
+	if model == "" {
+		model = "openai/gpt-oss-20b"
+	}
+	o := New(Config{
+		APIKey:         key,
+		BaseURL:        os.Getenv("GROQ_BASE_URL"),
+		AgentModel:     model,
+		TimeoutSeconds: 60,
+	})
+
+	for _, tc := range agentEvalCases {
+		t.Run(tc.id, func(t *testing.T) {
+			var called []string
+			execute := func(name string, _ json.RawMessage) (string, error) {
+				called = append(called, name)
+				switch name {
+				case ToolFindMovementsToCorrect:
+					return fakeCandidates, nil
+				case ToolRecordMovements:
+					return "registrados: 1 movimiento", nil
+				case ToolSumMovements, ToolListMovements, ToolAccountBalance:
+					return `{"total":"192025","currency":"ARS"}`, nil
+				case ToolListCategories:
+					return "Ocio y salidas | Salir a comer", nil
+				default:
+					// Every action tool parks in the real thing; here it just
+					// resolves so the loop can narrate and end.
+					return "pendiente: la app se encarga", nil
+				}
+			}
+
+			narration, err := o.Run(context.Background(), prompt, tc.msg, tc.history, AgentTools(), execute)
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if len(called) == 0 {
+				t.Fatalf("no llamó ninguna tool — tool_choice:required debería impedirlo. Narró: %q", narration)
+			}
+
+			t.Logf("tools: %s | narración: %s", strings.Join(called, " → "), truncate(narration))
+
+			if called[0] != tc.wantFirst {
+				t.Errorf("primera tool = %s, quería %s (%s)", called[0], tc.wantFirst, tc.why)
+			}
+			for _, c := range called {
+				if c == tc.forbidden {
+					t.Errorf("llamó %s, que es justo lo que no debe (%s)", tc.forbidden, tc.why)
+				}
+			}
+		})
+	}
+}
+
+// TestAgentPromptSize is free — no API call — and answers the cost question the
+// spec's §7 estimates: what the unified prompt actually weighs against the
+// per-intent prompts it replaces.
+func TestAgentPromptSize(t *testing.T) {
+	_, taxonomy := seededTaxonomy(t)
+	accounts := []AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}}
+
+	unified := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "")
+	create := fmt.Sprintf(createSystemPromptTemplate, "2026-07-31", buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
+
+	var tools int
+	for _, tool := range AgentTools() {
+		tools += len([]rune(tool.Description)) + len(tool.Parameters)
+	}
+
+	t.Logf("prompt unificado : %5d runas", len([]rune(unified)))
+	t.Logf("prompt CREATE hoy: %5d runas", len([]rune(create)))
+	t.Logf("router hoy       : %5d runas", len([]rune(routerSystemPrompt)))
+	t.Logf("schemas de tools : %5d runas (van en CADA request del loop)", tools)
+	t.Logf("loop por request : %5d runas vs %d de router+CREATE hoy",
+		len([]rune(unified))+tools, len([]rune(routerSystemPrompt))+len([]rune(create)))
+}
