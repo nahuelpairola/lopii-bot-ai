@@ -43,6 +43,14 @@ type agentPayload struct {
 	Change     string           `json:"change,omitempty"`
 	Candidates []candidateGroup `json:"candidates,omitempty"`
 	Chosen     int              `json:"chosen"`
+	// Seed es el estado del CREATE que quedó incompleto: las filas ya resueltas
+	// y qué falta. Viaja al flujo movement_create, que es quien sabe preguntar
+	// categoría/subcategoría/cuenta con sus pickers. Sólo lo usa
+	// record_movements; para correct/delete va nil.
+	//
+	// Ojo: pasa por JSONB, así que todo valor acá adentro tiene que ser string o
+	// string-JSON. buildCreateSeed ya cumple (movementRow va codificado).
+	Seed map[string]any `json:"seed,omitempty"`
 }
 
 // agentExecutor es el closure `execute` que Run llama por cada tool call.
@@ -242,13 +250,22 @@ func (e *agentExecutor) park(tool, change, question string) (string, error) {
 	return resultParked, orchestrator.ErrAgentTurnDone
 }
 
-// parkCreate y parkFundsGate se cablean en las tareas 5 y 6. Hasta entonces el
-// CREATE incompleto le dice al modelo que la tool no está lista, que es el mismo
-// contrato que las tools sin cablear — nunca inserta a medias.
+// parkCreate deja el CREATE incompleto en la cola. No inserta NADA: la regla es
+// todo-o-nada por lote, para que una transferencia de dos piernas no se parta.
+//
+// Lo que sigue después es el flujo movement_create de siempre, con sus pickers
+// de categoría y cuenta. El loop cambia cómo se llega hasta ahí, no qué pasa
+// después.
 func (e *agentExecutor) parkCreate(seed conversation.Data) (string, error) {
-	return resultNotWiredYet, nil
+	e.parked = append(e.parked, parkedAction{
+		Tool:    orchestrator.ToolRecordMovements,
+		Payload: agentPayload{Seed: seed, Chosen: 0},
+	})
+	return "pendiente: faltan datos, la app se los pide al usuario", orchestrator.ErrAgentTurnDone
 }
 
+// parkFundsGate se cablea en la tarea 6. Hasta entonces le dice al modelo que la
+// tool no está lista — nunca inserta a medias.
 func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *insufficientFunds) (string, error) {
 	return resultNotWiredYet, nil
 }

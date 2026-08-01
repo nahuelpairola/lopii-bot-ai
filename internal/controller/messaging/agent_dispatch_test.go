@@ -133,6 +133,38 @@ func TestDrain_OpensExactlyOneAtATime(t *testing.T) {
 	}
 }
 
+// TestResume_CreateWithGapsOpensMovementCreate: un CREATE incompleto no inserta
+// nada y retoma el flujo que ya existe. La etapa 3 cambia cómo se llega al
+// gap-fill, no el gap-fill.
+func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
+	seed := conversation.Data{
+		keyMovements:           encodeMovementRows([]movementRow{{Type: "expense", Amount: "5000", Currency: "ARS"}}),
+		keyPendingCategoryGaps: encodeStringSlice([]string{"0"}),
+		keyPendingAccountGaps:  encodeStringSlice(nil),
+	}
+	repo := &fakeActionsRepo{}
+	c := newDispatchController(t, repo)
+	c.engine.Register(NewMovementCreateFlow(&fakeSubcategoryRepoFull{}, &fakeAccountRepoFull{}))
+	c.accounts, c.subcategories = &fakeAccountRepoFull{}, &fakeSubcategoryRepoFull{}
+
+	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{{
+		Tool:    orchestrator.ToolRecordMovements,
+		Payload: agentPayload{Seed: seed, Chosen: 0},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.drainNextAgentAction(context.Background(), nil, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(repo.deleted) != 1 {
+		t.Errorf("la acción tiene que salir de la cola antes de abrir el flujo, deleted=%v", repo.deleted)
+	}
+	if inProgress, _ := c.engine.InProgress(1); !inProgress {
+		t.Error("tenía que quedar abierto movement_create para preguntar el gap")
+	}
+}
+
 func TestDrain_NothingParkedIsANoOp(t *testing.T) {
 	c := newDispatchController(t, &fakeActionsRepo{})
 	if err := c.drainNextAgentAction(context.Background(), nil, 0, 1); err != nil {

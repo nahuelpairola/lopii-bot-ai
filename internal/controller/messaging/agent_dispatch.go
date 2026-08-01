@@ -204,10 +204,6 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 	if err := json.Unmarshal(action.Payload, &payload); err != nil {
 		return fmt.Errorf("resume: payload: %w", err)
 	}
-	if payload.Chosen < 0 || payload.Chosen >= len(payload.Candidates) {
-		return fmt.Errorf("resume: candidate %d out of range (%d)", payload.Chosen, len(payload.Candidates))
-	}
-	chosen := payload.Candidates[payload.Chosen]
 
 	// Se borra ANTES de abrir el gate: si el gate falla, el usuario vuelve a
 	// escribir — pero una acción que quedó en la cola bloquearía la siguiente
@@ -217,9 +213,25 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 	}
 
 	switch action.Tool {
+	case orchestrator.ToolRecordMovements:
+		// Un CREATE no tiene candidatos: lo que viaja es el seed a medio
+		// resolver, y quien sabe preguntar lo que falta es movement_create.
+		seed := conversation.Data{}
+		for k, v := range payload.Seed {
+			seed[k] = v
+		}
+		return c.startFlow(ctx, b, chatID, userID, movementCreateFlowName, seed, "drain: start movement_create flow")
 	case orchestrator.ToolCorrectMovement:
+		chosen, err := chosenCandidate(payload)
+		if err != nil {
+			return err
+		}
 		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows)
 	case orchestrator.ToolDeleteMovements:
+		chosen, err := chosenCandidate(payload)
+		if err != nil {
+			return err
+		}
 		seed := conversation.Data{
 			keyCandidateGroups: encodeCandidateGroupList([]candidateGroup{chosen}),
 			keyResolvedIndex:   "0",
@@ -228,6 +240,16 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 	default:
 		return fmt.Errorf("resume: tool %q has no resume path", action.Tool)
 	}
+}
+
+// chosenCandidate saca el candidato elegido. El chequeo de rango vive acá y no
+// arriba porque sólo aplica a las tools que TIENEN candidatos: un CREATE nunca
+// los tiene, y el chequeo genérico lo rechazaba antes de llegar a su rama.
+func chosenCandidate(payload agentPayload) (candidateGroup, error) {
+	if payload.Chosen < 0 || payload.Chosen >= len(payload.Candidates) {
+		return candidateGroup{}, fmt.Errorf("resume: candidate %d out of range (%d)", payload.Chosen, len(payload.Candidates))
+	}
+	return payload.Candidates[payload.Chosen], nil
 }
 
 // discardAgentAction tira la acción entera y NOMBRA lo que se cayó. Tirar un
