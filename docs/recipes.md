@@ -26,62 +26,89 @@ goose -dir ./migrations postgres "<connection_string>" up
 
 ### Recipe 2: Add a conversation flow
 
-A flow is a graph of steps that persists state in `conversation_states`. The graph is validated statically at construction — if a step references a non-existent next step, the server fails to start.
+A flow is a graph of steps persisting state in `conversation_states`. The graph is validated at
+construction — a step referencing a non-existent next step fails the server at startup.
 
-**Steps:**
+> Read `internal/conversation/CLAUDE.md` first for the `Data` contract, and
+> `internal/controller/messaging/CLAUDE.md` for the local helpers. The traps there are the ones
+> that compile.
 
-1. Define step name constants in the target package:
+**1. Step names as constants**, in the target package:
 ```go
 const (
-    stepAskName     = "ask_name"
-    stepAskCurrency = "ask_currency"
-    stepConfirm     = "confirm"
+    accountSetupFlowName = "account_setup"
+    stepAskName          = "ask_name"
+    stepAskCurrency      = "ask_currency"
 )
 ```
 
-2. Build the Flow:
+**2. Build the Flow.** Steps are **struct literals**, not constructors — there is no
+`NewTextStep`/`NewChoiceStep`:
 ```go
-func NewAccountSetupFlow(repo accountRepository) *conversation.Flow {
+func NewAccountSetupFlow() *conversation.Flow {
     steps := map[string]conversation.Step{
-        stepAskName:     conversation.NewTextStep(...),
-        stepAskCurrency: conversation.NewChoiceStep(...),
-        stepConfirm:     conversation.NewChoiceStep(...),
+        stepAskName: conversation.TextStep{
+            PromptText:    func(conversation.Data) string { return msgAskAccountName },
+            DataKey:       keyAccountName,
+            NextStep:      stepAskCurrency,
+            EscapeOptions: []conversation.ChoiceOption{cancelOption},
+        },
+        stepAskCurrency: conversation.ChoiceStep{
+            PromptText: func(conversation.Data) string { return msgAskCurrency },
+            Options: []conversation.ChoiceOption{
+                {Label: "ARS", Value: string(currency.ARS), Finish: true},
+                {Label: "USD", Value: string(currency.USD), Finish: true},
+            },
+            OnChoice: func(value string, data conversation.Data) conversation.Data {
+                next := copyData(data)
+                next[keyAccountCurrency] = value
+                return next
+            },
+        },
     }
-    flow, err := conversation.NewFlow("account_setup", stepAskName, steps)
+    flow, err := conversation.NewFlow(accountSetupFlowName, stepAskName, steps)
     if err != nil {
-        panic(err) // flow graph validation failed at startup
+        panic(err) // graph validation — fails loudly at startup, by design
     }
     return flow
 }
 ```
 
-3. Register in `server.go`:
+**3. Wire it in three places.** Nothing enforces any of them:
+
+| Where | What | If you forget |
+|---|---|---|
+| `server.go` | `conversationEngine.Register(NewAccountSetupFlow())` | server fails at startup — loud, fine |
+| `controller.go` → `handleFlowFinished` | a `case accountSetupFlowName:` | the flow completes into `msgSomethingBroke` |
+| `messages.go` → `FlowResumeLabel` | a `case accountSetupFlowName:` | **silent** — broken copy appears only after a user idles 24h |
+
+**4. Start it** with `c.startFlow(...)`, or `engine.StartWithData(userID, name, seed)` when you
+have pre-resolved data and want the `SkipIf` walk to land on the first real gap.
+
+**5. Read the result** in your `handleFlowFinished` case — always through the helpers, because
+`Data` round-trips through JSONB:
 ```go
-conversationEngine.Register(NewAccountSetupFlow(accountRepo))
+name := stringOrEmpty(data[keyAccountName])   // never data[k].(string)
 ```
 
-4. Start from a Telegram handler:
-```go
-engine.Start(userID, "account_setup")
-```
-
-5. Handle the result inside `handleConversationInput` when `result.Finished == true`:
-```go
-switch result.FlowName {
-case "account_setup":
-    name := result.Data["account_name"].(string)
-    // INSERT into DB
-}
-```
-
-**Cancelar/Atrás on a free-text step:** `conversation.TextStep` has `EscapeOptions []ChoiceOption` + `OnEscape func(value string, data Data) Data` — buttons rendered alongside the free-text prompt, checked before text validation. This is the existing mechanism, not something to reinvent per flow; see `account_create_flow.go`'s `onAccountCreateEscape` (shared across an entire flow's steps) and `subcategory_setup_flow.go` for reference implementations.
+**Cancelar/Atrás on a free-text step:** `TextStep` has `EscapeOptions` + `OnEscape` — buttons
+rendered alongside the free-text prompt, checked before text validation. Don't reinvent it per
+flow; see `account_create_flow.go`'s `onAccountCreateEscape` and `subcategory_setup_flow.go`.
+`TextStep.OnText` is its symmetric hook for accepted *text* (added for the self-looping
+`ask_user` step).
 
 ### Recipe 3: Add an LLM intent
 
-Intents (`internal/orchestrator/types.go`): `CREATE | UPDATE | DELETE | QUERY | ACCOUNT_CREATE | CREATE_CATEGORY | REMINDER_SET`
+Intents (`internal/orchestrator/types.go`, all ten): `CREATE | UPDATE | DELETE | QUERY |
+ACCOUNT_MANAGE | CREATE_CATEGORY | CATEGORY_MANAGE | REMINDER_SET | HELP | UNCLEAR`
+
 - Tool calling: the LLM constructs action parameters, not just the intent type
 - `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
 - Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`), not an in-memory store
+- **Migration in progress:** `UPDATE` and `DELETE` no longer open a flow from the router — they
+  go through the unified agent loop (`orchestrator.Run` → `startAgentLoop`), stage 2 of 5. The
+  router still gates what reaches the loop, which is what keeps each stage bisectable. The other
+  eight intents are unchanged.
 - `CREATE_CATEGORY`: the message asks to create a category/subcategory, not to register/correct/delete a movement. No Call 2 — the flow itself (`subcategory_setup`) asks everything it needs via `ChoiceStep`/`TextStep`, unlike CREATE/UPDATE/DELETE which extract structured data from the message via a second LLM call.
 - `REMINDER_SET`: the message creates, edits, or turns off the daily expense-logging reminder. Like `CREATE_CATEGORY`, no Call 2 — `reminder_setup` captures the window entirely via `ChoiceStep` presets/custom-text (`parseWindow`, deterministic, no LLM). Consulting the reminder ("¿a qué hora me recordás?") is QUERY, not REMINDER_SET — see `get_reminder` in Recipe: Add a scheduled notification below.
 

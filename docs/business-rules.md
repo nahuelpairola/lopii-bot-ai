@@ -126,9 +126,19 @@ floored silently.
 - Default payment method when LLM cannot infer: `transfer`
 
 ### Reminders
-- One reminder per user (`reminders` table, PK `user_id`). Configured/edited/disabled entirely by free text via `REMINDER_SET` — no confirm gate, like ACCOUNT_CREATE/CREATE_CATEGORY.
+- One reminder per user (`reminders` table, PK `user_id`). Configured/edited/disabled entirely by free text via `REMINDER_SET` — no confirm gate, like ACCOUNT_MANAGE/CREATE_CATEGORY.
 - Window stored as minutes-since-midnight ART (`window_start_min`/`window_end_min`), not a SQL `time` — the fire target is the midpoint (`Reminder.MidpointMin()`, derived, never stored), which needs sub-hour precision.
 - Activity-aware: fires only if the user has logged **zero** movements today (any type, via `FindRecentlyCreatedForUser`) — never nags on a day already engaged.
 - Delivery: `internal/notifier.Sweeper`, an in-process `time.Ticker` (default 5 min, `[reminders].sweepIntervalMinutes`), not an external cron — the bot process is already 24/7 single-instance.
 - Delete == disable (`enabled=false`). No `deleted_at` — the user-facing fact is the same either way.
 - Consulting the reminder ("¿a qué hora me recordás?") is QUERY's `get_reminder` tool, not REMINDER_SET.
+
+### Weekly summary
+
+Lives on the **same `reminders` row** as the daily reminder (`weekly_summary_enabled`,
+`last_summary_on`), because it is the same user-facing concept: when may the bot write to me
+unprompted. It is a separate sweeper tenant (`sweepWeeklySummary`), not a variant of the daily
+one — different candidate query, different cadence, different copy. `last_summary_on` is the
+idempotence guard, exactly like `last_reminded_on`: one summary per period, whatever the ticker
+does. Built by `internal/summary`, which declares its own consumer-local `MovementReader` /
+`AccountReader` interfaces rather than importing the concrete repositories.

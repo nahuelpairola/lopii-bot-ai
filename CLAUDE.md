@@ -33,13 +33,14 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `invitation` | Model + repository: `Create` (generates random code), `FindByCode`, `MarkAsUsed` |
 | `account` | Model + full repository + messages for flows |
 | `subcategory` | Model + repository + messages for flows |
-| `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates) + **el guard** (`guard.go`: `Normalize`, `AssignTransactionIDs`, `CheckBalances`, los sentinels `Err*`) — los invariantes de plata viven al lado del tipo que protegen, y son puros: no tocan la DB |
-| `metric` | Model + repository: `Log`, `Resolve` — métricas de asertividad LLM (tabla `intent_events`) |
+| `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates) + **the guard** (`guard.go`: `Normalize`, `AssignTransactionIDs`, `CheckBalances`, the `Err*` sentinels) — the money invariants live next to the type they protect, and are pure: they never touch the DB |
+| `metric` | Model + repository: `Log`, `Resolve` — LLM accuracy metrics (`intent_events` table) |
 | `middleware` | `RequireAdmin(adminID)` |
 | `conversation` | Engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, `repository` |
 | `pendingjob` | Model + repository: durable queue (`pending_llm_jobs`) for a message cached after a terminal Groq 429 — `Insert`, `ListByUserOrdered`, `ListPendingUserIDs`, `Delete`, `CountByUser` |
 | `orchestrator` | Groq tool-calling HTTP client (plain `net/http`, no SDK). One chokepoint `Client.send` with retry/backoff + `RateLimitedError`. `ClassifyIntent` (router), `ClassifyCreate`, `ResolveUpdate`, `ResolveDelete`, `ClassifyOnboarding`, `ClassifyCategoryCreate`, `ResolveAccountManage`, `AnswerQuery` (read-only agent loop) |
-| `queryhistory` | Model + repository: ephemeral QUERY conversation thread (`Append`, `Recent`), hard-pruned by TTL, no `deleted_at` |
+| `chathistory` | Model + repository: ephemeral conversation thread shared by every intent (`Append`, `Recent`), hard-pruned by TTL, no `deleted_at`. Renamed from `queryhistory` — it was never QUERY-only |
+| `pendingaction` | Model + repository: durable queue (`pending_actions`) of agent-loop actions waiting on an answer from the user — `Insert`, `NextForUser`, `Delete`, `CountForUser`. Drained one at a time (WIP=1) |
 | `reminder` | Model + repository: one row per user, minutes-since-ART-midnight window + weekly-summary flags. `Upsert`, `Disable`, `ListDue`, `ListWeeklyDue`, `SetWeeklySummary` |
 | `notifier` | `Sweeper` — in-process `time.Ticker` goroutine driving every scheduled system→user notification (daily reminder, weekly summary, trace retention) |
 | `nudge` | Model + repository: once-ever/cooldown storage for contextual tips (`WasSent`, `MarkSent`, `LastSentAt`) |
@@ -141,13 +142,16 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
 - `accounts` table has a `type DEFAULT 'standard'` column from a prior design — drop with a migration.
 - Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
 - `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
-- `intent_events.needs_confirmation` (NOT NULL) quedó vestigial tras el rediseño UNCLEAR del router: se escribe siempre `false`. Dropear con una migración si se quiere limpiar.
-- Los dos movimientos de **apertura** de cuenta no pasan por `movement.Normalize` y no
-  pueden: son una pata suelta tipada `Transfer` sin contraparte ni `transaction_id`, y el
-  guard rechaza toda transferencia que no sea un grupo de 2 patas — rechazaría *toda*
-  apertura, con cualquier monto. En vez de eso reciben el `*account.Account` entero, así el
-  desajuste de moneda es irrepresentable. No es deuda, es una decisión; está documentada en
-  el anti-pattern de [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#anti-patterns--what-not-to-do).
+- `intent_events.needs_confirmation` (NOT NULL) went vestigial after the router's UNCLEAR redesign: it is always written `false`. Drop it with a migration if you want it cleaned up.
+- An account's two **opening** movements do not go through `movement.Normalize`, and cannot:
+  they are a lone leg typed `Transfer` with no counterparty and no `transaction_id`, and the
+  guard rejects any transfer that isn't a 2-leg group — it would reject *every* opening, at any
+  amount. They take the whole `*account.Account` instead, which makes a currency mismatch
+  unrepresentable. This is a decision, not debt; it is documented in the anti-pattern in
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#anti-patterns--what-not-to-do).
+- `internal/controller/messaging` is ~7.5k non-test lines across 43 files, 3.7× the next
+  package. Splitting it is the real fix (see `docs/decisions.md`); the per-package `CLAUDE.md`
+  is the stopgap until the agent-loop migration settles the seams.
 
 ## 7. Claude Code Session Rules
 
