@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -322,9 +323,34 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 // what made category/subcategory/account buttons unreadably small.
 const buttonsPerRow = 2
 
+// maxLabelForTwoPerRow es el largo a partir del cual una etiqueta ya no entra en
+// media pantalla y Telegram la corta.
+//
+// Con dos por fila, un candidato de corrección ("🔴 Cafe · $2.000 · 27/07")
+// llega cortado JUSTO por el final — que es la fecha, o sea lo único que lo
+// distingue de los otros dos candidatos. El picker queda inservible: tres
+// botones que se leen igual.
+//
+// El largo es el problema, no la cantidad: las categorías ("🍔 Alimentación")
+// entran de a dos y son ~16, así que forzarlas a una por fila duplicaría el
+// alto del teclado sin ganar nada.
+const maxLabelForTwoPerRow = 20
+
+// rowWidth decide cuántos botones por fila entran sin que se corte ninguno.
+// Alcanza con que UNA etiqueta sea larga: las filas son parejas, así que la más
+// larga manda.
+func rowWidth(buttons []conversation.Button) int {
+	for _, b := range buttons {
+		if utf8.RuneCountInString(b.Label) > maxLabelForTwoPerRow {
+			return 1
+		}
+	}
+	return buttonsPerRow
+}
+
 func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton {
 	var rows [][]models.InlineKeyboardButton
-	for chunk := range slices.Chunk(buttons, buttonsPerRow) {
+	for chunk := range slices.Chunk(buttons, rowWidth(buttons)) {
 		row := make([]models.InlineKeyboardButton, 0, len(chunk))
 		for _, btn := range chunk {
 			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: btn.Data})
