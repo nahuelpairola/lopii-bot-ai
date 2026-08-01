@@ -103,6 +103,23 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 			choice = "required"
 		}
 		assistant, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.agentModel, messages, toolDefs, choice)
+		if errors.Is(err, ErrNothingToExtract) && choice == "required" {
+			// The model refused to call anything under tool_choice:"required",
+			// and Groq turns that into a hard 400. Observed on real correction
+			// messages ("Le erre eran 1500"): with 15 tools and a short,
+			// referent-less message, gpt-oss-20b emits nothing at all.
+			//
+			// ask_rewrite exists precisely so every message has something to
+			// call, but the model does not always reach for it. Rather than
+			// fail the turn, ask once more in "auto": a turn may legitimately
+			// end in a narrated question, which is the design's own escape.
+			//
+			// Silent data loss is not reopened by this. The model already
+			// declined to call a tool, so there was nothing to record; the risk
+			// it now claims to have recorded something is what the prompt's
+			// "no repitas el detalle" rule and an empty receipt guard against.
+			assistant, err = o.client.chatCompletionLoop(ctx, callTypeQuery, o.agentModel, messages, toolDefs, "auto")
+		}
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: agent run: %w", err)
 		}

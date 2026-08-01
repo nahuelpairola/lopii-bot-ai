@@ -188,3 +188,37 @@ func TestRun_HistoryIsReplayedBeforeTheUserMessage(t *testing.T) {
 		t.Errorf("messages = %+v, want system, prior Q, prior A, current user", msgs)
 	}
 }
+
+// TestRun_ToolUseFailedFallsBackToAuto covers what the real eval hit on the
+// very first correction message: with 15 tools and tool_choice:"required",
+// gpt-oss-20b answered "Le erre eran 1500" by calling nothing, and Groq turns
+// that into a hard 400 (tool_use_failed). Failing the turn there is wrong — a
+// turn may legitimately end in a narrated question.
+func TestRun_ToolUseFailedFallsBackToAuto(t *testing.T) {
+	var choices []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		choices = append(choices, req.ToolChoice)
+		if req.ToolChoice == "required" {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":{"message":"Tool choice is required, but model did not call a tool","type":"invalid_request_error","code":"tool_use_failed","failed_generation":""}}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"¿De qué movimiento hablás?"}}]}`))
+	}))
+	defer srv.Close()
+	o := New(Config{BaseURL: srv.URL, AgentModel: "m", TimeoutSeconds: 5})
+
+	out, err := o.Run(context.Background(), "sys", "Le erre eran 1500", nil, agentToolsForTest(),
+		func(string, json.RawMessage) (string, error) { return "ok", nil })
+	if err != nil {
+		t.Fatalf("Run must recover from tool_use_failed, got: %v", err)
+	}
+	if out != "¿De qué movimiento hablás?" {
+		t.Errorf("narration = %q, want the clarifying question", out)
+	}
+	if len(choices) < 2 || choices[0] != "required" || choices[1] != "auto" {
+		t.Errorf("tool_choice sequence = %v, want [required auto]", choices)
+	}
+}
