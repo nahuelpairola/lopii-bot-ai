@@ -20,6 +20,7 @@ import (
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -133,6 +134,15 @@ type jobsRepository interface {
 	CountByUser(userID uint64) (int64, error)
 }
 
+// actionsRepository is the pending_actions storage (internal/pendingaction) —
+// the durable queue of agent-loop actions waiting on an answer from the user.
+type actionsRepository interface {
+	Insert(action *pendingaction.PendingAction) error
+	NextForUser(userID uint64) (*pendingaction.PendingAction, error)
+	Delete(id uint64) error
+	CountForUser(userID uint64) (int64, error)
+}
+
 type controller struct {
 	users         userRepository
 	invitations   invitationRepository
@@ -147,6 +157,7 @@ type controller struct {
 	traces        traceRepository
 	nudges        nudgeRepository
 	jobs          jobsRepository
+	actions       actionsRepository
 	nextDrainAt   time.Time
 	drainMu       sync.Mutex
 }
@@ -165,6 +176,7 @@ func NewController(
 	traces traceRepository,
 	nudges nudgeRepository,
 	jobs jobsRepository,
+	actions actionsRepository,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -180,6 +192,7 @@ func NewController(
 		traces:        traces,
 		nudges:        nudges,
 		jobs:          jobs,
+		actions:       actions,
 	}
 }
 
@@ -256,6 +269,20 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgResumeCancelled})
 		return
 	}
+	// ask_user se maneja aparte porque él mismo decide qué sigue (retomar la
+	// acción, volver a preguntar, o descartarla). Los demás flujos terminales
+	// destapan la cola: es el único momento en que se sabe que no hay nada
+	// abierto, y por eso el WIP=1 se sostiene solo.
+	if result.FlowName == askUserFlowName {
+		c.finishAskUserFlow(ctx, b, chatID, result.Data)
+		return
+	}
+	defer func() {
+		if err := c.drainNextAgentAction(ctx, b, chatID, result.Data.UserID()); err != nil {
+			slog.ErrorContext(ctx, "drain parked actions failed", "err", err)
+		}
+	}()
+
 	switch result.FlowName {
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)

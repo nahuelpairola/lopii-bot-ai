@@ -269,6 +269,11 @@ const (
 	msgUpdateApplied   = "✅ Corregido."
 	msgUpdateDeleted   = "🗑️ Listo, lo borré (quedó gratis)."
 	msgUpdateCancelled = "Cancelado, no cambié nada."
+
+	// msgAgentActionDiscarded sale cuando se agota el presupuesto de preguntas.
+	// NOMBRA lo que se cayó a propósito: tirar algo en silencio es la falla que
+	// todo el parking existe para evitar.
+	msgAgentActionDiscardedTemplate = "No terminé de entender %s, así que lo dejo sin hacer.\n\nSi querés, escribímelo de nuevo con un poco más de detalle."
 	// Shown only when the window (today, or the mentioned day) has no
 	// movements at all — the fallback picker covers every other case.
 	msgNoCandidatesFound = "No tengo movimientos de ese día para tocar. ¿De qué fecha era?"

@@ -167,18 +167,23 @@ type candidateGroup struct {
 // (movement_update_pick) can carry full "before" state for whichever
 // one the user ends up choosing, without a second DB round-trip.
 func encodeCandidateGroups(groups []transactionGroup) []interface{} {
+	converted := make([]candidateGroup, 0, len(groups))
+	for _, g := range groups {
+		converted = append(converted, toCandidateGroup(g))
+	}
+	return encodeCandidateGroupList(converted)
+}
+
+// encodeCandidateGroupList existe aparte porque el drenaje del agent loop ya
+// tiene candidateGroup (viene del payload parkeado) y nunca tuvo el
+// transactionGroup con los movimientos enteros.
+func encodeCandidateGroupList(groups []candidateGroup) []interface{} {
 	encoded := make([]interface{}, 0, len(groups))
 	for _, g := range groups {
-		rows := make([]movementRow, 0, len(g.Movements))
-		ids := make([]string, 0, len(g.Movements))
-		for _, m := range g.Movements {
-			rows = append(rows, movementToRow(m))
-			ids = append(ids, strconv.FormatUint(uint64(m.ID), 10))
-		}
 		encoded = append(encoded, map[string]interface{}{
 			"transaction_id": g.TransactionID,
-			"old_ids":        encodeStringSlice(ids),
-			"rows":           encodeMovementRows(rows),
+			"old_ids":        encodeStringSlice(g.OldIDs),
+			"rows":           encodeMovementRows(g.Rows),
 		})
 	}
 	return encoded
