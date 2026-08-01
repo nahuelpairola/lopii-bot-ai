@@ -45,8 +45,16 @@ func routerTieBreakers() string {
 
 // agentTieBreakers son las mismas reglas en el vocabulario de tools del loop
 // unificado.
-func agentTieBreakers() string {
-	return renderTieBreakers(
+//
+// available son las tools que se van a mandar en el request. Una regla que
+// nombra una tool ausente se descarta ENTERA: decirle al modelo "para esto usá
+// record_movements" cuando record_movements no viaja en el request es pedirle
+// que llame algo que no existe. Durante las etapas 2 y 3 el toolbox es un
+// subconjunto, así que esto no es hipotético.
+//
+// Con las 14 no descarta nada, que es lo que va a pasar a partir de la etapa 4.
+func agentTieBreakers(available []AgentTool) string {
+	rendered := renderTieBreakers(
 		ToolRecordMovements,
 		ToolCorrectMovement,
 		ToolDeleteMovements,
@@ -54,4 +62,25 @@ func agentTieBreakers() string {
 		ToolReplyHelp,
 		ToolSumMovements,
 	)
+
+	have := make(map[string]bool, len(available))
+	for _, t := range available {
+		have[t.Name] = true
+	}
+	all := AgentTools()
+
+	kept := make([]string, 0, strings.Count(rendered, "\n")+1)
+	for _, line := range strings.Split(rendered, "\n") {
+		complete := true
+		for _, t := range all {
+			if strings.Contains(line, t.Name) && !have[t.Name] {
+				complete = false
+				break
+			}
+		}
+		if complete {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
 }

@@ -72,6 +72,35 @@ func newAgentExecutor(c *controller, userID uint64, userText string) *agentExecu
 	return &agentExecutor{c: c, userID: userID, userText: userText}
 }
 
+// wiredAgentTools son las únicas tools que este ejecutor sabe correr hoy. Es la
+// misma lista que el switch de execute, y tiene que seguir siéndolo: las etapas
+// 3 y 4 la amplían a medida que cablean el resto.
+//
+// Mandar las 14 no es neutro. El modelo elige entre lo que ve, y con
+// record_movements a la vista contesta una corrección REGISTRANDO DE NUEVO:
+// medido en producción, trace 84322077, el router clasificó UPDATE y el agente
+// pidió record_movements igual. El prompt ya nombraba "eran 2000" como caso de
+// correct_movement y no alcanzó — gpt-oss-20b no lo distingue, así que la
+// opción se saca en vez de pedirle que no la elija.
+//
+// Y es más barato: las 10 que sobran son ~1.257 tokens de schema por llamada.
+func wiredAgentTools() []orchestrator.AgentTool {
+	wired := map[string]bool{
+		orchestrator.ToolCorrectMovement: true,
+		orchestrator.ToolDeleteMovements: true,
+		orchestrator.ToolReplyHelp:       true,
+		orchestrator.ToolAskRewrite:      true,
+	}
+	all := orchestrator.AgentTools()
+	out := make([]orchestrator.AgentTool, 0, len(wired))
+	for _, t := range all {
+		if wired[t.Name] {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func (e *agentExecutor) execute(name string, args json.RawMessage) (string, error) {
 	switch name {
 	case orchestrator.ToolCorrectMovement:

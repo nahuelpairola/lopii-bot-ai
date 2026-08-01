@@ -32,6 +32,12 @@ type AgentTool struct {
 	// Kind classes the tool for execution order. The zero value sorts as
 	// KindRead, which is what the read-only AnswerQuery tools want.
 	Kind AgentToolKind
+	// When es la línea de "CUÁNDO USAR ESTA HERRAMIENTA" que BuildAgentPrompt
+	// mete en el system prompt. Vive acá, y no suelta en la plantilla, porque
+	// el prompt tiene que hablar EXACTAMENTE de las tools que se mandan: si
+	// nombra una que no está, el modelo la pide igual y el turno se cae.
+	// Vacía, la tool no aparece en el bloque (las de AnswerQuery no lo usan).
+	When string
 }
 
 // QueryTurn is one prior question/answer pair fed back to the loop so a

@@ -168,8 +168,35 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 	if !strings.Contains(orch.gotRunPrompt, "CUENTAS DEL USUARIO") {
 		t.Errorf("el prompt no lleva las cuentas:\n%s", orch.gotRunPrompt)
 	}
-	if len(orch.gotRunTools) != len(orchestrator.AgentTools()) {
-		t.Errorf("want las %d tools, got %d", len(orchestrator.AgentTools()), len(orch.gotRunTools))
+	// Sólo las tools que el ejecutor sabe correr. Mandar las 14 hacía que el
+	// modelo contestara una corrección con record_movements.
+	if len(orch.gotRunTools) != 4 {
+		t.Errorf("want las 4 tools cableadas, got %d", len(orch.gotRunTools))
+	}
+	// Y el prompt tiene que hablar de ESAS, no de las 14: si nombra una que no
+	// se manda, el modelo la pide igual y el turno se cae.
+	for _, t2 := range orch.gotRunTools {
+		if !strings.Contains(orch.gotRunPrompt, t2.Name) {
+			t.Errorf("el prompt no nombra %s", t2.Name)
+		}
+	}
+	for _, absent := range []string{orchestrator.ToolRecordMovements, orchestrator.ToolManageAccount, orchestrator.ToolSumMovements} {
+		if strings.Contains(orch.gotRunPrompt, absent) {
+			t.Errorf("el prompt nombra %s, que no está en el toolbox de esta etapa", absent)
+		}
+	}
+}
+
+// TestWiredAgentTools_MatchesTheExecutorSwitch: la lista de tools que se manda y
+// el switch de execute son la misma cosa dicha dos veces. Si se separan, o el
+// modelo pide algo que nadie corre (vuelta extra y 429), o hay una tool cableada
+// que nunca se le ofrece.
+func TestWiredAgentTools_MatchesTheExecutorSwitch(t *testing.T) {
+	e := newExecutorWith(t, "cualquier cosa")
+	for _, tool := range wiredAgentTools() {
+		if out, _ := e.execute(tool.Name, json.RawMessage(`{}`)); out == resultNotWiredYet {
+			t.Errorf("%s se manda pero el ejecutor no la corre", tool.Name)
+		}
 	}
 }
 

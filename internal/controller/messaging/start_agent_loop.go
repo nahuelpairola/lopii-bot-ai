@@ -21,7 +21,10 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	// El loop tarda más que una sola llamada, y el silencio se lee como colgado.
 	c.sendTyping(ctx, b, chatID)
 
-	prompt, err := c.buildAgentSystemPrompt(userID)
+	// El toolbox y el prompt salen de la MISMA lista: el prompt no puede nombrar
+	// una tool que no se manda. Ver wiredAgentTools.
+	tools := wiredAgentTools()
+	prompt, err := c.buildAgentSystemPrompt(userID, tools)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return err
@@ -35,7 +38,7 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	}
 
 	executor := newAgentExecutor(c, userID, text)
-	answer, err := c.orchestrator.Run(ctx, prompt, text, history, orchestrator.AgentTools(), executor.execute)
+	answer, err := c.orchestrator.Run(ctx, prompt, text, history, tools, executor.execute)
 	if err != nil {
 		// El 429 encola el mensaje para reintentarlo: ahí el intent_event tiene
 		// que seguir pendiente, porque la historia no terminó.
@@ -100,7 +103,7 @@ func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, 
 // buildAgentSystemPrompt arma el prompt unificado con las cuentas y la taxonomía
 // del usuario. pendingQuestion va vacío: cuando hay una pregunta abierta el que
 // está a cargo es ask_user, no este camino.
-func (c *controller) buildAgentSystemPrompt(userID uint64) (string, error) {
+func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.AgentTool) (string, error) {
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
 		return "", fmt.Errorf("agent loop: find subcategories: %w", err)
@@ -119,7 +122,7 @@ func (c *controller) buildAgentSystemPrompt(userID uint64) (string, error) {
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	return orchestrator.BuildAgentPrompt(time.Now().Format("2006-01-02"), accountOptions, taxonomy, ""), nil
+	return orchestrator.BuildAgentPrompt(time.Now().Format("2006-01-02"), accountOptions, taxonomy, "", tools), nil
 }
 
 // sendTyping avisa que el bot está pensando. Best-effort: que falle el aviso no

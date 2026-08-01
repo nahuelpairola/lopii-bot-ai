@@ -24,7 +24,10 @@ createModel = "openai/gpt-oss-20b"
 updateModel = "openai/gpt-oss-20b"
 deleteModel = "llama-3.1-8b-instant"
 queryModel = "openai/gpt-oss-120b"
-agentModel = "openai/gpt-oss-20b"
+# TEMPORAL (2026-08-01): 20b se quedó sin cupo DIARIO (TPD 200.000). 120b tiene
+# el suyo aparte, así que sirve para probar la plomería del loop. NO sirve para
+# medir: producción corre 20b. Volver a "openai/gpt-oss-20b" al terminar.
+agentModel = "openai/gpt-oss-120b"
 timeoutSeconds = 10
 
 [query]
