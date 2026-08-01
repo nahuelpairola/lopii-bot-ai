@@ -6,7 +6,11 @@ import (
 	"fmt"
 )
 
-const routerSystemPrompt = `Sos un clasificador de intenciones para un bot de finanzas personales argentino.
+// routerSystemPrompt es var y no const porque embebe routerTieBreakers(): los
+// desempates viven en tie_breakers.go, compartidos con el prompt unificado del
+// agent loop. El texto renderizado es idéntico al que estaba escrito acá a
+// mano, y TestRouterTieBreakers_TextIsUnchanged lo fija.
+var routerSystemPrompt = `Sos un clasificador de intenciones para un bot de finanzas personales argentino.
 
 Clasificá el mensaje del usuario en UNA sola intención. No des explicaciones.
 
@@ -23,13 +27,7 @@ INTENTS:
 - UNCLEAR: Nada accionable (saludos, off-topic, gibberish, recetas, etc.).
 
 Reglas rápidas:
-- Monto o ítem solo → CREATE.
-- Reintegro/regalo que alude a algo previo → UPDATE.
-- Rendimiento de inversión → CREATE.
-- No confundir CREATE con DELETE.
-- Copulativo en pasado sobre un monto (era, eran, fue) → UPDATE, aunque no diga "en realidad".
-- Ajustar/corregir el saldo o monto de una CUENTA → ACCOUNT_MANAGE (UPDATE es solo sobre un movimiento).
-- "¿Qué puedo hacer?" / "¿cómo funcionás?" → HELP (no QUERY).
+` + routerTieBreakers() + `
 
 Responde solo con la tool.`
 

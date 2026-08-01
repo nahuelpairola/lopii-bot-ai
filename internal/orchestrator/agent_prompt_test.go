@@ -47,7 +47,9 @@ func TestBuildAgentPrompt_TellsTheModelWhenToUseEachTool(t *testing.T) {
 		}
 	}
 	// The router's hardest-won tie-breakers.
-	for _, want := range []string{"era, eran, fue", "ACCOUNT_MANAGE", "sin respaldo"} {
+	// Los desempates ahora vienen de tie_breakers.go y hablan en tools, no
+	// en intents: manage_account, no ACCOUNT_MANAGE.
+	for _, want := range []string{"era, eran, fue", ToolManageAccount, "sin respaldo"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt missing the tie-breaker %q", want)
 		}
