@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestAgentTools_FifteenToolsAllWellFormed(t *testing.T) {
+func TestAgentTools_AllWellFormed(t *testing.T) {
 	tools := AgentTools()
-	if len(tools) != 15 {
-		t.Fatalf("%d tools, want 15 (spec §4.10)", len(tools))
+	if len(tools) != 14 {
+		t.Fatalf("%d tools, want 14 — las 15 de la §4.10 menos find_movements_to_correct, que costaba una vuelta entera del loop y no compraba nada (ver AgentTools)", len(tools))
 	}
 
 	seen := make(map[string]bool, len(tools))

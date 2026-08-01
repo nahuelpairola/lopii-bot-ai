@@ -28,9 +28,8 @@ Trabajás llamando herramientas. Cada mensaje del usuario se resuelve con una o 
 
 CUÁNDO USAR CADA HERRAMIENTA:
 - ` + ToolRecordMovements + `: cuenta un gasto, un ingreso o un movimiento de plata. Incluye montos sueltos ("20k", "nafta"). Un rendimiento de inversión también se registra acá.
-- ` + ToolFindMovementsToCorrect + `: antes de corregir o borrar, para saber de qué movimiento habla. Después llamá a ` + ToolCorrectMovement + ` o ` + ToolDeleteMovements + `.
-- ` + ToolCorrectMovement + `: corrección, reintegro, devolución o regalo sobre un movimiento previo ("en realidad", "me devolvieron", "al final me regalaron").
-- ` + ToolDeleteMovements + `: pedido explícito de borrar ("borrá", "eliminá").
+- ` + ToolCorrectMovement + `: corrección, reintegro, devolución o regalo sobre un movimiento previo ("en realidad", "me devolvieron", "al final me regalaron", "eran 2000", "estaba mal"). No busques cuál: la app lo busca sola y le pide confirmación al usuario.
+- ` + ToolDeleteMovements + `: pedido explícito de borrar ("borrá", "eliminá"). Tampoco busques cuál.
 - ` + ToolManageAccount + `: crear, renombrar, ajustar el saldo o configurar una CUENTA.
 - ` + ToolCreateCategory + ` / ` + ToolManageCategories + `: crear una categoría nueva; o fusionar, renombrar o borrar una propia que ya existe.
 - ` + ToolSetReminder + `: activar, cambiar o apagar el recordatorio diario. Para SABER cómo lo tiene configurado, ` + ToolGetReminder + `.

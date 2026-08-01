@@ -28,7 +28,14 @@ const (
 // missing detail through ask_user.
 const schemaNoArgs = `{"type": "object", "properties": {}}`
 
-// AgentTools returns the 15 tools of spec §4.10, in a stable order.
+// AgentTools returns the tools of spec §4.10, in a stable order.
+//
+// find_movements_to_correct NO está: era una vuelta entera del loop (el modelo
+// buscaba, leía la lista, y recién ahí llamaba a correct_movement). Medido
+// contra producción, cada vuelta arrastra ~5k tokens de prompt y el TPM de Groq
+// son 8.000 por minuto: dos vueltas no entran, y la segunda pega 429. La app
+// resuelve el candidato sola con resolveCandidates, mejor y gratis, así que la
+// vuelta que costaba el turno entero no compraba nada.
 //
 // The five read tools and record_movements carry their existing schemas
 // VERBATIM — from messaging/query.go's queryTools and create.go's createTool.
@@ -51,18 +58,6 @@ func AgentTools() []AgentTool {
 		},
 
 		// ---- read ----
-		{
-			Name:        ToolFindMovementsToCorrect,
-			Kind:        KindRead,
-			Description: "Busca los movimientos que el usuario podría estar queriendo corregir o borrar, a partir de lo que dice el mensaje. Usala ANTES de correct_movement o delete_movements para saber de cuál está hablando.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"text": {"type": "string", "description": "el pedido del usuario tal como lo escribió, para buscar por descripción, comercio o monto"}
-			},
-			"required": ["text"]
-		}`),
-		},
 		{
 			Name:        ToolListCategories,
 			Kind:        KindRead,
@@ -136,11 +131,10 @@ func AgentTools() []AgentTool {
 		{
 			Name:        ToolCorrectMovement,
 			Kind:        KindAction,
-			Description: "Corrige un movimiento ya registrado (monto, fecha, categoría, cuenta o descripción). Llamá antes a find_movements_to_correct para saber cuál es.",
+			Description: "Corrige un movimiento ya registrado (monto, fecha, categoría, cuenta o descripción). La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
 			Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"transaction_id": {"type": ["string", "null"], "description": "opcional: el id que devolvió find_movements_to_correct. Sin esto la app le pregunta al usuario cuál"},
 				"change": {"type": "string", "description": "qué hay que cambiar, en palabras del usuario"}
 			},
 			"required": ["change"]
@@ -149,13 +143,8 @@ func AgentTools() []AgentTool {
 		{
 			Name:        ToolDeleteMovements,
 			Kind:        KindAction,
-			Description: "Borra uno o más movimientos ya registrados. Llamá antes a find_movements_to_correct para saber cuáles.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"transaction_id": {"type": ["string", "null"], "description": "opcional: el id que devolvió find_movements_to_correct. Sin esto la app le pregunta al usuario cuál"}
-			}
-		}`),
+			Description: "Borra uno o más movimientos ya registrados. La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
+			Parameters:  json.RawMessage(schemaNoArgs),
 		},
 		{
 			Name:        ToolManageAccount,

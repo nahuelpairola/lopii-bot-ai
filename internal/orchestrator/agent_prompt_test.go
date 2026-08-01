@@ -37,7 +37,6 @@ func TestBuildAgentPrompt_TellsTheModelWhenToUseEachTool(t *testing.T) {
 	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "")
 	for _, want := range []string{
 		ToolRecordMovements,
-		ToolFindMovementsToCorrect,
 		ToolCorrectMovement,
 		ToolReplyHelp,
 		ToolAskRewrite,

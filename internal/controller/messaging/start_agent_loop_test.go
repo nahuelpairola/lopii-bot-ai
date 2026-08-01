@@ -173,6 +173,66 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 	}
 }
 
+// TestLoop_AlwaysResolvesTheMetric es la regresión más cara de todas. Un
+// intent_event que queda 'pending' lo pisa a 'abandoned' el próximo mensaje del
+// usuario, y el portón de esta etapa es exactamente "update_confirmed sube y
+// abandoned NO sube". Sin esto, cada turno del loop que no parkea nada cuenta
+// como un abandono y el portón da negativo aunque todo funcione.
+func TestLoop_AlwaysResolvesTheMetric(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tool string
+		want string
+	}{
+		{"ayuda", orchestrator.ToolReplyHelp, outcomeHelpShown},
+		{"pedir reescritura", orchestrator.ToolAskRewrite, outcomeUnclear},
+		{"sin candidatos", orchestrator.ToolCorrectMovement, outcomeNoCandidates},
+		{"narró sin hacer nada", orchestrator.ToolSumMovements, outcomeUpdateFailed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metrics := &fakeMetricRepo{}
+			tool := tc.tool
+			orch := &fakeFullOrchestrator{
+				intent: orchestrator.IntentUpdate,
+				runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+					_, err := execute(tool, json.RawMessage(`{}`))
+					return "listo", err
+				},
+			}
+			// Sin movimientos: correct_movement no encuentra candidatos.
+			c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
+			c.metrics = metrics
+
+			if err := c.startAgentLoop(context.Background(), nil, 0, 1, "algo"); err != nil {
+				t.Fatal(err)
+			}
+			if len(metrics.resolved) != 1 || metrics.resolved[0] != tc.want {
+				t.Fatalf("want el evento resuelto como %q, got %v", tc.want, metrics.resolved)
+			}
+		})
+	}
+}
+
+// TestLoop_LeavesTheMetricPendingWhenSomethingIsOpen: si quedó una acción
+// parkeada, el que resuelve es el gate cuando el usuario decida. Resolverla acá
+// contaría el turno dos veces.
+func TestLoop_LeavesTheMetricPendingWhenSomethingIsOpen(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	movements := &fakeMovementRepoFull{similar: []movement.Movement{
+		candidateMovement(10, nil, "compra en panadería", 3000),
+		candidateMovement(11, nil, "panadería del barrio", 5000),
+	}}
+	c := newLoopController(t, correctInTheLoop(orchestrator.IntentUpdate), &fakeActionsRepo{}, movements)
+	c.metrics = metrics
+
+	if err := c.startAgentLoop(context.Background(), nil, 0, 1, "la panaderia estaba mal"); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.resolved) != 0 {
+		t.Errorf("con una acción abierta el evento sigue pendiente, got %v", metrics.resolved)
+	}
+}
+
 func TestDrainAfterLoop_OpensTheQuestion(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	c := newLoopController(t, &fakeFullOrchestrator{}, repo, &fakeMovementRepoFull{})

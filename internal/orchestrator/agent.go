@@ -5,9 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 )
+
+// toolCallNames rinde los nombres de una vuelta para el log.
+func toolCallNames(calls []loopToolCall) []string {
+	names := make([]string, 0, len(calls))
+	for _, c := range calls {
+		names = append(names, c.Function.Name)
+	}
+	return names
+}
 
 // maxAgentIterations caps how many tool rounds Run executes before forcing a
 // narration. Higher than AnswerQuery's 3 because the unified loop legitimately
@@ -123,6 +133,15 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: agent run: %w", err)
 		}
+
+		// Sin esto el loop es una caja negra: llm_calls guarda cuántos tokens
+		// costó cada vuelta, pero no QUÉ pidió el modelo, y sin eso un turno que
+		// no hace nada es indistinguible de uno que hizo lo correcto.
+		slog.InfoContext(ctx, "agent round",
+			"round", i,
+			"tools", toolCallNames(assistant.ToolCalls),
+			"narrated", strings.TrimSpace(assistant.Content) != "",
+		)
 
 		if len(assistant.ToolCalls) == 0 {
 			return assistant.Content, nil

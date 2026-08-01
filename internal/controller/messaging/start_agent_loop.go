@@ -34,12 +34,15 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
 	}
 
-	executor := newAgentExecutor(c, userID)
+	executor := newAgentExecutor(c, userID, text)
 	answer, err := c.orchestrator.Run(ctx, prompt, text, history, orchestrator.AgentTools(), executor.execute)
 	if err != nil {
+		// El 429 encola el mensaje para reintentarlo: ahí el intent_event tiene
+		// que seguir pendiente, porque la historia no terminó.
 		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
 			return oerr
 		}
+		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
 		slog.ErrorContext(ctx, "agent loop failed", "user_id", userID, "err", err)
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("agent loop: %w", err)
@@ -55,14 +58,43 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 
 	if len(executor.parked) > 0 {
 		if err := c.parkAgentActions(ctx, userID, executor.parked); err != nil {
+			c.resolveMetric(ctx, userID, outcomeUpdateFailed)
 			slog.ErrorContext(ctx, "park agent actions failed", "user_id", userID, "err", err)
 			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return err
 		}
 	}
+	c.resolveAgentLoopMetric(ctx, userID, executor)
+
 	// Destapa la cola acá mismo: este mensaje no abrió ningún flujo, así que no
 	// va a haber un terminal que dispare el drenaje más tarde.
 	return c.drainNextAgentAction(ctx, b, chatID, userID)
+}
+
+// resolveAgentLoopMetric cierra el intent_event del turno.
+//
+// Sin esto el evento queda 'pending' y el PRÓXIMO mensaje del usuario lo pisa a
+// 'abandoned'. El portón de la etapa es "update_confirmed sube y abandoned no
+// sube": dejarlo pendiente hace que cada turno del loop que no parkea nada
+// cuente como un abandono, y el portón daría negativo aunque todo funcione.
+func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, ex *agentExecutor) {
+	if len(ex.parked) > 0 {
+		// Hay algo abierto: lo resuelve el gate cuando el usuario decida. Ese es
+		// el WIP=1 — un solo pendiente vivo por vez.
+		return
+	}
+	switch {
+	case ex.reply == msgHelp:
+		c.resolveMetric(ctx, userID, outcomeHelpShown)
+	case ex.reply == msgAskRewrite:
+		c.resolveMetric(ctx, userID, outcomeUnclear)
+	case ex.noCandidates:
+		c.resolveMetric(ctx, userID, outcomeNoCandidates)
+	default:
+		// El loop narró sin hacer nada. Es un fracaso, y tiene que verse como
+		// tal: es justo el caso que hay que poder contar.
+		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+	}
 }
 
 // buildAgentSystemPrompt arma el prompt unificado con las cuentas y la taxonomía
