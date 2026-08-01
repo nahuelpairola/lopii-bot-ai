@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 )
@@ -66,6 +67,15 @@ type agentExecutor struct {
 	// noCandidates recuerda que no había nada que tocar, para que la métrica
 	// diga no_candidates en vez de un fracaso genérico.
 	noCandidates bool
+	// wrote recuerda que este turno YA insertó movimientos. Es lo único que
+	// separa un reintento seguro de un duplicado: si después de escribir el loop
+	// se come un 429 y el mensaje se encola, el drenaje lo vuelve a correr y la
+	// plata se registra dos veces. Spec 8.2.
+	wrote bool
+	// inserted son los movimientos que entraron en este turno. Van al
+	// intent_event: sin los ids, create_inserted no se puede auditar contra la
+	// plata que realmente se guardó.
+	inserted []movement.Movement
 }
 
 func newAgentExecutor(c *controller, userID uint64, userText string) *agentExecutor {

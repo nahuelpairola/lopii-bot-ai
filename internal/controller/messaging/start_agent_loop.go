@@ -40,6 +40,15 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	executor := newAgentExecutor(c, userID, text)
 	answer, err := c.orchestrator.Run(ctx, prompt, text, history, tools, executor.execute)
 	if err != nil {
+		// Un 429 DESPUÉS de escribir no se encola: el drenaje volvería a correr el
+		// mensaje y la plata quedaría registrada dos veces. Se informa el éxito
+		// parcial y se corta ahí. Spec 8.2.
+		if executor.wrote {
+			c.resolveMetric(ctx, userID, outcomeCreateInserted, collectMovementIDs(executor.inserted)...)
+			c.sendText(ctx, b, chatID, msgPartialSuccessAfterWrite)
+			slog.WarnContext(ctx, "agent loop failed after a write: not queued", "user_id", userID, "err", err)
+			return nil
+		}
 		// El 429 encola el mensaje para reintentarlo: ahí el intent_event tiene
 		// que seguir pendiente, porque la historia no terminó.
 		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {

@@ -47,6 +47,12 @@ const (
 	// que ambos van juntos; sin jerga de cola/pendiente.
 	msgQueuedBehindPending = "Ese también, ya te los cargo 🙌"
 
+	// msgPartialSuccessAfterWrite: el turno ya insertó y después se quedó sin
+	// cupo. NO se encola — reintentarlo duplicaría la plata ya registrada — así
+	// que el mensaje tiene que dejar claras las dos mitades: lo que entró está
+	// guardado, y lo que falte lo tiene que volver a mandar él.
+	msgPartialSuccessAfterWrite = "Registré lo que me pediste, pero me quedé sin margen para el resto. Mandame de nuevo lo que falte."
+
 	msgHelp = "Conmigo es fácil, me hablás normal:\n\n" +
 		"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil»\n" +
 		"✏️ Corregir: «el súper eran 600»\n" +
