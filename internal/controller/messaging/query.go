@@ -111,7 +111,7 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 	execute := c.buildQueryExecutor(userID)
 
 	// Best-effort: a history load error never fails the query — run stateless.
-	turns, _ := c.queryHistory.Recent(userID)
+	turns, _ := c.chatHistory.Recent(userID)
 	history := make([]orchestrator.QueryTurn, len(turns))
 	for i, t := range turns {
 		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
@@ -124,7 +124,7 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 	}
 	c.sendText(ctx, b, chatID, answer)
 	// Best-effort append: a failure here never fails the answer the user already got.
-	_ = c.queryHistory.Append(userID, text, answer)
+	_ = c.chatHistory.Append(userID, text, answer)
 	return true, nil
 }
 
@@ -185,7 +185,15 @@ func (c *controller) execListCategories(userID uint64, args queryToolArgs) (stri
 		if args.Category != "" && s.Category != args.Category {
 			continue
 		}
-		line := fmt.Sprintf("%s | %s | %s", s.Category, s.Subcategory, s.Description)
+		// Misma regla que orchestrator.buildTaxonomyBlock: una descripción vacía
+		// es deliberada (la migración de podado vacía las notas que no
+		// desambiguan), no un dato faltante. Sin esta guarda la respuesta al
+		// usuario sale con un separador colgante — "Alimentación | Supermercado | " —
+		// en 26 de las 65 globales.
+		line := fmt.Sprintf("%s | %s", s.Category, s.Subcategory)
+		if s.Description != "" {
+			line += " | " + s.Description
+		}
 		if s.Icon != "" {
 			line = s.Icon + " " + line
 		}

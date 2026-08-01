@@ -82,7 +82,15 @@ var createTool = toolSchema{
 func buildTaxonomyBlock(taxonomy []TaxonomyEntry) string {
 	lines := make([]string, 0, len(taxonomy))
 	for _, t := range taxonomy {
-		lines = append(lines, fmt.Sprintf("%s | %s | %s", t.Category, t.Subcategory, t.Description))
+		// Una descripción vacía es deliberada, no un dato faltante: la migración de
+		// podado vacía las notas que no desambiguan nada, así el bloque solo paga
+		// tokens por las que deciden algo. Renderizar "Cat | Sub | " gastaría el
+		// separador al pedo y el modelo lo lee como una nota que quedó cortada.
+		line := fmt.Sprintf("%s | %s", t.Category, t.Subcategory)
+		if t.Description != "" {
+			line += " | " + t.Description
+		}
+		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
 }

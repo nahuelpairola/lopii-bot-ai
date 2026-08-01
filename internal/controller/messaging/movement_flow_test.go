@@ -129,6 +129,72 @@ func TestBuildCreateSeed_KnownCategoryPair_NoGap(t *testing.T) {
 	}
 }
 
+// TestBuildCreateSeed_NonTransferWithUnmatchedAccountName_QueuesAccountGap: el
+// modelo setea AccountNameGuess cuando el mensaje nombró una cuenta que no pudo
+// matchear con ninguna existente. Sin gap, la fila cae en la cuenta default de la
+// moneda y la cuenta nombrada nunca se crea: la intención del usuario se descarta.
+func TestBuildCreateSeed_NonTransferWithUnmatchedAccountName_QueuesAccountGap(t *testing.T) {
+	result := orchestrator.CreateResult{
+		Movements: []orchestrator.MovementDraft{
+			{
+				Type: "expense", Amount: "20000", Currency: "ARS",
+				AccountNameGuess: "Brubank",
+				Category:         "Comida", Subcategory: "Restaurante",
+			},
+		},
+	}
+
+	data := buildCreateSeed(result, nil)
+
+	accountGaps := decodeStringSlice(data, "pending_account_gaps")
+	if len(accountGaps) != 1 || accountGaps[0] != "0" {
+		t.Errorf("account gaps = %v, want [0]", accountGaps)
+	}
+}
+
+// TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap es la guarda del
+// riesgo inverso: sin cuenta nombrada no hay pregunta. Es el camino de la mayoría
+// de los CREATE que hoy funcionan y no puede ganar un prompt.
+func TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap(t *testing.T) {
+	result := orchestrator.CreateResult{
+		Movements: []orchestrator.MovementDraft{
+			{
+				Type: "expense", Amount: "20000", Currency: "ARS",
+				Category: "Comida", Subcategory: "Restaurante",
+			},
+		},
+	}
+
+	data := buildCreateSeed(result, nil)
+
+	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
+		t.Errorf("account gaps = %v, want []: sin cuenta nombrada no se pregunta nada", gaps)
+	}
+}
+
+// TestBuildCreateSeed_AccountNameEqualsMerchant_NoAccountGap: "pizza con Pablo"
+// deja AccountNameGuess Y Merchant en "Pablo" — Pablo es la contraparte, no una
+// cuenta. Ese gasto hoy se guarda solo contra la default y no puede ganar una
+// pregunta, ni terminar creando una cuenta que se llama como una persona
+// (la fila que ya fija TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount).
+func TestBuildCreateSeed_AccountNameEqualsMerchant_NoAccountGap(t *testing.T) {
+	result := orchestrator.CreateResult{
+		Movements: []orchestrator.MovementDraft{
+			{
+				Type: "expense", Amount: "100000", Currency: "ARS",
+				AccountNameGuess: "Pablo", Merchant: "Pablo",
+				Category: "Ocio y salidas", Subcategory: "Restaurante",
+			},
+		},
+	}
+
+	data := buildCreateSeed(result, nil)
+
+	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
+		t.Errorf("account gaps = %v, want []: el nombre de la contraparte no es una cuenta", gaps)
+	}
+}
+
 func TestParseUintSlice(t *testing.T) {
 	got, err := parseUintSlice([]string{"1", "2", "30"})
 	if err != nil {

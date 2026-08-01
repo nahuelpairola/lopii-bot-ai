@@ -35,13 +35,17 @@ type server struct {
 }
 
 type groq struct {
-	APIKey         string `mapstructure:"apiKey"`
-	BaseURL        string `mapstructure:"baseUrl"`
-	RouterModel    string `mapstructure:"routerModel"`
-	CreateModel    string `mapstructure:"createModel"`
-	UpdateModel    string `mapstructure:"updateModel"`
-	DeleteModel    string `mapstructure:"deleteModel"`
-	QueryModel     string `mapstructure:"queryModel"`
+	APIKey      string `mapstructure:"apiKey"`
+	BaseURL     string `mapstructure:"baseUrl"`
+	RouterModel string `mapstructure:"routerModel"`
+	CreateModel string `mapstructure:"createModel"`
+	UpdateModel string `mapstructure:"updateModel"`
+	DeleteModel string `mapstructure:"deleteModel"`
+	QueryModel  string `mapstructure:"queryModel"`
+	// AgentModel es el modelo del loop unificado (orchestrator.Run). Es un
+	// sexto campo, no un reemplazo: los cinco por tipo de llamada siguen
+	// sirviendo el camino viejo hasta la etapa 5.
+	AgentModel     string `mapstructure:"agentModel"`
 	TimeoutSeconds int    `mapstructure:"timeoutSeconds"`
 }
 
@@ -81,6 +85,11 @@ func Initialize() (*Config, error) {
 	viper.SetDefault("Query.HistoryTtlMinutes", 10)
 	viper.SetDefault("Query.HistoryLimit", 5)
 	viper.SetDefault("Reminders.SweepIntervalMinutes", 5)
+	// Sin default, un entorno que no declare agentModel deja o.agentModel en ""
+	// y Groq responde 400 en cada llamada del loop. Hoy es inofensivo porque
+	// nadie llama a Run, pero desde la etapa 2 seria una mina para cualquier
+	// entorno nuevo.
+	viper.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
 	viper.SetDefault("Log.Level", "info")
 	viper.SetDefault("Log.Format", "json")
 

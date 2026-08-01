@@ -7,13 +7,17 @@ import "time"
 // pure leaf with no dependency on internal/config. server.go maps one
 // to the other at wiring time.
 type Config struct {
-	APIKey         string
-	BaseURL        string
-	RouterModel    string
-	CreateModel    string
-	UpdateModel    string
-	DeleteModel    string
-	QueryModel     string
+	APIKey      string
+	BaseURL     string
+	RouterModel string
+	CreateModel string
+	UpdateModel string
+	DeleteModel string
+	QueryModel  string
+	// AgentModel is the model behind Run — the unified agent loop. A sixth
+	// field, not a replacement: the five per-call-type models keep serving the
+	// old path until stage 5 deletes it.
+	AgentModel     string
 	TimeoutSeconds int
 	Recorder       LLMRecorder // nil-safe
 }
@@ -27,6 +31,7 @@ type Orchestrator struct {
 	updateModel string
 	deleteModel string
 	queryModel  string
+	agentModel  string
 }
 
 func New(cfg Config) *Orchestrator {
@@ -37,5 +42,6 @@ func New(cfg Config) *Orchestrator {
 		updateModel: cfg.UpdateModel,
 		deleteModel: cfg.DeleteModel,
 		queryModel:  cfg.QueryModel,
+		agentModel:  cfg.AgentModel,
 	}
 }

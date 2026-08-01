@@ -6,20 +6,20 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/subcategory"
 )
 
-// stubQueryHistory is a no-op queryHistoryRepository for tests that exercise
+// stubChatHistory is a no-op chatHistoryRepository for tests that exercise
 // handleQuery but don't care about the conversation thread itself.
-type stubQueryHistory struct{}
+type stubChatHistory struct{}
 
-func (stubQueryHistory) Recent(userID uint64) ([]queryhistory.Turn, error)   { return nil, nil }
-func (stubQueryHistory) Append(userID uint64, question, answer string) error { return nil }
+func (stubChatHistory) Recent(userID uint64) ([]chathistory.Turn, error)    { return nil, nil }
+func (stubChatHistory) Append(userID uint64, question, answer string) error { return nil }
 
 type fakeFullOrchestrator struct {
 	intent              orchestrator.Intent
@@ -54,6 +54,12 @@ func (o *fakeFullOrchestrator) ClassifyOnboarding(ctx context.Context, text stri
 }
 func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return o.queryAnswer, o.queryErr
+}
+
+// Run fails loudly on purpose: nothing routes through the agent loop in stage
+// 1, so a call here means a code path migrated ahead of its stage.
+func (o *fakeFullOrchestrator) Run(context.Context, string, string, []orchestrator.QueryTurn, []orchestrator.AgentTool, func(string, json.RawMessage) (string, error)) (string, error) {
+	return "", errRunNotWiredInStage1
 }
 func (o *fakeFullOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
 	return o.categoryResult, o.categoryErr
@@ -149,7 +155,7 @@ func TestCreateCategory_LLMErrorFallsToWizard(t *testing.T) {
 func TestHandleFreeText_QueryRoutesToLoopAndResolves(t *testing.T) {
 	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery, queryAnswer: "Gastaste 5000 ARS en mayo."}
 	f := &fakeMetricRepo{}
-	c := &controller{orchestrator: orch, metrics: f, queryHistory: stubQueryHistory{}}
+	c := &controller{orchestrator: orch, metrics: f, chatHistory: stubChatHistory{}}
 
 	c.handleFreeText(context.Background(), nil, 123, 1, "cuánto gasté en mayo")
 
@@ -167,7 +173,7 @@ func TestHandleFreeText_QueryRoutesToLoopAndResolves(t *testing.T) {
 func TestHandleFreeText_QueryFailureResolvesFailed(t *testing.T) {
 	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery, queryErr: context.Canceled}
 	f := &fakeMetricRepo{}
-	c := &controller{orchestrator: orch, metrics: f, queryHistory: stubQueryHistory{}}
+	c := &controller{orchestrator: orch, metrics: f, chatHistory: stubChatHistory{}}
 
 	c.handleFreeText(context.Background(), nil, 123, 1, "consulta que falla")
 
@@ -476,7 +482,7 @@ func TestHandleFreeText_LogsPendingForQuery(t *testing.T) {
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	c := &controller{orchestrator: orch, engine: engine, metrics: metrics, queryHistory: stubQueryHistory{}}
+	c := &controller{orchestrator: orch, engine: engine, metrics: metrics, chatHistory: stubChatHistory{}}
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "cuánto gasté este mes")
 

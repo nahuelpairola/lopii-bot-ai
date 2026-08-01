@@ -523,17 +523,23 @@ func (c *controller) insertOpeningMovement(acc *account.Account, amount decimal.
 
 // createCounterpartyAccounts resuelve las filas marcadas PENDING_CREATE.
 //
-// Crear una cuenta con el nombre de la contraparte es SOLO para transferencias:
-// un gasto o un ingreso nunca crea una cuenta que se llama como una persona
-// ("pizza con Juan" no es la cuenta de Juan). Las filas que no son transferencia
-// se dejan sin cuenta, para que el guard las resuelva a la default de su moneda.
+// El centinela lo escribe UN SOLO lugar: el tap del usuario en "➕ Crear cuenta
+// X" del gap-fill. O sea que llegar acá ya significa que él pidió la cuenta.
+//
+// Aun así un gasto o un ingreso no puede crear una cuenta que se llama como la
+// contraparte ("pizza con Juan" no es la cuenta de Juan): esas filas se dejan sin
+// cuenta y el guard las resuelve a la default de su moneda. Lo que sí crea es la
+// fila que nombró una cuenta propia distinta del merchant — "pagué con Brubank"
+// —, que desde que buildCreateSeed le abre gap llega hasta acá; sin esto el bot
+// preguntaría, ofrecería crearla y después tiraría la respuesta.
 func (c *controller) createCounterpartyAccounts(userID uint64, rows []movementRow, idx *accountIndex) error {
 	created := make(map[string]uint64) // "nombre|moneda" -> id, para no crear dos veces la misma
 	for i, row := range rows {
 		if row.AccountID != accountPendingCreate {
 			continue
 		}
-		if movement.TypeFromString(row.Type) != movement.Transfer {
+		if movement.TypeFromString(row.Type) != movement.Transfer &&
+			!guessNamesOwnAccount(row.AccountNameGuess, row.Merchant) {
 			rows[i].AccountID = ""
 			continue
 		}

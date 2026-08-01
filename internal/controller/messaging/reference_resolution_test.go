@@ -73,6 +73,31 @@ func TestMatchesMessage_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestMatchesMessage_UnaccentedMessageMatchesAccentedDescription(t *testing.T) {
+	// The real production failure: "La panaderia era 2k" never matched a
+	// movement the LLM described as "compra en panadería".
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("compra en panadería")}}}
+	if !matchesMessage(group, "La panaderia era 2k") {
+		t.Error("unaccented message should match an accented description")
+	}
+}
+
+func TestMatchesMessage_AccentedMessageMatchesUnaccentedDescription(t *testing.T) {
+	// The mirror case: folding has to happen on both sides, not just one.
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("compra en panaderia")}}}
+	if !matchesMessage(group, "La panadería era 2k") {
+		t.Error("accented message should match an unaccented description")
+	}
+}
+
+func TestMatchesMessage_UnrelatedTokenStillDoesNotMatch(t *testing.T) {
+	// Folding must not make everything match everything.
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("compra en panadería")}}}
+	if matchesMessage(group, "nafta en la estación") {
+		t.Error("unrelated message should not match")
+	}
+}
+
 func TestMatchesMessage_TransferWithAccount(t *testing.T) {
 	// Verify that a transfer movement with an account is handled correctly.
 	accountID := uint64(123)

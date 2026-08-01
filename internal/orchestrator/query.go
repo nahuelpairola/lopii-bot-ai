@@ -8,19 +8,36 @@ import (
 	"strings"
 )
 
-// AgentTool is a tool exposed to the query loop. Same shape as toolSchema,
-// but public so the messaging controller can define the read tools and hold
-// the executor — the orchestrator stays dependency-free (no repo imports).
+// AgentToolKind is a tool's execution class. It decides the order the loop
+// runs a round's calls in (see agent.go orderCallsByKind) — never the order
+// the model happened to list them in.
+type AgentToolKind string
+
+const (
+	// KindRead queries the DB and returns a string. Idempotent.
+	KindRead AgentToolKind = "read"
+	// KindWrite mutates. Only record_movements, and only when it resolves clean.
+	KindWrite AgentToolKind = "write"
+	// KindAction parks an intent on the queue and touches nothing itself.
+	KindAction AgentToolKind = "action"
+)
+
+// AgentTool is a tool exposed to the agent loop. Same shape as toolSchema,
+// but public so the messaging controller can define the tools and hold the
+// executor — the orchestrator stays dependency-free (no repo imports).
 type AgentTool struct {
 	Name        string
 	Description string
 	Parameters  json.RawMessage
+	// Kind classes the tool for execution order. The zero value sorts as
+	// KindRead, which is what the read-only AnswerQuery tools want.
+	Kind AgentToolKind
 }
 
 // QueryTurn is one prior question/answer pair fed back to the loop so a
 // follow-up keeps its referent. Textual context only — tools re-run every
 // call, so numbers are always fresh. The messaging controller maps
-// queryhistory.Turn to this (keeps the orchestrator dependency-free).
+// chathistory.Turn to this (keeps the orchestrator dependency-free).
 type QueryTurn struct {
 	Question string
 	Answer   string
@@ -70,7 +87,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		if i == 0 {
 			choice = "required"
 		}
-		assistant, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, toolDefs, choice)
+		assistant, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, toolDefs, choice, maxQueryCompletionTokens)
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: answer query: %w", err)
 		}
@@ -100,7 +117,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	// attempts a tool call while tool_choice is "none" — a real failure seen
 	// with gpt-oss-120b, not just the weak models. With no tool schemas in
 	// the request there's nothing for the model to call.
-	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, nil, "none")
+	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, nil, "none", maxQueryCompletionTokens)
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: answer query (final): %w", err)
 	}

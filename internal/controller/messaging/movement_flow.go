@@ -3,11 +3,29 @@ package messaging
 import (
 	"maps"
 	"strconv"
+	"strings"
 
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/orchestrator"
 )
+
+// guessNamesOwnAccount discrimina los dos motivos por los que el modelo llena
+// AccountNameGuess en una fila que NO es transferencia:
+//
+//   - "pagué el curso con Brubank" → Brubank es una cuenta del usuario que
+//     todavía no existe. Hay que preguntar y, si él lo pide, crearla.
+//   - "pizza con Pablo" → Pablo es la contraparte, no una cuenta. El prompt
+//     manda esos nombres a merchant ("ese nombre externo va en merchant, nunca
+//     como cuenta") y además los repite acá; crear una cuenta "Pablo" sería un
+//     error, y hasta preguntar sería interrumpir un gasto que hoy se guarda solo.
+//
+// La señal que los separa es que en el segundo caso el nombre adivinado y el
+// merchant son el mismo. Es la fila exacta que fija
+// TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount.
+func guessNamesOwnAccount(guess, merchant string) bool {
+	return guess != "" && !strings.EqualFold(guess, merchant)
+}
 
 // accountPendingCreate is the sentinel movementRow.AccountID value
 // meaning "the user chose, mid-flow, to create this account" — real
@@ -187,7 +205,17 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 		if draft.Category == constants.PendingReview || (len(known) > 0 && !known[draft.Category+"\x00"+draft.Subcategory]) {
 			categoryGaps = append(categoryGaps, idx)
 		}
-		if draft.Type == constants.Transfer && draft.AccountID == nil {
+		// Un gap de cuenta significa "no puedo saber a qué cuenta va esta fila y
+		// tengo que preguntar". Lo abren dos casos: una transferencia con una pata
+		// sin resolver, y cualquier fila que nombró una cuenta que el modelo no pudo
+		// matchear con una existente. Sin el segundo caso esa fila cae callada en la
+		// cuenta default de la moneda y la cuenta nombrada nunca se crea — la
+		// intención declarada por el usuario se descarta.
+		//
+		// Una fila sin AccountNameGuess y sin AccountID NO es un gap: es el camino
+		// normal "usá mi default" y tiene que seguir siendo mudo. Tampoco lo es una
+		// que solo repite el merchant — ver guessNamesOwnAccount.
+		if draft.AccountID == nil && (draft.Type == constants.Transfer || guessNamesOwnAccount(draft.AccountNameGuess, draft.Merchant)) {
 			accountGaps = append(accountGaps, idx)
 		}
 

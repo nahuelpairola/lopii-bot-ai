@@ -14,13 +14,13 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingjob"
-	"lopiibot.com/internal/queryhistory"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
@@ -87,6 +87,11 @@ type movementOrchestrator interface {
 	ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error)
 	ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error)
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
+	// Run is the unified agent loop. Added in stage 1 and called by nothing
+	// yet: stage 2 routes UPDATE/DELETE through it. The interface deliberately
+	// grows before it shrinks (9 → 3 in stage 5) — that is what lets each
+	// stage be bisected on its own.
+	Run(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
 type metricRepository interface {
@@ -94,8 +99,8 @@ type metricRepository interface {
 	Resolve(userID uint64, outcome string, movementIDs []uint) error
 }
 
-type queryHistoryRepository interface {
-	Recent(userID uint64) ([]queryhistory.Turn, error)
+type chatHistoryRepository interface {
+	Recent(userID uint64) ([]chathistory.Turn, error)
 	Append(userID uint64, question, answer string) error
 }
 
@@ -137,7 +142,7 @@ type controller struct {
 	engine        *conversation.Engine
 	orchestrator  movementOrchestrator
 	metrics       metricRepository
-	queryHistory  queryHistoryRepository
+	chatHistory   chatHistoryRepository
 	reminders     reminderRepository
 	traces        traceRepository
 	nudges        nudgeRepository
@@ -155,7 +160,7 @@ func NewController(
 	engine *conversation.Engine,
 	orch movementOrchestrator,
 	metrics metricRepository,
-	queryHistory queryHistoryRepository,
+	chatHistory chatHistoryRepository,
 	reminders reminderRepository,
 	traces traceRepository,
 	nudges nudgeRepository,
@@ -170,7 +175,7 @@ func NewController(
 		engine:        engine,
 		orchestrator:  orch,
 		metrics:       metrics,
-		queryHistory:  queryHistory,
+		chatHistory:   chatHistory,
 		reminders:     reminders,
 		traces:        traces,
 		nudges:        nudges,

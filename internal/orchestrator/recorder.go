@@ -62,6 +62,11 @@ const (
 	callTypeQuery          = "query"
 	callTypeCategoryCreate = "category_create"
 	callTypeAccountManage  = "account_manage"
+	// callTypeAgent es el loop unificado (Run). Va aparte de callTypeQuery a
+	// propósito: desde la etapa 2 el loop atiende UPDATE y DELETE, y si compartiera
+	// bucket con query los paneles de costo y latencia de QUERY empezarían a
+	// mezclar tráfico que no es de consultas, sin que nadie se entere.
+	callTypeAgent = "agent"
 )
 
 // parseResetTokens lee el header x-ratelimit-reset-tokens de Groq (string de
