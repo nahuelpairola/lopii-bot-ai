@@ -185,7 +185,15 @@ func (c *controller) execListCategories(userID uint64, args queryToolArgs) (stri
 		if args.Category != "" && s.Category != args.Category {
 			continue
 		}
-		line := fmt.Sprintf("%s | %s | %s", s.Category, s.Subcategory, s.Description)
+		// Misma regla que orchestrator.buildTaxonomyBlock: una descripción vacía
+		// es deliberada (la migración de podado vacía las notas que no
+		// desambiguan), no un dato faltante. Sin esta guarda la respuesta al
+		// usuario sale con un separador colgante — "Alimentación | Supermercado | " —
+		// en 26 de las 65 globales.
+		line := fmt.Sprintf("%s | %s", s.Category, s.Subcategory)
+		if s.Description != "" {
+			line += " | " + s.Description
+		}
 		if s.Icon != "" {
 			line = s.Icon + " " + line
 		}
