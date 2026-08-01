@@ -16,6 +16,7 @@ const (
 	keyEditProposal     dataKey = "edit_proposal" // Data key, NOT optionEditProposal
 	keyCategoryIsNew    dataKey = "category_is_new"
 	keyWeeklySummary    dataKey = "weekly_summary"
+	keyAskDiscarded     dataKey = "_ask_discarded"
 
 	// discriminators (key const; enum VALUE consts live in their owning file)
 	keyMode        dataKey = "mode"
@@ -78,6 +79,16 @@ const (
 	// resolviendo ahora mismo: lo escribe el paso de categoría y lo leen el de
 	// subcategoría y el prompt. Cruza tres archivos.
 	keyGapActiveRow dataKey = "gap_active_row"
+
+	// ask_user: la cola de preguntas abiertas de la acción parkeada que se está
+	// drenando. keyOpenQuestions es UN string JSON ([]pendingaction.OpenQuestion),
+	// no una lista, para cruzar JSONB sin desarmar mapas a mano.
+	keyActionID      dataKey = "action_id"
+	keyOpenQuestions dataKey = "open_questions"
+	keyAskBudget     dataKey = "ask_budget"
+	// keyAskRawAnswer es el buzón transitorio de TextStep: OnText lo lee, lo
+	// archiva contra su pregunta y lo borra en la misma vuelta.
+	keyAskRawAnswer dataKey = "_ask_raw_answer"
 
 	// keyGatePrompt lleva el texto ya formateado del gate de saldo negativo.
 	// Lo escribe free_text y lo lee movement_negative_confirm_flow, que no

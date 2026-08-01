@@ -457,6 +457,8 @@ func FlowResumeLabel(flowName string) string {
 		return "estabas creando una categoría"
 	case movementNegativeConfirmFlowName:
 		return "estabas confirmando un movimiento"
+	case askUserFlowName:
+		return "algo que te pregunté"
 	default:
 		return "una conversación anterior"
 	}
