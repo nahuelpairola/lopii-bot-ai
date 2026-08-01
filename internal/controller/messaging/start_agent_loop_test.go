@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -169,10 +170,10 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 	if !strings.Contains(orch.gotRunPrompt, "CUENTAS DEL USUARIO") {
 		t.Errorf("el prompt no lleva las cuentas:\n%s", orch.gotRunPrompt)
 	}
-	// Sólo las tools que el ejecutor sabe correr. Mandar las 14 hacía que el
-	// modelo contestara una corrección con record_movements.
-	if len(orch.gotRunTools) != 4 {
-		t.Errorf("want las 4 tools cableadas, got %d", len(orch.gotRunTools))
+	// Sólo las tools que el ejecutor sabe correr. En la etapa 3 son 5:
+	// record_movements se suma porque CREATE ya pasa por acá.
+	if len(orch.gotRunTools) != 5 {
+		t.Errorf("want las 5 tools cableadas, got %d", len(orch.gotRunTools))
 	}
 	// Y el prompt tiene que hablar de ESAS, no de las 14: si nombra una que no
 	// se manda, el modelo la pide igual y el turno se cae.
@@ -181,10 +182,36 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 			t.Errorf("el prompt no nombra %s", t2.Name)
 		}
 	}
-	for _, absent := range []string{orchestrator.ToolRecordMovements, orchestrator.ToolManageAccount, orchestrator.ToolSumMovements} {
+	for _, absent := range []string{orchestrator.ToolManageAccount, orchestrator.ToolSumMovements} {
 		if strings.Contains(orch.gotRunPrompt, absent) {
 			t.Errorf("el prompt nombra %s, que no está en el toolbox de esta etapa", absent)
 		}
+	}
+}
+
+// TestWiredTools_CorrectionStillPicksCorrectMovement: con record_movements a la
+// vista, una corrección tiene que seguir eligiendo correct_movement. Es la
+// regresión de la traza 84322077, donde el router dijo UPDATE y el agente
+// registró de nuevo. Lo que lo evita ya no es la ausencia de la tool sino el
+// desempate, así que el desempate es lo que se fija acá.
+func TestWiredTools_CorrectionStillPicksCorrectMovement(t *testing.T) {
+	names := make([]string, 0, 5)
+	for _, tool := range wiredAgentTools() {
+		names = append(names, tool.Name)
+	}
+	if !slices.Contains(names, orchestrator.ToolRecordMovements) {
+		t.Fatal("record_movements tiene que estar cableada en la etapa 3")
+	}
+	if len(names) != 5 {
+		t.Errorf("toolbox = %v, want las 5 de la etapa 3", names)
+	}
+
+	prompt := orchestrator.BuildAgentPrompt("2026-08-01", nil, nil, "", wiredAgentTools())
+	if !strings.Contains(prompt, "era, eran, fue") {
+		t.Error("falta el copulativo en pasado: es lo único que separa corregir de registrar")
+	}
+	if !strings.Contains(prompt, orchestrator.ToolRecordMovements) {
+		t.Error("el prompt tiene que nombrar record_movements ahora que se manda")
 	}
 }
 

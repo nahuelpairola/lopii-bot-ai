@@ -92,19 +92,23 @@ func newAgentExecutor(c *controller, userID uint64, userText string, taxonomy []
 }
 
 // wiredAgentTools son las únicas tools que este ejecutor sabe correr hoy. Es la
-// misma lista que el switch de execute, y tiene que seguir siéndolo: las etapas
-// 3 y 4 la amplían a medida que cablean el resto.
+// misma lista que el switch de execute, y tiene que seguir siéndolo: la etapa 4
+// la amplía a medida que cablea el resto.
 //
 // Mandar las 14 no es neutro. El modelo elige entre lo que ve, y con
-// record_movements a la vista contesta una corrección REGISTRANDO DE NUEVO:
+// record_movements a la vista contestó una corrección REGISTRANDO DE NUEVO:
 // medido en producción, trace 84322077, el router clasificó UPDATE y el agente
-// pidió record_movements igual. El prompt ya nombraba "eran 2000" como caso de
-// correct_movement y no alcanzó — gpt-oss-20b no lo distingue, así que la
-// opción se saca en vez de pedirle que no la elija.
+// pidió record_movements igual. En la etapa 2 se resolvió sacándola.
 //
-// Y es más barato: las 10 que sobran son ~1.257 tokens de schema por llamada.
+// En la etapa 3 no se puede sacar: es LA tool de CREATE, o sea el 74% del
+// tráfico. Vuelve, y lo que separa corregir de registrar pasa a ser el
+// desempate del copulativo en pasado ("era, eran, fue" → correct_movement), que
+// viaja en el mismo prompt. Lo fija TestWiredTools_CorrectionStillPicksCorrectMovement.
+//
+// Y las 9 que siguen fuera son ~1.100 tokens de schema por llamada que no se pagan.
 func wiredAgentTools() []orchestrator.AgentTool {
 	wired := map[string]bool{
+		orchestrator.ToolRecordMovements: true,
 		orchestrator.ToolCorrectMovement: true,
 		orchestrator.ToolDeleteMovements: true,
 		orchestrator.ToolReplyHelp:       true,
