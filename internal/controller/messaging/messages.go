@@ -284,12 +284,22 @@ const (
 	// movements at all — the fallback picker covers every other case.
 	msgNoCandidatesFound = "No tengo movimientos de ese día para tocar. ¿De qué fecha era?"
 
-	// msgCorrectionNotUnderstood es lo que va cuando el movimiento SÍ se
-	// encontró pero no se pudo armar la corrección. Decir "no tengo movimientos"
-	// ahí sería mentira — y por el agent loop ese camino se llega justo después
-	// de que el usuario eligió cuál era.
-	msgCorrectionNotUnderstood = "Encontré el movimiento, pero no me quedó claro qué querés cambiarle. ¿Me lo decís de nuevo?"
 )
+
+// msgAskWhatToChange se usa cuando el movimiento SÍ se encontró pero el mensaje
+// no dice qué cambiarle ("el café estaba mal"). Antes acá iba un "no me quedó
+// claro, decímelo de nuevo" que era un callejón sin salida: el usuario había
+// nombrado bien el movimiento y se quedaba sin nada.
+//
+// Nombra el movimiento con el mismo descriptor que los prompts de gap-fill —
+// una sola forma de nombrar un movimiento en una pregunta — y los ejemplos son
+// las tres cosas que de verdad se corrigen.
+func msgAskWhatToChange(rows []movementRow) string {
+	if len(rows) == 0 {
+		return "¿Qué querés cambiarle? (el monto, la categoría, la fecha…)"
+	}
+	return "Encontré " + movementGapDescriptor(rows[0]) + ". ¿Qué querés cambiarle? (el monto, la categoría, la fecha…)"
+}
 
 func msgPickDeleteCandidate(data conversation.Data) string {
 	return "Encontré varios movimientos parecidos. ¿Cuál querés borrar?"

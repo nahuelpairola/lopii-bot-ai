@@ -20,10 +20,16 @@ const (
 	resultParked       = "listo, la app sigue con eso y le pide confirmación al usuario"
 	resultNotWiredYet  = "esa herramienta todavía no está disponible"
 
-	// questionKeyCandidate es el Key de la única pregunta que esta etapa sabe
-	// hacer: cuál de los candidatos. La respuesta se resuelve contra
-	// agentPayload.Candidates, en el mismo orden en que salieron los botones.
+	// questionKeyCandidate es el Key de la pregunta de cuál de los candidatos. La
+	// respuesta se resuelve contra agentPayload.Candidates, en el mismo orden en
+	// que salieron los botones.
 	questionKeyCandidate = "candidate"
+
+	// questionKeyChange: el usuario nombró bien el movimiento pero no dijo qué
+	// cambiarle ("el café estaba mal"). La respuesta se CONCATENA al change
+	// original y se vuelve a resolver — no lo reemplaza, porque el texto
+	// original suele traer a cuál se refiere.
+	questionKeyChange = "change"
 )
 
 // parkedAction es una acción que el loop no pudo cerrar en el turno porque le

@@ -2,12 +2,16 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
+	"lopiibot.com/internal/trace"
 )
 
 const (
@@ -230,14 +234,52 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	}
 	if !result.Resolved {
 		// El candidato ya está resuelto acá: lo que falló es entender el CAMBIO.
-		// Decirle "no tengo movimientos de ese día" sería mentira, y desde el
-		// agent loop se llega a este punto justo después de que eligió cuál era.
-		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
-		c.sendText(ctx, b, chatID, msgCorrectionNotUnderstood)
-		return nil
+		// Antes esto era un callejón sin salida —"no me quedó claro, decímelo de
+		// nuevo"— y el usuario que había nombrado bien el movimiento se quedaba
+		// sin nada. Ahora se le pregunta, que es la máquina de preguntas que la
+		// etapa 2 ya construyó.
+		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows)
 	}
 
 	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows, result)
+}
+
+// parkChangeQuestion guarda el candidato YA resuelto y pregunta qué cambiarle.
+// El candidato no se vuelve a buscar: encontrarlo fue la mitad cara, y volver a
+// resolverlo con el texto nuevo ("2000") lo perdería — ese texto no nombra
+// ningún movimiento.
+func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, change, transactionID string, oldIDs []string, rows []movementRow) error {
+	if c.actions == nil {
+		// Sin cola no hay a dónde parkear: el camino viejo sigue siendo mejor
+		// que quedarse mudo.
+		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		return nil
+	}
+	payload, err := json.Marshal(agentPayload{
+		Change:     change,
+		Candidates: []candidateGroup{{TransactionID: transactionID, OldIDs: oldIDs, Rows: rows}},
+		Chosen:     0,
+	})
+	if err != nil {
+		return fmt.Errorf("park change question: payload: %w", err)
+	}
+	questions, err := json.Marshal([]pendingaction.OpenQuestion{{
+		Key:    questionKeyChange,
+		Prompt: msgAskWhatToChange(rows),
+	}})
+	if err != nil {
+		return fmt.Errorf("park change question: questions: %w", err)
+	}
+	row := &pendingaction.PendingAction{
+		UserID: userID, Tool: orchestrator.ToolCorrectMovement,
+		Payload: payload, Questions: questions,
+		Budget: 1 + budgetSlack, TraceID: trace.ID(ctx),
+	}
+	if err := c.actions.Insert(row); err != nil {
+		return fmt.Errorf("park change question: %w", err)
+	}
+	return c.drainNextAgentAction(ctx, b, chatID, userID)
 }
 
 // seedAndStartUpdateConfirm builds the confirm flow's seed from an

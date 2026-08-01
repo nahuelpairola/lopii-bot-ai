@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
@@ -173,17 +174,25 @@ func applyAnswers(action *pendingaction.PendingAction, answers []pendingaction.O
 		return payload, false
 	}
 	for _, q := range answers {
-		if q.Key != questionKeyCandidate {
-			continue
+		switch q.Key {
+		case questionKeyCandidate:
+			// Las opciones salieron en el mismo orden que Candidates, así que la
+			// posición de la etiqueta ES el índice del candidato.
+			idx := indexOf(q.Options, q.Answer)
+			if idx < 0 {
+				return payload, false
+			}
+			payload.Chosen = idx
+		case questionKeyChange:
+			// Se CONCATENA, no se reemplaza: el texto original suele traer a cuál
+			// se refiere ("el café"), y la respuesta trae el valor nuevo ("2000").
+			// Con cualquiera de los dos solo, ResolveUpdate se queda corto.
+			payload.Change = strings.TrimSpace(payload.Change + " " + q.Answer)
 		}
-		// Las opciones salieron en el mismo orden que Candidates, así que la
-		// posición de la etiqueta ES el índice del candidato.
-		idx := indexOf(q.Options, q.Answer)
-		if idx < 0 {
-			return payload, false
-		}
-		payload.Chosen = idx
 	}
+	// La pregunta de "qué cambiar" se parkea con el candidato YA elegido, así
+	// que esto la da por resuelta apenas contesta algo. Exigir además un Change
+	// no vacío dejaría sin resolver a DELETE, que nunca lleva uno.
 	return payload, payload.Chosen >= 0
 }
 

@@ -13,6 +13,7 @@ import (
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
 )
 
 type fakeOrchestrator struct {
@@ -194,6 +195,66 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	}
 	if store.found {
 		t.Error("an unresolved result should never start the confirm flow")
+	}
+}
+
+// TestUpdate_UnresolvedChangeAsksWhatToChange: "el café estaba mal" nombra bien
+// el movimiento y no dice qué cambiarle. Antes moría acá con un "no me quedó
+// claro"; ahora pregunta, que es la máquina de preguntas que la etapa 2 ya
+// construyó.
+func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
+	actions := &fakeActionsRepo{}
+	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine.Register(NewAskUserFlow())
+	c := &controller{
+		engine: engine, actions: actions,
+		orchestrator: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: false}},
+		movements:    &fakeMovementRepoFull{}, accounts: &fakeAccountRepoFull{},
+	}
+
+	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
+		"estaba mal", "", []string{"10"}, []movementRow{{Amount: "3000", Currency: "ARS", Description: "café"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actions.rows) != 1 {
+		t.Fatalf("tenía que parkear la pregunta, parkeó %d", len(actions.rows))
+	}
+	var qs []pendingaction.OpenQuestion
+	if err := json.Unmarshal(actions.rows[0].Questions, &qs); err != nil {
+		t.Fatal(err)
+	}
+	if len(qs) != 1 || qs[0].Key != questionKeyChange {
+		t.Fatalf("la pregunta abierta tiene que ser qué cambiar: %+v", qs)
+	}
+	if len(qs[0].Options) != 0 {
+		t.Error("es texto libre: el monto o la categoría nueva no son un menú")
+	}
+	// El candidato ya está elegido: encontrarlo fue la mitad cara y no se repite.
+	var payload agentPayload
+	if err := json.Unmarshal(actions.rows[0].Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Chosen != 0 || len(payload.Candidates) != 1 || payload.Candidates[0].OldIDs[0] != "10" {
+		t.Errorf("el candidato resuelto no viajó: %+v", payload)
+	}
+}
+
+// TestApplyAnswers_ChangeAnswerIsAppended: la respuesta se suma al texto
+// original en vez de reemplazarlo. El original dice a cuál ("el café"), la
+// respuesta dice el valor nuevo ("2000"): con uno solo ResolveUpdate no cierra.
+func TestApplyAnswers_ChangeAnswerIsAppended(t *testing.T) {
+	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
+		Change: "el café estaba mal", Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
+	})}
+	answers := []pendingaction.OpenQuestion{{Key: questionKeyChange, Answer: "eran 2000"}}
+
+	payload, resolved := applyAnswers(action, answers)
+	if !resolved {
+		t.Fatal("contestar qué cambiar tiene que resolver la acción")
+	}
+	if payload.Change != "el café estaba mal eran 2000" {
+		t.Errorf("change = %q; se perdió una de las dos mitades", payload.Change)
 	}
 }
 
