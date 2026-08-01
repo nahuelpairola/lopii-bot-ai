@@ -51,13 +51,27 @@ func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userTe
 // fallar fuerte en vez de recibir una respuesta vacía plausible.
 var errRunNotWired = errors.New("Run is not wired in this test")
 
+// swallowTurnDone imita lo que el Run de verdad hace con ErrAgentTurnDone: no es
+// un error, es el executor avisando que la app se queda con el turno. Sin esto
+// cada fake lo propagaría como fallo y el test vería rojo donde el código real
+// ve un turno normal — de una sola vuelta, que es justo el punto.
+func swallowTurnDone(execute func(string, json.RawMessage) (string, error)) func(string, json.RawMessage) (string, error) {
+	return func(name string, args json.RawMessage) (string, error) {
+		result, err := execute(name, args)
+		if errors.Is(err, orchestrator.ErrAgentTurnDone) {
+			return result, nil
+		}
+		return result, err
+	}
+}
+
 func (o *fakeOrchestrator) Run(_ context.Context, systemPrompt, _ string, _ []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(string, json.RawMessage) (string, error)) (string, error) {
 	o.gotRunPrompt = systemPrompt
 	o.gotRunTools = tools
 	if o.runFn == nil {
 		return "", errRunNotWired
 	}
-	return o.runFn(execute)
+	return o.runFn(swallowTurnDone(execute))
 }
 func (o *fakeOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
 	return orchestrator.CategoryCreateResult{}, nil

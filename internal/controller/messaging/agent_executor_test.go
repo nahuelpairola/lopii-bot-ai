@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -36,6 +37,22 @@ func newExecutorWith(t *testing.T, userText string, movements ...movement.Moveme
 	return newAgentExecutor(&controller{movements: &fakeMovementRepoFull{similar: movements}}, 1, userText)
 }
 
+// executeDone corre una tool que TIENE que cerrar el turno.
+//
+// Que devuelva ErrAgentTurnDone no es tolerancia, es LA aserción: si dejara de
+// devolverlo, el loop volvería a gastar una segunda vuelta —el prompt entero de
+// nuevo, ~5k tokens— narrando algo que la app ya sabe decir. Contra el TPM de
+// 8.000 eso es un 429, y la corrección del usuario terminaba en la cola en vez
+// de en el gate.
+func executeDone(t *testing.T, e *agentExecutor, tool, args string) string {
+	t.Helper()
+	out, err := e.execute(tool, json.RawMessage(args))
+	if !errors.Is(err, orchestrator.ErrAgentTurnDone) {
+		t.Fatalf("%s: want ErrAgentTurnDone, got %v", tool, err)
+	}
+	return out
+}
+
 // TestAgentExecutor_CorrectResolvesInOneRound es el punto del rediseño: el
 // modelo pide corregir y listo. No hay vuelta de búsqueda — el candidato lo
 // resuelve la app — porque una segunda vuelta arrastra ~5k tokens de prompt y no
@@ -43,10 +60,7 @@ func newExecutorWith(t *testing.T, userText string, movements ...movement.Moveme
 func TestAgentExecutor_CorrectResolvesInOneRound(t *testing.T) {
 	e := newExecutorWith(t, "la panaderia era 2000", candidateMovement(10, nil, "compra en panadería", 3000))
 
-	out, err := e.execute(orchestrator.ToolCorrectMovement, json.RawMessage(`{"change":"eran 2000"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
+	out := executeDone(t, e, orchestrator.ToolCorrectMovement, `{"change":"eran 2000"}`)
 	if out != resultParked {
 		t.Fatalf("want %q, got %q", resultParked, out)
 	}
@@ -79,9 +93,7 @@ func TestAgentExecutor_SearchesWithTheUsersTextNotTheModelParaphrase(t *testing.
 	e := newExecutorWith(t, "la panaderia era 2000", candidateMovement(10, nil, "compra en panadería", 3000))
 
 	// El change no nombra la panadería; sólo el texto original lo hace.
-	if _, err := e.execute(orchestrator.ToolCorrectMovement, json.RawMessage(`{"change":"cambiar el monto a 2000"}`)); err != nil {
-		t.Fatal(err)
-	}
+	executeDone(t, e, orchestrator.ToolCorrectMovement, `{"change":"cambiar el monto a 2000"}`)
 	if len(e.parked) != 1 {
 		t.Fatalf("tenía que encontrarlo por el texto del usuario, got %d parked", len(e.parked))
 	}
@@ -94,10 +106,7 @@ func TestAgentExecutor_TwoCandidatesAsksWhich(t *testing.T) {
 		candidateMovement(11, &b, "panadería del barrio", 5000),
 	)
 
-	out, err := e.execute(orchestrator.ToolCorrectMovement, json.RawMessage(`{"change":"estaba mal"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
+	out := executeDone(t, e, orchestrator.ToolCorrectMovement, `{"change":"estaba mal"}`)
 	if out != resultParked {
 		t.Fatalf("want %q, got %q", resultParked, out)
 	}
@@ -115,10 +124,7 @@ func TestAgentExecutor_TwoCandidatesAsksWhich(t *testing.T) {
 
 func TestAgentExecutor_NothingToCorrectDoesNotPark(t *testing.T) {
 	e := newExecutorWith(t, "corregí el asado")
-	out, err := e.execute(orchestrator.ToolCorrectMovement, json.RawMessage(`{"change":"corregí el asado"}`))
-	if err != nil {
-		t.Fatal(err)
-	}
+	out := executeDone(t, e, orchestrator.ToolCorrectMovement, `{"change":"corregí el asado"}`)
 	if out != resultNoCandidates {
 		t.Errorf("want %q, got %q", resultNoCandidates, out)
 	}
@@ -129,6 +135,10 @@ func TestAgentExecutor_NothingToCorrectDoesNotPark(t *testing.T) {
 	if !e.noCandidates {
 		t.Error("falta la marca de que no había candidatos")
 	}
+	// La copy la pone la app: hacérsela narrar al modelo cuesta la vuelta entera.
+	if e.reply != msgNoCandidatesFound {
+		t.Errorf("want %q, got %q", msgNoCandidatesFound, e.reply)
+	}
 }
 
 // TestAgentExecutor_BadArgsStillPark: un argumento ilegible no puede tumbar el
@@ -136,9 +146,7 @@ func TestAgentExecutor_NothingToCorrectDoesNotPark(t *testing.T) {
 // texto del usuario, así que no hay nada que perder.
 func TestAgentExecutor_BadArgsStillPark(t *testing.T) {
 	e := newExecutorWith(t, "la panaderia era 2000", candidateMovement(10, nil, "compra en panadería", 3000))
-	if _, err := e.execute(orchestrator.ToolCorrectMovement, json.RawMessage(`no soy json`)); err != nil {
-		t.Fatalf("no puede fallar por los argumentos: %v", err)
-	}
+	executeDone(t, e, orchestrator.ToolCorrectMovement, `no soy json`)
 	if len(e.parked) != 1 {
 		t.Fatalf("tenía que parkear igual, got %d", len(e.parked))
 	}
@@ -146,9 +154,7 @@ func TestAgentExecutor_BadArgsStillPark(t *testing.T) {
 
 func TestAgentExecutor_DeleteParksToo(t *testing.T) {
 	e := newExecutorWith(t, "borrá lo de la panaderia", candidateMovement(10, nil, "compra en panadería", 3000))
-	if _, err := e.execute(orchestrator.ToolDeleteMovements, json.RawMessage(`{}`)); err != nil {
-		t.Fatal(err)
-	}
+	executeDone(t, e, orchestrator.ToolDeleteMovements, `{}`)
 	if len(e.parked) != 1 || e.parked[0].Tool != orchestrator.ToolDeleteMovements {
 		t.Fatalf("delete no parkeó: %+v", e.parked)
 	}
@@ -166,9 +172,7 @@ func TestAgentExecutor_HelpAndRewriteResolveInTurn(t *testing.T) {
 		{orchestrator.ToolAskRewrite, msgAskRewrite},
 	} {
 		e := newExecutorWith(t, "¿qué podés hacer?")
-		if _, err := e.execute(tc.tool, json.RawMessage(`{}`)); err != nil {
-			t.Fatal(err)
-		}
+		executeDone(t, e, tc.tool, `{}`)
 		if e.reply != tc.want {
 			t.Errorf("%s: want reply %q, got %q", tc.tool, tc.want, e.reply)
 		}

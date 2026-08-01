@@ -86,10 +86,10 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		return e.park(orchestrator.ToolDeleteMovements, "", msgPickDeleteCandidate(nil))
 	case orchestrator.ToolReplyHelp:
 		e.reply = msgHelp
-		return "ya le mandaste al usuario la explicación de qué podés hacer", nil
+		return "ya le mandaste al usuario la explicación de qué podés hacer", orchestrator.ErrAgentTurnDone
 	case orchestrator.ToolAskRewrite:
 		e.reply = msgAskRewrite
-		return "ya le pediste al usuario que lo reescriba", nil
+		return "ya le pediste al usuario que lo reescriba", orchestrator.ErrAgentTurnDone
 	default:
 		// Etapas 3 y 4 cablean el resto. Decírselo es mejor que fallar: el modelo
 		// puede avisarle al usuario en vez de quedarse mudo.
@@ -99,9 +99,11 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 
 // park resuelve el candidato del lado de la app y deja la acción lista.
 //
-// Tres salidas: un solo candidato → se parkea elegido, sin preguntas; varios →
-// se parkea con la pregunta de cuál; ninguno → no se parkea nada y el modelo se
-// lo dice al usuario.
+// Tres salidas, y las tres cierran el turno con ErrAgentTurnDone: un solo
+// candidato → se parkea elegido, sin preguntas; varios → se parkea con la
+// pregunta de cuál; ninguno → no se parkea nada y sale la copy de "no encontré".
+// En los tres casos el texto que ve el usuario lo escribe la app, así que pedirle
+// al modelo que lo narre es una vuelta entera de prompt tirada.
 func (e *agentExecutor) park(tool, change, question string) (string, error) {
 	groups, err := e.c.resolveCandidates(e.userID, e.userText, "", "")
 	if err != nil {
@@ -109,7 +111,9 @@ func (e *agentExecutor) park(tool, change, question string) (string, error) {
 	}
 	if len(groups) == 0 {
 		e.noCandidates = true
-		return resultNoCandidates, nil
+		// La misma copy que usan los dos sitios pre-loop (start_movement.go).
+		e.reply = msgNoCandidatesFound
+		return resultNoCandidates, orchestrator.ErrAgentTurnDone
 	}
 
 	candidates := make([]candidateGroup, 0, len(groups))
@@ -129,7 +133,7 @@ func (e *agentExecutor) park(tool, change, question string) (string, error) {
 		}}
 	}
 	e.parked = append(e.parked, action)
-	return resultParked, nil
+	return resultParked, orchestrator.ErrAgentTurnDone
 }
 
 func toCandidateGroup(g transactionGroup) candidateGroup {

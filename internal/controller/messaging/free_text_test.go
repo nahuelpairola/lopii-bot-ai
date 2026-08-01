@@ -64,7 +64,7 @@ func (o *fakeFullOrchestrator) Run(_ context.Context, _, _ string, _ []orchestra
 	if o.runFn == nil {
 		return "", errRunNotWired
 	}
-	return o.runFn(execute)
+	return o.runFn(swallowTurnDone(execute))
 }
 func (o *fakeFullOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
 	return o.categoryResult, o.categoryErr
