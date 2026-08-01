@@ -264,10 +264,20 @@ func (e *agentExecutor) parkCreate(seed conversation.Data) (string, error) {
 	return "pendiente: faltan datos, la app se los pide al usuario", orchestrator.ErrAgentTurnDone
 }
 
-// parkFundsGate se cablea en la tarea 6. Hasta entonces le dice al modelo que la
-// tool no está lista — nunca inserta a medias.
+// parkFundsGate manda el CREATE al gate de saldo negativo. Igual que hoy en
+// start_movement.go: no se inserta nada, se le muestra el faltante y decide el
+// usuario. El loop no relaja ni un gate (spec 4.5).
+//
+// keyGatePrompt es lo que distingue este parkeo del de gaps al retomarlo: es la
+// copy del faltante, y sólo la pone este camino.
 func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *insufficientFunds) (string, error) {
-	return resultNotWiredYet, nil
+	gateSeed := copyData(seed)
+	gateSeed[keyGatePrompt] = msgInsufficientFunds(short.shortfalls)
+	e.parked = append(e.parked, parkedAction{
+		Tool:    orchestrator.ToolRecordMovements,
+		Payload: agentPayload{Seed: gateSeed, Chosen: 0},
+	})
+	return "pendiente: el saldo no alcanza, la app le pide confirmación al usuario", orchestrator.ErrAgentTurnDone
 }
 
 func toCandidateGroup(g transactionGroup) candidateGroup {

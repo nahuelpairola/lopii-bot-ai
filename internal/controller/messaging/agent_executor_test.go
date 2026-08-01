@@ -164,6 +164,28 @@ func TestAgentExecutor_CorrectResolvesInOneRound(t *testing.T) {
 	}
 }
 
+// TestAgentExecutor_InsufficientFundsParksTheGate: el gate de saldo negativo no
+// se saltea desde el loop. Nada se inserta hasta que el usuario decide.
+func TestAgentExecutor_InsufficientFundsParksTheGate(t *testing.T) {
+	e := newCreateExecutor(t, "100", "gasté 50000 en el super")
+
+	args := `{"movements":[{"type":"expense","amount":"50000","currency":"ARS",
+		"category":"Alimentación","subcategory":"Supermercado","date":"2026-08-01",
+		"description":"super","payment_method":"transfer"}]}`
+	executeDone(t, e, orchestrator.ToolRecordMovements, args)
+
+	if e.wrote {
+		t.Error("wrote quedó en true sin haber insertado: bloquearía la cola del 429 sin razón")
+	}
+	if len(e.parked) != 1 || e.parked[0].Payload.Seed[keyGatePrompt] == nil {
+		t.Fatalf("tenía que parkear el gate con su copy: %+v", e.parked)
+	}
+	// Y retoma como CREATE: es lo que hace que el drenaje sepa a qué flujo ir.
+	if e.parked[0].Tool != orchestrator.ToolRecordMovements {
+		t.Errorf("el gate retoma un CREATE, no otra cosa: %q", e.parked[0].Tool)
+	}
+}
+
 // TestAgentExecutor_SearchesWithTheUsersTextNotTheModelParaphrase: el matcheo
 // por tokens y el plegado de acentos están tuneados contra lo que escribe el
 // usuario. La paráfrasis del modelo puede perder justo la palabra que matchea.

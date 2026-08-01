@@ -232,7 +232,14 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		for k, v := range payload.Seed {
 			seed[k] = v
 		}
-		return c.startFlow(ctx, b, chatID, userID, movementCreateFlowName, seed, "drain: start movement_create flow")
+		// Dos parkeos distintos vuelven por acá: el que tiene gaps y el que
+		// chocó contra el saldo. La copy del faltante es lo único que los
+		// separa — la pone parkFundsGate y nadie más.
+		flow := movementCreateFlowName
+		if _, gated := payload.Seed[keyGatePrompt]; gated {
+			flow = movementNegativeConfirmFlowName
+		}
+		return c.startFlow(ctx, b, chatID, userID, flow, seed, "drain: start "+flow)
 	case orchestrator.ToolCorrectMovement:
 		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows)
 	case orchestrator.ToolDeleteMovements:
