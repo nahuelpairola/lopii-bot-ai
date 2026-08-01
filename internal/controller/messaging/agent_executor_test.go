@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -34,7 +35,84 @@ func candidateMovement(id uint, txID *uuid.UUID, description string, amount int6
 
 func newExecutorWith(t *testing.T, userText string, movements ...movement.Movement) *agentExecutor {
 	t.Helper()
-	return newAgentExecutor(&controller{movements: &fakeMovementRepoFull{similar: movements}}, 1, userText)
+	return newAgentExecutor(&controller{movements: &fakeMovementRepoFull{similar: movements}}, 1, userText, nil)
+}
+
+// taxonomyForTest es la taxonomía mínima que buildCreateSeed necesita para NO
+// marcar gap de categoría: el par tiene que existir de verdad.
+func taxonomyForTest() []orchestrator.TaxonomyEntry {
+	return []orchestrator.TaxonomyEntry{{Category: "Alimentación", Subcategory: "Supermercado"}}
+}
+
+// accountsWithDefault da una cuenta ARS por defecto, que es lo que evita el
+// camino de needsFirstAccount.
+func accountsWithDefault() *fakeAccountRepoFull {
+	acc := &account.Account{Model: gorm.Model{ID: 1}, Name: "Mercado Pago", Currency: currency.ARS, IsDefault: true}
+	return &fakeAccountRepoFull{
+		byCurrency: map[currency.Currency]*account.Account{currency.ARS: acc},
+		byUserID:   []account.Account{*acc},
+		byID:       map[uint64]*account.Account{1: acc},
+	}
+}
+
+// movementsWithBalance fija el saldo de la cuenta 1, para poder disparar (o no)
+// el gate de fondos insuficientes.
+func movementsWithBalance(balance string) *fakeMovementRepoFull {
+	return &fakeMovementRepoFull{balances: map[uint64]string{1: balance}}
+}
+
+// subcategoriesForTest tiene el mismo par que taxonomyForTest. Los dos tienen
+// que coincidir: la taxonomía decide si hay gap, y el repo decide si la
+// inserción encuentra la subcategoría — desalinearlos da un gap fantasma o un
+// insert que falla al final.
+func subcategoriesForTest() *fakeSubcategoryRepoFull {
+	sub := subcategory.Subcategory{Model: gorm.Model{ID: 1}, Category: "Alimentación", Subcategory: "Supermercado"}
+	return &fakeSubcategoryRepoFull{
+		byCategoryAndSub: map[string]*subcategory.Subcategory{"Alimentación|Supermercado": &sub},
+		all:              []subcategory.Subcategory{sub},
+	}
+}
+
+// newCreateExecutor arma el ejecutor con lo mínimo que necesita un CREATE:
+// cuentas, saldo y taxonomía.
+func newCreateExecutor(t *testing.T, balance, userText string) *agentExecutor {
+	t.Helper()
+	c := &controller{
+		movements:     movementsWithBalance(balance),
+		accounts:      accountsWithDefault(),
+		subcategories: subcategoriesForTest(),
+	}
+	return newAgentExecutor(c, 1, userText, taxonomyForTest())
+}
+
+// TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn: el camino sin fricción.
+// Cierra el turno con ErrAgentTurnDone porque el recibo lo escribe la app —
+// pedirle al modelo que narre "listo" cuesta el prompt entero otra vez, y
+// medido en la etapa 2 el modelo NUNCA narra junto a los tool_calls.
+func TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn(t *testing.T) {
+	e := newCreateExecutor(t, "100000", "gasté 5000 en el super")
+
+	args := `{"movements":[{"type":"expense","amount":"5000","currency":"ARS",
+		"category":"Alimentación","subcategory":"Supermercado","date":"2026-08-01",
+		"description":"super","merchant":"Coto","payment_method":"transfer"}]}`
+	out := executeDone(t, e, orchestrator.ToolRecordMovements, args)
+
+	if !e.wrote {
+		t.Error("wrote quedó en false: un 429 posterior encolaría y duplicaría")
+	}
+	if len(e.inserted) != 1 {
+		t.Fatalf("insertó %d movimientos, want 1", len(e.inserted))
+	}
+	if out != resultRecorded(1) {
+		t.Errorf("out = %q, want %q", out, resultRecorded(1))
+	}
+	if len(e.parked) != 0 {
+		t.Errorf("un CREATE limpio no parkea nada: %+v", e.parked)
+	}
+	// El recibo lo pone la app: es lo que hace que el turno no necesite narración.
+	if e.reply == "" {
+		t.Error("falta el recibo; sin él el usuario no ve nada")
+	}
 }
 
 // executeDone corre una tool que TIENE que cerrar el turno.
@@ -185,7 +263,6 @@ func TestAgentExecutor_HelpAndRewriteResolveInTurn(t *testing.T) {
 func TestAgentExecutor_UnwiredToolsSayNotAvailable(t *testing.T) {
 	e := newExecutorWith(t, "cualquier cosa")
 	for _, tool := range []string{
-		orchestrator.ToolRecordMovements,
 		orchestrator.ToolManageAccount,
 		orchestrator.ToolSumMovements,
 	} {

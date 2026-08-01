@@ -24,7 +24,7 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	// El toolbox y el prompt salen de la MISMA lista: el prompt no puede nombrar
 	// una tool que no se manda. Ver wiredAgentTools.
 	tools := wiredAgentTools()
-	prompt, err := c.buildAgentSystemPrompt(userID, tools)
+	prompt, taxonomy, err := c.buildAgentSystemPrompt(userID, tools)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgCouldNotLoad)
 		return err
@@ -37,7 +37,7 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
 	}
 
-	executor := newAgentExecutor(c, userID, text)
+	executor := newAgentExecutor(c, userID, text, taxonomy)
 	answer, err := c.orchestrator.Run(ctx, prompt, text, history, tools, executor.execute)
 	if err != nil {
 		// Un 429 DESPUÉS de escribir no se encola: el drenaje volvería a correr el
@@ -112,10 +112,15 @@ func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, 
 // buildAgentSystemPrompt arma el prompt unificado con las cuentas y la taxonomía
 // del usuario. pendingQuestion va vacío: cuando hay una pregunta abierta el que
 // está a cargo es ask_user, no este camino.
-func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.AgentTool) (string, error) {
+//
+// Devuelve también la taxonomía porque el ejecutor la necesita igual, para
+// buildCreateSeed. Traerla dos veces serían dos queries por turno y —peor— dos
+// listas que pueden diferir: el modelo clasificaría contra una y el gap se
+// marcaría contra la otra.
+func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.AgentTool) (string, []orchestrator.TaxonomyEntry, error) {
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
-		return "", fmt.Errorf("agent loop: find subcategories: %w", err)
+		return "", nil, fmt.Errorf("agent loop: find subcategories: %w", err)
 	}
 	taxonomy := make([]orchestrator.TaxonomyEntry, 0, len(subs))
 	for _, s := range subs {
@@ -124,14 +129,14 @@ func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.
 
 	accs, err := c.accounts.FindByUserID(userID)
 	if err != nil {
-		return "", fmt.Errorf("agent loop: find accounts: %w", err)
+		return "", nil, fmt.Errorf("agent loop: find accounts: %w", err)
 	}
 	accountOptions := make([]orchestrator.AccountOption, 0, len(accs))
 	for _, a := range accs {
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	return orchestrator.BuildAgentPrompt(time.Now().Format("2006-01-02"), accountOptions, taxonomy, "", tools), nil
+	return orchestrator.BuildAgentPrompt(time.Now().Format("2006-01-02"), accountOptions, taxonomy, "", tools), taxonomy, nil
 }
 
 // sendTyping avisa que el bot está pensando. Best-effort: que falle el aviso no

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
@@ -257,6 +258,41 @@ func TestLoop_LeavesTheMetricPendingWhenSomethingIsOpen(t *testing.T) {
 	}
 	if len(metrics.resolved) != 0 {
 		t.Errorf("con una acción abierta el evento sigue pendiente, got %v", metrics.resolved)
+	}
+}
+
+// TestLoop_NoQueueAfterAWrite: si el turno ya escribió, un 429 posterior NO
+// puede encolar el mensaje — el drenaje lo reinsertaría y la plata quedaría
+// registrada dos veces. Spec 8.2.
+func TestLoop_NoQueueAfterAWrite(t *testing.T) {
+	jobs := &drainJobs{}
+	// El turno escribe y RECIÉN DESPUÉS se come el 429 — que es el único orden
+	// en que el bug existe. Por eso el runFn llama al ejecutor antes de fallar,
+	// en vez de setear el flag a mano.
+	orch := &fakeFullOrchestrator{
+		intent: orchestrator.IntentCreate,
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, _ = execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
+				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
+				 "subcategory":"Supermercado","date":"2026-08-01","description":"super",
+				 "payment_method":"transfer"}]}`))
+			return "", &orchestrator.RateLimitedError{RetryAfter: time.Second}
+		},
+	}
+	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine.Register(NewAskUserFlow())
+	c := &controller{
+		engine: engine, orchestrator: orch, jobs: jobs, actions: &fakeActionsRepo{},
+		accounts: accountsWithDefault(), subcategories: subcategoriesForTest(),
+		chatHistory: stubChatHistory{}, movements: movementsWithBalance("100000"),
+		users: fakeUsers{}, metrics: &fakeMetricRepo{},
+	}
+
+	if err := c.startAgentLoop(context.Background(), nil, 0, 1, "gasté 5000 en el super"); err != nil {
+		t.Fatal(err)
+	}
+	if len(jobs.inserted) != 0 {
+		t.Errorf("encoló %d jobs después de escribir: el drenaje los duplicaría", len(jobs.inserted))
 	}
 }
 

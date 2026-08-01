@@ -2,9 +2,12 @@ package messaging
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
+	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -60,6 +63,12 @@ type agentExecutor struct {
 	// modelo, que puede perder justo la palabra que matcheaba.
 	userText string
 
+	// taxonomy son los pares (categoría, subcategoría) que el usuario tiene de
+	// verdad. buildCreateSeed la necesita para marcar gap cuando el modelo
+	// inventa un par que no existe: sin eso la fila se inserta y después falla
+	// al buscar la subcategoría, y el movimiento se pierde con un error genérico.
+	taxonomy []orchestrator.TaxonomyEntry
+
 	parked []parkedAction
 	// reply es la respuesta que manda el controller (help / pedir reescritura),
 	// no el modelo: es copy nuestra y tiene que salir textual.
@@ -78,8 +87,8 @@ type agentExecutor struct {
 	inserted []movement.Movement
 }
 
-func newAgentExecutor(c *controller, userID uint64, userText string) *agentExecutor {
-	return &agentExecutor{c: c, userID: userID, userText: userText}
+func newAgentExecutor(c *controller, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
+	return &agentExecutor{c: c, userID: userID, userText: userText, taxonomy: taxonomy}
 }
 
 // wiredAgentTools son las únicas tools que este ejecutor sabe correr hoy. Es la
@@ -121,6 +130,8 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		// entiende por el nombre de la tool, y el candidato sale del texto.
 		_ = json.Unmarshal(args, &a)
 		return e.park(orchestrator.ToolCorrectMovement, a.Change, msgPickUpdateCandidate(nil))
+	case orchestrator.ToolRecordMovements:
+		return e.record(args)
 	case orchestrator.ToolDeleteMovements:
 		return e.park(orchestrator.ToolDeleteMovements, "", msgPickDeleteCandidate(nil))
 	case orchestrator.ToolReplyHelp:
@@ -134,6 +145,58 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		// puede avisarle al usuario en vez de quedarse mudo.
 		return resultNotWiredYet, nil
 	}
+}
+
+// resultRecorded es lo que ve el MODELO, no el usuario: el recibo real lo manda
+// la app (msgConfirmMovements). El prompt le pide explícitamente no repetir el
+// detalle.
+func resultRecorded(n int) string {
+	return fmt.Sprintf("registrados: %d movimientos", n)
+}
+
+// record corre el CREATE del lado de la app. El seed, los gaps y la inserción
+// son EXACTAMENTE los de start_movement.go: el loop cambia cómo se llega hasta
+// acá, no qué pasa después. En particular resolveAndInsertMovements lleva
+// adentro el guard (Normalize / AssignTransactionIDs / CheckBalances) y no se
+// toca.
+func (e *agentExecutor) record(args json.RawMessage) (string, error) {
+	var result orchestrator.CreateResult
+	if err := json.Unmarshal(args, &result); err != nil {
+		// Acá sí importa el argumento: sin filas no hay nada que registrar, y a
+		// diferencia de una corrección el texto del usuario no alcanza para
+		// reconstruirlas. Se lo decimos al modelo en vez de tumbar el turno.
+		return "no pude leer los movimientos, pedile al usuario que lo reescriba", nil
+	}
+	if len(result.Movements) == 0 {
+		return "no venía ningún movimiento", nil
+	}
+
+	seed := buildCreateSeed(result, e.taxonomy)
+	seed[conversation.UserIDKey] = e.userID
+
+	hasGaps := len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 ||
+		len(decodeStringSlice(seed, keyPendingAccountGaps)) > 0
+	hasFirst := needsFirstAccount(seed, func(cur currency.Currency) bool {
+		return e.c.accounts.HasDefaultForCurrency(e.userID, cur)
+	})
+	if hasGaps || hasFirst {
+		return e.parkCreate(seed)
+	}
+
+	inserted, err := e.c.resolveAndInsertMovements(seed)
+	if err != nil {
+		var short *insufficientFunds
+		if errors.As(err, &short) {
+			return e.parkFundsGate(seed, short)
+		}
+		return "", fmt.Errorf("record_movements: %w", err)
+	}
+	// El orden importa: wrote ANTES de cualquier retorno, para que un 429 del
+	// mismo turno ya lo vea puesto y no encole el mensaje.
+	e.wrote = true
+	e.inserted = inserted
+	e.reply = msgConfirmMovements(inserted)
+	return resultRecorded(len(inserted)), orchestrator.ErrAgentTurnDone
 }
 
 // park resuelve el candidato del lado de la app y deja la acción lista.
@@ -173,6 +236,17 @@ func (e *agentExecutor) park(tool, change, question string) (string, error) {
 	}
 	e.parked = append(e.parked, action)
 	return resultParked, orchestrator.ErrAgentTurnDone
+}
+
+// parkCreate y parkFundsGate se cablean en las tareas 5 y 6. Hasta entonces el
+// CREATE incompleto le dice al modelo que la tool no está lista, que es el mismo
+// contrato que las tools sin cablear — nunca inserta a medias.
+func (e *agentExecutor) parkCreate(seed conversation.Data) (string, error) {
+	return resultNotWiredYet, nil
+}
+
+func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *insufficientFunds) (string, error) {
+	return resultNotWiredYet, nil
 }
 
 func toCandidateGroup(g transactionGroup) candidateGroup {

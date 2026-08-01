@@ -13,11 +13,15 @@ import (
 )
 
 type drainJobs struct {
-	jobs    []pendingjob.PendingJob
-	deleted []uint64
+	jobs     []pendingjob.PendingJob
+	deleted  []uint64
+	inserted []pendingjob.PendingJob
 }
 
-func (d *drainJobs) Insert(*pendingjob.PendingJob) error                       { return nil }
+func (d *drainJobs) Insert(j *pendingjob.PendingJob) error {
+	d.inserted = append(d.inserted, *j)
+	return nil
+}
 func (d *drainJobs) ListByUserOrdered(uint64) ([]pendingjob.PendingJob, error) { return d.jobs, nil }
 func (d *drainJobs) ListPendingUserIDs() ([]uint64, error)                     { return []uint64{7}, nil }
 func (d *drainJobs) Delete(id uint64) error                                    { d.deleted = append(d.deleted, id); return nil }
