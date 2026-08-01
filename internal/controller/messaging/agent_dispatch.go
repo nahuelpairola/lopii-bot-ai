@@ -205,6 +205,18 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		return fmt.Errorf("resume: payload: %w", err)
 	}
 
+	// El candidato se valida ANTES de borrar: un payload corrupto no se tira en
+	// silencio, se deja en la cola y falla ruidoso. Un CREATE se saltea el
+	// chequeo porque no tiene candidatos — lo que viaja es el seed a medio
+	// resolver.
+	var chosen candidateGroup
+	if action.Tool != orchestrator.ToolRecordMovements {
+		var err error
+		if chosen, err = chosenCandidate(payload); err != nil {
+			return err
+		}
+	}
+
 	// Se borra ANTES de abrir el gate: si el gate falla, el usuario vuelve a
 	// escribir — pero una acción que quedó en la cola bloquearía la siguiente
 	// para siempre.
@@ -214,24 +226,16 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 
 	switch action.Tool {
 	case orchestrator.ToolRecordMovements:
-		// Un CREATE no tiene candidatos: lo que viaja es el seed a medio
-		// resolver, y quien sabe preguntar lo que falta es movement_create.
+		// Quien sabe preguntar categoría/subcategoría/cuenta es movement_create,
+		// con sus pickers. El loop cambia cómo se llega hasta acá.
 		seed := conversation.Data{}
 		for k, v := range payload.Seed {
 			seed[k] = v
 		}
 		return c.startFlow(ctx, b, chatID, userID, movementCreateFlowName, seed, "drain: start movement_create flow")
 	case orchestrator.ToolCorrectMovement:
-		chosen, err := chosenCandidate(payload)
-		if err != nil {
-			return err
-		}
 		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows)
 	case orchestrator.ToolDeleteMovements:
-		chosen, err := chosenCandidate(payload)
-		if err != nil {
-			return err
-		}
 		seed := conversation.Data{
 			keyCandidateGroups: encodeCandidateGroupList([]candidateGroup{chosen}),
 			keyResolvedIndex:   "0",
