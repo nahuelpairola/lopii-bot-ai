@@ -3,7 +3,6 @@ package messaging
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -58,13 +57,23 @@ func TestRouting_UpdateAndDeleteGoThroughTheLoop(t *testing.T) {
 	}
 }
 
-func TestRouting_CreateStillDoesNotTouchTheLoop(t *testing.T) {
-	orch := &fakeFullOrchestrator{intent: orchestrator.IntentCreate} // runFn nil → Run falla
-	c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
+// TestFreeText_CreateRoutingRespectsTheFlag: el interruptor es la única forma de
+// bisectar, porque las etapas 2 y 3 despliegan juntas. Apagado, CREATE tiene que
+// volver al camino de siempre sin tocar nada más.
+func TestFreeText_CreateRoutingRespectsTheFlag(t *testing.T) {
+	for _, tc := range []struct{ flag, wantLoop bool }{{true, true}, {false, false}} {
+		orch := &fakeFullOrchestrator{
+			intent: orchestrator.IntentCreate,
+			runFn:  func(func(string, json.RawMessage) (string, error)) (string, error) { return "ok", nil },
+		}
+		c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
+		c.routeCreateToLoop = tc.flag
 
-	err := c.handleFreeText(context.Background(), nil, 0, 1, "gasté 500 en el súper")
-	if errors.Is(err, errRunNotWired) {
-		t.Fatal("CREATE no puede pasar por el loop en esta etapa")
+		_ = c.handleFreeText(context.Background(), nil, 0, 1, "gasté 5000 en el super")
+
+		if orch.runCalled != tc.wantLoop {
+			t.Errorf("flag=%v: loop usado = %v, want %v", tc.flag, orch.runCalled, tc.wantLoop)
+		}
 	}
 }
 
@@ -285,6 +294,38 @@ func TestLoop_LeavesTheMetricPendingWhenSomethingIsOpen(t *testing.T) {
 	}
 	if len(metrics.resolved) != 0 {
 		t.Errorf("con una acción abierta el evento sigue pendiente, got %v", metrics.resolved)
+	}
+}
+
+// TestLoop_InsertedResolvesCreateInserted: un CREATE por el loop tiene que
+// cerrar el intent_event como create_inserted. Sin este caso cae en el fracaso
+// genérico —el reply es el recibo, no matchea ninguna copy— y el portón de la
+// etapa (create_inserted ≥ 74%) daría negativo con todo funcionando.
+func TestLoop_InsertedResolvesCreateInserted(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{
+		intent: orchestrator.IntentCreate,
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, err := execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
+				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
+				 "subcategory":"Supermercado","date":"2026-08-01","description":"super",
+				 "payment_method":"transfer"}]}`))
+			return "", err
+		},
+	}
+	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine.Register(NewAskUserFlow())
+	c := &controller{
+		engine: engine, orchestrator: orch, actions: &fakeActionsRepo{}, metrics: metrics,
+		accounts: accountsWithDefault(), subcategories: subcategoriesForTest(),
+		chatHistory: stubChatHistory{}, movements: movementsWithBalance("100000"),
+	}
+
+	if err := c.startAgentLoop(context.Background(), nil, 0, 1, "gasté 5000 en el super"); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateInserted {
+		t.Fatalf("want el evento resuelto como %q, got %v", outcomeCreateInserted, metrics.resolved)
 	}
 }
 

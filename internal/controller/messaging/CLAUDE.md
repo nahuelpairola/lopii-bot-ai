@@ -47,9 +47,20 @@ categories. There is no guard anywhere in the repo. `movement_delete_flow.go:38`
 ## One entry point, one reference resolver
 
 `handleFreeText` runs the router (Call 1) and dispatches per intent. Two exceptions that do not
-open a flow: **QUERY** goes to the read-only loop in `query.go`, and since stage 2 of the agent
-migration **UPDATE and DELETE** go to the unified loop via `startAgentLoop`. The router is still
-the gate that decides what reaches the loop — that is what makes each stage bisectable.
+open a flow: **QUERY** goes to the read-only loop in `query.go`, and **UPDATE, DELETE and
+CREATE** go to the unified loop via `startAgentLoop` (stages 2 and 3 of the agent migration).
+The router is still the gate that decides what reaches the loop — that is what makes each stage
+bisectable. CREATE's leg is behind `controller.routeCreateToLoop`; off, it returns to
+`startMovementCreate`.
+
+`record_movements` is the only tool that writes. Two rules hang off that:
+
+- **A turn that inserted must never be enqueued on a later 429** (`agentExecutor.wrote`,
+  checked in `startAgentLoop`) — the drain would replay it and register the money twice.
+- **A CREATE that cannot complete inserts nothing at all.** Gaps park an action that resumes
+  into `movement_create`; an overdraft parks one that resumes into `movement_negative_confirm`,
+  told apart by `keyGatePrompt` in the seed. All-or-nothing per batch is what keeps a two-leg
+  transfer from splitting.
 
 `resolveCandidates` (`reference_resolution.go`) is the **only** candidate-search mechanism, and
 both correction paths share it. Do not add a second. Textual relevance is decided in Go

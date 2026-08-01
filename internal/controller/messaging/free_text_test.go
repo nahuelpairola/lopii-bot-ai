@@ -36,6 +36,7 @@ type fakeFullOrchestrator struct {
 	accountManageResult orchestrator.AccountManageResult
 	accountManageErr    error
 	runFn               func(execute func(string, json.RawMessage) (string, error)) (string, error)
+	runCalled           bool
 }
 
 func (o *fakeFullOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
@@ -61,6 +62,7 @@ func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, us
 // el loop en la etapa 2, así que llegar acá sin quererlo es haber migrado un
 // camino antes de tiempo.
 func (o *fakeFullOrchestrator) Run(_ context.Context, _, _ string, _ []orchestrator.QueryTurn, _ []orchestrator.AgentTool, execute func(string, json.RawMessage) (string, error)) (string, error) {
+	o.runCalled = true
 	if o.runFn == nil {
 		return "", errRunNotWired
 	}

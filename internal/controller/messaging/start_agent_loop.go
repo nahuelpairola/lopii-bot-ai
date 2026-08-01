@@ -96,6 +96,10 @@ func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, 
 		return
 	}
 	switch {
+	case len(ex.inserted) > 0:
+		// Va PRIMERO: el reply de un CREATE limpio es el recibo, que no matchea
+		// ninguna de las copys de abajo y caería en el fracaso genérico.
+		c.resolveMetric(ctx, userID, outcomeCreateInserted, collectMovementIDs(ex.inserted)...)
 	case ex.reply == msgHelp:
 		c.resolveMetric(ctx, userID, outcomeHelpShown)
 	case ex.reply == msgAskRewrite:

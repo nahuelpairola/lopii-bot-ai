@@ -105,10 +105,16 @@ ACCOUNT_MANAGE | CREATE_CATEGORY | CATEGORY_MANAGE | REMINDER_SET | HELP | UNCLE
 - Tool calling: the LLM constructs action parameters, not just the intent type
 - `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
 - Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`), not an in-memory store
-- **Migration in progress:** `UPDATE` and `DELETE` no longer open a flow from the router — they
-  go through the unified agent loop (`orchestrator.Run` → `startAgentLoop`), stage 2 of 5. The
-  router still gates what reaches the loop, which is what keeps each stage bisectable. The other
-  eight intents are unchanged.
+- **Migration in progress:** `UPDATE`, `DELETE` and `CREATE` no longer open a flow from the
+  router — they go through the unified agent loop (`orchestrator.Run` → `startAgentLoop`),
+  stages 2 and 3 of 5. The router still gates what reaches the loop, which is what keeps each
+  stage bisectable. The other seven intents are unchanged.
+- `CREATE` through the loop is behind **`config.Agent.RouteCreateToLoop`** (`[agent]
+  routeCreateToLoop` in the TOMLs). Stages 2 and 3 ship together, so flipping it off is the only
+  way left to attribute a `create_inserted` drop to one of the two: off, `CREATE` returns to
+  `startMovementCreate` with stage 2 still live. What happens *after* the loop is unchanged —
+  a CREATE with gaps parks an action that resumes into the same `movement_create` flow, and an
+  overdraft still goes through `movement_negative_confirm`.
 - `CREATE_CATEGORY`: the message asks to create a category/subcategory, not to register/correct/delete a movement. No Call 2 — the flow itself (`subcategory_setup`) asks everything it needs via `ChoiceStep`/`TextStep`, unlike CREATE/UPDATE/DELETE which extract structured data from the message via a second LLM call.
 - `REMINDER_SET`: the message creates, edits, or turns off the daily expense-logging reminder. Like `CREATE_CATEGORY`, no Call 2 — `reminder_setup` captures the window entirely via `ChoiceStep` presets/custom-text (`parseWindow`, deterministic, no LLM). Consulting the reminder ("¿a qué hora me recordás?") is QUERY, not REMINDER_SET — see `get_reminder` in Recipe: Add a scheduled notification below.
 
