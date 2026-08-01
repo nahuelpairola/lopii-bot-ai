@@ -150,6 +150,7 @@ func InitServer(conf *config.Config) error {
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
 		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo, actionsRepo,
+		conf.Agent.RouteCreateToLoop,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, conf.Telegram.Token)

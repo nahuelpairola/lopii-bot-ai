@@ -159,8 +159,13 @@ type controller struct {
 	nudges        nudgeRepository
 	jobs          jobsRepository
 	actions       actionsRepository
-	nextDrainAt   time.Time
-	drainMu       sync.Mutex
+	// routeCreateToLoop manda CREATE por el loop unificado. Es config y no una
+	// constante porque las etapas 2 y 3 despliegan juntas: si create_inserted
+	// cae, apagarlo devuelve CREATE al camino viejo dejando la etapa 2 viva, que
+	// es el único bisect que queda.
+	routeCreateToLoop bool
+	nextDrainAt       time.Time
+	drainMu           sync.Mutex
 }
 
 func NewController(
@@ -178,6 +183,7 @@ func NewController(
 	nudges nudgeRepository,
 	jobs jobsRepository,
 	actions actionsRepository,
+	routeCreateToLoop bool,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -194,6 +200,8 @@ func NewController(
 		nudges:        nudges,
 		jobs:          jobs,
 		actions:       actions,
+
+		routeCreateToLoop: routeCreateToLoop,
 	}
 }
 
