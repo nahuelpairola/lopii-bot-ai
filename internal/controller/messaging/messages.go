@@ -152,16 +152,39 @@ func msgAskAccount(data conversation.Data) string {
 	return "¿A qué cuenta corresponde " + movementGapDescriptor(rows[idx]) + "?" + gapPosition(idx, len(rows))
 }
 
-func msgAskFirstAccountName(conversation.Data) string {
-	return "¿De dónde salió? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
+// Los tres mensajes del alta lazy-create nombran la MONEDA, porque el default
+// de cuenta es por moneda. Sin eso, alguien que ya tiene una cuenta en pesos y
+// carga un gasto en dólares lee "tu cuenta principal" y entiende que le pisamos
+// la que ya tenía. cur vacío (no debería pasar) cae en la redacción vieja.
+
+func msgAskFirstAccountName(cur string) string {
+	if cur == "" {
+		return "¿De dónde salió? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
+	}
+	return "¿De dónde salieron esos " + cur + "? Decime el nombre de la cuenta — ej: Galicia, Mercado Pago, efectivo."
 }
 
-func msgAskFirstAccountBalance(name string) string {
-	return "¿Cuánto saldo tenés en " + name + " ahora? Poné el saldo que ves en tu cuenta (ej: 50000) — o mandá \"después\"."
+func msgAskFirstAccountBalance(name, cur string) string {
+	if cur == "" {
+		return "¿Cuánto saldo tenés en " + name + " ahora? Poné el saldo que ves en tu cuenta (ej: 50000) — o mandá \"después\"."
+	}
+	return "¿Cuánto saldo tenés en " + name + " ahora, en " + cur + "? Poné el saldo que ves en tu cuenta — o mandá \"después\"."
 }
 
-func msgFirstAccountDefault(name string) string {
-	return "⭐ Dejé " + name + " como tu cuenta principal — la uso cuando no me aclarás de dónde sale la plata."
+// msgFirstAccountDefault nombra las monedas de las cuentas recién creadas. Son
+// varias cuando un mismo mensaje trae filas en dos monedas: createFirstAccount
+// crea UNA CUENTA POR MONEDA, todas con el nombre que dio el usuario.
+func msgFirstAccountDefault(name string, currencies []string) string {
+	switch len(currencies) {
+	case 0:
+		return "⭐ Dejé " + name + " como tu cuenta principal — la uso cuando no me aclarás de dónde sale la plata."
+	case 1:
+		cur := currencies[0]
+		return "⭐ Dejé " + name + " como tu cuenta en " + cur + " por defecto — la uso para los movimientos en " + cur + " cuando no me aclarás de dónde sale la plata."
+	default:
+		list := strings.Join(currencies[:len(currencies)-1], ", ") + " y " + currencies[len(currencies)-1]
+		return "⭐ Creé " + name + " en " + list + ", y las dejé por defecto para cada una — las uso cuando no me aclarás de dónde sale la plata."
+	}
 }
 
 const msgInviteMoreAccounts = "Podés tener más cuentas (inversiones, dólares, lo que sea). Decime \"creá una cuenta\" cuando quieras."

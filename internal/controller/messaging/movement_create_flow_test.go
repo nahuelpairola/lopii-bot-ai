@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -884,11 +885,42 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	if len(rt.texts) != 3 {
 		t.Fatalf("expected 3 messages (recibo + R1 + R2), got %d: %+v", len(rt.texts), rt.texts)
 	}
-	if rt.texts[1] != msgFirstAccountDefault("Galicia") {
-		t.Errorf("R1 = %q, want %q", rt.texts[1], msgFirstAccountDefault("Galicia"))
+	// La moneda tiene que estar nombrada: el default de cuenta es POR MONEDA, y
+	// sin decirla el mensaje es ambiguo con dos cuentas y falso con dos monedas.
+	want := msgFirstAccountDefault("Galicia", []string{"ARS"})
+	if rt.texts[1] != want {
+		t.Errorf("R1 = %q, want %q", rt.texts[1], want)
+	}
+	if !strings.Contains(rt.texts[1], "ARS") {
+		t.Errorf("R1 no nombra la moneda: %q", rt.texts[1])
 	}
 	if rt.texts[2] != msgInviteMoreAccounts {
 		t.Errorf("R2 = %q, want %q", rt.texts[2], msgInviteMoreAccounts)
+	}
+}
+
+// TestMsgFirstAccountDefault_NamesEveryCurrency: createFirstAccount crea UNA
+// CUENTA POR MONEDA con el mismo nombre, así que un mensaje con filas en dos
+// monedas abre dos cuentas. Decir "tu cuenta principal" ahí no es sólo vago:
+// el default es por moneda, y la de dólares no recibe ningún movimiento en pesos.
+func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
+	one := msgFirstAccountDefault("Galicia", []string{"USD"})
+	if !strings.Contains(one, "USD") {
+		t.Errorf("una moneda: no la nombra: %q", one)
+	}
+
+	two := msgFirstAccountDefault("Galicia", []string{"ARS", "USD"})
+	for _, cur := range []string{"ARS", "USD"} {
+		if !strings.Contains(two, cur) {
+			t.Errorf("dos monedas: falta %s: %q", cur, two)
+		}
+	}
+
+	// Sin monedas (no debería pasar) se cae a la redacción vieja, nunca a un
+	// mensaje roto tipo "tu cuenta en  por defecto".
+	none := msgFirstAccountDefault("Galicia", nil)
+	if strings.Contains(none, "  ") || none == "" {
+		t.Errorf("sin monedas quedó un mensaje roto: %q", none)
 	}
 }
 

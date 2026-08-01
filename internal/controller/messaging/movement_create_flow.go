@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -63,12 +64,12 @@ var cancelOption = conversation.ChoiceOption{Label: "🚫 Cancelar", Value: opti
 func NewMovementCreateFlow(subcategories subcategoryRepository, accounts accountRepository) *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepCreateFirstAccount: conversation.TextStep{
-			PromptText: msgAskFirstAccountName,
-			DataKey:    keyFirstAccountName,
+			PromptText: func(data conversation.Data) string {
+				return msgAskFirstAccountName(firstAccountCurrency(data, hasDefaultFor(accounts, data)))
+			},
+			DataKey: keyFirstAccountName,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if needsFirstAccount(data, func(cur currency.Currency) bool {
-					return accounts.HasDefaultForCurrency(data.UserID(), cur)
-				}) {
+				if needsFirstAccount(data, hasDefaultFor(accounts, data)) {
 					return "", false // hay que preguntar
 				}
 				return stepResolveCategory, true
@@ -92,7 +93,10 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		},
 		stepFirstAccountBalance: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return msgAskFirstAccountBalance(stringOrEmpty(data[keyFirstAccountName]))
+				return msgAskFirstAccountBalance(
+					stringOrEmpty(data[keyFirstAccountName]),
+					firstAccountCurrency(data, hasDefaultFor(accounts, data)),
+				)
 			},
 			DataKey: keyFirstAccountBalance,
 			SkipIf: func(data conversation.Data) (string, bool) {
@@ -303,7 +307,7 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
 		if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgFirstAccountDefault(name)})
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgFirstAccountDefault(name, decodeStringSlice(data, keyFirstAccountCurrencies))})
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgInviteMoreAccounts})
 			// R1/R2 just fired — mark correct_tip sent (not delivered) so the
 			// post-message nudge hook doesn't stack a 3rd tip on this same turn.
@@ -437,6 +441,10 @@ func (c *controller) createFirstAccount(data conversation.Data, rows []movementR
 	}
 	userID := data.UserID()
 	netDelta := firstAccountNetDelta(rows)
+	// Las monedas se anotan para el mensaje de confirmación: cuando éste corre,
+	// las filas ya tienen account_id y no hay forma de saber qué monedas se
+	// acaban de crear. Ver keyFirstAccountCurrencies.
+	var created []string
 
 	for i, row := range rows {
 		if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
@@ -454,6 +462,10 @@ func (c *controller) createFirstAccount(data conversation.Data, rows []movementR
 		}
 		idx.add(*newAcc)
 		rows[i].AccountID = strconv.FormatUint(uint64(newAcc.ID), 10)
+		if !slices.Contains(created, row.Currency) {
+			created = append(created, row.Currency)
+		}
+		data[keyFirstAccountCurrencies] = encodeStringSlice(created)
 
 		bal := stringOrEmpty(data[keyFirstAccountBalance])
 		if bal == "" {

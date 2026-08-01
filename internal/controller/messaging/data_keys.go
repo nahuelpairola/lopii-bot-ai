@@ -74,6 +74,11 @@ const (
 	// lazy-create (first account, movement_create flow) keys
 	keyFirstAccountName    dataKey = "first_account_name"
 	keyFirstAccountBalance dataKey = "first_account_balance"
+	// keyFirstAccountCurrencies son las monedas de las cuentas que el alta
+	// lazy-create acabó de crear. Lo escribe createFirstAccount y lo lee el
+	// mensaje de confirmación, que para entonces ya no puede deducirlas: las
+	// filas ya tienen account_id y la moneda que las originó se perdió.
+	keyFirstAccountCurrencies dataKey = "first_account_currencies"
 
 	// keyGapActiveRow guarda el índice de la fila que el gap-fill está
 	// resolviendo ahora mismo: lo escribe el paso de categoría y lo leen el de
