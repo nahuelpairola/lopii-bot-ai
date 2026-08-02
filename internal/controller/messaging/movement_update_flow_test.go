@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -240,6 +241,29 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	}
 }
 
+// TestMsgAskWhatToChange_AsksForTheValueNotTheField: la primera versión listaba
+// "(el monto, la categoría, la fecha…)" y se leía como un menú. En la prueba
+// real el usuario contestó "El monto" — el campo, que es justo lo que no sirve:
+// ResolveUpdate necesita con qué reemplazar, y la corrección murió ahí.
+func TestMsgAskWhatToChange_AsksForTheValueNotTheField(t *testing.T) {
+	got := msgAskWhatToChange([]movementRow{{Amount: "1800", Description: "Cafe"}})
+
+	if !strings.Contains(got, "Cuánto era") {
+		t.Errorf("no pide el valor nuevo: %q", got)
+	}
+	// Un ejemplo tiene que ser una respuesta COMPLETA, no un nombre de campo.
+	if !strings.Contains(got, "era en Delivery") {
+		t.Errorf("los ejemplos no muestran respuestas completas: %q", got)
+	}
+	if strings.Contains(got, "el monto, la categoría") {
+		t.Errorf("volvió la lista de campos, que se lee como menú: %q", got)
+	}
+	// Y nombra el movimiento, para que se sepa cuál se está tocando.
+	if !strings.Contains(got, "1800") {
+		t.Errorf("no nombra el movimiento: %q", got)
+	}
+}
+
 // TestUpdate_NoOpCorrectionAsksInsteadOfConfirming reproduce la traza 317df846:
 // "el café estaba mal" contra un movimiento de $1.800 y ResolveUpdate devolvió
 // Resolved=TRUE con el mismo $1.800. Confirmarlo haría un DELETE+INSERT para
@@ -259,7 +283,7 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 		accounts:      &fakeAccountRepoFull{},
 		subcategories: &fakeSubcategoryRepoFull{},
 		orchestrator: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{
-			Resolved:  true, // el modelo dice que sí...
+			Resolved:  true,                                                // el modelo dice que sí...
 			Movements: []orchestrator.MovementDraft{rowToDraft(before[0])}, // ...y no cambió nada
 		}},
 	}

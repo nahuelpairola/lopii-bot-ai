@@ -323,14 +323,20 @@ const (
 // claro, decímelo de nuevo" que era un callejón sin salida: el usuario había
 // nombrado bien el movimiento y se quedaba sin nada.
 //
-// Nombra el movimiento con el mismo descriptor que los prompts de gap-fill —
-// una sola forma de nombrar un movimiento en una pregunta — y los ejemplos son
-// las tres cosas que de verdad se corrigen.
+// Pide el VALOR NUEVO, no el campo. La primera versión listaba "(el monto, la
+// categoría, la fecha…)" y se leía como un menú: en la prueba real el usuario
+// contestó "El monto" — nombró el campo, que es exactamente lo que no sirve.
+// ResolveUpdate necesita con qué reemplazar, así que los ejemplos son
+// respuestas COMPLETAS, no nombres de campo.
+//
+// Arranca por el monto porque es lo que se corrige casi siempre; el resto entra
+// igual por el mismo texto libre.
 func msgAskWhatToChange(rows []movementRow) string {
+	const ask = "¿Cuánto era? Si lo que está mal es otra cosa, decímela — ej: «era en Delivery» o «fue el martes»."
 	if len(rows) == 0 {
-		return "¿Qué querés cambiarle? (el monto, la categoría, la fecha…)"
+		return ask
 	}
-	return "Encontré " + movementGapDescriptor(rows[0]) + ". ¿Qué querés cambiarle? (el monto, la categoría, la fecha…)"
+	return "Encontré " + movementGapDescriptor(rows[0]) + ". " + ask
 }
 
 func msgPickDeleteCandidate(data conversation.Data) string {
