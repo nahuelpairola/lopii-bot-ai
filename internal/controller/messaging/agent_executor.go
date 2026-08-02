@@ -57,6 +57,11 @@ type agentPayload struct {
 	// Ojo: pasa por JSONB, así que todo valor acá adentro tiene que ser string o
 	// string-JSON. buildCreateSeed ya cumple (movementRow va codificado).
 	Seed map[string]any `json:"seed,omitempty"`
+	// AskedWhatToChange marca que al usuario YA se le preguntó qué cambiarle al
+	// movimiento. Lo pone applyAnswers al recibir la respuesta, y sirve para no
+	// volver a preguntar lo mismo si con esa respuesta tampoco sale una
+	// corrección: ahí se corta.
+	AskedWhatToChange bool `json:"asked_what_to_change,omitempty"`
 }
 
 // agentExecutor es el closure `execute` que Run llama por cada tool call.

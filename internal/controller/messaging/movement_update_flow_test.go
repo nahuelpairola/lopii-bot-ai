@@ -172,7 +172,7 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
 
 	beforeRows := []movementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
-	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows); err != nil {
+	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, false); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
 	}
 	if store.flowName != movementUpdateConfirmFlowName {
@@ -190,7 +190,7 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	engine.Register(NewMovementUpdateConfirmFlow())
 	c := &controller{orchestrator: orch, engine: engine, accounts: &fakeAccountRepoFull{}}
 
-	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "che no sé", "", nil, nil); err != nil {
+	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "che no sé", "", nil, nil, false); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
 	}
 	if store.found {
@@ -213,7 +213,7 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	}
 
 	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
-		"estaba mal", "", []string{"10"}, []movementRow{{Amount: "3000", Currency: "ARS", Description: "café"}})
+		"estaba mal", "", []string{"10"}, []movementRow{{Amount: "3000", Currency: "ARS", Description: "café"}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,6 +237,107 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	}
 	if payload.Chosen != 0 || len(payload.Candidates) != 1 || payload.Candidates[0].OldIDs[0] != "10" {
 		t.Errorf("el candidato resuelto no viajó: %+v", payload)
+	}
+}
+
+// TestUpdate_NoOpCorrectionAsksInsteadOfConfirming reproduce la traza 317df846:
+// "el café estaba mal" contra un movimiento de $1.800 y ResolveUpdate devolvió
+// Resolved=TRUE con el mismo $1.800. Confirmarlo haría un DELETE+INSERT para
+// dejar todo igual y contaría como update_confirmed.
+//
+// El chequeo no puede depender de que el modelo se declare incapaz.
+func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
+	before := []movementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
+		Category: "Ocio y salidas", Subcategory: "Salir a comer", Date: "2026-08-01", Description: "Cafe"}}
+	actions := &fakeActionsRepo{}
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewAskUserFlow())
+	engine.Register(NewMovementUpdateConfirmFlow())
+	c := &controller{
+		engine: engine, actions: actions, movements: &fakeMovementRepoFull{},
+		accounts:      &fakeAccountRepoFull{},
+		subcategories: &fakeSubcategoryRepoFull{},
+		orchestrator: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{
+			Resolved:  true, // el modelo dice que sí...
+			Movements: []orchestrator.MovementDraft{rowToDraft(before[0])}, // ...y no cambió nada
+		}},
+	}
+
+	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
+		"El café estaba mal", "", []string{"127"}, before, false); err != nil {
+		t.Fatal(err)
+	}
+
+	if store.flowName == movementUpdateConfirmFlowName {
+		t.Fatal("una corrección que no cambia nada no puede llegar al gate de confirmación")
+	}
+	if len(actions.rows) != 1 {
+		t.Fatalf("tenía que preguntar qué cambiar, parkeó %d", len(actions.rows))
+	}
+	var qs []pendingaction.OpenQuestion
+	if err := json.Unmarshal(actions.rows[0].Questions, &qs); err != nil {
+		t.Fatal(err)
+	}
+	if len(qs) != 1 || qs[0].Key != questionKeyChange {
+		t.Fatalf("la pregunta tiene que ser qué cambiar: %+v", qs)
+	}
+}
+
+// TestUpdate_NoOpAfterAskingGivesUp: si ya preguntamos y con la respuesta
+// TAMPOCO sale una corrección, se corta. Sin esto cada vuelta parkea una acción
+// nueva con presupuesto entero y el usuario gira para siempre.
+func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
+	before := []movementRow{{Type: "expense", Amount: "1800", Currency: "ARS", Description: "Cafe"}}
+	actions := &fakeActionsRepo{}
+	metrics := &fakeMetricRepo{}
+	c := &controller{
+		engine:  conversation.NewEngine(&fakeStoreForController{}, func(string) string { return "algo" }),
+		actions: actions, metrics: metrics, movements: &fakeMovementRepoFull{},
+		accounts:      &fakeAccountRepoFull{},
+		subcategories: &fakeSubcategoryRepoFull{},
+		orchestrator: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{
+			Resolved: true, Movements: []orchestrator.MovementDraft{rowToDraft(before[0])},
+		}},
+	}
+
+	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
+		"El café estaba mal no sé", "", []string{"127"}, before, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(actions.rows) != 0 {
+		t.Errorf("ya se preguntó una vez: no puede volver a parkear la misma pregunta")
+	}
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeUpdateFailed {
+		t.Errorf("el evento tiene que cerrar como fallo, got %v", metrics.resolved)
+	}
+}
+
+// TestCorrectionIsNoOp_DetectsARealChange: la contracara. Un campo omitido por
+// el modelo es "no lo tocó", pero uno distinto es un cambio de verdad y tiene
+// que pasar derecho al gate.
+func TestCorrectionIsNoOp_DetectsARealChange(t *testing.T) {
+	before := []movementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
+		Category: "Ocio y salidas", Subcategory: "Salir a comer", Description: "Cafe"}}
+
+	same := []orchestrator.MovementDraft{{Amount: "1800.00"}} // mismo monto, otro formato
+	if !correctionIsNoOp(before, same) {
+		t.Error("1800 y 1800.00 son el mismo monto: tiene que dar no-op")
+	}
+
+	changed := []orchestrator.MovementDraft{{Amount: "2000"}}
+	if correctionIsNoOp(before, changed) {
+		t.Error("cambió el monto: NO es no-op")
+	}
+
+	recat := []orchestrator.MovementDraft{{Amount: "1800", Subcategory: "Delivery"}}
+	if correctionIsNoOp(before, recat) {
+		t.Error("cambió la subcategoría: NO es no-op")
+	}
+
+	if correctionIsNoOp(before, nil) {
+		t.Error("sin filas nuevas no hay con qué comparar: no puede dar no-op")
 	}
 }
 

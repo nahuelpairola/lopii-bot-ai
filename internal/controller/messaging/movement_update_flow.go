@@ -210,7 +210,10 @@ func decodeCandidateGroups(data conversation.Data) []candidateGroup {
 // proceedToUpdateConfirm runs Call 2 UPDATE against a candidate found
 // via resolveCandidates — both the single-match path and the
 // post-picker path funnel through here.
-func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movementRow) error {
+// askedWhatToChange evita preguntar dos veces lo mismo: si el usuario ya
+// contestó qué cambiar y AÚN ASÍ no sale una corrección, insistir es hacerlo
+// girar en el vacío. Sólo lo manda en true el drenaje, leyendo el payload.
+func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movementRow, askedWhatToChange bool) error {
 	drafts := make([]orchestrator.MovementDraft, 0, len(beforeRows))
 	for _, row := range beforeRows {
 		drafts = append(drafts, rowToDraft(row))
@@ -232,7 +235,25 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	if err != nil {
 		return err
 	}
-	if !result.Resolved {
+	// Dos formas de no entender el CAMBIO, y hay que atrapar las dos.
+	//
+	// La declarada (!Resolved) es la que el modelo admite. La otra la vimos en
+	// producción con "el café estaba mal" (traza 317df846): devolvió
+	// Resolved=true y el movimiento IDÉNTICO, o sea inventó una corrección que
+	// no corrige nada. Confirmarla haría un DELETE+INSERT para dejar todo igual
+	// —quemando un id y contando como update_confirmed— y al usuario le
+	// mostraría "$1.800 (antes: $1.800)".
+	//
+	// Por eso el chequeo no puede depender de que el modelo se declare incapaz:
+	// una corrección que no cambia nada no es una corrección.
+	if !result.Resolved || correctionIsNoOp(beforeRows, result.Movements) {
+		if askedWhatToChange {
+			// Ya preguntamos y seguimos sin entender: cortar es más honesto que
+			// volver a preguntar lo mismo.
+			c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+			c.sendText(ctx, b, chatID, msgStillCannotCorrect)
+			return nil
+		}
 		// El candidato ya está resuelto acá: lo que falló es entender el CAMBIO.
 		// Antes esto era un callejón sin salida —"no me quedó claro, decímelo de
 		// nuevo"— y el usuario que había nombrado bien el movimiento se quedaba
@@ -242,6 +263,55 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	}
 
 	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows, result)
+}
+
+// correctionIsNoOp dice si la corrección "resuelta" deja el movimiento igual
+// que como estaba. Se compara campo por campo y no con reflect.DeepEqual porque
+// los dos lados vienen de fuentes distintas: el antes sale de la DB (montos ya
+// formateados, cuenta resuelta) y el después del modelo, que omite lo que no
+// toca. Un DeepEqual daría "cambió" siempre.
+func correctionIsNoOp(before []movementRow, after []orchestrator.MovementDraft) bool {
+	if len(before) == 0 || len(before) != len(after) {
+		return false // otra cantidad de filas ES un cambio (o no hay con qué comparar)
+	}
+	for i, draft := range after {
+		if !sameMovementForCorrection(before[i], draftToRow(draft)) {
+			return false
+		}
+	}
+	return true
+}
+
+// sameMovementForCorrection compara los campos que una corrección puede tocar.
+//
+// Un campo vacío del lado nuevo se lee como "no lo tocó", no como "lo borró":
+// el modelo devuelve sólo lo que cambia, y tratarlo como borrado haría ver
+// cambios donde no los hay — que es el error que dejaría pasar el no-op.
+func sameMovementForCorrection(before, after movementRow) bool {
+	unchanged := func(b, a string) bool { return a == "" || a == b }
+	return sameAmount(before.Amount, after.Amount) &&
+		unchanged(before.Type, after.Type) &&
+		unchanged(before.Currency, after.Currency) &&
+		unchanged(before.Category, after.Category) &&
+		unchanged(before.Subcategory, after.Subcategory) &&
+		unchanged(before.Date, after.Date) &&
+		unchanged(before.AccountID, after.AccountID) &&
+		unchanged(before.Merchant, after.Merchant) &&
+		unchanged(before.Description, after.Description)
+}
+
+// sameAmount compara montos por VALOR, no por texto: "1800" y "1800.00" son el
+// mismo monto y la comparación de strings diría que cambió.
+func sameAmount(before, after string) bool {
+	if after == "" {
+		return true // no lo tocó
+	}
+	b, berr := parseARAmount(before)
+	a, aerr := parseARAmount(after)
+	if berr != nil || aerr != nil {
+		return before == after
+	}
+	return b.Abs().Equal(a.Abs())
 }
 
 // parkChangeQuestion guarda el candidato YA resuelto y pregunta qué cambiarle.
@@ -342,7 +412,7 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 	chosen := candidates[idx]
 
 	message := stringOrEmpty(data["message"])
-	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows); err != nil {
+	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, false); err != nil {
 		if c.enqueueUpdatePickIfRateLimited(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
 			return
 		}

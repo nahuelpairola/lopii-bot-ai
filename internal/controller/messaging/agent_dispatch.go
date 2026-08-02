@@ -188,6 +188,7 @@ func applyAnswers(action *pendingaction.PendingAction, answers []pendingaction.O
 			// se refiere ("el café"), y la respuesta trae el valor nuevo ("2000").
 			// Con cualquiera de los dos solo, ResolveUpdate se queda corto.
 			payload.Change = strings.TrimSpace(payload.Change + " " + q.Answer)
+			payload.AskedWhatToChange = true
 		}
 	}
 	// La pregunta de "qué cambiar" se parkea con el candidato YA elegido, así
@@ -250,7 +251,7 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		}
 		return c.startFlow(ctx, b, chatID, userID, flow, seed, "drain: start "+flow)
 	case orchestrator.ToolCorrectMovement:
-		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows)
+		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, payload.AskedWhatToChange)
 	case orchestrator.ToolDeleteMovements:
 		seed := conversation.Data{
 			keyCandidateGroups: encodeCandidateGroupList([]candidateGroup{chosen}),

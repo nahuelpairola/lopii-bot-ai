@@ -312,6 +312,10 @@ const (
 	// movements at all — the fallback picker covers every other case.
 	msgNoCandidatesFound = "No tengo movimientos de ese día para tocar. ¿De qué fecha era?"
 
+	// msgStillCannotCorrect va cuando YA le preguntamos qué cambiar y con la
+	// respuesta tampoco sale una corrección. Volver a preguntar lo mismo sería
+	// hacerlo girar; se corta nombrando el formato que sí funciona.
+	msgStillCannotCorrect = "Sigo sin darme cuenta qué cambiarle. Probá diciéndomelo derecho — ej: «el café fueron 2000»."
 )
 
 // msgAskWhatToChange se usa cuando el movimiento SÍ se encontró pero el mensaje

@@ -122,7 +122,7 @@ func (c *controller) replayJob(ctx context.Context, b *bot.Bot, chatID int64, us
 		if err := json.Unmarshal(job.Payload, &p); err != nil {
 			return nil
 		}
-		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows)
+		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows, false)
 	default:
 		slog.WarnContext(ctx, "drain: unknown kind", "kind", job.Kind)
 		return nil
