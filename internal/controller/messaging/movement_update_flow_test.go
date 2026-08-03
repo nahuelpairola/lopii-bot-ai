@@ -173,7 +173,7 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
 
 	beforeRows := []movementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
-	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, false); err != nil {
+	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, changeAsk{}); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
 	}
 	if store.flowName != movementUpdateConfirmFlowName {
@@ -191,7 +191,7 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	engine.Register(NewMovementUpdateConfirmFlow())
 	c := &controller{orchestrator: orch, engine: engine, accounts: &fakeAccountRepoFull{}}
 
-	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "che no sé", "", nil, nil, false); err != nil {
+	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "che no sé", "", nil, nil, changeAsk{}); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
 	}
 	if store.found {
@@ -214,7 +214,7 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	}
 
 	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
-		"estaba mal", "", []string{"10"}, []movementRow{{Amount: "3000", Currency: "ARS", Description: "café"}}, false)
+		"estaba mal", "", []string{"10"}, []movementRow{{Amount: "3000", Currency: "ARS", Description: "café"}}, changeAsk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,8 +228,17 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	if len(qs) != 1 || qs[0].Key != questionKeyChange {
 		t.Fatalf("la pregunta abierta tiene que ser qué cambiar: %+v", qs)
 	}
-	if len(qs[0].Options) != 0 {
-		t.Error("es texto libre: el monto o la categoría nueva no son un menú")
+	// Botones para los campos que NO son el monto. El monto se escribe derecho,
+	// así que el caso común queda en un paso; los otros encadenan la pregunta
+	// del valor. Y ask_user acepta texto libre igual: los botones aceleran,
+	// nunca encierran.
+	if len(qs[0].Options) != len(changeFieldOptions()) {
+		t.Errorf("faltan los botones de campo: %+v", qs[0].Options)
+	}
+	for _, opt := range qs[0].Options {
+		if strings.Contains(opt, "monto") {
+			t.Errorf("el monto no va como botón, se escribe: %q", opt)
+		}
 	}
 	// El candidato ya está elegido: encontrarlo fue la mitad cara y no se repite.
 	var payload agentPayload
@@ -251,12 +260,13 @@ func TestMsgAskWhatToChange_AsksForTheValueNotTheField(t *testing.T) {
 	if !strings.Contains(got, "Cuánto era") {
 		t.Errorf("no pide el valor nuevo: %q", got)
 	}
-	// Un ejemplo tiene que ser una respuesta COMPLETA, no un nombre de campo.
-	if !strings.Contains(got, "era en Delivery") {
-		t.Errorf("los ejemplos no muestran respuestas completas: %q", got)
+	// Y avisa que hay botones para lo que no sea el monto: sin eso el usuario no
+	// sabe que puede corregir la categoría o la fecha.
+	if !strings.Contains(got, "tocá abajo") {
+		t.Errorf("no ofrece los botones para los otros campos: %q", got)
 	}
 	if strings.Contains(got, "el monto, la categoría") {
-		t.Errorf("volvió la lista de campos, que se lee como menú: %q", got)
+		t.Errorf("volvió la lista de campos en el texto, que se lee como menú: %q", got)
 	}
 	// Y nombra el movimiento, para que se sepa cuál se está tocando.
 	if !strings.Contains(got, "1800") {
@@ -289,7 +299,7 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 	}
 
 	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
-		"El café estaba mal", "", []string{"127"}, before, false); err != nil {
+		"El café estaba mal", "", []string{"127"}, before, changeAsk{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -305,6 +315,40 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 	}
 	if len(qs) != 1 || qs[0].Key != questionKeyChange {
 		t.Fatalf("la pregunta tiene que ser qué cambiar: %+v", qs)
+	}
+}
+
+// TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel: tocar "La
+// categoría" nombra el CAMPO y nada más. Preguntar el valor antes de llamar al
+// modelo ahorra la llamada entera — iba a volver sin cambiar nada.
+func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
+	actions := &fakeActionsRepo{}
+	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine.Register(NewAskUserFlow())
+	// orchestrator nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
+	c := &controller{engine: engine, actions: actions, accounts: &fakeAccountRepoFull{}}
+
+	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
+		"El café estaba mal La categoría", "", []string{"127"},
+		[]movementRow{{Amount: "1800", Description: "Cafe"}},
+		changeAsk{pickedField: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(actions.rows) != 1 {
+		t.Fatalf("tenía que parkear la pregunta del valor, parkeó %d", len(actions.rows))
+	}
+	var qs []pendingaction.OpenQuestion
+	if err := json.Unmarshal(actions.rows[0].Questions, &qs); err != nil {
+		t.Fatal(err)
+	}
+	if qs[0].Prompt != msgAskChangeValue {
+		t.Errorf("la segunda vuelta pregunta el valor, no el campo: %q", qs[0].Prompt)
+	}
+	// Y sin botones: el campo ya se eligió, ofrecerlos de nuevo confunde.
+	if len(qs[0].Options) != 0 {
+		t.Errorf("la segunda vuelta no lleva botones: %+v", qs[0].Options)
 	}
 }
 
@@ -326,7 +370,7 @@ func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
 	}
 
 	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
-		"El café estaba mal no sé", "", []string{"127"}, before, true); err != nil {
+		"El café estaba mal no sé", "", []string{"127"}, before, changeAsk{gaveValue: true}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -332,12 +332,26 @@ const (
 // Arranca por el monto porque es lo que se corrige casi siempre; el resto entra
 // igual por el mismo texto libre.
 func msgAskWhatToChange(rows []movementRow) string {
-	const ask = "¿Cuánto era? Si lo que está mal es otra cosa, decímela — ej: «era en Delivery» o «fue el martes»."
+	const ask = "¿Cuánto era? Escribime el monto — o tocá abajo si lo que está mal es otra cosa."
 	if len(rows) == 0 {
 		return ask
 	}
 	return "Encontré " + movementGapDescriptor(rows[0]) + ". " + ask
 }
+
+// changeFieldOptions son los botones de la pregunta de qué cambiar. NO incluyen
+// el monto a propósito: ese se escribe derecho y así el caso común —que es el
+// monto— se resuelve en un paso. Los otros tres encadenan una segunda pregunta,
+// porque tocar "la categoría" dice el campo pero no el valor.
+//
+// Sin emojis: el texto del botón se concatena al pedido que va a ResolveUpdate,
+// y un emoji ahí es ruido para el modelo.
+func changeFieldOptions() []string {
+	return []string{"La categoría", "La fecha", "La cuenta"}
+}
+
+// msgAskChangeValue es la segunda vuelta: ya sabemos QUÉ campo, falta el valor.
+const msgAskChangeValue = "Dale. ¿Y cuál es el valor nuevo?"
 
 func msgPickDeleteCandidate(data conversation.Data) string {
 	return "Encontré varios movimientos parecidos. ¿Cuál querés borrar?"

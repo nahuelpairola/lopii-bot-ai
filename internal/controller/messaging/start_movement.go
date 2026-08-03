@@ -214,7 +214,7 @@ func (c *controller) startMovementUpdate(ctx context.Context, b *bot.Bot, chatID
 			rows = append(rows, movementToRow(m))
 			oldIDs = append(oldIDs, strconv.FormatUint(uint64(m.ID), 10))
 		}
-		if err := c.proceedToUpdateConfirm(ctx, b, chatID, userID, text, candidates[0].TransactionID, oldIDs, rows, false); err != nil {
+		if err := c.proceedToUpdateConfirm(ctx, b, chatID, userID, text, candidates[0].TransactionID, oldIDs, rows, changeAsk{}); err != nil {
 			if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
 				return oerr
 			}

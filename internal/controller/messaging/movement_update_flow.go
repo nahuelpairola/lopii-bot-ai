@@ -207,13 +207,32 @@ func decodeCandidateGroups(data conversation.Data) []candidateGroup {
 	return groups
 }
 
+// changeAsk es en qué punto está la pregunta de "qué cambiarle al movimiento".
+// Los dos estados no son excluyentes en el tipo pero sí en la vida: primero se
+// toca un botón (pickedField), después se escribe el valor (gaveValue).
+type changeAsk struct {
+	// pickedField: tocó uno de los botones, o sea nombró el CAMPO. Falta el valor.
+	pickedField bool
+	// gaveValue: escribió algo como valor nuevo. Si con eso tampoco sale una
+	// corrección, no hay más que preguntar.
+	gaveValue bool
+}
+
 // proceedToUpdateConfirm runs Call 2 UPDATE against a candidate found
 // via resolveCandidates — both the single-match path and the
 // post-picker path funnel through here.
-// askedWhatToChange evita preguntar dos veces lo mismo: si el usuario ya
-// contestó qué cambiar y AÚN ASÍ no sale una corrección, insistir es hacerlo
-// girar en el vacío. Sólo lo manda en true el drenaje, leyendo el payload.
-func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movementRow, askedWhatToChange bool) error {
+// ask lleva en qué punto está la pregunta de "qué cambiar": si nunca se
+// preguntó, si el usuario tocó un botón (nombró el campo, falta el valor) o si
+// ya intentó decir el valor. Sólo el drenaje la manda con algo adentro.
+func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movementRow, ask changeAsk) error {
+	// Si lo único que se sumó al pedido fue el NOMBRE del campo ("La
+	// categoría"), no hay ningún valor que resolver todavía. Preguntarlo antes
+	// de llamar al modelo ahorra la llamada entera — ~1.100 tokens que iban a
+	// volver sin cambiar nada.
+	if ask.pickedField && !ask.gaveValue {
+		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
+	}
+
 	drafts := make([]orchestrator.MovementDraft, 0, len(beforeRows))
 	for _, row := range beforeRows {
 		drafts = append(drafts, rowToDraft(row))
@@ -247,9 +266,9 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	// Por eso el chequeo no puede depender de que el modelo se declare incapaz:
 	// una corrección que no cambia nada no es una corrección.
 	if !result.Resolved || correctionIsNoOp(beforeRows, result.Movements) {
-		if askedWhatToChange {
-			// Ya preguntamos y seguimos sin entender: cortar es más honesto que
-			// volver a preguntar lo mismo.
+		if ask.gaveValue {
+			// Ya nos dijo el valor por texto y seguimos sin entender: cortar es
+			// más honesto que volver a preguntar lo mismo.
 			c.resolveMetric(ctx, userID, outcomeUpdateFailed)
 			c.sendText(ctx, b, chatID, msgStillCannotCorrect)
 			return nil
@@ -259,7 +278,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		// nuevo"— y el usuario que había nombrado bien el movimiento se quedaba
 		// sin nada. Ahora se le pregunta, que es la máquina de preguntas que la
 		// etapa 2 ya construyó.
-		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows)
+		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
 	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows, result)
@@ -318,7 +337,7 @@ func sameAmount(before, after string) bool {
 // El candidato no se vuelve a buscar: encontrarlo fue la mitad cara, y volver a
 // resolverlo con el texto nuevo ("2000") lo perdería — ese texto no nombra
 // ningún movimiento.
-func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, change, transactionID string, oldIDs []string, rows []movementRow) error {
+func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, change, transactionID string, oldIDs []string, rows []movementRow, ask changeAsk) error {
 	if c.actions == nil {
 		// Sin cola no hay a dónde parkear: el camino viejo sigue siendo mejor
 		// que quedarse mudo.
@@ -327,17 +346,25 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 		return nil
 	}
 	payload, err := json.Marshal(agentPayload{
-		Change:     change,
-		Candidates: []candidateGroup{{TransactionID: transactionID, OldIDs: oldIDs, Rows: rows}},
-		Chosen:     0,
+		Change:            change,
+		Candidates:        []candidateGroup{{TransactionID: transactionID, OldIDs: oldIDs, Rows: rows}},
+		Chosen:            0,
+		PickedChangeField: ask.pickedField,
 	})
 	if err != nil {
 		return fmt.Errorf("park change question: payload: %w", err)
 	}
-	questions, err := json.Marshal([]pendingaction.OpenQuestion{{
-		Key:    questionKeyChange,
-		Prompt: msgAskWhatToChange(rows),
-	}})
+	// Segunda vuelta: ya tocó el botón del campo, así que lo único que falta es
+	// el valor — y ahí los botones sobran, cualquiera de ellos ya se usó.
+	question := pendingaction.OpenQuestion{
+		Key:     questionKeyChange,
+		Prompt:  msgAskWhatToChange(rows),
+		Options: changeFieldOptions(),
+	}
+	if ask.pickedField {
+		question.Prompt, question.Options = msgAskChangeValue, nil
+	}
+	questions, err := json.Marshal([]pendingaction.OpenQuestion{question})
 	if err != nil {
 		return fmt.Errorf("park change question: questions: %w", err)
 	}
@@ -412,7 +439,7 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 	chosen := candidates[idx]
 
 	message := stringOrEmpty(data["message"])
-	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, false); err != nil {
+	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{}); err != nil {
 		if c.enqueueUpdatePickIfRateLimited(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
 			return
 		}
