@@ -352,6 +352,64 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 	}
 }
 
+// TestUpdate_AmountAnswerSkipsTheModel: preguntamos "¿Cuánto era?" y contestó
+// un número. No queda nada que interpretar — parseARAmount ya lo sabe leer— así
+// que la corrección se arma del lado de la app. Mandárselo al modelo costaba
+// ~1.500 tokens para que copiara el número.
+func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
+	before := []movementRow{{Type: "expense", Amount: "1800", Currency: "ARS", AccountID: "46",
+		Category: "Ocio y salidas", Subcategory: "Salir a comer", Description: "Cafe"}}
+	store := &fakeStoreForController{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(NewMovementUpdateConfirmFlow())
+	// orchestrator nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
+	c := &controller{engine: engine, accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{}}
+
+	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
+		"el café estaba mal 2000", "", []string{"127"}, before,
+		changeAsk{gaveValue: true, answer: "2000"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// El gate NO se saltea: el usuario tiene que ver el antes/después igual.
+	if store.flowName != movementUpdateConfirmFlowName {
+		t.Fatalf("tenía que abrir el confirm, abrió %q", store.flowName)
+	}
+	after := decodeMovementRows(store.data)
+	if len(after) != 1 || after[0].Amount != "2000" {
+		t.Fatalf("el monto nuevo no llegó: %+v", after)
+	}
+	// Y el resto del movimiento queda intacto — sobre todo la cuenta, que es
+	// de donde sale la plata.
+	if after[0].AccountID != "46" || after[0].Subcategory != "Salir a comer" {
+		t.Errorf("el atajo tocó algo que no era el monto: %+v", after[0])
+	}
+}
+
+// TestAmountOnlyCorrection_FallsBackWhenItIsNotJustTheAmount: las condiciones
+// del atajo son todas necesarias. Cualquiera que falte vuelve al camino con
+// modelo, que es el que sabe interpretar.
+func TestAmountOnlyCorrection_FallsBackWhenItIsNotJustTheAmount(t *testing.T) {
+	one := []movementRow{{Amount: "1800", Currency: "ARS"}}
+	two := []movementRow{{Amount: "1800"}, {Amount: "1800"}}
+
+	for name, tc := range map[string]struct {
+		rows []movementRow
+		ask  changeAsk
+	}{
+		"tocó un botón, el campo no es el monto": {one, changeAsk{gaveValue: true, pickedField: true, answer: "2000"}},
+		"no es un número":                        {one, changeAsk{gaveValue: true, answer: "era en Delivery"}},
+		"transferencia de dos piernas":           {two, changeAsk{gaveValue: true, answer: "2000"}},
+		"monto cero (es un borrado)":             {one, changeAsk{gaveValue: true, answer: "0"}},
+		"todavía no contestó nada":               {one, changeAsk{}},
+	} {
+		if _, ok := amountOnlyCorrection(tc.rows, tc.ask); ok {
+			t.Errorf("%s: no puede tomar el atajo", name)
+		}
+	}
+}
+
 // TestUpdate_NoOpAfterAskingGivesUp: si ya preguntamos y con la respuesta
 // TAMPOCO sale una corrección, se corta. Sin esto cada vuelta parkea una acción
 // nueva con presupuesto entero y el usuario gira para siempre.

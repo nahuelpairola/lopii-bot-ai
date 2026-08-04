@@ -65,6 +65,10 @@ type agentPayload struct {
 	// sea que nombró el CAMPO y todavía falta el valor. Ahí no se corta: se
 	// pregunta el valor, que es la segunda mitad de la misma pregunta.
 	PickedChangeField bool `json:"picked_change_field,omitempty"`
+	// ChangeAnswer es lo ÚLTIMO que contestó, sin concatenar. Change lleva el
+	// texto original pegado adelante ("el café estaba mal 2000") y así no
+	// parsea; el atajo del monto necesita el "2000" solo.
+	ChangeAnswer string `json:"change_answer,omitempty"`
 }
 
 // agentExecutor es el closure `execute` que Run llama por cada tool call.

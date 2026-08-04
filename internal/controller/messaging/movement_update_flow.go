@@ -216,6 +216,32 @@ type changeAsk struct {
 	// gaveValue: escribió algo como valor nuevo. Si con eso tampoco sale una
 	// corrección, no hay más que preguntar.
 	gaveValue bool
+	// answer es lo que contestó, SIN el texto original pegado adelante. Es lo
+	// único que se puede parsear.
+	answer string
+}
+
+// amountOnlyCorrection arma la corrección del lado de la app cuando lo único
+// que hay que cambiar es el monto y el usuario ya lo escribió.
+//
+// Las cuatro condiciones son todas necesarias:
+//   - contestó por texto (gaveValue): si tocó un botón, el campo NO es el monto
+//   - no tocó ningún botón antes (pickedField): si eligió "La fecha", un número
+//     suelto sería un día, no un monto
+//   - una sola fila: en una transferencia de dos piernas "el monto" es ambiguo
+//   - parsea como monto positivo: un 0 significa borrar, y esa semántica
+//     ("regalo/gratis") la resuelve mejor el camino de siempre
+func amountOnlyCorrection(before []movementRow, ask changeAsk) ([]orchestrator.MovementDraft, bool) {
+	if !ask.gaveValue || ask.pickedField || len(before) != 1 {
+		return nil, false
+	}
+	amt, err := parseARAmount(ask.answer)
+	if err != nil || !amt.IsPositive() {
+		return nil, false
+	}
+	after := before[0]
+	after.Amount = amt.String()
+	return []orchestrator.MovementDraft{rowToDraft(after)}, true
 }
 
 // proceedToUpdateConfirm runs Call 2 UPDATE against a candidate found
@@ -231,6 +257,18 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	// volver sin cambiar nada.
 	if ask.pickedField && !ask.gaveValue {
 		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
+	}
+
+	// Atajo del monto. La pregunta fue "¿Cuánto era?" y contestó un número: no
+	// queda NADA que interpretar, y parseARAmount ya lo sabe leer. Mandárselo al
+	// modelo cuesta ~1.500 tokens para que copie el número — y le da la
+	// oportunidad de tocar de paso algo que nadie le pidió.
+	//
+	// El gate de confirmación NO se saltea: sigue pasando por
+	// seedAndStartUpdateConfirm, así que el usuario ve el antes/después igual.
+	if after, ok := amountOnlyCorrection(beforeRows, ask); ok {
+		return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows,
+			orchestrator.UpdateResult{Resolved: true, Movements: after})
 	}
 
 	drafts := make([]orchestrator.MovementDraft, 0, len(beforeRows))
