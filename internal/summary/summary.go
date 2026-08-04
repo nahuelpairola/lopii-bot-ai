@@ -59,7 +59,7 @@ func (b *Builder) Build(userID uint64, from, to, prevFrom, prevTo time.Time) (st
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "📊 Resumen semanal · %s a %s\n", fmtDay(from), fmtDay(to))
+	fmt.Fprintf(&sb, "📊 <b>Resumen semanal</b> · %s a %s\n", fmtDay(from), fmtDay(to))
 
 	for _, cur := range currency.SupportedCurrencies {
 		block, err := b.currencyBlock(userID, cur, from, to, prevFrom, prevTo)
@@ -100,8 +100,8 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "\n%s %s\n", curIcon(cur), cur.String())
-	fmt.Fprintf(&sb, "Entró $%s · Salió $%s · Neto $%s\n",
+	fmt.Fprintf(&sb, "\n%s <b>%s</b>\n", curIcon(cur), cur.String())
+	fmt.Fprintf(&sb, "Entró $%s · Salió $%s · Neto <b>$%s</b>\n",
 		earned.StringFixed(2), spent.StringFixed(2), earned.Sub(spent).StringFixed(2))
 
 	daily := spent.Div(decimal.NewFromInt(7))
@@ -114,7 +114,7 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 		if pct.IsNegative() {
 			arrow = "↓"
 		}
-		line += fmt.Sprintf(" · vs semana previa %s%s%%", arrow, pct.Abs().StringFixed(0))
+		line += fmt.Sprintf(" · vs semana previa <b>%s%s%%</b>", arrow, pct.Abs().StringFixed(0))
 	}
 	sb.WriteString(line + "\n")
 
@@ -139,7 +139,7 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 		if top.Merchant != nil && *top.Merchant != "" {
 			desc = html.EscapeString(*top.Merchant)
 		}
-		fmt.Fprintf(&sb, "Lo más caro: $%s · %s\n", top.Amount.Abs().StringFixed(2), desc)
+		fmt.Fprintf(&sb, "Lo más caro: <b>$%s</b> · %s\n", top.Amount.Abs().StringFixed(2), desc)
 	}
 
 	return sb.String(), nil
@@ -164,7 +164,7 @@ func activityBlock(counts []movement.DayCount, totalN int) string {
 			best = c
 		}
 	}
-	return fmt.Sprintf("\n📈 Actividad\n%d registros · día top: %s\n", totalN, weekdayEs[best.Date.Weekday()])
+	return fmt.Sprintf("\n📈 <b>Actividad</b>\n%d registros · día top: <b>%s</b>\n", totalN, weekdayEs[best.Date.Weekday()])
 }
 
 func (b *Builder) accountsBlock(userID uint64) (string, error) {
@@ -176,13 +176,13 @@ func (b *Builder) accountsBlock(userID uint64) (string, error) {
 		return "", nil
 	}
 	var sb strings.Builder
-	sb.WriteString("\n🏦 Cuentas (hoy)\n")
+	sb.WriteString("\n🏦 <b>Cuentas (hoy)</b>\n")
 	for _, a := range accts {
 		bal, err := b.movements.SumAmountForAccount(uint64(a.ID))
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&sb, " %s $%s (%s)\n", html.EscapeString(a.Name), bal.StringFixed(2), a.Currency.String())
+		fmt.Fprintf(&sb, " %s <b>$%s</b> (%s)\n", html.EscapeString(a.Name), bal.StringFixed(2), a.Currency.String())
 	}
 	return sb.String(), nil
 }
