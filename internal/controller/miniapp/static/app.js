@@ -55,7 +55,15 @@ function initCharts(root) {
     } else if (chartType === 'line-multi') {
       chartRegistry.set(canvasId, new Chart(canvas, {
         type: 'line',
-        data: { labels: data.labels, datasets: data.datasets },
+        data: {
+          labels: data.labels,
+          // El trazo de una línea lo pinta borderColor, no backgroundColor, y
+          // fill viene en false: sin esto la línea sale en el default de
+          // Chart.js (rgba(0,0,0,0.1)) y el color del slot sólo se ve en la
+          // leyenda. Sin fill a propósito: varias cuentas con relleno
+          // superpuesto es barro.
+          datasets: data.datasets.map((d) => ({ ...d, borderColor: d.backgroundColor })),
+        },
         options: { responsive: true, animation, plugins: { legend: { display: true } } },
       }));
     }
@@ -106,6 +114,15 @@ function applyTelegramTheme() {
   } catch (e) { /* not inside Telegram */ }
 }
 
+// Chart.js no sabe nada de temas: los ticks y la leyenda salen en #666 fijo y
+// la grilla en rgba(0,0,0,0.1), o sea gris oscuro sobre fondo oscuro. Pico ya
+// resolvió el par por tema, así que se leen de ahí en vez de hardcodear hex.
+function applyChartTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  Chart.defaults.color = cs.getPropertyValue('--pico-color').trim();
+  Chart.defaults.borderColor = cs.getPropertyValue('--pico-muted-border-color').trim();
+}
+
 // The native back button beats a link for backing out of a drill. htmx pushes
 // the URL, so history.back() restores the previous partial.
 function syncBackButton() {
@@ -123,12 +140,17 @@ function syncBackButton() {
 
 document.addEventListener('DOMContentLoaded', () => {
   applyTelegramTheme();
+  applyChartTheme();
   try {
     if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
       window.Telegram.WebApp.expand();
       window.Telegram.WebApp.BackButton.onClick(() => history.back());
-      window.Telegram.WebApp.onEvent('themeChanged', applyTelegramTheme);
+      window.Telegram.WebApp.onEvent('themeChanged', () => {
+        applyTelegramTheme();
+        applyChartTheme();
+        initCharts(document);
+      });
     }
   } catch (e) { /* not inside Telegram */ }
   initCharts(document);
