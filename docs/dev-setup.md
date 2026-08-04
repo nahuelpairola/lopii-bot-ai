@@ -57,6 +57,9 @@ exits 1 with no message, so a bad start looks identical to a crash:**
 2. **`.env` not exported.** `go run` does not read `.env`. Without `set -a && . ../../.env`,
    `ENV` is unset, so the config path becomes `../../config/.toml`. The `set -a` matters:
    plain `.` sources the file but does not export, and Viper only reads exported vars.
+   If your `.env` was saved with Windows line endings, every value carries a trailing `\r`
+   and the token is rejected by Telegram — source it as
+   `. <(tr -d '\r' < ../../.env)` instead.
 3. **Tunnel down.** The server starts fine and serves localhost, but Telegram cannot reach
    the webhook, so the bot silently receives nothing. That is what the second curl catches —
    a devtunnel URL changes when the tunnel restarts, and `baseHost` then points nowhere.
