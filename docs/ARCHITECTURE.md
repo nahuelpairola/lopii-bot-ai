@@ -5,16 +5,39 @@
 
 ## Reference docs
 
-- **[package-map.md](package-map.md)** — what each `internal/` package owns; what NOT to read (`app_scripts_v1/`, git-ignored).
 - **[data-model.md](data-model.md)** — DB tables + key relationships (schema authority is `migrations/`).
-- **[features.md](features.md)** — feature inventory: shipped vs. not started.
 - **[decisions.md](decisions.md)** — key design decisions and their rationale.
 - **[business-rules.md](business-rules.md)** — currencies, the accounting/money model (full), grouping, taxonomy, reminders.
 - **[recipes.md](recipes.md)** — how to add a migration, flow, LLM intent, scheduled notification, admin command.
 - **[dev-setup.md](dev-setup.md)** — local Postgres, config, run, migrations.
-- **[grafana/README.md](grafana/README.md)** — dashboard de admin: cómo importarlo, cómo leerlo, y la checklist de verificación manual.
+- **[grafana/README.md](grafana/README.md)** — admin dashboard: how to import it, how to read it, and the manual verification checklist.
 
-For conventions and the condensed money-model warning, see `CLAUDE.md` (always loaded).
+## Per-package `CLAUDE.md`
+
+Six packages carry their own file. They are **not** loaded at session start — Claude Code pulls
+them in only when it reads a file in that subtree, so they cost nothing on unrelated tasks.
+Each holds one thing only: **rules that compile fine and then behave wrong.** Structure is
+`codegraph_explore`'s job, not theirs.
+
+| Package | The trap it exists for |
+|---|---|
+| `internal/controller/messaging` | `Data` helpers, the 3 places a flow must be registered, `callback_data`'s 64 bytes |
+| `internal/orchestrator` | four call types silently share `createModel`; `AgentTool.Kind`'s zero value |
+| `internal/conversation` | `Data` round-trips through JSONB — numbers come back `float64` |
+| `internal/movement` | the guard only covers INSERT; two finders need opposite date binding |
+| `internal/subcategory` | cache writes need a manual `Reload()`; `c.global` is shared |
+| `internal/controller/miniapp` | **auth is which Gin group you register on, and nothing else** |
+
+For conventions and the condensed money-model warning, see the root `CLAUDE.md` (always loaded).
+
+## Do NOT read
+
+- **`app_scripts_v1/`** — the v1 Google Sheets + Apps Script implementation. Historical
+  reference only; no pattern, type or logic there applies to Go v2. Git-ignored: on disk
+  locally, absent from a fresh clone.
+- **`docs/superpowers/`** — spec/plan scratch from past sessions. Also git-ignored, so a
+  spec/plan link elsewhere in `docs/` may 404 on a fresh clone. The curated "why" that survives
+  lives in `decisions.md`.
 
 ---
 
@@ -52,12 +75,19 @@ For conventions and the condensed money-model warning, see `CLAUDE.md` (always l
 
 | If you added or changed... | Update |
 |---------------------------|--------|
-| A new package | `docs/package-map.md` |
 | A new DB table or migration | `docs/data-model.md` |
-| A feature completed, started, or descoped | `docs/features.md` |
 | A new architectural decision | `docs/decisions.md` |
 | A new anti-pattern identified | `docs/ARCHITECTURE.md` (Anti-patterns, above) |
 | A new recipe (flow type, step type, intent) | `docs/recipes.md` |
 | A new business rule | `docs/business-rules.md` |
-| A new dependency added to `go.mod` | `CLAUDE.md` → Stack |
+| A new dependency added to `go.mod` | root `CLAUDE.md` → Stack |
+| A rule that compiles fine and then behaves wrong | that package's `CLAUDE.md` — **not** here |
 | A value reused across files or packages | define a constant scoped per the no-duplicated-literal rule (`internal/constants` if cross-package) |
+
+**A new package needs no doc entry.** There is no package map any more: `codegraph_explore`
+answers "what does this package own" in one call and never goes stale. The map that used to
+live in `docs/package-map.md` was deleted for exactly that reason — nobody re-derived it, so it
+drifted into naming a package that no longer existed.
+
+**Nothing is added to a doc that merely restates the code.** A file that is accurate but
+derivable is a future lie with a timer on it.

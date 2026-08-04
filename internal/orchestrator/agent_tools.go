@@ -28,7 +28,14 @@ const (
 // missing detail through ask_user.
 const schemaNoArgs = `{"type": "object", "properties": {}}`
 
-// AgentTools returns the 15 tools of spec §4.10, in a stable order.
+// AgentTools returns the tools of spec §4.10, in a stable order.
+//
+// find_movements_to_correct NO está: era una vuelta entera del loop (el modelo
+// buscaba, leía la lista, y recién ahí llamaba a correct_movement). Medido
+// contra producción, cada vuelta arrastra ~5k tokens de prompt y el TPM de Groq
+// son 8.000 por minuto: dos vueltas no entran, y la segunda pega 429. La app
+// resuelve el candidato sola con resolveCandidates, mejor y gratis, así que la
+// vuelta que costaba el turno entero no compraba nada.
 //
 // The five read tools and record_movements carry their existing schemas
 // VERBATIM — from messaging/query.go's queryTools and create.go's createTool.
@@ -45,6 +52,7 @@ func AgentTools() []AgentTool {
 		// ---- write (exactly one) ----
 		{
 			Name:        ToolRecordMovements,
+			When:        "cuenta un gasto, un ingreso o un movimiento de plata. Incluye montos sueltos (\"20k\", \"nafta\"). Un rendimiento de inversión también se registra acá.",
 			Kind:        KindWrite,
 			Description: "Registra uno o más movimientos financieros a partir del mensaje del usuario. Usala siempre que cuente un gasto, un ingreso o un movimiento de plata entre sus cuentas.",
 			Parameters:  createTool.Parameters,
@@ -52,19 +60,8 @@ func AgentTools() []AgentTool {
 
 		// ---- read ----
 		{
-			Name:        ToolFindMovementsToCorrect,
-			Kind:        KindRead,
-			Description: "Busca los movimientos que el usuario podría estar queriendo corregir o borrar, a partir de lo que dice el mensaje. Usala ANTES de correct_movement o delete_movements para saber de cuál está hablando.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"text": {"type": "string", "description": "el pedido del usuario tal como lo escribió, para buscar por descripción, comercio o monto"}
-			},
-			"required": ["text"]
-		}`),
-		},
-		{
 			Name:        ToolListCategories,
+			When:        "preguntas por qué categorías existen.",
 			Kind:        KindRead,
 			Description: "Lista las categorías y subcategorías disponibles con la descripción de cuándo usar cada una. Usala cuando el usuario pregunta qué categorías existen o para qué sirve una.",
 			Parameters: json.RawMessage(`{
@@ -76,6 +73,7 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolSumMovements,
+			When:        "preguntas y resúmenes que se contestan con un total (\"cuánto gasté\").",
 			Kind:        KindRead,
 			Description: "Suma montos de movimientos en un rango de fechas, opcionalmente agrupado. Devuelve montos en positivo. Excluye transferencias entre cuentas propias salvo que se pida type=transfer.",
 			Parameters: json.RawMessage(`{
@@ -96,6 +94,7 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolListMovements,
+			When:        "preguntas que se contestan listando movimientos concretos.",
 			Kind:        KindRead,
 			Description: "Lista movimientos individuales (los más recientes primero) en un rango de fechas, con filtros opcionales. Montos en positivo.",
 			Parameters: json.RawMessage(`{
@@ -116,6 +115,7 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolAccountBalance,
+			When:        "preguntas por el saldo de una cuenta.",
 			Kind:        KindRead,
 			Description: "Saldo actual de una cuenta o de todas las cuentas del usuario. El saldo es la suma de sus movimientos. Nunca mezcla ARS y USD.",
 			Parameters: json.RawMessage(`{
@@ -127,6 +127,7 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolGetReminder,
+			When:        "SABER cómo tiene configurado el recordatorio (no para cambiarlo).",
 			Kind:        KindRead,
 			Description: "Devuelve el recordatorio diario de carga de gastos del usuario: si está activo o apagado y en qué franja horaria avisa. Usala cuando el usuario pregunta por su recordatorio (\"¿a qué hora me recordás?\", \"¿tengo recordatorio activo?\").",
 			Parameters:  json.RawMessage(schemaNoArgs),
@@ -135,12 +136,12 @@ func AgentTools() []AgentTool {
 		// ---- action: each one parks the request; the app takes it from there ----
 		{
 			Name:        ToolCorrectMovement,
+			When:        "corrección, reintegro, devolución o regalo sobre un movimiento previo (\"en realidad\", \"me devolvieron\", \"al final me regalaron\", \"eran 2000\", \"estaba mal\"). No busques cuál: la app lo busca sola y le pide confirmación al usuario.",
 			Kind:        KindAction,
-			Description: "Corrige un movimiento ya registrado (monto, fecha, categoría, cuenta o descripción). Llamá antes a find_movements_to_correct para saber cuál es.",
+			Description: "Corrige un movimiento ya registrado (monto, fecha, categoría, cuenta o descripción). La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
 			Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"transaction_id": {"type": ["string", "null"], "description": "opcional: el id que devolvió find_movements_to_correct. Sin esto la app le pregunta al usuario cuál"},
 				"change": {"type": "string", "description": "qué hay que cambiar, en palabras del usuario"}
 			},
 			"required": ["change"]
@@ -148,17 +149,14 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolDeleteMovements,
+			When:        "pedido explícito de borrar (\"borrá\", \"eliminá\"). Tampoco busques cuál.",
 			Kind:        KindAction,
-			Description: "Borra uno o más movimientos ya registrados. Llamá antes a find_movements_to_correct para saber cuáles.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"transaction_id": {"type": ["string", "null"], "description": "opcional: el id que devolvió find_movements_to_correct. Sin esto la app le pregunta al usuario cuál"}
-			}
-		}`),
+			Description: "Borra uno o más movimientos ya registrados. La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
+			Parameters:  json.RawMessage(schemaNoArgs),
 		},
 		{
 			Name:        ToolManageAccount,
+			When:        "crear, renombrar, ajustar el saldo o configurar una CUENTA.",
 			Kind:        KindAction,
 			Description: "Crear, renombrar, ajustar el saldo o dar de baja una cuenta del usuario.",
 			Parameters: json.RawMessage(`{
@@ -171,6 +169,7 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolCreateCategory,
+			When:        "crear una categoría nueva.",
 			Kind:        KindAction,
 			Description: "Cuando el usuario quiere crear una categoría o subcategoría nueva.",
 			Parameters: json.RawMessage(`{
@@ -183,6 +182,7 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolManageCategories,
+			When:        "fusionar, renombrar o borrar una categoría propia que ya existe.",
 			Kind:        KindAction,
 			Description: "Cuando el usuario quiere fusionar, renombrar o borrar una subcategoría propia que ya existe.",
 			Parameters: json.RawMessage(`{
@@ -195,6 +195,7 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolSetReminder,
+			When:        "activar, cambiar o apagar el recordatorio diario.",
 			Kind:        KindAction,
 			Description: "Cuando el usuario quiere activar, cambiar o apagar su recordatorio diario de carga de gastos. Para SABER cómo lo tiene configurado usá get_reminder.",
 			Parameters: json.RawMessage(`{
@@ -207,12 +208,14 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolReplyHelp,
+			When:        "\"¿qué podés hacer?\", \"¿cómo funcionás?\", o un saludo sin pedido concreto.",
 			Kind:        KindAction,
 			Description: "Cuando el usuario pregunta qué podés hacer, cómo se usa el bot, o saluda sin pedir nada concreto.",
 			Parameters:  json.RawMessage(schemaNoArgs),
 		},
 		{
 			Name:        ToolAskRewrite,
+			When:        "nada accionable (off-topic, gibberish, recetas) o falta lo esencial y ninguna otra herramienta aplica.",
 			Kind:        KindAction,
 			Description: "Cuando el mensaje no se entiende o le falta lo esencial y ninguna otra herramienta aplica. Pedirle que lo reescriba es mejor que adivinar.",
 			Parameters:  json.RawMessage(schemaNoArgs),

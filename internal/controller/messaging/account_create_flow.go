@@ -66,7 +66,10 @@ func NewAccountCreateFlow() *conversation.Flow {
 				opts := make([]conversation.ChoiceOption, 0, len(currency.SupportedCurrencies)+2)
 				for _, cu := range currency.SupportedCurrencies {
 					opts = append(opts, conversation.ChoiceOption{
-						Label:    cu.String(),
+						// El botón dice "💱 pesos"; el Value sigue siendo el
+						// código, que es lo que se guarda. Label y Value son dos
+						// cosas distintas justamente acá.
+						Label:    "💱 " + cu.Label(),
 						Value:    cu.String(),
 						NextStep: stepAccountCreateAskBalance,
 					})

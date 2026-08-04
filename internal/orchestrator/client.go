@@ -35,12 +35,19 @@ func NewClient(apiKey, baseURL string, timeout time.Duration, recorder LLMRecord
 }
 
 const (
-	// maxSendAttempts caps total tries (1 original + 3 retries) on a transient
+	// maxSendAttempts caps total tries (1 original + 1 retry) on a transient
 	// Groq failure. Retry fires ONLY on failure, so the happy path adds 0ms.
-	maxSendAttempts = 4
-	// baseBackoff is the first retry wait for the blind exponential path (no
-	// Retry-After header, no parseable body wait — plain 5xx/network errors);
-	// it doubles each attempt (250ms, 500ms, 1s).
+	//
+	// Bajado de 4 a 2 el 2026-08-01. Con 4, un 429 de cupo agotado se comía
+	// hasta 60s antes de rendirse (medido: traces bf54a24c 60.367ms y 24db7629
+	// 46.351ms) — y contra un límite DIARIO ningún reintento iba a entrar, así
+	// que era esperar por nada. Un solo reintento sigue cubriendo el caso para
+	// el que existe el backoff: un 5xx o un TPM que se libera en segundos.
+	maxSendAttempts = 2
+	// baseBackoff is the only retry wait left now that maxSendAttempts is 2
+	// (the blind exponential path: no Retry-After header, no parseable body
+	// wait — plain 5xx/network errors). It still doubles per attempt, so
+	// raising maxSendAttempts revives 500ms, 1s, …
 	baseBackoff = 250 * time.Millisecond
 	// maxBackoff caps any single wait, including an honored Retry-After header
 	// or a body-parsed Groq TPM wait (see parseGroqRetryAfterSeconds) — a slow

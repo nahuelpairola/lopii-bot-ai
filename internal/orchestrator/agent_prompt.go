@@ -1,6 +1,9 @@
 package orchestrator
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // agentSystemPromptTemplate is the unified prompt behind Run.
 //
@@ -27,19 +30,10 @@ var agentSystemPromptTemplate = `Sos Lopii, el asistente de finanzas personales 
 Trabajás llamando herramientas. Cada mensaje del usuario se resuelve con una o más.
 
 CUÁNDO USAR CADA HERRAMIENTA:
-- ` + ToolRecordMovements + `: cuenta un gasto, un ingreso o un movimiento de plata. Incluye montos sueltos ("20k", "nafta"). Un rendimiento de inversión también se registra acá.
-- ` + ToolFindMovementsToCorrect + `: antes de corregir o borrar, para saber de qué movimiento habla. Después llamá a ` + ToolCorrectMovement + ` o ` + ToolDeleteMovements + `.
-- ` + ToolCorrectMovement + `: corrección, reintegro, devolución o regalo sobre un movimiento previo ("en realidad", "me devolvieron", "al final me regalaron").
-- ` + ToolDeleteMovements + `: pedido explícito de borrar ("borrá", "eliminá").
-- ` + ToolManageAccount + `: crear, renombrar, ajustar el saldo o configurar una CUENTA.
-- ` + ToolCreateCategory + ` / ` + ToolManageCategories + `: crear una categoría nueva; o fusionar, renombrar o borrar una propia que ya existe.
-- ` + ToolSetReminder + `: activar, cambiar o apagar el recordatorio diario. Para SABER cómo lo tiene configurado, ` + ToolGetReminder + `.
-- ` + ToolSumMovements + ` / ` + ToolListMovements + ` / ` + ToolAccountBalance + ` / ` + ToolListCategories + `: preguntas, resúmenes y consultas.
-- ` + ToolReplyHelp + `: "¿qué podés hacer?", "¿cómo funcionás?", o un saludo sin pedido concreto.
-- ` + ToolAskRewrite + `: nada accionable (off-topic, gibberish, recetas) o falta lo esencial y ninguna otra herramienta aplica.
+%s
 
 DESEMPATES (los casos que en la práctica se confunden):
-` + agentTieBreakers() + `
+%s
 
 REGLAS DE TAXONOMÍA:
 1. Usá ÚNICAMENTE las categorías y subcategorías listadas abajo. Prohibido inventar nombres nuevos.
@@ -105,13 +99,38 @@ PREGUNTA PENDIENTE: le hiciste al usuario esta pregunta y todavía no la contest
 %s
 Lo que escribió ahora es, muy probablemente, la respuesta. Interpretalo así antes de tratarlo como un pedido nuevo.`
 
+// buildToolsBlock renders the "CUÁNDO USAR CADA HERRAMIENTA" list from the tools
+// that are actually going to be sent, en el orden en que vienen.
+//
+// Se arma, y no está escrito a mano en la plantilla, porque el prompt y el
+// toolbox tienen que decir lo mismo. Cuando no lo decían, salió caro: durante la
+// etapa 2 el loop mandaba las 14 tools aunque sólo 4 estuvieran cableadas, y a
+// una corrección ("La ferreteria eran 3800") el modelo le contestaba llamando a
+// record_movements — registrar de nuevo en vez de corregir.
+func buildToolsBlock(tools []AgentTool) string {
+	var b strings.Builder
+	for _, t := range tools {
+		if t.When == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "- %s: %s\n", t.Name, t.When)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // BuildAgentPrompt renders the unified system prompt for Run.
+//
+// tools son las que se le van a mandar al modelo en esta llamada: el bloque de
+// "cuándo usar" sale de ahí, así que el prompt nunca puede nombrar una que no
+// esté disponible.
 //
 // pendingQuestion is the open ask_user question, or "" when nothing is
 // pending — in which case the section is omitted entirely rather than left
 // empty, so the model is never told about a question that does not exist.
-func BuildAgentPrompt(today string, accounts []AccountOption, taxonomy []TaxonomyEntry, pendingQuestion string) string {
-	prompt := fmt.Sprintf(agentSystemPromptTemplate, today, buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
+func BuildAgentPrompt(today string, accounts []AccountOption, taxonomy []TaxonomyEntry, pendingQuestion string, tools []AgentTool) string {
+	prompt := fmt.Sprintf(agentSystemPromptTemplate,
+		buildToolsBlock(tools), agentTieBreakers(tools), today,
+		buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
 	if pendingQuestion != "" {
 		prompt += fmt.Sprintf(pendingQuestionSection, pendingQuestion)
 	}

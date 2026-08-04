@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -20,6 +21,7 @@ import (
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -133,6 +135,15 @@ type jobsRepository interface {
 	CountByUser(userID uint64) (int64, error)
 }
 
+// actionsRepository is the pending_actions storage (internal/pendingaction) —
+// the durable queue of agent-loop actions waiting on an answer from the user.
+type actionsRepository interface {
+	Insert(action *pendingaction.PendingAction) error
+	NextForUser(userID uint64) (*pendingaction.PendingAction, error)
+	Delete(id uint64) error
+	CountForUser(userID uint64) (int64, error)
+}
+
 type controller struct {
 	users         userRepository
 	invitations   invitationRepository
@@ -147,8 +158,14 @@ type controller struct {
 	traces        traceRepository
 	nudges        nudgeRepository
 	jobs          jobsRepository
-	nextDrainAt   time.Time
-	drainMu       sync.Mutex
+	actions       actionsRepository
+	// routeCreateToLoop manda CREATE por el loop unificado. Es config y no una
+	// constante porque las etapas 2 y 3 despliegan juntas: si create_inserted
+	// cae, apagarlo devuelve CREATE al camino viejo dejando la etapa 2 viva, que
+	// es el único bisect que queda.
+	routeCreateToLoop bool
+	nextDrainAt       time.Time
+	drainMu           sync.Mutex
 }
 
 func NewController(
@@ -165,6 +182,8 @@ func NewController(
 	traces traceRepository,
 	nudges nudgeRepository,
 	jobs jobsRepository,
+	actions actionsRepository,
+	routeCreateToLoop bool,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -180,6 +199,9 @@ func NewController(
 		traces:        traces,
 		nudges:        nudges,
 		jobs:          jobs,
+		actions:       actions,
+
+		routeCreateToLoop: routeCreateToLoop,
 	}
 }
 
@@ -256,6 +278,20 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgResumeCancelled})
 		return
 	}
+	// ask_user se maneja aparte porque él mismo decide qué sigue (retomar la
+	// acción, volver a preguntar, o descartarla). Los demás flujos terminales
+	// destapan la cola: es el único momento en que se sabe que no hay nada
+	// abierto, y por eso el WIP=1 se sostiene solo.
+	if result.FlowName == askUserFlowName {
+		c.finishAskUserFlow(ctx, b, chatID, result.Data)
+		return
+	}
+	defer func() {
+		if err := c.drainNextAgentAction(ctx, b, chatID, result.Data.UserID()); err != nil {
+			slog.ErrorContext(ctx, "drain parked actions failed", "err", err)
+		}
+	}()
+
 	switch result.FlowName {
 	case movementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
@@ -295,9 +331,34 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 // what made category/subcategory/account buttons unreadably small.
 const buttonsPerRow = 2
 
+// maxLabelForTwoPerRow es el largo a partir del cual una etiqueta ya no entra en
+// media pantalla y Telegram la corta.
+//
+// Con dos por fila, un candidato de corrección ("🔴 Cafe · $2.000 · 27/07")
+// llega cortado JUSTO por el final — que es la fecha, o sea lo único que lo
+// distingue de los otros dos candidatos. El picker queda inservible: tres
+// botones que se leen igual.
+//
+// El largo es el problema, no la cantidad: las categorías ("🍔 Alimentación")
+// entran de a dos y son ~16, así que forzarlas a una por fila duplicaría el
+// alto del teclado sin ganar nada.
+const maxLabelForTwoPerRow = 20
+
+// rowWidth decide cuántos botones por fila entran sin que se corte ninguno.
+// Alcanza con que UNA etiqueta sea larga: las filas son parejas, así que la más
+// larga manda.
+func rowWidth(buttons []conversation.Button) int {
+	for _, b := range buttons {
+		if utf8.RuneCountInString(b.Label) > maxLabelForTwoPerRow {
+			return 1
+		}
+	}
+	return buttonsPerRow
+}
+
 func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton {
 	var rows [][]models.InlineKeyboardButton
-	for chunk := range slices.Chunk(buttons, buttonsPerRow) {
+	for chunk := range slices.Chunk(buttons, rowWidth(buttons)) {
 		row := make([]models.InlineKeyboardButton, 0, len(chunk))
 		for _, btn := range chunk {
 			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: btn.Data})

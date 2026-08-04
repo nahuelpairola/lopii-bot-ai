@@ -84,7 +84,16 @@ func (c *controller) drainUser(ctx context.Context, b *bot.Bot, userID uint64, n
 			_ = c.jobs.Delete(job.ID)
 			continue
 		}
-		err := c.replayJob(withReplaying(ctx), b, chatID, userID, job)
+		// Cada job replayado es su propia unidad de trabajo, así que lleva su
+		// propio trace_id y su fila en request_traces. El ctx del drenaje viene
+		// del ticker del server y no trae ninguno: sin esto, las llamadas a
+		// Groq del replay escriben con trace_id vacío y el mensaje se pierde de
+		// las tres capas. Ver traced() en trace.go.
+		var err error
+		c.traced(ctx, updateTypeReplay, "", func(tctx context.Context) (*uint64, error) {
+			err = c.replayJob(withReplaying(tctx), b, chatID, userID, job)
+			return &userID, err
+		})
 		var rl *orchestrator.RateLimitedError
 		if errors.As(err, &rl) {
 			c.bumpNextDrainAt(time.Now().Add(rl.RetryAfter))
@@ -113,7 +122,7 @@ func (c *controller) replayJob(ctx context.Context, b *bot.Bot, chatID int64, us
 		if err := json.Unmarshal(job.Payload, &p); err != nil {
 			return nil
 		}
-		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows)
+		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows, changeAsk{})
 	default:
 		slog.WarnContext(ctx, "drain: unknown kind", "kind", job.Kind)
 		return nil

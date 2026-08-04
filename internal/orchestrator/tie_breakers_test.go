@@ -12,11 +12,19 @@ import (
 // Si este test falla después de tocar tieBreakerRules, la respuesta no es
 // actualizar la constante de abajo — es que el cambio altera el ruteo en
 // producción y necesita su propio eval.
+//
+// Ganó una regla el 2026-08-01: la queja sin valor nuevo ("el café estaba
+// mal"). Ruteaba UNCLEAR porque el único desempate de corrección exigía un
+// monto, y se reprodujo 4× en intent_events (115/116, 132/133). Se agrega ahora
+// —y no antes— porque recién ahora el loop sabe preguntar QUÉ cambiar: sin eso
+// el mensaje llegaba igual y moría en ResolveUpdate, o sea que la falla sólo se
+// movía más tarde.
 const routerTieBreakersBefore = `- Monto o ítem solo → CREATE.
 - Reintegro/regalo que alude a algo previo → UPDATE.
 - Rendimiento de inversión → CREATE.
 - No confundir CREATE con DELETE.
 - Copulativo en pasado sobre un monto (era, eran, fue) → UPDATE, aunque no diga "en realidad".
+- Queja sobre un movimiento previo sin decir el valor nuevo ("estaba mal", "no era así") → UPDATE: la app le pregunta qué cambiar.
 - Ajustar/corregir el saldo o monto de una CUENTA → ACCOUNT_MANAGE (UPDATE es solo sobre un movimiento).
 - "¿Qué puedo hacer?" / "¿cómo funcionás?" → HELP (no QUERY).`
 
@@ -35,7 +43,7 @@ func TestRouterSystemPrompt_StillCarriesTheTieBreakers(t *testing.T) {
 // TestAgentTieBreakers_SpeakInTools es la mitad que justifica la extracción:
 // la misma regla, con los nombres de las tools en vez de los intents.
 func TestAgentTieBreakers_SpeakInTools(t *testing.T) {
-	got := agentTieBreakers()
+	got := agentTieBreakers(AgentTools())
 
 	for _, want := range []string{ToolRecordMovements, ToolCorrectMovement, ToolDeleteMovements, ToolManageAccount, ToolReplyHelp} {
 		if !strings.Contains(got, want) {
@@ -54,10 +62,47 @@ func TestAgentTieBreakers_SpeakInTools(t *testing.T) {
 	}
 }
 
+// TestAgentTieBreakers_DropsRulesAboutToolsThatAreNotSent: durante las etapas 2
+// y 3 el toolbox es un subconjunto. Una regla que nombra una tool que no viaja
+// en el request le pide al modelo que llame algo que no existe.
+func TestAgentTieBreakers_DropsRulesAboutToolsThatAreNotSent(t *testing.T) {
+	stage2 := []AgentTool{
+		{Name: ToolCorrectMovement}, {Name: ToolDeleteMovements},
+		{Name: ToolReplyHelp}, {Name: ToolAskRewrite},
+	}
+	got := agentTieBreakers(stage2)
+
+	for _, absent := range []string{ToolRecordMovements, ToolManageAccount, ToolSumMovements} {
+		if strings.Contains(got, absent) {
+			t.Errorf("sobrevivió una regla sobre %s, que no se manda:\n%s", absent, got)
+		}
+	}
+	// La que importa para una corrección sigue viva: no nombra ninguna ausente.
+	if !strings.Contains(got, "era, eran, fue") {
+		t.Errorf("se cayó el copulativo en pasado, que es el desempate de UPDATE:\n%s", got)
+	}
+}
+
+// TestTieBreakers_CorrectionWithNoNewValue: "el café estaba mal" nombra el
+// movimiento y no trae monto. Ruteaba UNCLEAR (intent_events 115/116, 132/133)
+// porque el único desempate de corrección exigía un monto. La regla tiene que
+// estar en los DOS bloques: el router decide qué llega al loop, y el loop decide
+// qué tool corre.
+func TestTieBreakers_CorrectionWithNoNewValue(t *testing.T) {
+	for name, block := range map[string]string{
+		"router": routerTieBreakers(),
+		"agent":  agentTieBreakers(AgentTools()),
+	} {
+		if !strings.Contains(block, "sin decir el valor nuevo") {
+			t.Errorf("%s: falta la regla de corrección sin valor nuevo:\n%s", name, block)
+		}
+	}
+}
+
 // TestTieBreakers_NoPlaceholderSurvives: un marcador sin reemplazar llegaría al
 // modelo como "{{record}}" y sería basura silenciosa en el prompt.
 func TestTieBreakers_NoPlaceholderSurvives(t *testing.T) {
-	for name, block := range map[string]string{"router": routerTieBreakers(), "agent": agentTieBreakers()} {
+	for name, block := range map[string]string{"router": routerTieBreakers(), "agent": agentTieBreakers(AgentTools())} {
 		if strings.Contains(block, "{{") || strings.Contains(block, "}}") {
 			t.Errorf("quedó un marcador sin reemplazar en el bloque %s:\n%s", name, block)
 		}

@@ -5,9 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 )
+
+// toolCallNames rinde los nombres de una vuelta para el log.
+func toolCallNames(calls []loopToolCall) []string {
+	names := make([]string, 0, len(calls))
+	for _, c := range calls {
+		names = append(names, c.Function.Name)
+	}
+	return names
+}
 
 // maxAgentIterations caps how many tool rounds Run executes before forcing a
 // narration. Higher than AnswerQuery's 3 because the unified loop legitimately
@@ -16,6 +26,18 @@ import (
 const maxAgentIterations = 5
 
 var ErrAgentMaxIterations = errors.New("orchestrator: agent loop exceeded max iterations")
+
+// ErrAgentTurnDone lo devuelve el executor cuando la APP se queda con el turno:
+// ya parkeó la acción, o ya tiene escrita la respuesta que va a salir. No es un
+// error; es el executor diciendo "no me narres esto".
+//
+// Sin esto el turno cuesta dos llamadas: la primera elige la tool, y la segunda
+// existe sólo para que el modelo narre algo que el gate va a decir igual. Y una
+// vuelta no es barata — es el prompt ENTERO de nuevo. Medido en producción sobre
+// una corrección: router 566 + agente 4.816 + agente 4.916 = 10.298 tokens
+// contra un TPM de 8.000, así que la segunda llamada se comía un 429 y el
+// mensaje del usuario terminaba en la cola en vez de en el gate.
+var ErrAgentTurnDone = errors.New("orchestrator: agent turn done")
 
 // kindRank orders a round's calls: every write, then every read, then every
 // parking. See orderCallsByKind.
@@ -124,14 +146,30 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 			return "", fmt.Errorf("orchestrator: agent run: %w", err)
 		}
 
+		// Sin esto el loop es una caja negra: llm_calls guarda cuántos tokens
+		// costó cada vuelta, pero no QUÉ pidió el modelo, y sin eso un turno que
+		// no hace nada es indistinguible de uno que hizo lo correcto.
+		slog.InfoContext(ctx, "agent round",
+			"round", i,
+			"tools", toolCallNames(assistant.ToolCalls),
+			"narrated", strings.TrimSpace(assistant.Content) != "",
+		)
+
 		if len(assistant.ToolCalls) == 0 {
 			return assistant.Content, nil
 		}
 
 		messages = append(messages, assistant)
+		turnDone := false
 		for _, call := range orderCallsByKind(assistant.ToolCalls, tools) {
 			result, execErr := execute(call.Function.Name, json.RawMessage(call.Function.Arguments))
-			if execErr != nil {
+			switch {
+			case errors.Is(execErr, ErrAgentTurnDone):
+				// La app se queda con el turno. Se sigue ejecutando el resto de
+				// la vuelta igual: el modelo eligió todas sus calls antes de ver
+				// un solo resultado, y sus efectos se quieren.
+				turnDone = true
+			case execErr != nil:
 				result = fmt.Sprintf("error: %v", execErr)
 			}
 			messages = append(messages, loopMessage{
@@ -143,7 +181,9 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 
 		// The cut. Checked AFTER executing, so the writes and parkings the
 		// model asked for still happen — it narrated and acted in one message.
-		if strings.TrimSpace(assistant.Content) != "" {
+		// turnDone es la misma idea desde el otro lado: no narró, pero la app ya
+		// sabe qué decir, así que la vuelta que viene no tiene nada que aportar.
+		if turnDone || strings.TrimSpace(assistant.Content) != "" {
 			return assistant.Content, nil
 		}
 	}

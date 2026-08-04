@@ -141,7 +141,7 @@ func TestAgentLoopEval(t *testing.T) {
 		{ID: 2, Name: "Wallet ARS", Currency: "ARS"},
 		{ID: 3, Name: "Fondo común de inversión Balanz", Currency: "ARS"},
 	}
-	prompt := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "")
+	prompt := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "", AgentTools())
 	t.Logf("prompt unificado: %d runas (~%d tokens estimados) · %d tools",
 		len([]rune(prompt)), len([]rune(prompt))/4, len(AgentTools()))
 
@@ -206,7 +206,7 @@ func TestAgentPromptSize(t *testing.T) {
 	_, taxonomy := seededTaxonomy(t)
 	accounts := []AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}}
 
-	unified := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "")
+	unified := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "", AgentTools())
 	create := fmt.Sprintf(createSystemPromptTemplate, "2026-07-31", buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
 
 	var tools int

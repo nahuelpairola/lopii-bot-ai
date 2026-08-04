@@ -16,6 +16,7 @@ const (
 	keyEditProposal     dataKey = "edit_proposal" // Data key, NOT optionEditProposal
 	keyCategoryIsNew    dataKey = "category_is_new"
 	keyWeeklySummary    dataKey = "weekly_summary"
+	keyAskDiscarded     dataKey = "_ask_discarded"
 
 	// discriminators (key const; enum VALUE consts live in their owning file)
 	keyMode        dataKey = "mode"
@@ -73,11 +74,26 @@ const (
 	// lazy-create (first account, movement_create flow) keys
 	keyFirstAccountName    dataKey = "first_account_name"
 	keyFirstAccountBalance dataKey = "first_account_balance"
+	// keyFirstAccountCurrencies son las monedas de las cuentas que el alta
+	// lazy-create acabó de crear. Lo escribe createFirstAccount y lo lee el
+	// mensaje de confirmación, que para entonces ya no puede deducirlas: las
+	// filas ya tienen account_id y la moneda que las originó se perdió.
+	keyFirstAccountCurrencies dataKey = "first_account_currencies"
 
 	// keyGapActiveRow guarda el índice de la fila que el gap-fill está
 	// resolviendo ahora mismo: lo escribe el paso de categoría y lo leen el de
 	// subcategoría y el prompt. Cruza tres archivos.
 	keyGapActiveRow dataKey = "gap_active_row"
+
+	// ask_user: la cola de preguntas abiertas de la acción parkeada que se está
+	// drenando. keyOpenQuestions es UN string JSON ([]pendingaction.OpenQuestion),
+	// no una lista, para cruzar JSONB sin desarmar mapas a mano.
+	keyActionID      dataKey = "action_id"
+	keyOpenQuestions dataKey = "open_questions"
+	keyAskBudget     dataKey = "ask_budget"
+	// keyAskRawAnswer es el buzón transitorio de TextStep: OnText lo lee, lo
+	// archiva contra su pregunta y lo borra en la misma vuelta.
+	keyAskRawAnswer dataKey = "_ask_raw_answer"
 
 	// keyGatePrompt lleva el texto ya formateado del gate de saldo negativo.
 	// Lo escribe free_text y lo lee movement_negative_confirm_flow, que no

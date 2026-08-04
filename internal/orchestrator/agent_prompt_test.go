@@ -12,7 +12,7 @@ func TestBuildAgentPrompt_CarriesTheLoadBearingRules(t *testing.T) {
 	prompt := BuildAgentPrompt("2026-07-31",
 		[]AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}},
 		[]TaxonomyEntry{{Category: "Comida", Subcategory: "Supermercado"}},
-		"")
+		"", AgentTools())
 
 	for _, want := range []string{
 		"2026-07-31",            // the date rule's anchor
@@ -34,10 +34,9 @@ func TestBuildAgentPrompt_CarriesTheLoadBearingRules(t *testing.T) {
 func TestBuildAgentPrompt_TellsTheModelWhenToUseEachTool(t *testing.T) {
 	// The router's tie-breakers survive as tool-selection rules: the router
 	// used to pick an intent, the model now picks a tool.
-	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "")
+	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "", AgentTools())
 	for _, want := range []string{
 		ToolRecordMovements,
-		ToolFindMovementsToCorrect,
 		ToolCorrectMovement,
 		ToolReplyHelp,
 		ToolAskRewrite,
@@ -57,7 +56,7 @@ func TestBuildAgentPrompt_TellsTheModelWhenToUseEachTool(t *testing.T) {
 }
 
 func TestBuildAgentPrompt_CarriesTheFourNewRules(t *testing.T) {
-	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "")
+	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "", AgentTools())
 	for name, want := range map[string]string{
 		"attend to everything before narrating": "TODO lo que pide",
 		"do not repeat the receipt":             "no repitas el detalle",
@@ -73,14 +72,14 @@ func TestBuildAgentPrompt_CarriesTheFourNewRules(t *testing.T) {
 func TestBuildAgentPrompt_StatesThePendingQuestion(t *testing.T) {
 	// When an ask_user is open the model has to know what the user is
 	// answering, or a bare "Brubank" reads as a brand-new request.
-	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "¿A qué cuenta corresponde el gasto de $20.000?")
+	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "¿A qué cuenta corresponde el gasto de $20.000?", AgentTools())
 	if !strings.Contains(prompt, "¿A qué cuenta corresponde el gasto de $20.000?") {
 		t.Error("the pending question must be stated in the prompt")
 	}
 }
 
 func TestBuildAgentPrompt_OmitsThePendingSectionWhenNothingIsOpen(t *testing.T) {
-	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "")
+	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "", AgentTools())
 	if strings.Contains(prompt, "PREGUNTA PENDIENTE") {
 		t.Error("with nothing pending the section must be omitted, not left empty")
 	}
@@ -92,7 +91,7 @@ func TestBuildAgentPrompt_OmitsThePendingSectionWhenNothingIsOpen(t *testing.T) 
 // back to the user. ask_user gives it one, so carrying that rule over would
 // forbid the primitive this whole stage exists to enable.
 func TestBuildAgentPrompt_DropsTheNeverAskRule(t *testing.T) {
-	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "")
+	prompt := BuildAgentPrompt("2026-07-31", nil, nil, "", AgentTools())
 	if strings.Contains(prompt, "Nunca hagas una pregunta de aclaración") {
 		t.Error("the read-only loop's no-questions rule must NOT survive: ask_user exists now")
 	}

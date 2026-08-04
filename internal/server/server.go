@@ -26,6 +26,7 @@ import (
 	"lopiibot.com/internal/notifier"
 	"lopiibot.com/internal/nudge"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -109,6 +110,7 @@ func InitServer(conf *config.Config) error {
 		return err
 	}
 	conversationRepo := conversation.NewRepository(conn)
+	actionsRepo := pendingaction.NewRepository(conn)
 
 	llmOrchestrator := orchestrator.New(orchestrator.Config{
 		APIKey:         conf.Groq.APIKey,
@@ -138,6 +140,7 @@ func InitServer(conf *config.Config) error {
 	conversationEngine.Register(messagingctrl.NewCategoryManageTargetFlow(subcategoryCache))
 	conversationEngine.Register(messagingctrl.NewMovementNegativeConfirmFlow())
 	conversationEngine.Register(messagingctrl.NewReminderSetupFlow())
+	conversationEngine.Register(messagingctrl.NewAskUserFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
 	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)
@@ -146,7 +149,8 @@ func InitServer(conf *config.Config) error {
 	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
-		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo,
+		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo, actionsRepo,
+		conf.Agent.RouteCreateToLoop,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, conf.Telegram.Token)

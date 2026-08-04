@@ -2,12 +2,16 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
+	"lopiibot.com/internal/trace"
 )
 
 const (
@@ -167,18 +171,23 @@ type candidateGroup struct {
 // (movement_update_pick) can carry full "before" state for whichever
 // one the user ends up choosing, without a second DB round-trip.
 func encodeCandidateGroups(groups []transactionGroup) []interface{} {
+	converted := make([]candidateGroup, 0, len(groups))
+	for _, g := range groups {
+		converted = append(converted, toCandidateGroup(g))
+	}
+	return encodeCandidateGroupList(converted)
+}
+
+// encodeCandidateGroupList existe aparte porque el drenaje del agent loop ya
+// tiene candidateGroup (viene del payload parkeado) y nunca tuvo el
+// transactionGroup con los movimientos enteros.
+func encodeCandidateGroupList(groups []candidateGroup) []interface{} {
 	encoded := make([]interface{}, 0, len(groups))
 	for _, g := range groups {
-		rows := make([]movementRow, 0, len(g.Movements))
-		ids := make([]string, 0, len(g.Movements))
-		for _, m := range g.Movements {
-			rows = append(rows, movementToRow(m))
-			ids = append(ids, strconv.FormatUint(uint64(m.ID), 10))
-		}
 		encoded = append(encoded, map[string]interface{}{
 			"transaction_id": g.TransactionID,
-			"old_ids":        encodeStringSlice(ids),
-			"rows":           encodeMovementRows(rows),
+			"old_ids":        encodeStringSlice(g.OldIDs),
+			"rows":           encodeMovementRows(g.Rows),
 		})
 	}
 	return encoded
@@ -198,10 +207,70 @@ func decodeCandidateGroups(data conversation.Data) []candidateGroup {
 	return groups
 }
 
+// changeAsk es en qué punto está la pregunta de "qué cambiarle al movimiento".
+// Los dos estados no son excluyentes en el tipo pero sí en la vida: primero se
+// toca un botón (pickedField), después se escribe el valor (gaveValue).
+type changeAsk struct {
+	// pickedField: tocó uno de los botones, o sea nombró el CAMPO. Falta el valor.
+	pickedField bool
+	// gaveValue: escribió algo como valor nuevo. Si con eso tampoco sale una
+	// corrección, no hay más que preguntar.
+	gaveValue bool
+	// answer es lo que contestó, SIN el texto original pegado adelante. Es lo
+	// único que se puede parsear.
+	answer string
+}
+
+// amountOnlyCorrection arma la corrección del lado de la app cuando lo único
+// que hay que cambiar es el monto y el usuario ya lo escribió.
+//
+// Las cuatro condiciones son todas necesarias:
+//   - contestó por texto (gaveValue): si tocó un botón, el campo NO es el monto
+//   - no tocó ningún botón antes (pickedField): si eligió "La fecha", un número
+//     suelto sería un día, no un monto
+//   - una sola fila: en una transferencia de dos piernas "el monto" es ambiguo
+//   - parsea como monto positivo: un 0 significa borrar, y esa semántica
+//     ("regalo/gratis") la resuelve mejor el camino de siempre
+func amountOnlyCorrection(before []movementRow, ask changeAsk) ([]orchestrator.MovementDraft, bool) {
+	if !ask.gaveValue || ask.pickedField || len(before) != 1 {
+		return nil, false
+	}
+	amt, err := parseARAmount(ask.answer)
+	if err != nil || !amt.IsPositive() {
+		return nil, false
+	}
+	after := before[0]
+	after.Amount = amt.String()
+	return []orchestrator.MovementDraft{rowToDraft(after)}, true
+}
+
 // proceedToUpdateConfirm runs Call 2 UPDATE against a candidate found
 // via resolveCandidates — both the single-match path and the
 // post-picker path funnel through here.
-func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movementRow) error {
+// ask lleva en qué punto está la pregunta de "qué cambiar": si nunca se
+// preguntó, si el usuario tocó un botón (nombró el campo, falta el valor) o si
+// ya intentó decir el valor. Sólo el drenaje la manda con algo adentro.
+func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movementRow, ask changeAsk) error {
+	// Si lo único que se sumó al pedido fue el NOMBRE del campo ("La
+	// categoría"), no hay ningún valor que resolver todavía. Preguntarlo antes
+	// de llamar al modelo ahorra la llamada entera — ~1.100 tokens que iban a
+	// volver sin cambiar nada.
+	if ask.pickedField && !ask.gaveValue {
+		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
+	}
+
+	// Atajo del monto. La pregunta fue "¿Cuánto era?" y contestó un número: no
+	// queda NADA que interpretar, y parseARAmount ya lo sabe leer. Mandárselo al
+	// modelo cuesta ~1.500 tokens para que copie el número — y le da la
+	// oportunidad de tocar de paso algo que nadie le pidió.
+	//
+	// El gate de confirmación NO se saltea: sigue pasando por
+	// seedAndStartUpdateConfirm, así que el usuario ve el antes/después igual.
+	if after, ok := amountOnlyCorrection(beforeRows, ask); ok {
+		return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows,
+			orchestrator.UpdateResult{Resolved: true, Movements: after})
+	}
+
 	drafts := make([]orchestrator.MovementDraft, 0, len(beforeRows))
 	for _, row := range beforeRows {
 		drafts = append(drafts, rowToDraft(row))
@@ -223,15 +292,129 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	if err != nil {
 		return err
 	}
-	if !result.Resolved {
-		c.resolveMetric(ctx, userID, outcomeNoCandidates)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgNoCandidatesFound})
+	// Dos formas de no entender el CAMBIO, y hay que atrapar las dos.
+	//
+	// La declarada (!Resolved) es la que el modelo admite. La otra la vimos en
+	// producción con "el café estaba mal" (traza 317df846): devolvió
+	// Resolved=true y el movimiento IDÉNTICO, o sea inventó una corrección que
+	// no corrige nada. Confirmarla haría un DELETE+INSERT para dejar todo igual
+	// —quemando un id y contando como update_confirmed— y al usuario le
+	// mostraría "$1.800 (antes: $1.800)".
+	//
+	// Por eso el chequeo no puede depender de que el modelo se declare incapaz:
+	// una corrección que no cambia nada no es una corrección.
+	if !result.Resolved || correctionIsNoOp(beforeRows, result.Movements) {
+		if ask.gaveValue {
+			// Ya nos dijo el valor por texto y seguimos sin entender: cortar es
+			// más honesto que volver a preguntar lo mismo.
+			c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+			c.sendText(ctx, b, chatID, msgStillCannotCorrect)
+			return nil
 		}
-		return nil
+		// El candidato ya está resuelto acá: lo que falló es entender el CAMBIO.
+		// Antes esto era un callejón sin salida —"no me quedó claro, decímelo de
+		// nuevo"— y el usuario que había nombrado bien el movimiento se quedaba
+		// sin nada. Ahora se le pregunta, que es la máquina de preguntas que la
+		// etapa 2 ya construyó.
+		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
 	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows, result)
+}
+
+// correctionIsNoOp dice si la corrección "resuelta" deja el movimiento igual
+// que como estaba. Se compara campo por campo y no con reflect.DeepEqual porque
+// los dos lados vienen de fuentes distintas: el antes sale de la DB (montos ya
+// formateados, cuenta resuelta) y el después del modelo, que omite lo que no
+// toca. Un DeepEqual daría "cambió" siempre.
+func correctionIsNoOp(before []movementRow, after []orchestrator.MovementDraft) bool {
+	if len(before) == 0 || len(before) != len(after) {
+		return false // otra cantidad de filas ES un cambio (o no hay con qué comparar)
+	}
+	for i, draft := range after {
+		if !sameMovementForCorrection(before[i], draftToRow(draft)) {
+			return false
+		}
+	}
+	return true
+}
+
+// sameMovementForCorrection compara los campos que una corrección puede tocar.
+//
+// Un campo vacío del lado nuevo se lee como "no lo tocó", no como "lo borró":
+// el modelo devuelve sólo lo que cambia, y tratarlo como borrado haría ver
+// cambios donde no los hay — que es el error que dejaría pasar el no-op.
+func sameMovementForCorrection(before, after movementRow) bool {
+	unchanged := func(b, a string) bool { return a == "" || a == b }
+	return sameAmount(before.Amount, after.Amount) &&
+		unchanged(before.Type, after.Type) &&
+		unchanged(before.Currency, after.Currency) &&
+		unchanged(before.Category, after.Category) &&
+		unchanged(before.Subcategory, after.Subcategory) &&
+		unchanged(before.Date, after.Date) &&
+		unchanged(before.AccountID, after.AccountID) &&
+		unchanged(before.Merchant, after.Merchant) &&
+		unchanged(before.Description, after.Description)
+}
+
+// sameAmount compara montos por VALOR, no por texto: "1800" y "1800.00" son el
+// mismo monto y la comparación de strings diría que cambió.
+func sameAmount(before, after string) bool {
+	if after == "" {
+		return true // no lo tocó
+	}
+	b, berr := parseARAmount(before)
+	a, aerr := parseARAmount(after)
+	if berr != nil || aerr != nil {
+		return before == after
+	}
+	return b.Abs().Equal(a.Abs())
+}
+
+// parkChangeQuestion guarda el candidato YA resuelto y pregunta qué cambiarle.
+// El candidato no se vuelve a buscar: encontrarlo fue la mitad cara, y volver a
+// resolverlo con el texto nuevo ("2000") lo perdería — ese texto no nombra
+// ningún movimiento.
+func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, change, transactionID string, oldIDs []string, rows []movementRow, ask changeAsk) error {
+	if c.actions == nil {
+		// Sin cola no hay a dónde parkear: el camino viejo sigue siendo mejor
+		// que quedarse mudo.
+		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		return nil
+	}
+	payload, err := json.Marshal(agentPayload{
+		Change:            change,
+		Candidates:        []candidateGroup{{TransactionID: transactionID, OldIDs: oldIDs, Rows: rows}},
+		Chosen:            0,
+		PickedChangeField: ask.pickedField,
+	})
+	if err != nil {
+		return fmt.Errorf("park change question: payload: %w", err)
+	}
+	// Segunda vuelta: ya tocó el botón del campo, así que lo único que falta es
+	// el valor — y ahí los botones sobran, cualquiera de ellos ya se usó.
+	question := pendingaction.OpenQuestion{
+		Key:     questionKeyChange,
+		Prompt:  msgAskWhatToChange(rows),
+		Options: changeFieldOptions(),
+	}
+	if ask.pickedField {
+		question.Prompt, question.Options = msgAskChangeValue, nil
+	}
+	questions, err := json.Marshal([]pendingaction.OpenQuestion{question})
+	if err != nil {
+		return fmt.Errorf("park change question: questions: %w", err)
+	}
+	row := &pendingaction.PendingAction{
+		UserID: userID, Tool: orchestrator.ToolCorrectMovement,
+		Payload: payload, Questions: questions,
+		Budget: 1 + budgetSlack, TraceID: trace.ID(ctx),
+	}
+	if err := c.actions.Insert(row); err != nil {
+		return fmt.Errorf("park change question: %w", err)
+	}
+	return c.drainNextAgentAction(ctx, b, chatID, userID)
 }
 
 // seedAndStartUpdateConfirm builds the confirm flow's seed from an
@@ -294,7 +477,7 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 	chosen := candidates[idx]
 
 	message := stringOrEmpty(data["message"])
-	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows); err != nil {
+	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{}); err != nil {
 		if c.enqueueUpdatePickIfRateLimited(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
 			return
 		}

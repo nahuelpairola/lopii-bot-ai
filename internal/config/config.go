@@ -49,6 +49,12 @@ type groq struct {
 	TimeoutSeconds int    `mapstructure:"timeoutSeconds"`
 }
 
+// agent son los interruptores del loop unificado. Hoy uno solo: el que decide
+// si CREATE va por el loop o por el camino viejo.
+type agent struct {
+	RouteCreateToLoop bool `mapstructure:"routeCreateToLoop"`
+}
+
 type query struct {
 	HistoryTtlMinutes int `mapstructure:"historyTtlMinutes"`
 	HistoryLimit      int `mapstructure:"historyLimit"`
@@ -69,6 +75,7 @@ type Config struct {
 	Database  database  `mapstructure:"database"`
 	Telegram  telegram  `mapstructure:"telegram"`
 	Groq      groq      `mapstructure:"groq"`
+	Agent     agent     `mapstructure:"agent"`
 	Query     query     `mapstructure:"query"`
 	Reminders reminders `mapstructure:"reminders"`
 	Log       logConfig `mapstructure:"log"`

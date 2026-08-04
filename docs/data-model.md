@@ -1,26 +1,56 @@
 # Data Model — lopii-finance-bot
 
-> Tables and relationships. Schema authority is the Goose migrations in `migrations/`; this is the map.
+> Tables and relationships. Schema authority is the Goose migrations in `migrations/`; this is
+> the map, plus the notes a schema dump can't carry.
+
+## Domain tables
 
 | Table | Key Fields | Notes |
 |-------|-----------|-------|
 | `users` | `id`, `telegram_id` (UNIQUE), `username`, `is_admin`, `deleted_at` | Soft delete |
 | `invitations` | `id`, `code` (6-char UNIQUE), `created_by`→users, `used_by`→users, `expires_at`, `used_at` | 72h expiry, single-use |
-| `accounts` | `id`, `user_id`→users, `name`, `type` (legacy), `currency`, `is_default`, `deleted_at` | `type` column is a legacy artifact — needs a drop migration; unique index is case-insensitive on name (migration 20260704120000) |
-| `conversation_states` | `user_id` (PK)→users, `flow_name`, `step_name`, `data` (JSONB), `updated_at` | One row per user; never access directly — use `conversation.Engine`; `updated_at` is now read (not just written) by `Engine`'s idle-timeout resume gate |
-| `subcategories` | `id`, `user_id` (nullable)→users, `category`, `subcategory`, `description`, `is_global`, `icon`, `deleted_at` | `user_id = NULL` = global (visible to all users); `icon` backfilled for the seeded taxonomy in migration `20260705120000` |
-| `movements` | `id`, `transaction_id` (UUID nullable), `user_id`→users, `account_id` (nullable)→accounts, `subcategory_id`→subcategories, `date`, `type` (expense/income/transfer), `amount` (NUMERIC 15,2), `currency`, `payment_method`, `merchant`, `description`, `deleted_at` | Rate columns pending: `bna_rate`, `mep_rate`, `ccl_rate`, `blue_rate`, `amount_usd` |
-| `intent_events` | `id`, `created_at`, `user_id`→users, `raw_message`, `intent`, `needs_confirmation`, `outcome`, `resolved_at`, `was_correct`, `movement_ids` (bigint[], nullable) | Correlación por "último pending" vía WIP=1; `was_correct` etiquetado a mano; `movement_ids` = ids con los que terminó la operación (create/update insertados, delete borrados) para trazabilidad mensaje→filas |
-| `query_turns` | `id`, `user_id`→users, `question`, `answer`, `created_at` | QUERY conversation thread. Ephemeral — hard-pruned by `Append` past the TTL, never soft-deleted. Read only within the TTL window, capped at N turns |
-| `reminders` | `user_id` (PK)→users, `window_start_min`, `window_end_min` (minutes since ART midnight), `enabled`, `last_reminded_on` (date, nullable), `created_at`, `updated_at` | One row per user. Fire target (`MidpointMin()`) is derived, never stored. Delete == disable (`enabled=false`) — no `deleted_at` |
-| `pending_llm_jobs` | `id`, `user_id`→users, `kind` (`free_text`/`update_pick`), `payload` (JSONB, opaque per `kind`), `created_at` | Durable queue: a user message cached after a terminal Groq 429 (rate limit), drained FIFO per user (`created_at` order, index `(user_id, created_at)`) once quota frees up. No `chat_id` — resolved at drain time via `users.FindByID`. Operational table (the queue itself), not metrics — reading it for display/observability is fine, reading it for feature logic elsewhere is not |
+| `accounts` | `id`, `user_id`→users, `name`, `type` (legacy), `currency`, `is_default`, `deleted_at` | `type` is a legacy artifact — needs a drop migration. Unique index is case-insensitive on name (`20260704120000`) |
+| `subcategories` | `id`, `user_id` (nullable)→users, `category`, `subcategory`, `description`, `is_global`, `icon`, `deleted_at` | `user_id = NULL` = global (visible to all). `description` is **not decorative** — it feeds LLM classification. Icons backfilled in `20260705120000` |
+| `movements` | `id`, `transaction_id` (UUID nullable), `user_id`→users, `account_id` (nullable)→accounts, `subcategory_id`→subcategories, `date`, `type`, `amount` (NUMERIC 15,2), `currency`, `payment_method`, `merchant`, `description`, `deleted_at` | `date` is a plain `DATE` — see the binding trap in `internal/movement/CLAUDE.md`. Rate columns pending: `bna_rate`, `mep_rate`, `ccl_rate`, `blue_rate`, `amount_usd` |
+| `reminders` | `user_id` (PK)→users, `window_start_min`, `window_end_min`, `enabled`, `last_reminded_on`, `weekly_summary_enabled`, `last_summary_on`, `created_at`, `updated_at` | One row per user, minutes since ART midnight. Fire target (`MidpointMin()`) is derived, never stored. Delete == disable — no `deleted_at`. Carries **both** the daily reminder and the weekly summary |
+| `user_nudges` | `user_id`→users, `nudge_key`, `sent_at` | Once-ever / cooldown storage for contextual tips |
 
-### Key relationships
+## Conversation & queue tables
 
-- One `transaction_id` (UUID) groups N movements of a single financial event (e.g. USD purchase = 2 movements)
-- **Every movement is attributed to a real account and carries a signed amount** (see [business-rules.md](business-rules.md#the-accounting-model)): `expense` negative on its source account, `income` positive on its destination, `transfer` legs signed out/in. `account_id` is effectively NOT NULL for all new rows (the column stays nullable only for legacy rows). The sign is internal to storage — user and LLM both see `abs`.
-- **Account balance is always computed** — no `balance` column — as a plain sum of signed amounts:
+| Table | Key Fields | Notes |
+|-------|-----------|-------|
+| `conversation_states` | `user_id` (PK)→users, `flow_name`, `step_name`, `data` (JSONB), `updated_at` | One row per user. **Never access directly** — use `conversation.Engine`. `updated_at` is read, not just written: it drives the idle-timeout resume gate. The JSONB round-trip is why `data` values need decoding helpers (`internal/conversation/CLAUDE.md`) |
+| `chat_turns` | `id`, `user_id`→users, `question`, `answer`, `created_at` | Ephemeral conversation thread, hard-pruned past the TTL, never soft-deleted. Renamed from `query_turns` in `20260731120000`: it is **no longer QUERY-only** — every intent shares the thread, which is what the old name got wrong |
+| `pending_llm_jobs` | `id`, `user_id`→users, `kind` (`free_text`/`update_pick`), `payload` (JSONB, opaque per `kind`), `created_at` | Durable queue for a **message** cached after a terminal Groq 429, drained FIFO per user. No `chat_id` — resolved at drain via `users.FindByID` |
+| `pending_actions` | `id`, `user_id`→users, `tool`, `payload` (JSONB), `questions` (JSONB), `budget`, `position`, `trace_id`, `created_at` | Durable queue for an **already-interpreted action** waiting on an answer from the user (agent loop). Sibling of `pending_llm_jobs`, not the same thing. Drained one at a time (WIP=1); `budget` is frozen at park time on purpose |
+
+## Observability tables
+
+Populated by the 3-layer trace; **never read for feature logic** — domain tables only.
+
+| Table | Key Fields | Notes |
+|-------|-----------|-------|
+| `intent_events` | `id`, `user_id`→users, `raw_message`, `intent`, `needs_confirmation`, `outcome`, `resolved_at`, `was_correct`, `movement_ids` (bigint[]), `trace_id` | Correlated by "last pending" via WIP=1 — an event left `pending` gets flipped to `abandoned` by the user's next message. `needs_confirmation` is vestigial (always `false`). `was_correct` is hand-labelled |
+| `llm_calls` | `id`, `trace_id`, `call_type`, `model`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `latency_ms`, `http_status`, `attempts`, `error`, `ratelimit_remaining_requests`, `ratelimit_remaining_tokens` | One row per HTTP call to Groq. `attempts > 1` means retries after a 429; the `ratelimit_remaining_*` columns are how you diagnose TPM exhaustion |
+| `request_traces` | `id`, `trace_id`, `user_id` (nullable), `update_type`, `received_at`, `latency_ms`, `error` | The spine of one Telegram update. `user_id` nullable: a pre-auth update has none |
+
+`llm_calls` and `request_traces` are purged by retention (`Sweeper`); `intent_events` is not — it
+is business data with its own retention.
+
+## Key relationships
+
+- One `transaction_id` (UUID) groups N movements of a single financial event (a USD purchase is
+  2 movements).
+- **Every movement is attributed to a real account and carries a signed amount** — see
+  [business-rules.md](business-rules.md#the-accounting-model). `expense` negative on its source,
+  `income` positive on its destination, `transfer` legs signed out/in. The sign never escapes
+  storage: user and LLM both see `abs`.
+- **Account balance is always computed** — there is no `balance` column:
   ```sql
   SELECT SUM(amount) FROM movements WHERE account_id = $id AND deleted_at IS NULL
   ```
-  > Migration status: enforced as of commit `2597c1e` (`movement.Normalize` validates every CREATE/UPDATE before insert). Legacy rows written before that land may still carry the old `account_id = NULL` / positive-expense shape — cleared via `/admin/users/:telegramID/reset`, not a retroactive migration.
+  Because the sum never looks at each row's currency, a USD row on a peso account is simply
+  added in. That is why currency-vs-account agreement is a guard invariant, not a nicety.
+- Enforced as of `2597c1e` (`movement.Normalize` validates every CREATE/UPDATE before insert).
+  Rows written before that may still carry the old `account_id = NULL` / positive-expense shape
+  — cleared via `/admin/users/:telegramID/reset`, not a retroactive migration.

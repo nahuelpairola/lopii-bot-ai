@@ -103,6 +103,44 @@ func TestRun_NoContentMeansAnotherRound(t *testing.T) {
 	}
 }
 
+func TestRun_TurnDoneEndsTheTurnWithoutANarrationRound(t *testing.T) {
+	// La regresión que esto tapa costó plata real: el ejecutor parkeaba la
+	// acción y el loop igual volvía al modelo a que narrara, replicando el
+	// prompt entero. Medido en producción: 4.816 + 4.916 tokens contra un TPM de
+	// 8.000, así que la segunda llamada se comía un 429 y la corrección del
+	// usuario no llegaba nunca al gate.
+	//
+	// Dos calls a propósito: la vuelta se termina de ejecutar igual, porque el
+	// modelo las eligió todas antes de ver un solo resultado.
+	srv, reqs := loopServer(t, `{"choices":[{"message":{"tool_calls":[
+		{"id":"c1","type":"function","function":{"name":"record_movements","arguments":"{}"}},
+		{"id":"c2","type":"function","function":{"name":"correct_movement","arguments":"{}"}}]}}]}`)
+	defer srv.Close()
+	o := New(Config{BaseURL: srv.URL, AgentModel: "m", TimeoutSeconds: 5})
+
+	var ran []string
+	out, err := o.Run(context.Background(), "sys", "la panadería eran 2 mil", nil, agentToolsForTest(),
+		func(name string, _ json.RawMessage) (string, error) {
+			ran = append(ran, name)
+			if name == "correct_movement" {
+				return "parkeada", ErrAgentTurnDone
+			}
+			return "ok", nil
+		})
+	if err != nil {
+		t.Fatalf("Run: %v — ErrAgentTurnDone no es un error, es el fin del turno", err)
+	}
+	if out != "" {
+		t.Errorf("narration = %q, want empty — la copy la escribe la app", out)
+	}
+	if len(ran) != 2 {
+		t.Errorf("executed %v, want both calls of the round", ran)
+	}
+	if len(*reqs) != 1 {
+		t.Errorf("%d rounds, want 1 — la segunda vuelta es la que revienta el TPM", len(*reqs))
+	}
+}
+
 func TestRun_RunsWritesBeforeReadsRegardlessOfModelOrder(t *testing.T) {
 	// §4.1.2: the model lists the read FIRST. If the loop honoured that, the
 	// sum would exclude the movements record_movements is about to insert —
