@@ -6,6 +6,37 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* En una card el número ES el contenido y la etiqueta es cartelería, pero pico
+   los renderiza a los dos en tamaño de body, así que hoy compiten.
+   Scopeado a .grid article, no a article a secas: EmptyState y el cartel de
+   sesión vencida que inyecta app.js también son <article><p>, y ahí achicar el
+   texto arruina justo el mensaje que hay que leer. .money además vive en las
+   celdas de categorías y evolución, donde 28px revienta la tabla.
+   1.75rem es el techo: el saldo más largo realista ($1.234.567,00, 14
+   caracteres) entra en el ancho de card de un teléfono de 360px, 2rem no. El
+   .grid de pico es una sola columna abajo de 768px, así que las cards son
+   full-width y nunca hay tres números apretados en fila. */
+.grid article .money {
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0;
+}
+
+/* 0.8rem = 12.8px, arriba del piso de 12px para texto, y en muted para que la
+   jerarquía la carguen el tamaño Y el peso visual, no sólo el tamaño. */
+.grid article > p:first-child {
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+  margin-bottom: 0.15rem;
+}
+
+/* La estrella marca la cuenta por defecto de esa moneda. El color es refuerzo,
+   no el canal: el significado lo cargan el glifo y su aria-label. Es el mismo
+   token que la tab activa ya usa como color de texto sobre este fondo, así que
+   el par de contraste ya está en producción. */
+.default-star { color: var(--pico-primary); }
+
 .neto-good { color: #0ca30c; }
 .neto-critical { color: #d03b3b; }
 

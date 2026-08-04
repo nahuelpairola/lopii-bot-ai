@@ -113,3 +113,87 @@ func TestBuild_ReportARSOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestBuild_EscapesUserSuppliedStrings(t *testing.T) {
+	fm := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|":         sums(row("", "1000")),
+			"ARS|income|":          sums(row("", "1500")),
+			"ARS|expense|category": sums(row("Comida & bebida", "600")),
+		},
+		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Merchant: strptr("Bar <El Rincón>")}},
+		counts: []movement.DayCount{{Date: to, Count: 5}},
+		bals:   map[uint64]decimal.Decimal{0: dec("2500")},
+	}
+	fa := fakeAccounts{
+		list: map[uint64][]account.Account{1: {{Name: "Mercado & Pago <test>", Currency: currency.ARS}}},
+	}
+
+	text, err := NewBuilder(fm, fa).Build(1, from, to, prevFrom, prevTo)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	// El resumen se manda con ParseMode HTML: un & o un < sin escapar hace que
+	// Telegram devuelva 400 y el usuario no reciba NADA.
+	for _, want := range []string{
+		"Mercado &amp; Pago &lt;test&gt;",
+		"Comida &amp; bebida",
+		"Bar &lt;El Rincón&gt;",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing escaped %q in:\n%s", want, text)
+		}
+	}
+	for _, unwanted := range []string{"Pago <test>", "Comida & bebida", "<El Rincón>"} {
+		if strings.Contains(text, unwanted) {
+			t.Errorf("found unescaped %q in:\n%s", unwanted, text)
+		}
+	}
+}
+
+func TestBuild_BoldsTheValueThatAnswersEachLine(t *testing.T) {
+	fm := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|":         sums(row("", "1000")),
+			"ARS|income|":          sums(row("", "1500")),
+			"ARS|expense|category": sums(row("Comida", "600")),
+		},
+		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Merchant: strptr("Cena")}},
+		counts: []movement.DayCount{{Date: to, Count: 5}},
+		bals:   map[uint64]decimal.Decimal{0: dec("2500")},
+	}
+	fa := fakeAccounts{
+		list: map[uint64][]account.Account{1: {{Name: "Efectivo", Currency: currency.ARS}}},
+	}
+
+	text, err := NewBuilder(fm, fa).Build(1, from, to, prevFrom, prevTo)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+
+	for _, want := range []string{
+		"<b>Resumen semanal</b>",
+		"<b>ARS</b>",
+		"Neto <b>$500.00</b>",
+		"Lo más caro: <b>$350.00</b>",
+		"<b>Actividad</b>",
+		"día top: <b>domingo</b>",
+		"<b>Cuentas (hoy)</b>",
+		"Efectivo <b>$2500.00</b>",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %q in:\n%s", want, text)
+		}
+	}
+
+	// Entró y Salió son insumo del Neto, y el orden ya jerarquiza el top de
+	// gastos: si TODO va en negrita, no resalta nada.
+	for _, unwanted := range []string{
+		"Entró <b>", "Salió <b>", "Comida <b>", "Prom. diario <b>",
+	} {
+		if strings.Contains(text, unwanted) {
+			t.Errorf("unexpected bold %q in:\n%s", unwanted, text)
+		}
+	}
+}

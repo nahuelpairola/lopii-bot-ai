@@ -32,8 +32,8 @@ func TestNewPeriod_MonthWindow(t *testing.T) {
 	if p.To.Format("2006-01-02") != "2026-07-31" {
 		t.Errorf("To = %s, want 2026-07-31", p.To.Format("2006-01-02"))
 	}
-	if p.Label != "julio 2026" {
-		t.Errorf("Label = %q, want %q", p.Label, "julio 2026")
+	if p.Label != "Julio 2026" {
+		t.Errorf("Label = %q, want %q", p.Label, "Julio 2026")
 	}
 	if p.NextQuery != "" {
 		t.Errorf("NextQuery = %q, want empty — no se navega al futuro", p.NextQuery)
@@ -46,8 +46,8 @@ func TestNewPeriod_SixMonthWindowEndingAtAnchor(t *testing.T) {
 	if !p.From.Equal(art(2026, time.February)) {
 		t.Errorf("From = %s, want 2026-02 (6 meses terminando en julio)", p.From)
 	}
-	if p.Label != "feb – jul 2026" {
-		t.Errorf("Label = %q, want %q", p.Label, "feb – jul 2026")
+	if p.Label != "Feb – jul 2026" {
+		t.Errorf("Label = %q, want %q", p.Label, "Feb – jul 2026")
 	}
 	want := []string{"2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"}
 	got := p.MonthKeys()
@@ -65,8 +65,8 @@ func TestNewPeriod_CursorStepsByWindowLength(t *testing.T) {
 	// Ancla en enero 2026, ventana de 3 meses, mes corriente julio 2026.
 	p := NewPeriod(RouteEvolution, Preset3M, art(2026, time.January), art(2026, time.July), currency.ARS, TrendPresets)
 
-	if p.Label != "nov 2025 – ene 2026" {
-		t.Errorf("Label = %q, want %q", p.Label, "nov 2025 – ene 2026")
+	if p.Label != "Nov 2025 – ene 2026" {
+		t.Errorf("Label = %q, want %q", p.Label, "Nov 2025 – ene 2026")
 	}
 	if p.PrevQuery != "/app/evolution?c=ARS&m=2025-10&p=3m" {
 		t.Errorf("PrevQuery = %q", p.PrevQuery)

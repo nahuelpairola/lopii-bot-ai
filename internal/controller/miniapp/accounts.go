@@ -39,7 +39,7 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 			return
 		}
 		data.Snapshots = append(data.Snapshots, templates.AccountSnapshot{
-			Name: a.Name, Balance: templates.FormatMoney(bal, a.Currency),
+			Name: a.Name, Balance: templates.FormatMoney(bal, a.Currency), IsDefault: a.IsDefault,
 		})
 
 		deltas, err := c.movements.MonthlyDeltasForAccount(uint64(a.ID))

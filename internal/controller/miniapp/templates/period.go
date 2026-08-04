@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"time"
+	"unicode"
 
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
@@ -135,14 +136,32 @@ func ShortMonth(key string) string {
 }
 
 func periodLabel(from, anchor time.Time, months int) string {
-	if months == 1 {
-		return fmt.Sprintf("%s %d", monthLongEs[anchor.Month()-1], anchor.Year())
+	var s string
+	switch {
+	case months == 1:
+		s = fmt.Sprintf("%s %d", monthLongEs[anchor.Month()-1], anchor.Year())
+	case from.Year() == anchor.Year():
+		s = fmt.Sprintf("%s – %s %d", monthShortEs[from.Month()-1], monthShortEs[anchor.Month()-1], anchor.Year())
+	default:
+		s = fmt.Sprintf("%s %d – %s %d",
+			monthShortEs[from.Month()-1], from.Year(), monthShortEs[anchor.Month()-1], anchor.Year())
 	}
-	if from.Year() == anchor.Year() {
-		return fmt.Sprintf("%s – %s %d", monthShortEs[from.Month()-1], monthShortEs[anchor.Month()-1], anchor.Year())
+	return upperFirst(s)
+}
+
+// upperFirst pone en mayúscula sólo la primera letra. En castellano los meses
+// van en minúscula: la mayúscula acá es porque el label abre su propia línea,
+// no porque un mes sea nombre propio — por eso "Feb – jul" y no "Feb – Jul".
+//
+// Sobre runas y no s[:1]: hoy todos los meses arrancan con ASCII, así que las
+// dos versiones andan, pero ésta no depende de que eso siga siendo cierto.
+func upperFirst(s string) string {
+	r := []rune(s)
+	if len(r) == 0 {
+		return s
 	}
-	return fmt.Sprintf("%s %d – %s %d",
-		monthShortEs[from.Month()-1], from.Year(), monthShortEs[anchor.Month()-1], anchor.Year())
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
 }
 
 func periodQuery(route, preset string, anchor time.Time, cur currency.Currency) string {
