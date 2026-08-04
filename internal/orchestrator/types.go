@@ -148,6 +148,19 @@ type AccountManageResult struct {
 	WantsNewAccount  bool
 }
 
+// Normalize corrige el formato de categoría/subcategoría de todas las filas.
+//
+// Está exportada porque hay DOS entradas a un CreateResult: ClassifyCreate, que
+// lo desarma acá adentro, y el agent loop, que desarma los argumentos de
+// record_movements en el controller (messaging/agent_executor.go), fuera de
+// este paquete. Sin esto la segunda se saltea la corrección que la primera hace,
+// y como CREATE va por el loop, se la saltea SIEMPRE.
+func (r *CreateResult) Normalize() {
+	for i := range r.Movements {
+		r.Movements[i].normalizeSubcategory()
+	}
+}
+
 // normalizeSubcategory corrige un formato que el modelo devuelve de a ratos:
 // "Categoría | Subcategoría" en el campo subcategoría, en vez de solo el nombre
 // de la subcategoría.
@@ -163,7 +176,28 @@ type AccountManageResult struct {
 //
 // Solo se saca el prefijo cuando coincide con la categoría del mismo draft: si
 // una subcategoría legítima llevara un pipe, no se la toca.
+//
+// El mismo error aparece ESPEJADO: el par entero en el campo categoría, con la
+// subcategoría bien puesta ("Ingresos | Freelance / honorarios" + "Freelance /
+// honorarios", visto en producción). Las dos mitades se arreglan acá porque son
+// el mismo error del modelo —copiar el formato de la taxonomía— y tienen el
+// mismo costo: el par no matchea y el gap-fill le pregunta al usuario lo que ya
+// dijo.
 func (d *MovementDraft) normalizeSubcategory() {
+	// El par entero en LOS DOS campos. Va primero porque los otros dos casos
+	// asumen que un lado está limpio, y acá no lo está ninguno.
+	if d.Category == d.Subcategory {
+		if cat, sub, ok := strings.Cut(d.Category, " | "); ok {
+			d.Category, d.Subcategory = strings.TrimSpace(cat), strings.TrimSpace(sub)
+			return
+		}
+	}
+	// El par en la categoría, subcategoría limpia. Va antes que el de abajo
+	// porque le deja d.Category limpia para armar el prefijo.
+	if sub := strings.TrimSpace(d.Subcategory); sub != "" && strings.HasSuffix(d.Category, " | "+sub) {
+		d.Category = strings.TrimSpace(strings.TrimSuffix(d.Category, " | "+sub))
+	}
+	// El par en la subcategoría, categoría limpia.
 	prefix := strings.TrimSpace(d.Category) + " | "
 	if strings.HasPrefix(d.Subcategory, prefix) {
 		d.Subcategory = strings.TrimSpace(strings.TrimPrefix(d.Subcategory, prefix))

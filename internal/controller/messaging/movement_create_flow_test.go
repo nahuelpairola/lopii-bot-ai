@@ -88,6 +88,10 @@ func (r *fakeAccountRepoFull) Insert(a *account.Account) error {
 	}
 	a.ID = uint(len(r.inserted) + 100)
 	r.inserted = append(r.inserted, *a)
+	// Igual que el repo real: una cuenta recién insertada la devuelve
+	// FindByUserID. Sin esto, un segundo loadAccountIndex no la ve y todo
+	// movimiento que la apunte falla con ErrCurrencyAccountMismatch.
+	r.byUserID = append(r.byUserID, *a)
 	return nil
 }
 func (r *fakeAccountRepoFull) FindDefaultByCurrency(userID uint64, c currency.Currency) (*account.Account, error) {
@@ -999,7 +1003,10 @@ func TestFirstAccountNetDelta(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := firstAccountNetDelta(tt.rows)
+			// Las filas de esta tabla no llevan moneda, así que "" es el filtro
+			// que las matchea: acá se prueba la aritmética, no el filtrado por
+			// moneda (eso es TestFirstAccountNetDelta_IgnoresOtherCurrencies).
+			got := firstAccountNetDelta(tt.rows, "")
 			if !got.Equal(decimal.RequireFromString(tt.want)) {
 				t.Errorf("firstAccountNetDelta() = %s, want %s", got, tt.want)
 			}

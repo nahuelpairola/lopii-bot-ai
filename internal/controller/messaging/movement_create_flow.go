@@ -2,9 +2,9 @@ package messaging
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -296,6 +296,18 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
+		// Saldo insuficiente no es una falla: es una pregunta. Los otros dos
+		// caminos de CREATE (startMovementCreate y agentExecutor.record) ya la
+		// hacían; éste no, y se comía el movimiento con un error genérico.
+		var short *insufficientFunds
+		if errors.As(err, &short) {
+			gateSeed := copyData(data)
+			gateSeed[keyGatePrompt] = msgInsufficientFunds(short.shortfalls)
+			if serr := c.startFlow(ctx, b, chatID, data.UserID(), movementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow"); serr != nil {
+				slog.ErrorContext(ctx, "negative-confirm flow failed to start", "user_id", data.UserID(), "error", serr)
+			}
+			return
+		}
 		slog.ErrorContext(ctx, "movement insert failed", "user_id", data.UserID(), "reason", guardReason(err))
 		c.resolveMetric(ctx, data.UserID(), outcomeCreateFailed)
 		if b != nil {
@@ -349,6 +361,13 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 		return nil, fmt.Errorf("create counterparty account: %w", err)
 	}
 
+	// Las cuentas ya están materializadas y las filas volvieron con su
+	// account_id. Se escriben de vuelta en data porque esta función se puede
+	// REINTENTAR sobre el mismo data: el gate de saldo insuficiente parkea y
+	// vuelve a entrar acá al confirmar. Sin esto el reintento ve las filas
+	// originales, sin cuenta, y crea la cuenta y su apertura por segunda vez.
+	data[keyMovements] = encodeMovementRows(rows)
+
 	movements, groups, err := c.buildMovements(userID, rows)
 	if err != nil {
 		return nil, fmt.Errorf("build movements: %w", err)
@@ -384,6 +403,14 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 type accountIndex struct {
 	byID              map[uint64]account.Account
 	defaultByCurrency map[string]uint64
+}
+
+// hasDefault dice si la moneda ya tiene una cuenta por defecto donde caer.
+// Se pregunta al índice y no al repo porque el índice se mutó con las cuentas
+// creadas en esta misma resolución, que todavía no volvieron de la base.
+func (idx *accountIndex) hasDefault(cur currency.Currency) bool {
+	_, ok := idx.defaultByCurrency[cur.String()]
+	return ok
 }
 
 // add registra una cuenta en los dos mapas de una sola vez.
@@ -431,68 +458,99 @@ func (c *controller) loadAccountIndex(userID uint64) (*accountIndex, error) {
 // nombre: así abandonar a mitad de camino no deja una cuenta huérfana. Queda
 // como default si la moneda todavía no tenía ninguna.
 //
-// Devuelve skipBalanceCheck=true cuando la cuenta se creó SIN saldo de apertura.
-// En ese caso el primer gasto la deja en negativo por construcción, así que
-// avisar sería ruido y no información.
+// Devuelve skipBalanceCheck=true cuando alguna cuenta se creó SIN saldo de
+// apertura. En ese caso el primer gasto la deja en negativo por construcción,
+// así que avisar sería ruido y no información.
+//
+// Itera MONEDAS, no filas: se abre una cuenta por moneda que no tenga default,
+// y todas las filas de esa moneda van a esa misma cuenta. Una moneda que YA
+// tiene default no se toca — sus filas caen ahí solas en movement.Normalize.
 func (c *controller) createFirstAccount(data conversation.Data, rows []movementRow, idx *accountIndex) (skipBalanceCheck bool, err error) {
 	name := stringOrEmpty(data[keyFirstAccountName])
 	if name == "" {
 		return false, nil
 	}
 	userID := data.UserID()
-	netDelta := firstAccountNetDelta(rows)
+	// asked es la moneda por la que preguntó stepCreateFirstAccount, y la única
+	// a la que se le puede aplicar el saldo declarado: el usuario contestó ese
+	// número mirando "¿cuánto tenés en <nombre> (dólares)?". Se calcula ANTES de
+	// crear nada, porque crear una cuenta cambia la respuesta.
+	asked := firstAccountCurrency(data, idx.hasDefault)
+	// El neteo se calcula ACÁ, antes de que el loop les ponga account_id a las
+	// filas: firstAccountNetDelta saltea toda fila que ya tenga cuenta, así que
+	// calcularlo después da cero siempre.
+	netDelta := firstAccountNetDelta(rows, asked)
 	// Las monedas se anotan para el mensaje de confirmación: cuando éste corre,
 	// las filas ya tienen account_id y no hay forma de saber qué monedas se
 	// acaban de crear. Ver keyFirstAccountCurrencies.
 	var created []string
+	byCurrency := map[string]*account.Account{}
 
 	for i, row := range rows {
 		if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
 			continue
 		}
-		cur := currency.Currency(row.Currency)
-		newAcc := &account.Account{
-			UserID:    userID,
-			Name:      name,
-			Currency:  cur,
-			IsDefault: !c.accounts.HasDefaultForCurrency(userID, cur),
-		}
-		if err := c.accounts.Insert(newAcc); err != nil {
-			return false, err
-		}
-		idx.add(*newAcc)
-		rows[i].AccountID = strconv.FormatUint(uint64(newAcc.ID), 10)
-		if !slices.Contains(created, row.Currency) {
+		acc, ok := byCurrency[row.Currency]
+		if !ok {
+			cur := currency.Currency(row.Currency)
+			if idx.hasDefault(cur) {
+				continue // ya tiene dónde caer; Normalize la manda a la default
+			}
+			acc = &account.Account{UserID: userID, Name: name, Currency: cur, IsDefault: true}
+			if err := c.accounts.Insert(acc); err != nil {
+				return false, err
+			}
+			idx.add(*acc)
+			byCurrency[row.Currency] = acc
 			created = append(created, row.Currency)
+			data[keyFirstAccountCurrencies] = encodeStringSlice(created)
 		}
-		data[keyFirstAccountCurrencies] = encodeStringSlice(created)
-
-		bal := stringOrEmpty(data[keyFirstAccountBalance])
-		if bal == "" {
-			skipBalanceCheck = true
-			continue
-		}
-		amt, perr := parseARAmount(bal)
-		if perr != nil || amt.IsNegative() {
-			continue
-		}
-		if err := c.insertOpeningMovement(newAcc, amt.Sub(netDelta)); err != nil {
-			return false, err
-		}
+		rows[i].AccountID = strconv.FormatUint(uint64(acc.ID), 10)
 	}
-	return skipBalanceCheck, nil
+
+	opened, err := c.openFirstAccountBalance(data, byCurrency[asked], netDelta)
+	if err != nil {
+		return false, err
+	}
+	// Toda cuenta creada que NO recibió apertura arranca en cero.
+	return len(created) > 0 && (!opened || len(created) > 1), nil
+}
+
+// openFirstAccountBalance escribe la apertura de la cuenta cuya moneda el
+// usuario declaró. Devuelve si llegó a escribirla: sin saldo declarado, o con
+// uno ilegible o negativo, la cuenta arranca en cero.
+func (c *controller) openFirstAccountBalance(data conversation.Data, acc *account.Account, netDelta decimal.Decimal) (bool, error) {
+	if acc == nil {
+		return false, nil
+	}
+	bal := stringOrEmpty(data[keyFirstAccountBalance])
+	if bal == "" {
+		return false, nil
+	}
+	amt, err := parseARAmount(bal)
+	if err != nil || amt.IsNegative() {
+		return false, nil
+	}
+	if err := c.insertOpeningMovement(acc, amt.Sub(netDelta)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // firstAccountNetDelta suma el efecto neto de los movimientos que van a caer en
-// la primera cuenta.
+// la primera cuenta de la moneda cur.
 //
 // Hace falta porque la pregunta es "¿cuánto saldo tenés AHORA?", y esa respuesta
 // ya incluye los movimientos que el usuario está cargando en este mismo mensaje.
 // La apertura tiene que compensarlos: apertura = saldo declarado − netDelta.
-func firstAccountNetDelta(rows []movementRow) decimal.Decimal {
+//
+// El filtro por moneda no es un detalle: sumar un gasto en pesos contra un saldo
+// declarado en dólares abre la cuenta con un número que no existe, y como el
+// balance es la suma de los movimientos, ese error no se corrige nunca solo.
+func firstAccountNetDelta(rows []movementRow, cur string) decimal.Decimal {
 	var netDelta decimal.Decimal
 	for _, row := range rows {
-		if row.AccountID != "" || movement.TypeFromString(row.Type) == movement.Transfer {
+		if row.AccountID != "" || row.Currency != cur || movement.TypeFromString(row.Type) == movement.Transfer {
 			continue
 		}
 		amt, err := parseARAmount(row.Amount)

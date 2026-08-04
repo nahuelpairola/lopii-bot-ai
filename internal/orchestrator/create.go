@@ -118,8 +118,6 @@ func (o *Orchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy
 	if len(result.Movements) == 0 {
 		return CreateResult{}, fmt.Errorf("orchestrator: create result had no movements")
 	}
-	for i := range result.Movements {
-		result.Movements[i].normalizeSubcategory()
-	}
+	result.Normalize()
 	return result, nil
 }
