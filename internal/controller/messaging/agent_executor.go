@@ -200,6 +200,11 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	if len(result.Movements) == 0 {
 		return "no venía ningún movimiento", nil
 	}
+	// El camino viejo normaliza dentro de ClassifyCreate; acá los argumentos se
+	// desarman a mano, así que hay que pedirlo. Sin esto el modelo devuelve
+	// "Vivienda | Luz" en el campo categoría, el par no matchea la taxonomía y
+	// el gap-fill le pregunta al usuario la categoría que ya había dicho.
+	result.Normalize()
 
 	seed := buildCreateSeed(result, e.taxonomy)
 	seed[conversation.UserIDKey] = e.userID
