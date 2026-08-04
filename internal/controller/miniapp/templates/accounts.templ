@@ -5,6 +5,10 @@ type AccountSnapshot struct {
 	// Balance already carries its currency symbol (FormatMoney), so the view
 	// never has to re-state which world these numbers live in.
 	Balance string
+	// IsDefault marks the account new movements land in when the user names
+	// none. Default is per currency and the view is already filtered to one,
+	// so at most one card wears the star.
+	IsDefault bool
 }
 
 type AccountsData struct {
@@ -25,7 +29,12 @@ templ Accounts(data AccountsData) {
 		<div class="grid">
 			for _, a := range data.Snapshots {
 				<article>
-					<p>{ a.Name }</p>
+					<p>
+						{ a.Name }
+						if a.IsDefault {
+							<span class="default-star" role="img" aria-label="Cuenta por defecto">★</span>
+						}
+					</p>
 					<p class="money">{ a.Balance }</p>
 				</article>
 			}
