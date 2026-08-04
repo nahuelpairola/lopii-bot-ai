@@ -72,7 +72,10 @@ func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret
 		retention: ret,
 		summaries: sum,
 		send: func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error {
-			p := &bot.SendMessageParams{ChatID: chatID, Text: text}
+			// ParseMode HTML: el resumen semanal usa <b> para que se pueda
+			// escanear. Todo lo que viene del usuario se escapa en
+			// summary.Builder — sin eso Telegram devuelve 400 y no llega nada.
+			p := &bot.SendMessageParams{ChatID: chatID, Text: text, ParseMode: models.ParseModeHTML}
 			if markup != nil {
 				p.ReplyMarkup = markup
 			}

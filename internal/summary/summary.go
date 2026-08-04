@@ -2,6 +2,7 @@ package summary
 
 import (
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -127,7 +128,7 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 			if i == topCategories {
 				break
 			}
-			fmt.Fprintf(&sb, " %s $%s\n", c.Label, c.Total.StringFixed(2))
+			fmt.Fprintf(&sb, " %s $%s\n", html.EscapeString(c.Label), c.Total.StringFixed(2))
 		}
 	}
 
@@ -136,7 +137,7 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 	} else if top != nil {
 		desc := "sin detalle"
 		if top.Merchant != nil && *top.Merchant != "" {
-			desc = *top.Merchant
+			desc = html.EscapeString(*top.Merchant)
 		}
 		fmt.Fprintf(&sb, "Lo más caro: $%s · %s\n", top.Amount.Abs().StringFixed(2), desc)
 	}
@@ -181,7 +182,7 @@ func (b *Builder) accountsBlock(userID uint64) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&sb, " %s $%s (%s)\n", a.Name, bal.StringFixed(2), a.Currency.String())
+		fmt.Fprintf(&sb, " %s $%s (%s)\n", html.EscapeString(a.Name), bal.StringFixed(2), a.Currency.String())
 	}
 	return sb.String(), nil
 }
