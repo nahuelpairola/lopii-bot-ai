@@ -16,6 +16,14 @@ const (
 	nudgeReminderOffer = "reminder_offer"
 	nudgeTransferTip   = "transfer_tip"
 
+	nudgeBalanceTip     = "query_balance_tip"
+	nudgeTopCategoryTip = "query_top_category_tip"
+	nudgeRecentTip      = "query_recent_tip"
+	nudgeEnoughTip      = "query_enough_tip"
+	nudgePaceTip        = "query_pace_tip"
+	nudgeCompareTip     = "query_compare_tip"
+	nudgeUsdHoldingsTip = "query_usd_holdings_tip"
+
 	// nudgeQueryPrefix marca el callback del botón de un tip. Se rutea en
 	// handleConversationInput ANTES del engine, así un flow abierto no se come
 	// el tap como si fuera una opción suya.
@@ -70,14 +78,6 @@ var nudges = []nudgeDef{
 		text: "💡 Tip: si te equivocaste, decime «el súper eran 600» y lo corrijo.",
 	},
 	{
-		key: nudgeQueryTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			n, _ := c.movements.CountForUser(userID)
-			return n >= queryTipMin
-		},
-		text: "💡 ¿Sabías? Preguntame «¿cuánto gasté esta semana?» y te lo saco al toque.",
-	},
-	{
 		key: nudgeReminderOffer,
 		when: func(c *controller, userID uint64, s *nudgeStats) bool {
 			if rem, _ := c.reminders.FindByUserID(userID); rem != nil {
@@ -92,6 +92,89 @@ var nudges = []nudgeDef{
 		key:  nudgeTransferTip,
 		when: func(c *controller, userID uint64, s *nudgeStats) bool { return c.hasMultipleAccountsNoTransfer(userID) },
 		text: "🔄 Tip: movés plata entre tus cuentas así: «pasé 50 mil del banco a MP».",
+	},
+
+	// Los tips de pregunta, ordenados por VALOR decreciente y no por umbral:
+	// gana el primero que matchea, así que el orden es la prioridad. El
+	// criterio de admisión no es "¿se puede contestar?" sino "¿la respuesta
+	// cambia algo?" — un número que el usuario ya podía adivinar no vale un
+	// mensaje, y un tip flojo entrena a ignorar el 💡.
+	{
+		key: nudgeBalanceTip,
+		when: func(c *controller, userID uint64, s *nudgeStats) bool {
+			return hasActivityFloor(s) &&
+				s.total >= balanceTipMovs &&
+				c.countAccounts(userID) >= balanceTipAccounts
+		},
+		text:     "💡 Llevo el saldo de cada cuenta al día, sin que hagas nada.",
+		question: "¿Cuánto tengo en cada cuenta?",
+	},
+	{
+		key: nudgeTopCategoryTip,
+		when: func(c *controller, userID uint64, s *nudgeStats) bool {
+			return hasActivityFloor(s) &&
+				s.movsInMonth(0) >= topCategoryTipMovs &&
+				c.distinctCategoriesThisMonth(userID) >= topCategoryTipCats
+		},
+		text:     "💡 ¿Sabías? Puedo decirte en qué se te va la plata.",
+		question: "¿En qué gasté más este mes?",
+	},
+	{
+		key: nudgeQueryTip,
+		when: func(c *controller, userID uint64, s *nudgeStats) bool {
+			return hasActivityFloor(s) && s.movsSince(activityFloorDays) >= queryTipMin
+		},
+		text:     "💡 ¿Sabías? No hace falta que saques la cuenta vos. Tocá y te digo:",
+		question: "¿Cuánto gasté esta semana?",
+	},
+	{
+		key: nudgeRecentTip,
+		when: func(c *controller, userID uint64, s *nudgeStats) bool {
+			return hasActivityFloor(s) && s.movsSince(activityFloorDays) >= recentTipMovs
+		},
+		text:     "💡 Che, ¿querés repasar lo último que cargaste?",
+		question: "Mostrame mis últimos gastos",
+	},
+	{
+		key: nudgeEnoughTip,
+		when: func(c *controller, userID uint64, s *nudgeStats) bool {
+			return hasActivityFloor(s) &&
+				dayOfMonth() >= enoughTipMinDay &&
+				c.hasEnoughDataForMonthVerdict(userID, s)
+		},
+		text:     "💡 Ya estamos cerca de fin de mes. ¿Sacamos la cuenta?",
+		question: "¿Me alcanzó lo que entró este mes?",
+	},
+	{
+		key: nudgePaceTip,
+		when: func(c *controller, userID uint64, s *nudgeStats) bool {
+			d := dayOfMonth()
+			return hasActivityFloor(s) &&
+				d >= paceTipMinDay && d <= paceTipMaxDay &&
+				s.movsInMonth(0) >= paceTipMovs &&
+				s.activeDaysSince(activityFloorDays) >= paceTipActiveDays
+		},
+		text:     "💡 Con lo que va del mes ya puedo estimarte cómo termina:",
+		question: "A este ritmo, ¿cuánto voy a gastar este mes?",
+	},
+	{
+		key: nudgeCompareTip,
+		when: func(c *controller, userID uint64, s *nudgeStats) bool {
+			return hasActivityFloor(s) &&
+				dayOfMonth() >= compareTipMinDay &&
+				s.movsInMonth(0) >= compareTipMonthMovs &&
+				s.movsInMonth(1) >= compareTipMonthMovs
+		},
+		text:     "💡 Ya tenés dos meses cargados. Se pueden comparar:",
+		question: "¿Gasté más que el mes pasado?",
+	},
+	{
+		key: nudgeUsdHoldingsTip,
+		when: func(c *controller, userID uint64, s *nudgeStats) bool {
+			return hasActivityFloor(s) && c.hasUsdHoldings(userID)
+		},
+		text:     "💡 Tus dólares van por separado de los pesos, siempre.",
+		question: "¿Cuántos dólares tengo?",
 	},
 }
 
