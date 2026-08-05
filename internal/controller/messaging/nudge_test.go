@@ -21,10 +21,6 @@ type stubNudgeRepo struct {
 	tapped   []string
 }
 
-func (r *stubNudgeRepo) WasSent(userID uint64, key string) (bool, error) {
-	return r.sent[key], nil
-}
-
 func (r *stubNudgeRepo) SentKeys(userID uint64) ([]string, error) {
 	var keys []string
 	for k, ok := range r.sent {

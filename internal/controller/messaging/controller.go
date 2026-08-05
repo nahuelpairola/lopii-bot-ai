@@ -121,7 +121,6 @@ type traceRepository interface {
 // nudgeRepository is the once-ever/cooldown storage for contextual nudges
 // (internal/nudge). Local interface — see nudge.go.
 type nudgeRepository interface {
-	WasSent(userID uint64, key string) (bool, error)
 	SentKeys(userID uint64) ([]string, error)
 	MarkSent(userID uint64, key string) error
 	MarkSentAgain(userID uint64, key string) error

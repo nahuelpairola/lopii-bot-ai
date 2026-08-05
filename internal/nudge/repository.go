@@ -28,16 +28,6 @@ type repository struct{ conn *database.Connection }
 
 func NewRepository(conn *database.Connection) *repository { return &repository{conn: conn} }
 
-// WasSent reports whether this nudge already fired for the user (once-ever).
-func (r *repository) WasSent(userID uint64, key string) (bool, error) {
-	var n UserNudge
-	err := r.conn.DB.Where("user_id = ? AND nudge_key = ?", userID, key).First(&n).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	}
-	return err == nil, err
-}
-
 // MarkSent records the nudge as sent. Idempotent (DoNothing on conflict).
 func (r *repository) MarkSent(userID uint64, key string) error {
 	return r.conn.DB.Clauses(clause.OnConflict{DoNothing: true}).
@@ -45,7 +35,7 @@ func (r *repository) MarkSent(userID uint64, key string) error {
 }
 
 // SentKeys returns every nudge key already sent to the user. One query
-// replaces the per-nudge WasSent calls: with a dozen nudges all sent, the old
+// replaces the per-nudge lookup: with a dozen nudges all sent, the old
 // shape ran a dozen queries per message to end up sending nothing.
 func (r *repository) SentKeys(userID uint64) ([]string, error) {
 	var keys []string
