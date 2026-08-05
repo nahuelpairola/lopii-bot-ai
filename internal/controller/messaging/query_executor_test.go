@@ -350,3 +350,7 @@ func TestExec_UnknownTool(t *testing.T) {
 		t.Fatal("expected an error for an unknown tool")
 	}
 }
+
+func (r *fakeQueryMovements) CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error) {
+	return nil, nil
+}

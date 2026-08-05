@@ -450,3 +450,7 @@ func TestRelativeDate_MovementDateIsCivilNotInstant(t *testing.T) {
 		}
 	}
 }
+
+func (r *fakeMovementRepoForResolve) CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error) {
+	return nil, nil
+}
