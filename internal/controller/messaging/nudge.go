@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -193,6 +194,42 @@ func (c *controller) hasMultipleAccountsNoTransfer(userID uint64) bool {
 	n, err := c.movements.CountBySubcategory(userID, uint64(sub.ID))
 	exists := n > 0
 	return err == nil && !exists
+}
+
+// handleNudgeQuery atiende el tap del botón de un tip. Devuelve true si el
+// callback era suyo (y ya lo respondió), false si no le corresponde.
+//
+// Corre ANTES del engine a propósito: si el usuario toca un botón viejo con un
+// flow abierto, el flow no se come el tap como si fuera una opción suya. La
+// consulta es read-only, así que el flow queda intacto esperando su input.
+//
+// Se saltea el router (ClassifyIntent): ya sabemos que es QUERY, y evitarlo
+// ahorra ~700 tokens por tap. Por eso tampoco escribe en intent_events: esa
+// tabla mide qué tan bien clasifica el router, y acá no hubo clasificación que
+// evaluar. El tap se mide en user_nudges.tapped_at.
+//
+// Si Groq está caído el tap se pierde con msgQueryFailed, y está bien: el
+// botón sigue tocable en el historial, así que el reintento es tocarlo de
+// nuevo. Encolarlo sería contestar veinte minutos tarde algo que ya no importa.
+func (c *controller) handleNudgeQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, data string) bool {
+	if !strings.HasPrefix(data, nudgeQueryPrefix) {
+		return false
+	}
+	key := strings.TrimPrefix(data, nudgeQueryPrefix)
+	question := nudgeQuestion(key)
+	if question == "" {
+		return false
+	}
+	if c.nudges != nil {
+		// Best-effort: perder la métrica nunca vale perder la respuesta.
+		if err := c.nudges.MarkTapped(userID, key); err != nil {
+			slog.ErrorContext(ctx, "nudge tap mark failed", "key", key, "err", err)
+		}
+	}
+	if _, err := c.handleQuery(ctx, b, chatID, userID, question); err != nil {
+		slog.ErrorContext(ctx, "nudge query failed", "key", key, "err", err)
+	}
+	return true
 }
 
 // maybeNudge dispara como mucho un nudge tras procesar un mensaje. Guard:

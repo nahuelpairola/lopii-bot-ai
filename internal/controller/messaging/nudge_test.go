@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/orchestrator"
 )
 
 // stubNudgeRepo mocks nudgeRepository with controllable SentKeys/LastSentAt.
@@ -164,6 +166,53 @@ func TestNudgeCallbackDataFitsTelegramLimit(t *testing.T) {
 		if got := len(nudgeQueryPrefix + n.key); got > 64 {
 			t.Errorf("callback_data for %q is %d bytes, over the 64-byte limit", n.key, got)
 		}
+	}
+}
+
+// stubQueryOrchestrator: solo AnswerQuery importa acá. El resto del
+// movementOrchestrator queda embebido en nil — si el código bajo test llamara
+// a cualquier otro método, el panic señala exactamente eso.
+type stubQueryOrchestrator struct {
+	movementOrchestrator
+	asked  string
+	answer string
+}
+
+func (o *stubQueryOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
+	o.asked = userText
+	return o.answer, nil
+}
+
+func TestHandleNudgeQuery_RunsTheQuestionAndSealsTheTap(t *testing.T) {
+	orch := &stubQueryOrchestrator{answer: "Gastaste $5.000."}
+	nudgeRepo := &stubNudgeRepo{}
+	c := &controller{orchestrator: orch, nudges: nudgeRepo, chatHistory: stubChatHistory{}}
+
+	handled := c.handleNudgeQuery(context.Background(), nil, 1, 1, nudgeQueryPrefix+nudgeQueryTip)
+
+	if !handled {
+		t.Fatal("expected the nudge callback to be handled")
+	}
+	if orch.asked != nudgeQuestion(nudgeQueryTip) {
+		t.Errorf("asked %q, want the tip's question %q", orch.asked, nudgeQuestion(nudgeQueryTip))
+	}
+	if len(nudgeRepo.tapped) != 1 || nudgeRepo.tapped[0] != nudgeQueryTip {
+		t.Errorf("expected the tap sealed for %q, got %+v", nudgeQueryTip, nudgeRepo.tapped)
+	}
+}
+
+func TestHandleNudgeQuery_IgnoresOtherCallbacks(t *testing.T) {
+	orch := &stubQueryOrchestrator{}
+	c := &controller{orchestrator: orch, nudges: &stubNudgeRepo{}, chatHistory: stubChatHistory{}}
+
+	if c.handleNudgeQuery(context.Background(), nil, 1, 1, "edit_proposal") {
+		t.Error("a non-nudge callback must not be handled here — the engine owns it")
+	}
+	if c.handleNudgeQuery(context.Background(), nil, 1, 1, nudgeQueryPrefix+"key_que_no_existe") {
+		t.Error("an unknown nudge key must not fire a query")
+	}
+	if orch.asked != "" {
+		t.Errorf("no query should have run, but asked %q", orch.asked)
 	}
 }
 

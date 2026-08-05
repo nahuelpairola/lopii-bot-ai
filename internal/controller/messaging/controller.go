@@ -247,6 +247,13 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		input := toConversationInput(update)
 		chatID := updateChatID(update)
 
+		// El tap del botón de un tip no pasa por el engine ni por el router.
+		// Va acá arriba para que un flow abierto no se coma el callback como si
+		// fuera una opción suya; la consulta es read-only y lo deja intacto.
+		if c.handleNudgeQuery(ctx, b, chatID, u.ID, input.CallbackData) {
+			return &uid, nil
+		}
+
 		result, found, err := c.engine.Handle(u.ID, input)
 		if err != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
