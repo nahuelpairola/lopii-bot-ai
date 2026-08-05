@@ -29,12 +29,18 @@ const (
 	// handleConversationInput ANTES del engine, así un flow abierto no se come
 	// el tap como si fuera una opción suya.
 	nudgeQueryPrefix = "nudge_q:"
+	// nudgeMenuData es el callback del botón "Preguntame" del tip recurrente.
+	nudgeMenuData = "nudge_menu"
+	nudgeMenuTip  = "query_menu_tip"
 
 	// Dos cooldowns. Los reactivos responden a algo que el usuario acaba de
 	// hacer y pueden salir a diario; los de pregunta son ocho, y a 20h serían
 	// ocho días seguidos de tips, que se lee como que el bot no te deja en paz.
 	nudgeCooldown         = 20 * time.Hour // ~1 por día
 	questionNudgeCooldown = 44 * time.Hour // ~1 cada dos días
+	// menuNudgeCooldown: el recurrente sale cada ~7 días, no cada dos. Es un
+	// recordatorio, no una lección.
+	menuNudgeCooldown = 7 * 24 * time.Hour
 
 	queryTipMin    = 5 // movimientos en los últimos 7 días
 	transferTipMin = 2 // cuentas
@@ -51,11 +57,17 @@ type nudgeDef struct {
 	// como label. El label ES la pregunta a propósito: el usuario aprende la
 	// frase y después la puede escribir solo.
 	question string
+	// recurring: solo el menú. Cambia el cooldown, cómo se marca
+	// (MarkSentAgain) y hace que el once-ever no lo frene.
+	recurring bool
 }
 
 // cooldown: los tips de pregunta salen más espaciados que los reactivos.
 func (n nudgeDef) cooldown() time.Duration {
-	if n.question != "" {
+	switch {
+	case n.recurring:
+		return menuNudgeCooldown
+	case n.question != "":
 		return questionNudgeCooldown
 	}
 	return nudgeCooldown
@@ -72,111 +84,148 @@ func nudgeQuestion(key string) string {
 	return ""
 }
 
-var nudges = []nudgeDef{
-	{
-		key:  nudgeCorrectTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool { return s.total >= 1 },
-		text: "💡 Tip: si te equivocaste, decime «el súper eran 600» y lo corrijo.",
-	},
-	{
-		key: nudgeReminderOffer,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			if rem, _ := c.reminders.FindByUserID(userID); rem != nil {
-				return false
-			}
-			u, err := c.users.FindByID(userID)
-			return err == nil && time.Since(u.CreatedAt) >= reminderDays*24*time.Hour
-		},
-		text: "⏰ ¿Querés que te recuerde cargar los gastos? Escribí «recordame cargar gastos».",
-	},
-	{
-		key:  nudgeTransferTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool { return c.hasMultipleAccountsNoTransfer(userID) },
-		text: "🔄 Tip: movés plata entre tus cuentas así: «pasé 50 mil del banco a MP».",
-	},
+// nudges se llena en init() y no en el literal de la var por una restricción
+// del compilador: el gate del menú llama a eligibleQuestions, que a su vez
+// recorre nudges. En runtime no hay ciclo (el closure corre mucho después del
+// arranque), pero el análisis de inicialización de Go lo sigue a través del
+// cuerpo de la función y lo rechaza igual. Moverlo a init() lo evita sin
+// partir la lista en dos lugares.
+var nudges []nudgeDef
 
-	// Los tips de pregunta, ordenados por VALOR decreciente y no por umbral:
-	// gana el primero que matchea, así que el orden es la prioridad. El
-	// criterio de admisión no es "¿se puede contestar?" sino "¿la respuesta
-	// cambia algo?" — un número que el usuario ya podía adivinar no vale un
-	// mensaje, y un tip flojo entrena a ignorar el 💡.
-	{
-		key: nudgeBalanceTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			return hasActivityFloor(s) &&
-				s.total >= balanceTipMovs &&
-				c.countAccounts(userID) >= balanceTipAccounts
+func init() {
+	nudges = []nudgeDef{
+		{
+			key:  nudgeCorrectTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool { return s.total >= 1 },
+			text: "💡 Tip: si te equivocaste, decime «el súper eran 600» y lo corrijo.",
 		},
-		text:     "💡 Llevo el saldo de cada cuenta al día, sin que hagas nada.",
-		question: "¿Cuánto tengo en cada cuenta?",
-	},
-	{
-		key: nudgeTopCategoryTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			return hasActivityFloor(s) &&
-				s.movsInMonth(0) >= topCategoryTipMovs &&
-				c.distinctCategoriesThisMonth(userID) >= topCategoryTipCats
+		{
+			key: nudgeReminderOffer,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				if rem, _ := c.reminders.FindByUserID(userID); rem != nil {
+					return false
+				}
+				u, err := c.users.FindByID(userID)
+				return err == nil && time.Since(u.CreatedAt) >= reminderDays*24*time.Hour
+			},
+			text: "⏰ ¿Querés que te recuerde cargar los gastos? Escribí «recordame cargar gastos».",
 		},
-		text:     "💡 ¿Sabías? Puedo decirte en qué se te va la plata.",
-		question: "¿En qué gasté más este mes?",
-	},
-	{
-		key: nudgeQueryTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			return hasActivityFloor(s) && s.movsSince(activityFloorDays) >= queryTipMin
+		{
+			key:  nudgeTransferTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool { return c.hasMultipleAccountsNoTransfer(userID) },
+			text: "🔄 Tip: movés plata entre tus cuentas así: «pasé 50 mil del banco a MP».",
 		},
-		text:     "💡 ¿Sabías? No hace falta que saques la cuenta vos. Tocá y te digo:",
-		question: "¿Cuánto gasté esta semana?",
-	},
-	{
-		key: nudgeRecentTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			return hasActivityFloor(s) && s.movsSince(activityFloorDays) >= recentTipMovs
+
+		// Los tips de pregunta, ordenados por VALOR decreciente y no por umbral:
+		// gana el primero que matchea, así que el orden es la prioridad. El
+		// criterio de admisión no es "¿se puede contestar?" sino "¿la respuesta
+		// cambia algo?" — un número que el usuario ya podía adivinar no vale un
+		// mensaje, y un tip flojo entrena a ignorar el 💡.
+		{
+			key: nudgeBalanceTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				return hasActivityFloor(s) &&
+					s.total >= balanceTipMovs &&
+					c.countAccounts(userID) >= balanceTipAccounts
+			},
+			text:     "💡 Llevo el saldo de cada cuenta al día, sin que hagas nada.",
+			question: "¿Cuánto tengo en cada cuenta?",
 		},
-		text:     "💡 Che, ¿querés repasar lo último que cargaste?",
-		question: "Mostrame mis últimos gastos",
-	},
-	{
-		key: nudgeEnoughTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			return hasActivityFloor(s) &&
-				dayOfMonth() >= enoughTipMinDay &&
-				c.hasEnoughDataForMonthVerdict(userID, s)
+		{
+			key: nudgeTopCategoryTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				return hasActivityFloor(s) &&
+					s.movsInMonth(0) >= topCategoryTipMovs &&
+					c.distinctCategoriesThisMonth(userID) >= topCategoryTipCats
+			},
+			text:     "💡 ¿Sabías? Puedo decirte en qué se te va la plata.",
+			question: "¿En qué gasté más este mes?",
 		},
-		text:     "💡 Ya estamos cerca de fin de mes. ¿Sacamos la cuenta?",
-		question: "¿Me alcanzó lo que entró este mes?",
-	},
-	{
-		key: nudgePaceTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			d := dayOfMonth()
-			return hasActivityFloor(s) &&
-				d >= paceTipMinDay && d <= paceTipMaxDay &&
-				s.movsInMonth(0) >= paceTipMovs &&
-				s.activeDaysSince(activityFloorDays) >= paceTipActiveDays
+		{
+			key: nudgeQueryTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				return hasActivityFloor(s) && s.movsSince(activityFloorDays) >= queryTipMin
+			},
+			text:     "💡 ¿Sabías? No hace falta que saques la cuenta vos. Tocá y te digo:",
+			question: "¿Cuánto gasté esta semana?",
 		},
-		text:     "💡 Con lo que va del mes ya puedo estimarte cómo termina:",
-		question: "A este ritmo, ¿cuánto voy a gastar este mes?",
-	},
-	{
-		key: nudgeCompareTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			return hasActivityFloor(s) &&
-				dayOfMonth() >= compareTipMinDay &&
-				s.movsInMonth(0) >= compareTipMonthMovs &&
-				s.movsInMonth(1) >= compareTipMonthMovs
+		{
+			key: nudgeRecentTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				return hasActivityFloor(s) && s.movsSince(activityFloorDays) >= recentTipMovs
+			},
+			text:     "💡 Che, ¿querés repasar lo último que cargaste?",
+			question: "Mostrame mis últimos gastos",
 		},
-		text:     "💡 Ya tenés dos meses cargados. Se pueden comparar:",
-		question: "¿Gasté más que el mes pasado?",
-	},
-	{
-		key: nudgeUsdHoldingsTip,
-		when: func(c *controller, userID uint64, s *nudgeStats) bool {
-			return hasActivityFloor(s) && c.hasUsdHoldings(userID)
+		{
+			key: nudgeEnoughTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				return hasActivityFloor(s) &&
+					dayOfMonth() >= enoughTipMinDay &&
+					c.hasEnoughDataForMonthVerdict(userID, s)
+			},
+			text:     "💡 Ya estamos cerca de fin de mes. ¿Sacamos la cuenta?",
+			question: "¿Me alcanzó lo que entró este mes?",
 		},
-		text:     "💡 Tus dólares van por separado de los pesos, siempre.",
-		question: "¿Cuántos dólares tengo?",
-	},
+		{
+			key: nudgePaceTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				d := dayOfMonth()
+				return hasActivityFloor(s) &&
+					d >= paceTipMinDay && d <= paceTipMaxDay &&
+					s.movsInMonth(0) >= paceTipMovs &&
+					s.activeDaysSince(activityFloorDays) >= paceTipActiveDays
+			},
+			text:     "💡 Con lo que va del mes ya puedo estimarte cómo termina:",
+			question: "A este ritmo, ¿cuánto voy a gastar este mes?",
+		},
+		{
+			key: nudgeCompareTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				return hasActivityFloor(s) &&
+					dayOfMonth() >= compareTipMinDay &&
+					s.movsInMonth(0) >= compareTipMonthMovs &&
+					s.movsInMonth(1) >= compareTipMonthMovs
+			},
+			text:     "💡 Ya tenés dos meses cargados. Se pueden comparar:",
+			question: "¿Gasté más que el mes pasado?",
+		},
+		{
+			key: nudgeUsdHoldingsTip,
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				return hasActivityFloor(s) && c.hasUsdHoldings(userID)
+			},
+			text:     "💡 Tus dólares van por separado de los pesos, siempre.",
+			question: "¿Cuántos dólares tengo?",
+		},
+
+		{
+			key: nudgeMenuTip,
+			// "Todo lo que hoy te puedo ofrecer, ya te lo ofrecí" — y NO "ya te
+			// mandé todos los tips". Hay gates que ciertos usuarios no cumplen
+			// nunca (una sola cuenta => nudgeBalanceTip jamás; recordatorio ya
+			// configurado => nudgeReminderOffer jamás), así que un contador de
+			// pendientes no llegaría a cero y el menú no saldría NUNCA para ellos,
+			// que son justo a los que se les acabaron los tips.
+			when: func(c *controller, userID uint64, s *nudgeStats) bool {
+				if !hasActivityFloor(s) {
+					return false
+				}
+				elig := c.eligibleQuestions(userID, s)
+				if len(elig) == 0 {
+					return false // todavía no hay nada que ofrecer
+				}
+				for _, n := range elig {
+					if !s.sent[n.key] {
+						return false // queda una frase por enseñar
+					}
+				}
+				return true
+			},
+			text:      "💬 ¿Te saco una cuenta?",
+			recurring: true,
+		},
+	}
 }
 
 // hasMultipleAccountsNoTransfer: 2+ cuentas y ningún movimiento con
@@ -212,6 +261,10 @@ func (c *controller) hasMultipleAccountsNoTransfer(userID uint64) bool {
 // botón sigue tocable en el historial, así que el reintento es tocarlo de
 // nuevo. Encolarlo sería contestar veinte minutos tarde algo que ya no importa.
 func (c *controller) handleNudgeQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, data string) bool {
+	if data == nudgeMenuData {
+		c.sendQuestionMenu(ctx, b, chatID, userID)
+		return true
+	}
 	if !strings.HasPrefix(data, nudgeQueryPrefix) {
 		return false
 	}
@@ -265,7 +318,7 @@ func (c *controller) maybeNudge(ctx context.Context, b *bot.Bot, chatID int64, u
 	stats.sent = sent
 
 	for _, n := range nudges {
-		if sent[n.key] {
+		if sent[n.key] && !n.recurring {
 			continue
 		}
 		if last != nil && time.Since(*last) < n.cooldown() {
@@ -274,16 +327,26 @@ func (c *controller) maybeNudge(ctx context.Context, b *bot.Bot, chatID int64, u
 		if !n.when(c, userID, stats) {
 			continue
 		}
-		if err := c.nudges.MarkSent(userID, n.key); err != nil {
+		mark := c.nudges.MarkSent
+		if n.recurring {
+			mark = c.nudges.MarkSentAgain
+		}
+		if err := mark(userID, n.key); err != nil {
 			slog.ErrorContext(ctx, "nudge mark failed", "key", n.key, "err", err)
 			return
 		}
-		if n.question != "" {
+		switch {
+		case n.recurring:
+			c.sendPrompt(ctx, b, chatID, conversation.Prompt{
+				Text:    n.text,
+				Buttons: []conversation.Button{{Label: msgMenuButton, Data: nudgeMenuData}},
+			})
+		case n.question != "":
 			c.sendPrompt(ctx, b, chatID, conversation.Prompt{
 				Text:    n.text,
 				Buttons: []conversation.Button{{Label: n.question, Data: nudgeQueryPrefix + n.key}},
 			})
-		} else {
+		default:
 			c.sendText(ctx, b, chatID, n.text)
 		}
 		return
