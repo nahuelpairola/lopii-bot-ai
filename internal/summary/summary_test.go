@@ -197,3 +197,52 @@ func TestBuild_BoldsTheValueThatAnswersEachLine(t *testing.T) {
 		}
 	}
 }
+
+// Un ajuste de saldo (revaluación de una cuenta con CEDEARs, por ejemplo) no es
+// plata que entró: tiene su propio renglón y NO toca Entró/Salió/Neto.
+func TestBuild_BalanceVariationIsNotIncome(t *testing.T) {
+	fm := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|": sums(row("", "1000")),
+			"ARS|income|":  sums(row("", "1500")),
+			// Type nil + group by type: la consulta de variación (OnlyReserved).
+			"ARS||type": sums(row("income", "84200")),
+		},
+		counts: []movement.DayCount{{Date: to, Count: 3}},
+	}
+	text, err := NewBuilder(fm, fakeAccounts{}).Build(1, from, to, prevFrom, prevTo)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !strings.Contains(text, "Variación de saldos") {
+		t.Fatalf("falta el renglón de variación; got: %q", text)
+	}
+	if !strings.Contains(text, "+$84200.00") {
+		t.Fatalf("la variación debe ir con signo; got: %q", text)
+	}
+	// Lo que importa: el neto sigue siendo 1500-1000, sin los 84200 encima.
+	if !strings.Contains(text, "500.00") {
+		t.Fatalf("el neto no debe incluir la variación; got: %q", text)
+	}
+	if strings.Contains(text, "85700") {
+		t.Fatalf("la variación se sumó a los ingresos; got: %q", text)
+	}
+}
+
+// Una semana sin ajustes no gasta un renglón en decir que no pasó nada.
+func TestBuild_NoVariationLineWhenZero(t *testing.T) {
+	fm := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|": sums(row("", "1000")),
+			"ARS|income|":  sums(row("", "1500")),
+		},
+		counts: []movement.DayCount{{Date: to, Count: 3}},
+	}
+	text, err := NewBuilder(fm, fakeAccounts{}).Build(1, from, to, prevFrom, prevTo)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if strings.Contains(text, "Variación de saldos") {
+		t.Fatalf("sin ajustes no debe aparecer el renglón; got: %q", text)
+	}
+}
