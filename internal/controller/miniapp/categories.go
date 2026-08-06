@@ -10,7 +10,6 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/subcategory"
 )
 
 // categoryParam carries the drilled-into category. It rides as a query param,
@@ -62,24 +61,23 @@ func (c *controller) buildCategoriesData(userID uint64, p templates.Period, grou
 		return templates.CategoriesData{}, err
 	}
 
-	filtered := rows[:0]
+	// No reserved-category filter here: movement.SumForUser excludes them for
+	// every caller now. The old post-filter also only worked on the ranking —
+	// it matched r.Label against category names, which in the drill are
+	// subcategory names, so it never caught anything there.
 	total := decimal.Zero
 	for _, r := range rows {
-		if subcategory.IsReserved(r.Label) {
-			continue
-		}
-		filtered = append(filtered, r)
 		total = total.Add(r.Total)
 	}
 
 	out := templates.CategoriesData{
 		Period: p,
-		Empty:  len(filtered) == 0,
+		Empty:  len(rows) == 0,
 		Total:  templates.FormatMoney(total, p.Currency),
 	}
-	labels := make([]string, len(filtered))
-	values := make([]float64, len(filtered))
-	for i, r := range filtered {
+	labels := make([]string, len(rows))
+	values := make([]float64, len(rows))
+	for i, r := range rows {
 		row := templates.CategoryRow{
 			Category: r.Label,
 			Total:    templates.FormatMoney(r.Total, p.Currency),

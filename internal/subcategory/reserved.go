@@ -1,6 +1,9 @@
 package subcategory
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // CategorySystem is the internal-plumbing category. Exported because the
 // taxonomy lives here but `messaging` is what resolves rows under it (opening
@@ -20,6 +23,15 @@ const SubOpeningBalance = "Saldo inicial"
 // rows, the classification fallback) — never user-facing picker options,
 // never proposable by the LLM.
 var reservedCategories = []string{CategorySystem, "PENDING_REVIEW"}
+
+// ReservedCategories returns the internal-plumbing category names, for the SQL
+// filters that need them as a list rather than a per-row predicate (see
+// movement.MovementQuery.apply). Returns a copy: the backing slice is
+// process-wide, and a caller that appended to it would change what every other
+// query treats as reserved.
+func ReservedCategories() []string {
+	return slices.Clone(reservedCategories)
+}
 
 // IsReserved reports whether name is an internal category, ignoring case
 // and surrounding whitespace.

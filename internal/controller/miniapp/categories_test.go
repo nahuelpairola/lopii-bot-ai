@@ -35,14 +35,32 @@ func TestHandleCategories_RendersIcons(t *testing.T) {
 	}
 }
 
-func TestHandleCategories_ExcludesReservedCategories(t *testing.T) {
+// recordingMovements captures the queries a handler sends. The reserved-category
+// filter used to be a post-filter right here in the view; it lives in
+// movement.SumForUser now, so what this layer still owns is ASKING correctly.
+type recordingMovements struct {
+	stubMovements
+	queries *[]movement.MovementQuery
+}
+
+func (s recordingMovements) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
+	*s.queries = append(*s.queries, q)
+	return s.stubMovements.SumForUser(q, groupBy)
+}
+
+// Que las reservadas no se rindan como gasto es ahora una garantía del SQL
+// (ver movement/repository_reserved_integration_test.go). Lo que queda acá es
+// la mitad que un mock sí puede probar: la vista pide con el default y no
+// invierte el filtro, que la dejaría mostrando SOLO plomería.
+func TestHandleCategories_AsksWithoutReservedCategories(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	movements := stubMovements{rows: map[string][]movement.CategorySum{
-		"category": {
-			{Label: "Alimentación", Total: decimal.NewFromInt(5000)},
-			{Label: "Sistema", Total: decimal.NewFromInt(999999)},
-		},
-	}}
+	var queries []movement.MovementQuery
+	movements := recordingMovements{
+		stubMovements: stubMovements{rows: map[string][]movement.CategorySum{
+			"category": {{Label: "Alimentación", Total: decimal.NewFromInt(5000)}},
+		}},
+		queries: &queries,
+	}
 	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
 	router := gin.New()
 	c.RegisterRoutes(router)
@@ -53,8 +71,13 @@ func TestHandleCategories_ExcludesReservedCategories(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if bodyContains(w.Body.String(), "Sistema") {
-		t.Fatal("reserved category 'Sistema' must be excluded from the Categorías view")
+	if len(queries) == 0 {
+		t.Fatal("la vista no consultó movimientos")
+	}
+	for _, q := range queries {
+		if q.OnlyReserved {
+			t.Fatal("Categorías no debe pedir las reservadas: son plomería, no gasto del usuario")
+		}
 	}
 	if !bodyContains(w.Body.String(), "Alimentaci") {
 		t.Fatal("expected the real category to render")
