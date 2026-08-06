@@ -455,6 +455,11 @@ func msgAskAccountNewTotal(name string) string {
 	return fmt.Sprintf("💰 Decime cuánto tenés en total hoy en %s.\nPoné el número que ves en tu banco o app.\nYo calculo la diferencia con lo registrado y la ajusto.\n\nEj: 52000", name)
 }
 
+// El renglón del medio no es decoración: el ajuste se registra como movimiento,
+// y sin decirlo el usuario ve aparecer un "ingreso" que nunca cobró. Pasó de
+// verdad — alguien ajustó una cuenta con CEDEARs y 24 minutos después pidió
+// borrar el ajuste. Se dice ANTES de confirmar, que es cuando todavía es
+// información y no una sorpresa.
 func msgConfirmAccountAdjust(name, cur string, current, newTotal decimal.Decimal) string {
 	delta := newTotal.Sub(current)
 	sign := "+"
@@ -462,7 +467,7 @@ func msgConfirmAccountAdjust(name, cur string, current, newTotal decimal.Decimal
 		sign = "-"
 	}
 	c := currency.Currency(cur)
-	return fmt.Sprintf("%s: %s → %s (ajuste %s%s)\n¿Confirmás?",
+	return fmt.Sprintf("%s: %s → %s (ajuste %s%s)\n\nCorrige el saldo, no cuenta como gasto ni ingreso.\n¿Confirmás?",
 		name, currency.FormatMoney(current, c), currency.FormatMoney(newTotal, c), sign, currency.FormatMoney(delta.Abs(), c))
 }
 

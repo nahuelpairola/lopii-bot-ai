@@ -7,6 +7,7 @@ import (
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/controller/miniapp/templates"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 )
 
@@ -46,9 +47,24 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 		return
 	}
 
+	// Lo que los saldos hicieron sin una transacción real detrás: ajustes de
+	// saldo y rendimiento de inversión. Va aparte de Gastos/Ingresos a
+	// propósito — una revaluación de CEDEARs entra hoy y sale mañana, y
+	// contarla como plata ganada o gastada rompe el promedio diario. Type nil
+	// descarta los transfer, y con eso caen solos los saldos iniciales y las
+	// patas de transferencia, que son plomería que nadie quiere ver.
+	variationQ := base
+	variationQ.OnlyReserved = true
+	variationRows, err := c.movements.SumForUser(variationQ, movement.GroupByType)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+
 	expenses := sumTotal(expenseRows)
 	incomes := sumTotal(incomeRows)
 	neto := incomes.Sub(expenses)
+	variation := signedVariation(variationRows)
 
 	status := templates.NetoGood
 	if neto.IsNegative() {
@@ -71,8 +87,15 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 		Ingresos:   templates.FormatMoney(incomes, p.Currency),
 		Neto:       templates.FormatMoney(neto, p.Currency),
 		NetoStatus: status,
-		Empty:      expenses.IsZero() && incomes.IsZero(),
+		// Un período cuyo único evento fue un ajuste no está vacío: el saldo se
+		// movió. Sin la variación acá, la vista se contradecía sola —
+		// mostraba "+$84.200" y justo abajo "Sin movimientos en este período".
+		Empty:      expenses.IsZero() && incomes.IsZero() && variation.IsZero(),
 		TrendChart: trend,
+		// La fila solo existe si hubo variación: en un mes sin ajustes no
+		// tiene por qué ocupar lugar ni pedir atención.
+		HasVariacion: !variation.IsZero(),
+		Variacion:    signedMoney(variation, p.Currency),
 	}
 
 	ctx.Status(http.StatusOK)
@@ -84,6 +107,31 @@ func sumTotal(rows []movement.CategorySum) decimal.Decimal {
 		return decimal.Zero
 	}
 	return rows[0].Total
+}
+
+// signedVariation folds the reserved rows, grouped by type, into one signed
+// figure. SumForUser returns SUM(ABS(amount)) — the sign is a storage detail
+// that never surfaces — so direction has to come back from the type label:
+// income is money that appeared in an account, expense money that left it.
+func signedVariation(rows []movement.CategorySum) decimal.Decimal {
+	v := decimal.Zero
+	for _, r := range rows {
+		if r.Label == constants.Income {
+			v = v.Add(r.Total)
+			continue
+		}
+		v = v.Sub(r.Total)
+	}
+	return v
+}
+
+// signedMoney renders a delta rather than a balance, so a gain carries its "+"
+// explicitly. FormatMoney already writes the "-" for a loss.
+func signedMoney(d decimal.Decimal, cur currency.Currency) string {
+	if d.IsPositive() {
+		return "+" + templates.FormatMoney(d, cur)
+	}
+	return templates.FormatMoney(d, cur)
 }
 
 // buildSingleTrend is the one-month shape: daily expense bars only. Income in

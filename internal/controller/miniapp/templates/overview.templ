@@ -23,6 +23,14 @@ type OverviewData struct {
 	NetoStatus string // "good" | "critical"
 	Empty      bool
 	TrendChart TrendChartData
+	// Variacion is what the balances did with no real transaction behind it
+	// (balance adjustments, investment yield), signed. It is deliberately NOT
+	// one of the three KPIs: it is not money earned or spent, and blending it
+	// into Ingresos is what made a CEDEAR revaluation read as salary.
+	// HasVariacion gates the whole row — a period without adjustments should
+	// not spend screen space saying "nothing happened".
+	HasVariacion bool
+	Variacion    string
 }
 
 // The <h2> the view used to open with is gone: the tab already says where you
@@ -49,6 +57,13 @@ templ Overview(data OverviewData) {
 			>{ data.Neto }</p>
 		</article>
 	</div>
+	if data.HasVariacion {
+		<p class="variacion">
+			<span>📈 Variación de saldos</span>
+			<span class="money">{ data.Variacion }</span>
+			<small>Ajustes y rendimiento — no cuenta como gasto ni ingreso</small>
+		</p>
+	}
 	if data.Empty {
 		@EmptyState("Sin movimientos en este período.")
 	} else {

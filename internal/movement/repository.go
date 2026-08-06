@@ -324,6 +324,17 @@ type MovementQuery struct {
 	Subcategory *string
 	AccountID   *uint64
 	Merchant    *string
+	// OnlyReserved flips the reserved-category filter. The zero value — every
+	// existing caller — EXCLUDES internal plumbing (opening balances, balance
+	// adjustments, investment yield), because those are corrections to the
+	// model, not money the user earned or spent: counting them as income or
+	// expense double-counts a cause the app never recorded. Set it to true to
+	// get ONLY those rows, which is how the balance-variation figure is built.
+	//
+	// This lives here, and not as a post-filter per view, because opt-in
+	// filtering is what let `overview` and `summary` silently report balance
+	// adjustments as real spending while `categories` and `evolution` hid them.
+	OnlyReserved bool
 }
 
 // CategorySum is one grouped aggregate row. Label is the group key (category
@@ -357,6 +368,14 @@ func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 	}
 	if q.Merchant != nil {
 		db = db.Where("movements.merchant ILIKE ?", "%"+*q.Merchant+"%")
+	}
+	// Reserved categories are excluded by default and returned alone when
+	// asked for — see MovementQuery.OnlyReserved. Both branches need the
+	// subcategories join, which every apply() caller already does.
+	if q.OnlyReserved {
+		db = db.Where("s.category IN ?", subcategory.ReservedCategories())
+	} else {
+		db = db.Where("s.category NOT IN ?", subcategory.ReservedCategories())
 	}
 	return db
 }

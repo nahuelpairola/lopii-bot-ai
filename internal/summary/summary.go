@@ -95,28 +95,53 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 	if err != nil {
 		return "", err
 	}
-	if spent.IsZero() && earned.IsZero() {
+	variation, err := b.variation(userID, cur, from, to)
+	if err != nil {
+		return "", err
+	}
+	// Una semana en la que lo único que pasó fue un ajuste de saldo igual tiene
+	// algo que contar: el saldo se movió, aunque no haya habido ni gasto ni
+	// ingreso.
+	if spent.IsZero() && earned.IsZero() && variation.IsZero() {
 		return "", nil
 	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "\n%s <b>%s</b>\n", curIcon(cur), cur.String())
-	fmt.Fprintf(&sb, "Entró $%s · Salió $%s · Neto <b>$%s</b>\n",
-		earned.StringFixed(2), spent.StringFixed(2), earned.Sub(spent).StringFixed(2))
 
-	daily := spent.Div(decimal.NewFromInt(7))
-	line := fmt.Sprintf("Prom. diario $%s", daily.StringFixed(2))
-	if prev, err := b.total(movement.MovementQuery{UserID: userID, From: prevFrom, To: prevTo, Currency: cur, Type: &expense}); err != nil {
-		return "", err
-	} else if !prev.IsZero() {
-		pct := spent.Sub(prev).Div(prev).Mul(decimal.NewFromInt(100))
-		arrow := "↑"
-		if pct.IsNegative() {
-			arrow = "↓"
-		}
-		line += fmt.Sprintf(" · vs semana previa <b>%s%s%%</b>", arrow, pct.Abs().StringFixed(0))
+	// Una semana cuyo único evento fue un ajuste llega hasta acá (el ajuste ES
+	// un movimiento, así que no la agarra el nudge de semana vacía). Recitarle
+	// "Entró $0 · Salió $0 · Neto $0 · Prom. diario $0" antes de contar lo
+	// único que pasó son cuatro números en cero pidiendo atención.
+	hasCashflow := !spent.IsZero() || !earned.IsZero()
+	if hasCashflow {
+		fmt.Fprintf(&sb, "Entró $%s · Salió $%s · Neto <b>$%s</b>\n",
+			earned.StringFixed(2), spent.StringFixed(2), earned.Sub(spent).StringFixed(2))
 	}
-	sb.WriteString(line + "\n")
+	if !variation.IsZero() {
+		sign := "+"
+		if variation.IsNegative() {
+			sign = "-"
+		}
+		fmt.Fprintf(&sb, "Variación de saldos <b>%s$%s</b> · ajustes y rendimiento, no cuenta como gasto ni ingreso\n",
+			sign, variation.Abs().StringFixed(2))
+	}
+
+	if hasCashflow {
+		daily := spent.Div(decimal.NewFromInt(7))
+		line := fmt.Sprintf("Prom. diario $%s", daily.StringFixed(2))
+		if prev, err := b.total(movement.MovementQuery{UserID: userID, From: prevFrom, To: prevTo, Currency: cur, Type: &expense}); err != nil {
+			return "", err
+		} else if !prev.IsZero() {
+			pct := spent.Sub(prev).Div(prev).Mul(decimal.NewFromInt(100))
+			arrow := "↑"
+			if pct.IsNegative() {
+				arrow = "↓"
+			}
+			line += fmt.Sprintf(" · vs semana previa <b>%s%s%%</b>", arrow, pct.Abs().StringFixed(0))
+		}
+		sb.WriteString(line + "\n")
+	}
 
 	cats, err := b.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: to, Currency: cur, Type: &expense}, movement.GroupByCategory)
 	if err != nil {
@@ -143,6 +168,31 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 	}
 
 	return sb.String(), nil
+}
+
+// variation is what the balances did with no real transaction behind it —
+// balance adjustments and investment yield — as one signed figure. Kept out of
+// Entró/Salió/Neto on purpose: a CEDEAR revaluation is not money earned, and
+// counting it as income makes the weekly comparison lie. SumForUser returns
+// SUM(ABS(amount)), so the direction comes back from the type label; leaving
+// Type nil drops the transfers, and with them opening balances and transfer
+// legs.
+func (b *Builder) variation(userID uint64, cur currency.Currency, from, to time.Time) (decimal.Decimal, error) {
+	rows, err := b.movements.SumForUser(movement.MovementQuery{
+		UserID: userID, From: from, To: to, Currency: cur, OnlyReserved: true,
+	}, movement.GroupByType)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	v := decimal.Zero
+	for _, r := range rows {
+		if r.Label == constants.Income {
+			v = v.Add(r.Total)
+			continue
+		}
+		v = v.Sub(r.Total)
+	}
+	return v, nil
 }
 
 // total runs SumForUser with no grouping and returns the single total (0 if none).

@@ -23,8 +23,10 @@ No type, no naming rule and no test catches this. Adding a view means adding it 
 - `categoryParam` is a **query param, not a path segment**, because category names contain
   slashes ("Deudas / préstamos"). A "RESTful cleanup" to `/categories/:category` silently
   breaks every category with one.
-- Reserved categories (`subcategory.IsReserved`) are filtered **after** the query, per view —
-  `movement.SumForUser` knows nothing about them. Already duplicated in `categories.go` and
-  `evolution.go`; a third grouped view that forgets it renders "Sistema" as real spending.
+- Reserved categories are excluded **inside `movement.SumForUser`**, not per view. They used to
+  be a post-filter each view had to remember, which is exactly how `overview` came to report
+  balance adjustments as real spending while `categories` and `evolution` hid them. A new view
+  inherits the exclusion for free; set `MovementQuery.OnlyReserved` to get *only* those rows,
+  which is what the overview's "Variación de saldos" line does.
 
 Chart math and period arithmetic are self-explanatory and tested — nothing about them here.

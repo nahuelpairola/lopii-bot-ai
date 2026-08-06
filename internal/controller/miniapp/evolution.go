@@ -12,7 +12,6 @@ import (
 	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/subcategory"
 )
 
 // expandParam names the category whose subcategories show as sub-rows. One at
@@ -98,14 +97,11 @@ func (c *controller) handleEvolution(ctx *gin.Context) {
 	templates.Evolution(data).Render(ctx.Request.Context(), ctx.Writer)
 }
 
-// collectMonth folds one month's grouped rows into the pivot, skipping
-// reserved categories and allocating a full-width row the first time a label
-// shows up.
+// collectMonth folds one month's grouped rows into the pivot, allocating a
+// full-width row the first time a label shows up. Reserved categories are
+// already gone — movement.SumForUser excludes them for every caller.
 func collectMonth(rows []movement.CategorySum, month, months int, into map[string][]decimal.Decimal, order *[]string) {
 	for _, r := range rows {
-		if subcategory.IsReserved(r.Label) {
-			continue
-		}
 		if into[r.Label] == nil {
 			cells := make([]decimal.Decimal, months)
 			for i := range cells {

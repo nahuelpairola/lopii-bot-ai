@@ -40,6 +40,36 @@
 .neto-good { color: #0ca30c; }
 .neto-critical { color: #d03b3b; }
 
+/* La variación de saldos NO es un cuarto KPI, y por eso vive fuera del .grid:
+   es el contexto de por qué un saldo se movió sin que el usuario gastara ni
+   cobrara. Metida en una card al lado de Neto competiría con él y volvería a
+   leerse como plata ganada — justo el malentendido que esta fila existe para
+   deshacer. Su .money queda en tamaño de cuerpo a propósito: la regla grande
+   está scopeada a .grid article .money y acá no aplica.
+   Sin color de estado (nada de neto-good/critical): una variación positiva no
+   es "bien" como lo es un neto positivo — puede ser tanto un CEDEAR que subió
+   como una carga que faltaba. Teñirla de verde afirmaría algo que el sistema
+   no sabe. */
+.variacion {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.5rem;
+  align-items: baseline;
+  margin: 0 0 var(--pico-spacing);
+  padding: 0.6rem 0.75rem;
+  border-left: 3px solid var(--pico-muted-border-color);
+  background: var(--pico-card-sectioning-background-color);
+  border-radius: 0.25rem;
+}
+
+.variacion .money { font-weight: 600; }
+
+.variacion small {
+  grid-column: 1 / -1;
+  color: var(--pico-muted-color);
+  font-size: 0.75rem;
+}
+
 /* tap-highlight: intentional, not the mobile-Chrome default flash */
 a, button, .tab-link {
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0.05);

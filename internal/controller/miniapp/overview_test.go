@@ -148,3 +148,93 @@ func TestHandleOverview_HTMXWithoutInitData_401(t *testing.T) {
 		t.Fatalf("expected 401 for htmx request without initData, got %d", w.Code)
 	}
 }
+
+// El caso que motivó todo esto: ajustar el saldo de una cuenta de CEDEARs
+// porque el valor en pesos fluctuó. Eso NO es un ingreso — mañana el CEDEAR
+// baja y sale. Tiene que verse, pero en su propia línea y fuera del neto.
+func TestHandleOverview_ShowsBalanceVariationSeparately(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovements{rows: map[string][]movement.CategorySum{
+		"":     {{Label: "", Total: decimal.NewFromInt(1000)}},
+		"day":  {{Label: "2026-08-05", Total: decimal.NewFromInt(1000)}},
+		"type": {{Label: "income", Total: decimal.NewFromInt(84200)}},
+	}}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/overview"))
+
+	body := w.Body.String()
+	if !bodyContains(body, "Variaci") {
+		t.Fatal("un período con ajustes debe mostrar la fila de variación de saldos")
+	}
+	// Con signo explícito: es un delta, no un saldo.
+	if !bodyContains(body, "+$84.200") {
+		t.Fatalf("la variación debe rendirse con signo; body=%s", body)
+	}
+}
+
+// Un ajuste negativo (el CEDEAR bajó) tampoco es un gasto: mismo lugar, otro signo.
+func TestHandleOverview_NegativeVariationIsNotAnExpense(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovements{rows: map[string][]movement.CategorySum{
+		"":     {{Label: "", Total: decimal.NewFromInt(1000)}},
+		"day":  {{Label: "2026-08-05", Total: decimal.NewFromInt(1000)}},
+		"type": {{Label: "expense", Total: decimal.NewFromInt(5000)}},
+	}}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/overview"))
+
+	if body := w.Body.String(); !bodyContains(body, "-$5.000") {
+		t.Fatalf("un ajuste negativo debe rendirse como variación negativa; body=%s", body)
+	}
+}
+
+// Sin ajustes no hay fila: un mes normal no gasta lugar diciendo "no pasó nada".
+func TestHandleOverview_NoVariationRowWhenNoAdjustments(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovements{rows: map[string][]movement.CategorySum{
+		"":    {{Label: "", Total: decimal.NewFromInt(1000)}},
+		"day": {{Label: "2026-08-05", Total: decimal.NewFromInt(1000)}},
+	}}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/overview"))
+
+	if bodyContains(w.Body.String(), "Variaci") {
+		t.Fatal("sin ajustes en el período, la fila de variación no debe aparecer")
+	}
+}
+
+// Un período cuyo único evento fue un ajuste NO está vacío: el saldo se movió.
+// Sin esto la vista se contradecía — mostraba la variación y abajo "Sin
+// movimientos en este período".
+func TestHandleOverview_VariationAloneIsNotAnEmptyPeriod(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovements{rows: map[string][]movement.CategorySum{
+		"type": {{Label: "income", Total: decimal.NewFromInt(84200)}},
+	}}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/overview"))
+
+	body := w.Body.String()
+	if !bodyContains(body, "Variaci") {
+		t.Fatal("la variación debe mostrarse")
+	}
+	if bodyContains(body, "Sin movimientos") {
+		t.Fatal("no puede decir 'sin movimientos' mientras muestra una variación de saldos")
+	}
+}
