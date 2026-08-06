@@ -1,7 +1,7 @@
 # Dashboard de Grafana — admin
 
 `admin-dashboard.json` es el dashboard de estado de la app. **Schema V2**
-(`elements` + `layout`), 18 paneles: 9 visibles y 3 filas colapsadas de
+(`elements` + `layout`), 19 paneles: 9 visibles y 3 filas colapsadas de
 drill-down.
 
 > **Por qué V2 y no el schema clásico.** La instancia corre Grafana 13.2, que
@@ -37,8 +37,8 @@ recupera el request entero.
 **Fila 3 — ¿cómo viene?** Actividad (conteos) y latencia (ms) en paneles
 separados, porque juntarlos exigiría un segundo eje Y.
 
-**Filas colapsadas.** Producto (embudo intent × outcome), LLM y tokens,
-Higiene.
+**Filas colapsadas.** Producto (embudo intent × outcome, y la tasa de tap de
+los tips), LLM y tokens, Higiene.
 
 ## Liveness NO está acá
 

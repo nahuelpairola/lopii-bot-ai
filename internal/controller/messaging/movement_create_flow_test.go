@@ -162,6 +162,8 @@ type fakeMovementRepoFull struct {
 	reassignSubCalls   int
 	reassignSubErr     error
 	topMerchants       []string
+	dayCounts          []movement.DayCount
+	sumRows            func(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
 }
 
 func (r *fakeMovementRepoFull) InsertBatch(ms []movement.Movement) error {
@@ -200,7 +202,13 @@ func (r *fakeMovementRepoFull) InsertAccountsWithOpenings(items []movement.Accou
 	return nil
 }
 func (r *fakeMovementRepoFull) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
+	if r.sumRows != nil {
+		return r.sumRows(q, groupBy)
+	}
 	return nil, nil
+}
+func (r *fakeMovementRepoFull) CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error) {
+	return r.dayCounts, nil
 }
 func (r *fakeMovementRepoFull) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
 	return nil, nil
@@ -845,11 +853,17 @@ func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 // recordingTransport captures the "text" field of every Telegram sendMessage
 // call, in order — lets a test assert how many messages went out and what
 // each one said, without a live bot. go-telegram/bot sends multipart/form-data.
-type recordingTransport struct{ texts []string }
+// markups holds the raw reply_markup JSON of the same call (empty when the
+// message carried no keyboard), so a test can assert a button was attached.
+type recordingTransport struct {
+	texts   []string
+	markups []string
+}
 
 func (rt *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err := req.ParseMultipartForm(1 << 20); err == nil {
 		rt.texts = append(rt.texts, req.FormValue("text"))
+		rt.markups = append(rt.markups, req.FormValue("reply_markup"))
 	}
 	return &http.Response{
 		StatusCode: 200,

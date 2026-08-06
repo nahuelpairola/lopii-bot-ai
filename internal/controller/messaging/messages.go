@@ -16,6 +16,11 @@ import (
 
 // Mensajes estáticos, sin variables.
 const (
+	// Menú de preguntas (tip recurrente).
+	msgMenuButton = "Preguntame"
+	msgMenuHeader = "¿Qué querés saber?"
+	msgMenuNoData = "Todavía no tengo suficiente cargado para sacar cuentas. Seguí anotando y en unos días te muestro."
+
 	msgAlreadyHasAccount = "Ya tenés una cuenta activa. Mandame un gasto para registrarlo."
 	msgPrivateBot        = "Este bot es privado. Si tenés una invitación, abrí el link que te compartieron."
 	msgInvalidInvitation = "Esa invitación no es válida."

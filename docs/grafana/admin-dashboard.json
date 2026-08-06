@@ -1982,6 +1982,89 @@
           "version": "13.2.0-29854286369"
         }
       }
+    },
+    "panel-104": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "${DS_POSTGRES}"
+                    },
+                    "group": "grafana-postgresql-datasource",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "editorMode": "code",
+                      "format": "table",
+                      "rawQuery": true,
+                      "rawSql": "SELECT nudge_key AS \"tip\", count(*) AS \"mandados\", count(tapped_at) AS \"tocados\", round(100.0 * count(tapped_at) / count(*), 1) AS \"% tap\" FROM user_nudges GROUP BY nudge_key ORDER BY 4 DESC"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Que tip engancha. Sin filtro de tiempo a proposito: es una fila por (usuario, tip) y de bajo volumen, con el rango por defecto la tabla saldria vacia. tocados cuenta usuarios distintos, no taps: tapped_at se sella una sola vez. Un tip que NO aparece aca es un gate que nunca abrio, tambien es informacion. Salvedad del recurrente (query_menu_tip): se manda muchas veces sobre la misma fila, asi que sus mandados son usuarios que lo recibieron alguna vez, no envios.",
+        "id": 104,
+        "links": [],
+        "title": "Tips: mandados vs tocados",
+        "vizConfig": {
+          "group": "table",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "custom": {
+                  "align": "auto",
+                  "cellOptions": {
+                    "type": "auto"
+                  },
+                  "inspect": false
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "text",
+                      "value": null
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "options": {
+              "cellHeight": "sm",
+              "footer": {
+                "countRows": false,
+                "fields": "",
+                "reducer": [
+                  "sum"
+                ],
+                "show": false
+              },
+              "showHeader": true
+            },
+            "version": "v0"
+          }
+        }
+      }
     }
   },
   "layout": {
@@ -2165,6 +2248,19 @@
                       "width": 8,
                       "x": 16,
                       "y": 4
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-104"
+                      },
+                      "height": 8,
+                      "width": 24,
+                      "x": 0,
+                      "y": 8
                     }
                   }
                 ]

@@ -65,6 +65,7 @@ type movementRepository interface {
 	CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error)
 	ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error
 	TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
+	CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error)
 }
 
 type subcategoryRepository interface {
@@ -120,8 +121,10 @@ type traceRepository interface {
 // nudgeRepository is the once-ever/cooldown storage for contextual nudges
 // (internal/nudge). Local interface — see nudge.go.
 type nudgeRepository interface {
-	WasSent(userID uint64, key string) (bool, error)
+	SentKeys(userID uint64) ([]string, error)
 	MarkSent(userID uint64, key string) error
+	MarkSentAgain(userID uint64, key string) error
+	MarkTapped(userID uint64, key string) error
 	LastSentAt(userID uint64) (*time.Time, error)
 }
 
@@ -242,6 +245,13 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 
 		input := toConversationInput(update)
 		chatID := updateChatID(update)
+
+		// El tap del botón de un tip no pasa por el engine ni por el router.
+		// Va acá arriba para que un flow abierto no se coma el callback como si
+		// fuera una opción suya; la consulta es read-only y lo deja intacto.
+		if c.handleNudgeQuery(ctx, b, chatID, u.ID, input.CallbackData) {
+			return &uid, nil
+		}
 
 		result, found, err := c.engine.Handle(u.ID, input)
 		if err != nil {
