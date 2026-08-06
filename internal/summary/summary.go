@@ -108,8 +108,16 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "\n%s <b>%s</b>\n", curIcon(cur), cur.String())
-	fmt.Fprintf(&sb, "Entró $%s · Salió $%s · Neto <b>$%s</b>\n",
-		earned.StringFixed(2), spent.StringFixed(2), earned.Sub(spent).StringFixed(2))
+
+	// Una semana cuyo único evento fue un ajuste llega hasta acá (el ajuste ES
+	// un movimiento, así que no la agarra el nudge de semana vacía). Recitarle
+	// "Entró $0 · Salió $0 · Neto $0 · Prom. diario $0" antes de contar lo
+	// único que pasó son cuatro números en cero pidiendo atención.
+	hasCashflow := !spent.IsZero() || !earned.IsZero()
+	if hasCashflow {
+		fmt.Fprintf(&sb, "Entró $%s · Salió $%s · Neto <b>$%s</b>\n",
+			earned.StringFixed(2), spent.StringFixed(2), earned.Sub(spent).StringFixed(2))
+	}
 	if !variation.IsZero() {
 		sign := "+"
 		if variation.IsNegative() {
@@ -119,19 +127,21 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 			sign, variation.Abs().StringFixed(2))
 	}
 
-	daily := spent.Div(decimal.NewFromInt(7))
-	line := fmt.Sprintf("Prom. diario $%s", daily.StringFixed(2))
-	if prev, err := b.total(movement.MovementQuery{UserID: userID, From: prevFrom, To: prevTo, Currency: cur, Type: &expense}); err != nil {
-		return "", err
-	} else if !prev.IsZero() {
-		pct := spent.Sub(prev).Div(prev).Mul(decimal.NewFromInt(100))
-		arrow := "↑"
-		if pct.IsNegative() {
-			arrow = "↓"
+	if hasCashflow {
+		daily := spent.Div(decimal.NewFromInt(7))
+		line := fmt.Sprintf("Prom. diario $%s", daily.StringFixed(2))
+		if prev, err := b.total(movement.MovementQuery{UserID: userID, From: prevFrom, To: prevTo, Currency: cur, Type: &expense}); err != nil {
+			return "", err
+		} else if !prev.IsZero() {
+			pct := spent.Sub(prev).Div(prev).Mul(decimal.NewFromInt(100))
+			arrow := "↑"
+			if pct.IsNegative() {
+				arrow = "↓"
+			}
+			line += fmt.Sprintf(" · vs semana previa <b>%s%s%%</b>", arrow, pct.Abs().StringFixed(0))
 		}
-		line += fmt.Sprintf(" · vs semana previa <b>%s%s%%</b>", arrow, pct.Abs().StringFixed(0))
+		sb.WriteString(line + "\n")
 	}
-	sb.WriteString(line + "\n")
 
 	cats, err := b.movements.SumForUser(movement.MovementQuery{UserID: userID, From: from, To: to, Currency: cur, Type: &expense}, movement.GroupByCategory)
 	if err != nil {

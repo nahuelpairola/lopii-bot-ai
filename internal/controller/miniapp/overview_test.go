@@ -214,3 +214,27 @@ func TestHandleOverview_NoVariationRowWhenNoAdjustments(t *testing.T) {
 		t.Fatal("sin ajustes en el período, la fila de variación no debe aparecer")
 	}
 }
+
+// Un período cuyo único evento fue un ajuste NO está vacío: el saldo se movió.
+// Sin esto la vista se contradecía — mostraba la variación y abajo "Sin
+// movimientos en este período".
+func TestHandleOverview_VariationAloneIsNotAnEmptyPeriod(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovements{rows: map[string][]movement.CategorySum{
+		"type": {{Label: "income", Total: decimal.NewFromInt(84200)}},
+	}}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/overview"))
+
+	body := w.Body.String()
+	if !bodyContains(body, "Variaci") {
+		t.Fatal("la variación debe mostrarse")
+	}
+	if bodyContains(body, "Sin movimientos") {
+		t.Fatal("no puede decir 'sin movimientos' mientras muestra una variación de saldos")
+	}
+}

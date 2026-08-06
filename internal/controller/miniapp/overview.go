@@ -87,7 +87,10 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 		Ingresos:   templates.FormatMoney(incomes, p.Currency),
 		Neto:       templates.FormatMoney(neto, p.Currency),
 		NetoStatus: status,
-		Empty:      expenses.IsZero() && incomes.IsZero(),
+		// Un período cuyo único evento fue un ajuste no está vacío: el saldo se
+		// movió. Sin la variación acá, la vista se contradecía sola —
+		// mostraba "+$84.200" y justo abajo "Sin movimientos en este período".
+		Empty:      expenses.IsZero() && incomes.IsZero() && variation.IsZero(),
 		TrendChart: trend,
 		// La fila solo existe si hubo variación: en un mes sin ajustes no
 		// tiene por qué ocupar lugar ni pedir atención.

@@ -246,3 +246,28 @@ func TestBuild_NoVariationLineWhenZero(t *testing.T) {
 		t.Fatalf("sin ajustes no debe aparecer el renglón; got: %q", text)
 	}
 }
+
+// Semana en la que lo único que pasó fue un ajuste: el bloque no debe recitar
+// "Entró $0.00 · Salió $0.00 · Neto $0.00 · Prom. diario $0.00" para después
+// contar lo único que sí pasó.
+func TestBuild_OnlyVariationSkipsTheZeroCashflowLines(t *testing.T) {
+	fm := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS||type": sums(row("income", "84200")),
+		},
+		counts: []movement.DayCount{{Date: to, Count: 1}},
+	}
+	text, err := NewBuilder(fm, fakeAccounts{}).Build(1, from, to, prevFrom, prevTo)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if !strings.Contains(text, "Variación de saldos") {
+		t.Fatalf("la variación debe contarse; got: %q", text)
+	}
+	if strings.Contains(text, "Entró $0.00") {
+		t.Fatalf("no debe recitar el cashflow en cero; got: %q", text)
+	}
+	if strings.Contains(text, "Prom. diario $0.00") {
+		t.Fatalf("no debe recitar el promedio en cero; got: %q", text)
+	}
+}
