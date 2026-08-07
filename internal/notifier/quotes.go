@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"lopiibot.com/internal/quote"
 )
 
 const (
@@ -17,7 +19,32 @@ const (
 	// cpiAttemptEvery: el IPC cambia una vez al mes, mirarlo una vez al día es
 	// de sobra. Son 53 KB, ~19 MB al año.
 	cpiAttemptEvery = 24 * time.Hour
+	// Cuántos años atrás arranca el sembrado. Las fuentes devuelven desde 2011
+	// (30k cotizaciones, 1000 meses de IPC) y nadie va a mirar eso: se guarda
+	// el año corriente de cotizaciones, y el IPC desde el año pasado porque el
+	// deflactor encadena los meses previos al período que se muestra.
+	// Es un piso del sembrado, no una retención: lo que entra no se borra.
+	seedQuotesYearsBack = 0
+	seedCPIYearsBack    = 1
 )
+
+// seedSince descarta del sembrado lo anterior a cutoff. Filtra acá y no en el
+// cliente: qué historia vale la pena guardar es política del sweeper, el
+// cliente sólo sabe traer lo que la fuente publica.
+func seedSince[T any](xs []T, cutoff time.Time, at func(T) time.Time) []T {
+	out := make([]T, 0, len(xs))
+	for _, x := range xs {
+		if !at(x).Before(cutoff) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// januaryOf devuelve el 1 de enero de hace yearsBack años, en la zona de now.
+func januaryOf(now time.Time, yearsBack int) time.Time {
+	return time.Date(now.Year()-yearsBack, time.January, 1, 0, 0, 0, 0, now.Location())
+}
 
 // sweepQuotes mantiene usd_quotes al día. Pide el histórico hasta ayer y, de
 // noche, el valor de hoy en vivo — el histórico no lo tiene hasta mañana.
@@ -45,6 +72,7 @@ func (s *Sweeper) sweepQuotes(ctx context.Context, now time.Time) {
 			slog.ErrorContext(ctx, "notifier quotes seed failed", "err", err)
 			return
 		}
+		all = seedSince(all, januaryOf(now, seedQuotesYearsBack), func(q quote.Quote) time.Time { return q.Date })
 		if err := s.quotes.InsertQuotes(all); err != nil {
 			slog.ErrorContext(ctx, "notifier quotes seed insert failed", "err", err)
 			return
@@ -98,6 +126,7 @@ func (s *Sweeper) sweepCPI(ctx context.Context, now time.Time) {
 		slog.ErrorContext(ctx, "notifier cpi fetch failed", "err", err)
 		return
 	}
+	cs = seedSince(cs, januaryOf(now, seedCPIYearsBack), func(c quote.CPI) time.Time { return c.Month })
 	if err := s.quotes.InsertCPI(cs); err != nil {
 		slog.ErrorContext(ctx, "notifier cpi insert failed", "err", err)
 	}

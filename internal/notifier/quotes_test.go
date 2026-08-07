@@ -33,9 +33,16 @@ type fakeQuoteAPI struct {
 	missing    map[string]bool // fechas que devuelven 404
 }
 
+// FetchAll imita a la fuente real: historia larga, desde mucho antes del piso
+// del sembrado. Sólo las dos últimas filas deberían sobrevivir al filtro.
 func (f *fakeQuoteAPI) FetchAll() ([]quote.Quote, error) {
 	f.allCalls++
-	return []quote.Quote{{Casa: "oficial"}}, nil
+	return []quote.Quote{
+		{Date: day(2011, time.January, 3), Casa: "oficial"},
+		{Date: day(2025, time.December, 31), Casa: "oficial"},
+		{Date: day(2026, time.January, 1), Casa: "oficial"},
+		{Date: day(2026, time.August, 5), Casa: "oficial"},
+	}, nil
 }
 func (f *fakeQuoteAPI) FetchDate(d time.Time) ([]quote.Quote, error) {
 	f.dateCalls = append(f.dateCalls, d)
@@ -48,9 +55,15 @@ func (f *fakeQuoteAPI) FetchToday(time.Time) ([]quote.Quote, error) {
 	f.todayCalls++
 	return []quote.Quote{{Casa: "oficial"}}, nil
 }
+// FetchCPI, igual que la real, arranca en 2011. El piso deja pasar 2025 y 2026.
 func (f *fakeQuoteAPI) FetchCPI() ([]quote.CPI, error) {
 	f.cpiCalls++
-	return []quote.CPI{{}}, nil // el valor no importa acá, sólo que la lista llegue
+	return []quote.CPI{
+		{Month: day(2011, time.January, 1)},
+		{Month: day(2024, time.December, 1)},
+		{Month: day(2025, time.January, 1)},
+		{Month: day(2026, time.June, 1)},
+	}, nil
 }
 
 // art construye un instante en la zona horaria en la que corre el sweeper.
@@ -76,8 +89,14 @@ func TestSweepQuotes_EmptyTableSeedsWithOneFullFetch(t *testing.T) {
 	if len(a.dateCalls) != 0 {
 		t.Errorf("expected no per-date calls on seed, got %v", a.dateCalls)
 	}
-	if len(s.inserted) == 0 {
-		t.Error("expected the seeded quotes to be inserted")
+	// Sólo el año corriente: 2011 y 2025 quedan afuera, 2026 entra.
+	if len(s.inserted) != 2 {
+		t.Fatalf("expected 2 seeded quotes (sólo 2026), got %d: %v", len(s.inserted), s.inserted)
+	}
+	for _, q := range s.inserted {
+		if q.Date.Year() != 2026 {
+			t.Errorf("seeded a quote from %d, el piso es 2026", q.Date.Year())
+		}
 	}
 }
 
@@ -158,7 +177,7 @@ func TestSweepQuotes_SecondCallWithinTheHourFetchesNothing(t *testing.T) {
 	}
 }
 
-func TestSweepCPI_InsertsTheWholeList(t *testing.T) {
+func TestSweepCPI_InsertsFromTheSeedFloorOnward(t *testing.T) {
 	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
 
@@ -167,8 +186,14 @@ func TestSweepCPI_InsertsTheWholeList(t *testing.T) {
 	if a.cpiCalls != 1 {
 		t.Errorf("FetchCPI calls = %d, want 1", a.cpiCalls)
 	}
-	if len(s.cpi) != 1 {
-		t.Errorf("expected the list to be inserted, got %d rows", len(s.cpi))
+	// Desde el año pasado: 2011 y 2024 quedan afuera, 2025 y 2026 entran.
+	if len(s.cpi) != 2 {
+		t.Fatalf("expected 2 months (2025 en adelante), got %d: %v", len(s.cpi), s.cpi)
+	}
+	for _, c := range s.cpi {
+		if c.Month.Year() < 2025 {
+			t.Errorf("inserted CPI de %d, el piso es 2025", c.Month.Year())
+		}
 	}
 }
 
