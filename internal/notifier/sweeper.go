@@ -9,6 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/quote"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/user"
 )
@@ -46,6 +47,19 @@ type summaryReader interface {
 	Build(userID uint64, from, to, prevFrom, prevTo time.Time) (string, error)
 }
 
+type quoteStore interface {
+	LatestQuoteDate() (*time.Time, error)
+	InsertQuotes([]quote.Quote) error
+	InsertCPI([]quote.CPI) error
+}
+
+type quoteClient interface {
+	FetchAll() ([]quote.Quote, error)
+	FetchDate(time.Time) ([]quote.Quote, error)
+	FetchToday(time.Time) ([]quote.Quote, error)
+	FetchCPI() ([]quote.CPI, error)
+}
+
 // retentionDays es cuánto se conservan las tablas operativas (llm_calls,
 // request_traces) antes de purgarse. Va en Go, no pg_cron.
 const retentionDays = 90
@@ -60,8 +74,16 @@ type Sweeper struct {
 	users     userReader
 	retention retentionStore
 	summaries summaryReader
-	send      func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error
-	now       func() time.Time
+	quotes    quoteStore
+	quoteAPI  quoteClient
+	// lastQuoteAttempt/lastCPIAttempt son TODO el rate limit. Sin ellos, un
+	// hueco permanente (un sábado sin cotización) dispararía 288 requests por
+	// día contra un 404. Se reinician al arrancar el proceso, lo cual da igual:
+	// toda escritura es idempotente por PK.
+	lastQuoteAttempt time.Time
+	lastCPIAttempt   time.Time
+	send             func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error
+	now              func() time.Time
 }
 
 func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader) *Sweeper {
