@@ -157,3 +157,41 @@ func TestSweepQuotes_SecondCallWithinTheHourFetchesNothing(t *testing.T) {
 		t.Errorf("throttle broken: calls went %d -> %d", before, len(a.dateCalls))
 	}
 }
+
+func TestSweepCPI_InsertsTheWholeList(t *testing.T) {
+	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
+	sw := newQuoteSweeper(s, a)
+
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0))
+
+	if a.cpiCalls != 1 {
+		t.Errorf("FetchCPI calls = %d, want 1", a.cpiCalls)
+	}
+	if len(s.cpi) != 1 {
+		t.Errorf("expected the list to be inserted, got %d rows", len(s.cpi))
+	}
+}
+
+func TestSweepCPI_SecondCallWithin24hDoesNothing(t *testing.T) {
+	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
+	sw := newQuoteSweeper(s, a)
+
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0))
+	sw.sweepCPI(context.Background(), art(2026, 8, 7, 9, 0)) // 23 h después
+
+	if a.cpiCalls != 1 {
+		t.Errorf("throttle broken: FetchCPI calls = %d, want 1", a.cpiCalls)
+	}
+}
+
+func TestSweepCPI_FiresAgainAfter24h(t *testing.T) {
+	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
+	sw := newQuoteSweeper(s, a)
+
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0))
+	sw.sweepCPI(context.Background(), art(2026, 8, 7, 10, 0))
+
+	if a.cpiCalls != 2 {
+		t.Errorf("FetchCPI calls = %d, want 2", a.cpiCalls)
+	}
+}

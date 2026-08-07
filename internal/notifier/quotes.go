@@ -14,6 +14,9 @@ const (
 	// todayFireMin es a partir de qué minuto ART se pide el valor del día en
 	// vivo. El oficial cierra 15:00, así que a las 20:00 ya es definitivo.
 	todayFireMin = 20 * 60
+	// cpiAttemptEvery: el IPC cambia una vez al mes, mirarlo una vez al día es
+	// de sobra. Son 53 KB, ~19 MB al año.
+	cpiAttemptEvery = 24 * time.Hour
 )
 
 // sweepQuotes mantiene usd_quotes al día. Pide el histórico hasta ayer y, de
@@ -73,5 +76,29 @@ func (s *Sweeper) sweepQuotes(ctx context.Context, now time.Time) {
 	}
 	if err := s.quotes.InsertQuotes(qs); err != nil {
 		slog.ErrorContext(ctx, "notifier quotes insert today failed", "err", err)
+	}
+}
+
+// sweepCPI trae la serie entera y la inserta; la PK descarta lo que ya está.
+// A propósito no hay aritmética de "mes objetivo" ni chequeo de "ya cargado":
+// el IPC de julio, publicado a mediados de agosto, aparece en la respuesta el
+// día que existe y entra solo. Nada acá conoce el calendario de INDEC — que es
+// justo lo que v1 hacía mal, mirando sólo los días 15 a 20.
+func (s *Sweeper) sweepCPI(ctx context.Context, now time.Time) {
+	if s.quotes == nil || s.quoteAPI == nil {
+		return
+	}
+	if now.Sub(s.lastCPIAttempt) < cpiAttemptEvery {
+		return
+	}
+	s.lastCPIAttempt = now
+
+	cs, err := s.quoteAPI.FetchCPI()
+	if err != nil {
+		slog.ErrorContext(ctx, "notifier cpi fetch failed", "err", err)
+		return
+	}
+	if err := s.quotes.InsertCPI(cs); err != nil {
+		slog.ErrorContext(ctx, "notifier cpi insert failed", "err", err)
 	}
 }

@@ -127,6 +127,11 @@ func (s *Sweeper) tick(ctx context.Context, now time.Time) {
 	s.sweepReminders(ctx, now)
 	s.sweepRetention(now)
 	s.sweepWeeklySummary(ctx, now)
+	// Van últimos: el tick que siembra baja 2.9 MB una sola vez en la vida del
+	// deploy, y los sweeps de arriba están gateados por ventana de minuto-del-
+	// día, no por instante exacto. Unos segundos no les cuestan nada.
+	s.sweepQuotes(ctx, now)
+	s.sweepCPI(ctx, now)
 	// future tenants:
 	// s.sweepCafecito(ctx, now)
 }
