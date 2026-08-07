@@ -13,6 +13,13 @@ const (
 	quoteAttemptEvery = time.Hour
 	// maxBackfillDays acota el trabajo de un tick tras una caída larga.
 	maxBackfillDays = 30
+	// settleWindowDays: cuántos días para atrás se vuelve a pedir al histórico
+	// aunque ya haya filas. Es lo que convierte al valor de dolarapi en
+	// provisorio: la fuente publica con uno o dos días de atraso, así que en 3
+	// días toda fecha ya fue reescrita con el valor de argentinadatos.
+	// ponytail: cuesta ~3 requests por tick en régimen. Si molestara, la
+	// alternativa es una columna `provisional` y pedir sólo esas fechas.
+	settleWindowDays = 3
 	// todayFireMin es a partir de qué minuto ART se pide el valor del día en
 	// vivo. El oficial cierra 15:00, así que a las 20:00 ya es definitivo.
 	todayFireMin = 20 * 60
@@ -79,10 +86,20 @@ func (s *Sweeper) sweepQuotes(ctx context.Context, now time.Time) {
 		}
 		latest = &yesterday
 	} else {
-		// Se enumera TODA fecha del hueco, incluidos sábados y domingos: la
+		// El backfill arranca en el hueco, PERO nunca después de la ventana de
+		// asentamiento: los días que escribió dolarapi hay que volver a pedirlos
+		// al histórico para que la serie guardada sea de una sola fuente. Sin
+		// esto el loop arrancaría en latest+1, que es justo el día siguiente al
+		// que escribió dolarapi, y ese valor provisorio quedaría fijo para
+		// siempre.
+		from := latest.AddDate(0, 0, 1)
+		if w := today.AddDate(0, 0, -settleWindowDays); w.Before(from) {
+			from = w
+		}
+		// Se enumera TODA fecha del rango, incluidos sábados y domingos: la
 		// fuente arrastra el valor a algunos findes y a otros no, así que
 		// saltearlos perdería filas reales. El 404 es el caso normal.
-		for d, n := latest.AddDate(0, 0, 1), 0; !d.After(yesterday) && n < maxBackfillDays; d, n = d.AddDate(0, 0, 1), n+1 {
+		for d, n := from, 0; !d.After(yesterday) && n < maxBackfillDays; d, n = d.AddDate(0, 0, 1), n+1 {
 			qs, err := s.quoteAPI.FetchDate(d)
 			if err != nil {
 				slog.ErrorContext(ctx, "notifier quotes fetch date failed", "date", d, "err", err)

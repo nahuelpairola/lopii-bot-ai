@@ -101,34 +101,70 @@ func TestSweepQuotes_EmptyTableSeedsWithOneFullFetch(t *testing.T) {
 	}
 }
 
-func TestSweepQuotes_UpToDateTableFetchesNothing(t *testing.T) {
+// Una tabla al día no vuelve a sembrar ni pide el día de hoy antes de las
+// 20:00, pero SÍ vuelve a pedir la ventana de asentamiento: son los días que
+// pudo haber escrito dolarapi y que el histórico tiene que corregir.
+func TestSweepQuotes_UpToDateTableOnlyRefetchesTheSettleWindow(t *testing.T) {
 	yesterday := day(2026, 8, 5)
 	s, a := &fakeQuoteStore{latest: &yesterday}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
 
-	// 10:00, antes del corte de las 20:00, así que tampoco pide el día de hoy.
 	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 0))
 
-	if a.allCalls != 0 || len(a.dateCalls) != 0 || a.todayCalls != 0 {
-		t.Errorf("expected zero fetches, got all=%d dates=%v today=%d", a.allCalls, a.dateCalls, a.todayCalls)
+	if a.allCalls != 0 || a.todayCalls != 0 {
+		t.Errorf("no debe sembrar ni pedir hoy: all=%d today=%d", a.allCalls, a.todayCalls)
 	}
-}
-
-func TestSweepQuotes_ThreeDayGapFetchesThreeDates(t *testing.T) {
-	last := day(2026, 8, 2)
-	s, a := &fakeQuoteStore{latest: &last}, &fakeQuoteAPI{}
-	sw := newQuoteSweeper(s, a)
-
-	// Ayer es el 5; faltan 3, 4 y 5.
-	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 0))
-
+	// Ventana de 3 días desde el 6: 3, 4 y 5. Nada del 2 para atrás.
 	if len(a.dateCalls) != 3 {
-		t.Fatalf("expected 3 date fetches, got %v", a.dateCalls)
+		t.Fatalf("expected 3 refetches, got %v", a.dateCalls)
 	}
 	for i, want := range []int{3, 4, 5} {
 		if got := a.dateCalls[i].Day(); got != want {
 			t.Errorf("call %d = day %d, want %d", i, got, want)
 		}
+	}
+}
+
+// La razón de ser de la ventana: dolarapi escribió el día de hoy, así que al
+// día siguiente latest ES esa fecha. Sin la ventana el loop arrancaría en
+// latest+1 y ese valor provisorio no se volvería a pedir nunca.
+func TestSweepQuotes_RefetchesTheDayDolarAPIWrote(t *testing.T) {
+	// Ayer a las 20:00 dolarapi escribió el 2026-08-05; hoy es el 6.
+	provisional := day(2026, 8, 5)
+	s, a := &fakeQuoteStore{latest: &provisional}, &fakeQuoteAPI{}
+	sw := newQuoteSweeper(s, a)
+
+	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 0))
+
+	var refetched bool
+	for _, d := range a.dateCalls {
+		if d.Equal(provisional) {
+			refetched = true
+		}
+	}
+	if !refetched {
+		t.Errorf("el día que escribió dolarapi tiene que volver a pedirse al histórico, calls = %v", a.dateCalls)
+	}
+}
+
+// El hueco arranca ANTES que la ventana de asentamiento, así que este test
+// prueba el camino de hueco y no el de ventana: con last = 29/7 el loop tiene
+// que ir del 30/7 al 5/8, siete fechas, no las tres de la ventana.
+func TestSweepQuotes_LongGapFetchesEveryMissingDate(t *testing.T) {
+	last := day(2026, 7, 29)
+	s, a := &fakeQuoteStore{latest: &last}, &fakeQuoteAPI{}
+	sw := newQuoteSweeper(s, a)
+
+	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 0))
+
+	if len(a.dateCalls) != 7 {
+		t.Fatalf("expected 7 date fetches, got %v", a.dateCalls)
+	}
+	if got := a.dateCalls[0].Format("2006-01-02"); got != "2026-07-30" {
+		t.Errorf("primera fecha = %s, want 2026-07-30 (el hueco, no la ventana)", got)
+	}
+	if got := a.dateCalls[6].Format("2006-01-02"); got != "2026-08-05" {
+		t.Errorf("última fecha = %s, want 2026-08-05 (ayer)", got)
 	}
 }
 
