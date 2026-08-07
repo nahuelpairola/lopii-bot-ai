@@ -28,6 +28,7 @@ import (
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
+	"lopiibot.com/internal/quote"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/summary"
@@ -39,6 +40,10 @@ type httpServer struct {
 }
 
 var server httpServer
+
+// quoteTimeoutSeconds: el fetch más grande es el sembrado de 2.9 MB, una vez
+// por deploy. 60 s le sobra y no bloquea nada — corre en la goroutine del sweeper.
+const quoteTimeoutSeconds = 60
 
 // llmCallRecorder adapta orchestrator.LLMRecorder a metric. Fire-and-forget en
 // goroutine: la métrica no debe agregar latencia ni romper el flujo del usuario.
@@ -162,7 +167,9 @@ func InitServer(conf *config.Config) error {
 	miniappController.RegisterRoutes(ginEngine)
 
 	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo)
-	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder)
+	quoteRepo := quote.NewRepository(conn)
+	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
+	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
 	go messagingController.RunJobDrain(context.Background(), tgBot, messagingctrl.JobDrainInterval)
 

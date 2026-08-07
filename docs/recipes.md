@@ -133,6 +133,8 @@ A "scheduled notification" is any proactive system→user Telegram push not trig
 3. Reuse `s.send(ctx, chatID, text)` to actually push — never call `bot.SendMessage` directly; `send` is the one injected/reachable asset every notifier (and any future admin broadcast) shares.
 4. Do not add a shared data table, a notification-type registry, or a templating engine — each notifier owns its own table/columns (or a couple of fields on `users`) and its own message copy.
 
+**Not every sweeper tenant is a notification.** `sweepQuotes`/`sweepCPI` (`internal/notifier/quotes.go`) ride the same ticker but push nothing to anyone — they ingest a public series. A tenant like that skips step 3 entirely and logs its failures with `slog.Error` instead. It also needs a *schedule*, which a notification gets for free from the user's own reminder window: use the `dailyRun` helper — one run at boot, then one per day from `ingestFireMin`, retried on the `retryEvery` floor until it succeeds. Never gate a job on elapsed-time-since-last-attempt alone; that anchors the schedule to process start, so every Render deploy silently moves the hour.
+
 ### Recipe 4: Add an admin command
 
 1. Register the handler in `controller/messaging/controller.go` with a prefix match:

@@ -9,6 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/quote"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/user"
 )
@@ -46,6 +47,19 @@ type summaryReader interface {
 	Build(userID uint64, from, to, prevFrom, prevTo time.Time) (string, error)
 }
 
+type quoteStore interface {
+	LatestQuoteDate() (*time.Time, error)
+	InsertQuotes([]quote.Quote) error
+	InsertCPI([]quote.CPI) error
+}
+
+type quoteClient interface {
+	FetchAll() ([]quote.Quote, error)
+	FetchDate(time.Time) ([]quote.Quote, error)
+	FetchToday(time.Time) ([]quote.Quote, error)
+	FetchCPI() ([]quote.CPI, error)
+}
+
 // retentionDays es cuánto se conservan las tablas operativas (llm_calls,
 // request_traces) antes de purgarse. Va en Go, no pg_cron.
 const retentionDays = 90
@@ -60,17 +74,34 @@ type Sweeper struct {
 	users     userReader
 	retention retentionStore
 	summaries summaryReader
-	send      func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error
-	now       func() time.Time
+	quotes    quoteStore
+	quoteAPI  quoteClient
+	// El estado del scheduler de la ingesta, todo en memoria. Se reinicia al
+	// arrancar el proceso, y eso está bien: toda escritura es idempotente por
+	// PK, así que una corrida de más no cuesta nada. Ver dailyRun.
+	//
+	//   *Booted — ya corrió una vez en este proceso.
+	//   *RanOn  — el día en que la corrida a horario salió bien.
+	//   last*Attempt — cuándo se intentó por última vez, el piso del reintento.
+	quotesBooted     bool
+	cpiBooted        bool
+	quotesRanOn      time.Time
+	cpiRanOn         time.Time
+	lastQuoteAttempt time.Time
+	lastCPIAttempt   time.Time
+	send             func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error
+	now              func() time.Time
 }
 
-func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader) *Sweeper {
+func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader, q quoteStore, qa quoteClient) *Sweeper {
 	return &Sweeper{
 		reminders: r,
 		movements: m,
 		users:     u,
 		retention: ret,
 		summaries: sum,
+		quotes:    q,
+		quoteAPI:  qa,
 		send: func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error {
 			// ParseMode HTML: el resumen semanal usa <b> para que se pueda
 			// escanear. Todo lo que viene del usuario se escapa en
@@ -105,6 +136,11 @@ func (s *Sweeper) tick(ctx context.Context, now time.Time) {
 	s.sweepReminders(ctx, now)
 	s.sweepRetention(now)
 	s.sweepWeeklySummary(ctx, now)
+	// Van últimos: el tick que siembra baja 2.9 MB una sola vez en la vida del
+	// deploy, y los sweeps de arriba están gateados por ventana de minuto-del-
+	// día, no por instante exacto. Unos segundos no les cuestan nada.
+	s.sweepQuotes(ctx, now)
+	s.sweepCPI(ctx, now)
 	// future tenants:
 	// s.sweepCafecito(ctx, now)
 }

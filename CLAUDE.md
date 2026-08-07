@@ -42,8 +42,9 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `chathistory` | Model + repository: ephemeral conversation thread shared by every intent (`Append`, `Recent`), hard-pruned by TTL, no `deleted_at`. Renamed from `queryhistory` — it was never QUERY-only |
 | `pendingaction` | Model + repository: durable queue (`pending_actions`) of agent-loop actions waiting on an answer from the user — `Insert`, `NextForUser`, `Delete`, `CountForUser`. Drained one at a time (WIP=1) |
 | `reminder` | Model + repository: one row per user, minutes-since-ART-midnight window + weekly-summary flags. `Upsert`, `Disable`, `ListDue`, `ListWeeklyDue`, `SetWeeklySummary` |
-| `notifier` | `Sweeper` — in-process `time.Ticker` goroutine driving every scheduled system→user notification (daily reminder, weekly summary, trace retention) |
+| `notifier` | `Sweeper` — in-process `time.Ticker` goroutine driving every scheduled job (daily reminder, weekly summary, trace retention, USD quotes, CPI) |
 | `nudge` | Model + repository: once-ever/cooldown storage for contextual tips (`WasSent`, `MarkSent`, `LastSentAt`) |
+| `quote` | Model + repository + `net/http` client for two public series: daily USD rates (`usd_quotes`, one row per date+rate_type, `bid`/`ask`) and monthly CPI (`monthly_cpi`). Write-only so far — ingestion for a later Mini App consumption stage |
 | `summary` | Weekly-summary builder + its Spanish copy. Consumer-local `MovementReader`/`AccountReader` interfaces |
 | `trace` | `NewID` (crypto/rand, 32 hex) + ctx carrier for the correlation id shared by `request_traces`/`llm_calls`/`intent_events` |
 | `logging` | Installs the process-wide `slog` logger; its handler stamps the ctx `trace_id` onto every record |
