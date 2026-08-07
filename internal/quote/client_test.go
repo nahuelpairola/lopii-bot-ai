@@ -33,7 +33,7 @@ func TestFetchAll_DecodesEveryRow(t *testing.T) {
 	if len(qs) != 3 {
 		t.Fatalf("expected 3 quotes, got %d", len(qs))
 	}
-	if qs[0].Casa != "oficial" || qs[0].Venta.String() != "1515" {
+	if qs[0].RateType != "oficial" || qs[0].Ask.String() != "1515" {
 		t.Errorf("bad first quote: %+v", qs[0])
 	}
 	if got := qs[0].Date.Format("2006-01-02"); got != "2026-08-04" {

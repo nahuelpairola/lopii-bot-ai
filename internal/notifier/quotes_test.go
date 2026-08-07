@@ -38,10 +38,10 @@ type fakeQuoteAPI struct {
 func (f *fakeQuoteAPI) FetchAll() ([]quote.Quote, error) {
 	f.allCalls++
 	return []quote.Quote{
-		{Date: day(2011, time.January, 3), Casa: "oficial"},
-		{Date: day(2025, time.December, 31), Casa: "oficial"},
-		{Date: day(2026, time.January, 1), Casa: "oficial"},
-		{Date: day(2026, time.August, 5), Casa: "oficial"},
+		{Date: day(2011, time.January, 3), RateType: "oficial"},
+		{Date: day(2025, time.December, 31), RateType: "oficial"},
+		{Date: day(2026, time.January, 1), RateType: "oficial"},
+		{Date: day(2026, time.August, 5), RateType: "oficial"},
 	}, nil
 }
 func (f *fakeQuoteAPI) FetchDate(d time.Time) ([]quote.Quote, error) {
@@ -49,12 +49,13 @@ func (f *fakeQuoteAPI) FetchDate(d time.Time) ([]quote.Quote, error) {
 	if f.missing[d.Format("2006-01-02")] {
 		return nil, nil
 	}
-	return []quote.Quote{{Date: d, Casa: "oficial"}}, nil
+	return []quote.Quote{{Date: d, RateType: "oficial"}}, nil
 }
 func (f *fakeQuoteAPI) FetchToday(time.Time) ([]quote.Quote, error) {
 	f.todayCalls++
-	return []quote.Quote{{Casa: "oficial"}}, nil
+	return []quote.Quote{{RateType: "oficial"}}, nil
 }
+
 // FetchCPI, igual que la real, arranca en 2011. El piso deja pasar 2025 y 2026.
 func (f *fakeQuoteAPI) FetchCPI() ([]quote.CPI, error) {
 	f.cpiCalls++

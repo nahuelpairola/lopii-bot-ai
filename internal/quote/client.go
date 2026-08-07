@@ -46,9 +46,11 @@ func NewClient(cfg Config) *Client {
 	return &Client{cfg: cfg, http: &http.Client{Timeout: time.Duration(cfg.TimeoutSeconds) * time.Second}}
 }
 
-// apiQuote es la forma que devuelven los tres endpoints de cotización. Sólo
-// cambia el campo de fecha: argentinadatos manda `fecha` (2026-08-05) y
-// dolarapi manda `fechaActualizacion` (RFC3339 UTC).
+// apiQuote es la forma que devuelven los tres endpoints de cotización. Los
+// nombres son los de la fuente, en castellano, y mueren acá: toQuotes los
+// traduce y del cliente para adentro todo es Quote. Sólo cambia el campo de
+// fecha: argentinadatos manda `fecha` (2026-08-05) y dolarapi manda
+// `fechaActualizacion` (RFC3339 UTC).
 type apiQuote struct {
 	Casa               string          `json:"casa"`
 	Compra             decimal.Decimal `json:"compra"`
@@ -147,7 +149,7 @@ func toQuotes(raw []apiQuote, forceDate string) []Quote {
 		if err != nil {
 			continue // una fila ilegible no tira abajo el resto del lote
 		}
-		qs = append(qs, Quote{Date: d, Casa: r.Casa, Compra: r.Compra, Venta: r.Venta})
+		qs = append(qs, Quote{Date: d, RateType: r.Casa, Bid: r.Compra, Ask: r.Venta})
 	}
 	return qs
 }
