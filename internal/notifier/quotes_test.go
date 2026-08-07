@@ -2,6 +2,7 @@ package notifier
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -25,12 +26,15 @@ func (f *fakeQuoteStore) InsertCPI(cs []quote.CPI) error {
 	return nil
 }
 
+var errBoom = errors.New("la fuente se cayó")
+
 type fakeQuoteAPI struct {
 	allCalls   int
 	dateCalls  []time.Time
 	todayCalls int
 	cpiCalls   int
 	missing    map[string]bool // fechas que devuelven 404
+	err        error           // cuando no es nil, todo fetch falla
 }
 
 // FetchAll imita a la fuente real: historia larga, desde mucho antes del piso
@@ -59,6 +63,9 @@ func (f *fakeQuoteAPI) FetchToday(time.Time) ([]quote.Quote, error) {
 // FetchCPI, igual que la real, arranca en 2011. El piso deja pasar 2025 y 2026.
 func (f *fakeQuoteAPI) FetchCPI() ([]quote.CPI, error) {
 	f.cpiCalls++
+	if f.err != nil {
+		return nil, f.err
+	}
 	return []quote.CPI{
 		{Month: day(2011, time.January, 1)},
 		{Month: day(2024, time.December, 1)},
@@ -200,20 +207,6 @@ func TestSweepQuotes_TodayFetchedOnlyFrom20hART(t *testing.T) {
 	}
 }
 
-func TestSweepQuotes_SecondCallWithinTheHourFetchesNothing(t *testing.T) {
-	last := day(2026, 8, 2)
-	s, a := &fakeQuoteStore{latest: &last}, &fakeQuoteAPI{}
-	sw := newQuoteSweeper(s, a)
-
-	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 0))
-	before := len(a.dateCalls)
-	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 5))
-
-	if len(a.dateCalls) != before {
-		t.Errorf("throttle broken: calls went %d -> %d", before, len(a.dateCalls))
-	}
-}
-
 func TestSweepCPI_InsertsFromTheSeedFloorOnward(t *testing.T) {
 	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
@@ -234,26 +227,97 @@ func TestSweepCPI_InsertsFromTheSeedFloorOnward(t *testing.T) {
 	}
 }
 
-func TestSweepCPI_SecondCallWithin24hDoesNothing(t *testing.T) {
+// Después de la corrida de arranque no vuelve a correr hasta la hora, aunque
+// pasen días: sin esto el arranque marcaría el turno y el horario no mandaría.
+func TestSweepCPI_AfterBootWaitsForTheHour(t *testing.T) {
 	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
 
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0))
-	sw.sweepCPI(context.Background(), art(2026, 8, 7, 9, 0)) // 23 h después
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0)) // arranque
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 19, 59))
+	sw.sweepCPI(context.Background(), art(2026, 8, 7, 10, 0)) // otro día, fuera de hora
 
 	if a.cpiCalls != 1 {
-		t.Errorf("throttle broken: FetchCPI calls = %d, want 1", a.cpiCalls)
+		t.Errorf("FetchCPI calls = %d, want 1 (sólo el arranque)", a.cpiCalls)
 	}
 }
 
-func TestSweepCPI_FiresAgainAfter24h(t *testing.T) {
+func TestSweepCPI_RunsOncePerDayAtTheHour(t *testing.T) {
 	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
 
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0))
-	sw.sweepCPI(context.Background(), art(2026, 8, 7, 10, 0))
-
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0)) // arranque
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 20, 0)) // la corrida del día
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 21, 0)) // ya corrió hoy
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 23, 0))
 	if a.cpiCalls != 2 {
-		t.Errorf("FetchCPI calls = %d, want 2", a.cpiCalls)
+		t.Fatalf("FetchCPI calls = %d, want 2 (arranque + 20:00)", a.cpiCalls)
+	}
+
+	sw.sweepCPI(context.Background(), art(2026, 8, 7, 20, 0)) // al día siguiente
+	if a.cpiCalls != 3 {
+		t.Errorf("FetchCPI calls = %d, want 3 (una por día)", a.cpiCalls)
+	}
+}
+
+// Si la corrida del día falla, el turno NO se marca y se reintenta al pasar el
+// piso. Es lo que separa "corre a las 20:00" de "corre a las 20:00 o nunca".
+func TestSweepCPI_FailedRunRetriesAfterTheFloor(t *testing.T) {
+	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{err: errBoom}
+	sw := newQuoteSweeper(s, a)
+
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0)) // arranque, falla
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 20, 0)) // reintento, falla
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 20, 30))
+	if a.cpiCalls != 2 {
+		t.Fatalf("FetchCPI calls = %d, want 2: el piso frena el de 20:30", a.cpiCalls)
+	}
+
+	a.err = nil
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 21, 0)) // ahora sí
+	if a.cpiCalls != 3 {
+		t.Fatalf("FetchCPI calls = %d, want 3", a.cpiCalls)
+	}
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 22, 0)) // ya salió bien
+	if a.cpiCalls != 3 {
+		t.Errorf("FetchCPI calls = %d: una corrida exitosa cierra el día", a.cpiCalls)
+	}
+}
+
+// El espejo del anterior para las cotizaciones: una corrida al arrancar, una
+// por día a horario, y el arranque temprano no gasta el turno.
+func TestSweepQuotes_RunsOncePerDayAtTheHour(t *testing.T) {
+	last := day(2026, 8, 5)
+	s, a := &fakeQuoteStore{latest: &last}, &fakeQuoteAPI{}
+	sw := newQuoteSweeper(s, a)
+
+	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 0)) // arranque
+	bootCalls := len(a.dateCalls)
+	if bootCalls == 0 {
+		t.Fatal("el arranque tiene que correr sea la hora que sea")
+	}
+	if a.todayCalls != 0 {
+		t.Errorf("a las 10:00 no se pide el valor del día, calls = %d", a.todayCalls)
+	}
+
+	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 15, 0)) // fuera de hora
+	if len(a.dateCalls) != bootCalls {
+		t.Errorf("no debe correr fuera de hora, calls = %v", a.dateCalls)
+	}
+
+	// A las 20:00 corre igual: el arranque temprano no gastó el turno, y acá sí
+	// se pide el valor del día en vivo.
+	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 20, 0))
+	if len(a.dateCalls) == bootCalls {
+		t.Error("a las 20:00 tiene que correr aunque haya corrido al arrancar")
+	}
+	if a.todayCalls != 1 {
+		t.Errorf("todayCalls = %d, want 1", a.todayCalls)
+	}
+
+	after := len(a.dateCalls)
+	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 22, 0))
+	if len(a.dateCalls) != after {
+		t.Errorf("ya corrió hoy, no debe repetir: %v", a.dateCalls)
 	}
 }

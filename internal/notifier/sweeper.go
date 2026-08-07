@@ -76,10 +76,17 @@ type Sweeper struct {
 	summaries summaryReader
 	quotes    quoteStore
 	quoteAPI  quoteClient
-	// lastQuoteAttempt/lastCPIAttempt son TODO el rate limit. Sin ellos, un
-	// hueco permanente (un sábado sin cotización) dispararía 288 requests por
-	// día contra un 404. Se reinician al arrancar el proceso, lo cual da igual:
-	// toda escritura es idempotente por PK.
+	// El estado del scheduler de la ingesta, todo en memoria. Se reinicia al
+	// arrancar el proceso, y eso está bien: toda escritura es idempotente por
+	// PK, así que una corrida de más no cuesta nada. Ver dailyRun.
+	//
+	//   *Booted — ya corrió una vez en este proceso.
+	//   *RanOn  — el día en que la corrida a horario salió bien.
+	//   last*Attempt — cuándo se intentó por última vez, el piso del reintento.
+	quotesBooted     bool
+	cpiBooted        bool
+	quotesRanOn      time.Time
+	cpiRanOn         time.Time
 	lastQuoteAttempt time.Time
 	lastCPIAttempt   time.Time
 	send             func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error

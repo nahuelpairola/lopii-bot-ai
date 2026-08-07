@@ -9,8 +9,20 @@ import (
 )
 
 const (
-	// quoteAttemptEvery acota los intentos: en régimen es 1 request por día.
-	quoteAttemptEvery = time.Hour
+	// ingestFireMin es a qué minuto ART corre la ingesta, una vez por día.
+	// 20:00 porque a esa hora el valor del día ya cerró.
+	//
+	// A propósito NO se comparte con todayFireMin aunque hoy valgan lo mismo:
+	// son dos restricciones independientes. Esta dice cuándo nos conviene
+	// correr; la otra, a partir de cuándo el dato del día es definitivo. Si
+	// alguien moviera la corrida a las 10:00, todayFireMin tiene que seguir
+	// frenando el valor del día — con un solo const se guardaría un precio de
+	// media rueda como si fuera el cierre.
+	ingestFireMin = 20 * 60
+	// retryEvery es el piso entre reintentos cuando la corrida del día falló.
+	// Sin reintento, un blip de red a las 20:00 deja el día sin datos hasta
+	// mañana; sin piso, una fuente caída son 288 requests contra un error.
+	retryEvery = time.Hour
 	// maxBackfillDays acota el trabajo de un tick tras una caída larga.
 	maxBackfillDays = 30
 	// settleWindowDays: cuántos días para atrás se vuelve a pedir al histórico
@@ -23,9 +35,6 @@ const (
 	// todayFireMin es a partir de qué minuto ART se pide el valor del día en
 	// vivo. El oficial cierra 15:00, así que a las 20:00 ya es definitivo.
 	todayFireMin = 20 * 60
-	// cpiAttemptEvery: el IPC cambia una vez al mes, mirarlo una vez al día es
-	// de sobra. Son 53 KB, ~19 MB al año.
-	cpiAttemptEvery = 24 * time.Hour
 	// Cuántos años atrás arranca el sembrado. Las fuentes devuelven desde 2011
 	// (30k cotizaciones, 1000 meses de IPC) y nadie va a mirar eso: se guarda
 	// el año corriente de cotizaciones, y el IPC desde el año pasado porque el
@@ -53,16 +62,57 @@ func januaryOf(now time.Time, yearsBack int) time.Time {
 	return time.Date(now.Year()-yearsBack, time.January, 1, 0, 0, 0, 0, now.Location())
 }
 
+// dailyRun decide si a este tick le toca correr la ingesta. Devuelve el día de
+// hoy, que es la clave con la que el llamador marca la corrida como exitosa.
+//
+// Tres reglas, en orden:
+//  1. Al arrancar el proceso corre una vez, sea la hora que sea. Sin esto, un
+//     deploy a las 10 de la mañana deja las tablas vacías hasta las 20:00 y el
+//     dashboard en rojo diez horas por nada.
+//  2. Después manda el horario: una corrida por día, a partir de ingestFireMin.
+//  3. Si la corrida del día no llegó a marcarse (falló), se reintenta con el
+//     piso de retryEvery hasta que salga.
+//
+// La corrida de arranque a propósito NO consume el turno del día: si booteás a
+// las 10:00, a las 20:00 igual corre. Es lo que hace que el valor del día en
+// vivo no se pierda en un día de deploy.
+func (s *Sweeper) dailyRun(now time.Time, booted *bool, ranOn time.Time, lastAttempt *time.Time) (today time.Time, ok bool) {
+	today = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if *booted {
+		if ranOn.Equal(today) {
+			return today, false // ya salió bien hoy
+		}
+		if now.Hour()*60+now.Minute() < ingestFireMin {
+			return today, false // todavía no es la hora
+		}
+	}
+	if now.Sub(*lastAttempt) < retryEvery {
+		return today, false // reintento demasiado pronto
+	}
+	*lastAttempt = now
+	*booted = true
+	return today, true
+}
+
+// ranToday marca la corrida como cumplida, pero sólo si pasó a horario. Una
+// corrida de arranque temprana no gasta el turno del día.
+func ranToday(now, today time.Time) time.Time {
+	if now.Hour()*60+now.Minute() < ingestFireMin {
+		return time.Time{}
+	}
+	return today
+}
+
 // sweepQuotes mantiene usd_quotes al día. Pide el histórico hasta ayer y, de
 // noche, el valor de hoy en vivo — el histórico no lo tiene hasta mañana.
 func (s *Sweeper) sweepQuotes(ctx context.Context, now time.Time) {
 	if s.quotes == nil || s.quoteAPI == nil {
 		return
 	}
-	if now.Sub(s.lastQuoteAttempt) < quoteAttemptEvery {
+	today, ok := s.dailyRun(now, &s.quotesBooted, s.quotesRanOn, &s.lastQuoteAttempt)
+	if !ok {
 		return
 	}
-	s.lastQuoteAttempt = now
 
 	latest, err := s.quotes.LatestQuoteDate()
 	if err != nil {
@@ -70,7 +120,6 @@ func (s *Sweeper) sweepQuotes(ctx context.Context, now time.Time) {
 		return
 	}
 
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	yesterday := today.AddDate(0, 0, -1)
 
 	if latest == nil {
@@ -111,6 +160,11 @@ func (s *Sweeper) sweepQuotes(ctx context.Context, now time.Time) {
 		}
 	}
 
+	// Llegó hasta acá sin cortar: el histórico está al día. Se marca ANTES del
+	// valor en vivo a propósito — que dolarapi falle no justifica repetir todo
+	// el backfill dentro de una hora.
+	s.quotesRanOn = ranToday(now, today)
+
 	if now.Hour()*60+now.Minute() < todayFireMin || !latest.Before(today) {
 		return
 	}
@@ -133,10 +187,10 @@ func (s *Sweeper) sweepCPI(ctx context.Context, now time.Time) {
 	if s.quotes == nil || s.quoteAPI == nil {
 		return
 	}
-	if now.Sub(s.lastCPIAttempt) < cpiAttemptEvery {
+	today, ok := s.dailyRun(now, &s.cpiBooted, s.cpiRanOn, &s.lastCPIAttempt)
+	if !ok {
 		return
 	}
-	s.lastCPIAttempt = now
 
 	cs, err := s.quoteAPI.FetchCPI()
 	if err != nil {
@@ -146,5 +200,7 @@ func (s *Sweeper) sweepCPI(ctx context.Context, now time.Time) {
 	cs = seedSince(cs, januaryOf(now, seedCPIYearsBack), func(c quote.CPI) time.Time { return c.Month })
 	if err := s.quotes.InsertCPI(cs); err != nil {
 		slog.ErrorContext(ctx, "notifier cpi insert failed", "err", err)
+		return
 	}
+	s.cpiRanOn = ranToday(now, today)
 }
