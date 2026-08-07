@@ -86,13 +86,15 @@ type Sweeper struct {
 	now              func() time.Time
 }
 
-func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader) *Sweeper {
+func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader, q quoteStore, qa quoteClient) *Sweeper {
 	return &Sweeper{
 		reminders: r,
 		movements: m,
 		users:     u,
 		retention: ret,
 		summaries: sum,
+		quotes:    q,
+		quoteAPI:  qa,
 		send: func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error {
 			// ParseMode HTML: el resumen semanal usa <b> para que se pueda
 			// escanear. Todo lo que viene del usuario se escapa en
