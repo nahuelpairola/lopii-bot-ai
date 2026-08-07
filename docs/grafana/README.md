@@ -1,7 +1,7 @@
 # Dashboard de Grafana — admin
 
 `admin-dashboard.json` es el dashboard de estado de la app. **Schema V2**
-(`elements` + `layout`), 19 paneles: 9 visibles y 3 filas colapsadas de
+(`elements` + `layout`), 25 paneles: 9 visibles y 4 filas colapsadas de
 drill-down.
 
 > **Por qué V2 y no el schema clásico.** La instancia corre Grafana 13.2, que
@@ -38,7 +38,35 @@ recupera el request entero.
 separados, porque juntarlos exigiría un segundo eje Y.
 
 **Filas colapsadas.** Producto (embudo intent × outcome, y la tasa de tap de
-los tips), LLM y tokens, Higiene.
+los tips), LLM y tokens, Higiene, Cotizaciones e IPC.
+
+## Cotizaciones e IPC — por qué acá sí hay semáforos de frescura
+
+Esta fila es la excepción a la regla de abajo, y por un motivo concreto: la
+ingesta de `usd_quotes`/`monthly_cpi` **no depende de que un usuario escriba**.
+La serie se actualiza todos los días hábiles pase lo que pase, así que
+"hace 9 días que no entra una cotización" sí distingue roto de tranquilo,
+que es justo lo que `max(received_at)` no puede hacer.
+
+Los tres semáforos miden fallas distintas y ninguno tapa al otro:
+
+- **Días sin cotización** — la ingesta entera parada. Verde hasta 4 porque la
+  fuente publica con un día de atraso y el finde puede no cotizar.
+- **Hueco más largo (90d)** — el único que ve un agujero *viejo*. Si el
+  backfill se rompe pero el fetch de las 20:00 sigue andando, `max(date)`
+  queda en hoy y "Días sin cotización" se queda verde con la serie agujereada.
+- **Última cotización por tipo** — la falla *parcial*: que la fuente deje de
+  publicar un `rate_type` mientras los otros seis llegan. Ningún agregado lo ve.
+
+Los dos paneles de datos (MEP e IPC) están para lo que los semáforos no miran:
+un valor absurdo. Una tabla de IPC en cero pasa "Meses sin IPC" en verde.
+
+**Ojo con el huso.** El dashboard corre en `timezone: browser` y estas dos
+tablas guardan `date`/`month`, no timestamps. Una `date` cruda se ancla a
+medianoche UTC y para un lector en ART se dibuja el día anterior. Por eso el
+panel del MEP ancla cada punto al **mediodía** y la tabla por tipo emite la
+fecha con `to_char`, como texto. Cualquier panel nuevo sobre estas tablas tiene
+que hacer lo mismo.
 
 ## Liveness NO está acá
 
@@ -82,7 +110,11 @@ que funciona: el archivo anterior parseaba perfecto y tenía 8 paneles rotos.
       filas en el rango); un error rojo de query no lo es.
 - [ ] Los dos paneles de serie temporal dibujan línea con el rango `now-24h`.
       Esta es la regresión concreta que motivó la reescritura.
-- [ ] Expandir las tres filas colapsadas: sus 9 paneles también renderizan.
+- [ ] Expandir las cuatro filas colapsadas: sus 15 paneles también renderizan.
+- [ ] En "Cotizaciones e IPC": los tres semáforos en verde (días ≤ 4, meses ≤ 2,
+      hueco ≤ 4) y el MEP dibujando línea continua. Confirmar que el primer y el
+      último punto del MEP caen en el día correcto — es el bug de huso, y con
+      `timezone: browser` sólo se ve desde un navegador en ART.
 - [ ] Copiar un `trace_id` de la tabla de errores y confirmar que aparece en los
       logs de Render. Si no hay errores en el rango, ampliar el time picker o
       validar contra `request_traces` directo.
