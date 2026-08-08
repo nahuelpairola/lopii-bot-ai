@@ -2,6 +2,7 @@ package movement
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
@@ -83,7 +84,12 @@ func validateTransferGroups(movs []Movement) error {
 			continue
 		}
 		if m.TransactionID == nil || m.AccountID == nil {
-			return ErrTransferLeg // a transfer with no group or no account is malformed
+			// Las tres ramas de acá devolvían el MISMO sentinel, así que en
+			// producción un transfer sin group y uno con las dos piernas del mismo
+			// signo eran indistinguibles — y el agent loop paga una vuelta entera
+			// de ~4.200 tokens corrigiendo, sin que se pueda saber qué corrigió.
+			// El %w mantiene el errors.Is de todos los call sites.
+			return fmt.Errorf("%w: leg sin group o sin cuenta", ErrTransferLeg)
 		}
 		g := groups[*m.TransactionID]
 		if g == nil {
@@ -99,10 +105,10 @@ func validateTransferGroups(movs []Movement) error {
 	}
 	for _, g := range groups {
 		if g.count != 2 || len(g.accounts) != 2 {
-			return ErrTransferLeg
+			return fmt.Errorf("%w: %d legs sobre %d cuentas distintas, se esperaban 2 y 2", ErrTransferLeg, g.count, len(g.accounts))
 		}
 		if g.oneCur && !g.sum.IsZero() {
-			return ErrTransferLeg
+			return fmt.Errorf("%w: las 2 piernas en %s no se cancelan (suma %s), falta el signo opuesto", ErrTransferLeg, g.currency, g.sum)
 		}
 	}
 	return nil

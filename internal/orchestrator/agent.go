@@ -170,6 +170,16 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 				// un solo resultado, y sus efectos se quieren.
 				turnDone = true
 			case execErr != nil:
+				// Sin esto la vuelta que falla es INVISIBLE: el error se le devuelve
+				// al modelo como texto y el turno sigue, así que en producción solo
+				// se nota como una vuelta extra de ~4.200 tokens de prompt sin
+				// ninguna línea que diga por qué. Es lo que pasó el 2026-08-08 con
+				// las transferencias de dos piernas: el guard las rechazaba, el
+				// modelo corregía en la vuelta 1, y entre las dos se pasaban del TPM.
+				// Los sitios pre-loop ya loguean su rechazo (ver messaging.guardReason);
+				// este camino se lo había salteado al migrar.
+				slog.WarnContext(ctx, "agent tool failed",
+					"round", i, "tool", call.Function.Name, "err", execErr)
 				result = fmt.Sprintf("error: %v", execErr)
 			}
 			messages = append(messages, loopMessage{
