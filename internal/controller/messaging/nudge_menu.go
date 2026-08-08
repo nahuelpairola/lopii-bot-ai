@@ -2,7 +2,6 @@ package messaging
 
 import (
 	"context"
-	"math/rand"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
@@ -29,14 +28,18 @@ func (c *controller) eligibleQuestions(userID uint64, s *nudgeStats) []nudgeDef 
 }
 
 // sendQuestionMenu responde al tap de "Preguntame" con las preguntas que hoy
-// califican, barajadas y recortadas, para que no parezca un cartel estático.
+// califican, en orden de declaración —que ya es orden de valor— y recortadas.
+//
+// Antes barajaba y DESPUÉS recortaba a cuatro, así que podía tirar las mejores y
+// dejar las peores. Y en un menú la predecibilidad vale más que la novedad: los
+// botones que se mueven de lugar rompen la memoria muscular. El menú ES un
+// índice estable; parecer estático es lo que se busca, no lo que se evita.
 func (c *controller) sendQuestionMenu(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
 	opts := c.eligibleQuestions(userID, c.buildNudgeStats(userID))
 	if len(opts) == 0 {
 		c.sendText(ctx, b, chatID, msgMenuNoData)
 		return
 	}
-	rand.Shuffle(len(opts), func(i, j int) { opts[i], opts[j] = opts[j], opts[i] })
 	if len(opts) > menuMaxOptions {
 		opts = opts[:menuMaxOptions]
 	}

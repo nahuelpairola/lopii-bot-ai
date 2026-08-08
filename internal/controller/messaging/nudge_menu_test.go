@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"lopiibot.com/internal/account"
@@ -77,6 +78,43 @@ func TestMenuTipGate_ReachableBySingleAccountUser(t *testing.T) {
 	}
 	if !gateFor(t, nudgeMenuTip)(c, 1, s) {
 		t.Error("el menú tiene que ser alcanzable aunque haya tips que este usuario nunca reciba")
+	}
+}
+
+// El menú sale en orden de declaración —que es orden de valor— y recorta
+// DESPUÉS. Antes barajaba primero, así que podía tirar las mejores preguntas y
+// además movía los botones de lugar en cada tap.
+func TestSendQuestionMenu_KeepsTheBestInDeclaredOrder(t *testing.T) {
+	c, _ := activeUser()
+	c.orchestrator = &stubQueryOrchestrator{}
+	c.nudges = &stubNudgeRepo{}
+	c.chatHistory = stubChatHistory{}
+
+	want := c.eligibleQuestions(1, c.buildNudgeStats(1))
+	if len(want) < 2 {
+		t.Fatalf("el fixture necesita al menos 2 preguntas elegibles, hay %d", len(want))
+	}
+	if len(want) > menuMaxOptions {
+		want = want[:menuMaxOptions]
+	}
+
+	b, rt := newNudgeTestBot(t)
+	c.sendQuestionMenu(context.Background(), b, 1, 1)
+	if len(rt.markups) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(rt.markups))
+	}
+
+	markup := rt.markups[0]
+	at := -1
+	for _, n := range want {
+		i := strings.Index(markup, n.question)
+		if i < 0 {
+			t.Fatalf("falta la pregunta %q en el menú: %s", n.question, markup)
+		}
+		if i < at {
+			t.Errorf("el menú no respeta el orden de declaración: %q salió antes de lo que le toca", n.question)
+		}
+		at = i
 	}
 }
 
