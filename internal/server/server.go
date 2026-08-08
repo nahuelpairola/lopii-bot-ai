@@ -82,7 +82,7 @@ func InitServer(conf *config.Config) error {
 	// pure noise and its latency/status add nothing. Every other route — external
 	// health, webhook, invitations, admin — stays logged. SkipPaths suppresses only
 	// the log line: the route still serves 200 OK unchanged.
-	ginEngine.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/health/internal"}}))
+	ginEngine.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/health/internal", "/health/external"}}))
 	ginEngine.Use(gin.Recovery())
 
 	conn, err := initializeDatabase(conf)
