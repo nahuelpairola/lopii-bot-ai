@@ -61,7 +61,7 @@ func TestClient_Send_RetriesTransientThenSucceeds(t *testing.T) {
 	var hits int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if atomic.AddInt32(&hits, 1) == 1 {
-			w.WriteHeader(http.StatusTooManyRequests) // transient — must retry
+			w.WriteHeader(http.StatusInternalServerError) // transient — must retry
 			return
 		}
 		w.Write([]byte(`{"ok":true}`))
@@ -77,44 +77,43 @@ func TestClient_Send_RetriesTransientThenSucceeds(t *testing.T) {
 		t.Errorf("body = %s, want {\"ok\":true}", body)
 	}
 	if n := atomic.LoadInt32(&hits); n != 2 {
-		t.Errorf("server hits = %d, want 2 (one 429 then success)", n)
+		t.Errorf("server hits = %d, want 2 (one 5xx then success)", n)
 	}
 }
 
-func TestClient_Send_HonorsGroqBodyRetryAfterOnTPM429(t *testing.T) {
+// El 429 no se reintenta y no se duerme: pega UNA vez y devuelve el wait que
+// pidió Groq para que lo espere la cola. Antes acá se dormían los 3,05s adentro
+// del webhook — y contra un minuto ya agotado ese reintento nunca entraba
+// (medido el 2026-08-08: 12 de 12 fallaron tras ~20s cada uno).
+func TestClient_Send_TPM429FailsFastAndSurfacesGroqWait(t *testing.T) {
 	var hits int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if atomic.AddInt32(&hits, 1) == 1 {
-			// No Retry-After header — Groq doesn't set one for TPM (token-based)
-			// 429s, only the free-text message says how long to wait.
-			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte(`{"error":{"message":"Rate limit reached for model x on tokens per minute (TPM): Limit 8000, Used 7696, Requested 2254. Please try again in 3.05s.","type":"tokens","code":"rate_limit_exceeded"}}`))
-			return
-		}
-		w.Write([]byte(`{"ok":true}`))
+		atomic.AddInt32(&hits, 1)
+		// No Retry-After header — Groq doesn't set one for TPM (token-based)
+		// 429s, only the free-text message says how long to wait.
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error":{"message":"Rate limit reached for model x on tokens per minute (TPM): Limit 8000, Used 7696, Requested 2254. Please try again in 3.05s.","type":"tokens","code":"rate_limit_exceeded"}}`))
 	}))
 	defer server.Close()
 
 	client := NewClient("k", server.URL, 10*time.Second, nil)
 	start := time.Now()
-	body, err := client.send(context.Background(), callTypeRouter, "m", []byte(`{}`))
+	_, err := client.send(context.Background(), callTypeRouter, "m", []byte(`{}`))
 	elapsed := time.Since(start)
-	if err != nil {
-		t.Fatalf("send: %v", err)
+
+	var rl *RateLimitedError
+	if !errors.As(err, &rl) {
+		t.Fatalf("want a RateLimitedError, got %v", err)
 	}
-	if string(body) != `{"ok":true}` {
-		t.Errorf("body = %s, want {\"ok\":true}", body)
+	if n := atomic.LoadInt32(&hits); n != 1 {
+		t.Errorf("server hits = %d, want 1 (a 429 must not retry)", n)
 	}
-	if n := atomic.LoadInt32(&hits); n != 2 {
-		t.Errorf("server hits = %d, want 2 (one 429 then success)", n)
+	// El wait viaja crudo para la cola: sin capear por maxBackoff y sin dormirlo.
+	if want := 3050 * time.Millisecond; rl.RetryAfter != want {
+		t.Errorf("RetryAfter = %s, want %s (el wait que dicta el body de Groq)", rl.RetryAfter, want)
 	}
-	// The old maxBackoff (1s) would cap this wait far short of the 3.05s Groq
-	// asked for. Honoring the body means we actually wait close to it.
-	if elapsed < 3*time.Second {
-		t.Errorf("elapsed = %s, want >= 3s (should honor Groq's body-stated wait, not the old 1s blind cap)", elapsed)
-	}
-	if elapsed > 5*time.Second {
-		t.Errorf("elapsed = %s, want < 5s (shouldn't overshoot the stated wait by much)", elapsed)
+	if elapsed > time.Second {
+		t.Errorf("elapsed = %s, want < 1s (no se duerme el wait adentro del webhook)", elapsed)
 	}
 }
 

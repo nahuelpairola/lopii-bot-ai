@@ -35,25 +35,21 @@ func NewClient(apiKey, baseURL string, timeout time.Duration, recorder LLMRecord
 }
 
 const (
-	// maxSendAttempts caps total tries (1 original + 1 retry) on a transient
-	// Groq failure. Retry fires ONLY on failure, so the happy path adds 0ms.
+	// maxSendAttempts caps total tries (1 original + 1 retry) on un 5xx o un
+	// error de red. Retry fires ONLY on failure, so the happy path adds 0ms.
 	//
-	// Bajado de 4 a 2 el 2026-08-01. Con 4, un 429 de cupo agotado se comía
-	// hasta 60s antes de rendirse (medido: traces bf54a24c 60.367ms y 24db7629
-	// 46.351ms) — y contra un límite DIARIO ningún reintento iba a entrar, así
-	// que era esperar por nada. Un solo reintento sigue cubriendo el caso para
-	// el que existe el backoff: un 5xx o un TPM que se libera en segundos.
+	// Bajado de 4 a 2 el 2026-08-01: con 4, un 429 de cupo agotado se comía hasta
+	// 60s antes de rendirse. El 2026-08-08 el 429 dejó de reintentarse del todo
+	// (ver el bloque del 429 en send), así que esto ya solo gobierna 5xx/red.
 	maxSendAttempts = 2
-	// baseBackoff is the only retry wait left now that maxSendAttempts is 2
-	// (the blind exponential path: no Retry-After header, no parseable body
-	// wait — plain 5xx/network errors). It still doubles per attempt, so
-	// raising maxSendAttempts revives 500ms, 1s, …
+	// baseBackoff is the only retry wait left now that maxSendAttempts is 2 and
+	// the 429 no longer retries: the blind exponential path for plain
+	// 5xx/network errors. It still doubles per attempt, so raising
+	// maxSendAttempts revives 500ms, 1s, …
 	baseBackoff = 250 * time.Millisecond
-	// maxBackoff caps any single wait, including an honored Retry-After header
-	// or a body-parsed Groq TPM wait (see parseGroqRetryAfterSeconds) — a slow
-	// 429 never freezes the user longer than this. Real Groq TPM waits
-	// observed up to ~15s, so this must be well above the old 1s cap to be
-	// honored at all instead of silently truncated to uselessness.
+	// maxBackoff caps any single retry wait (5xx con Retry-After incluido). Ya no
+	// aplica al 429, que falla al primer intento sin dormir — el wait de Groq
+	// viaja crudo en RateLimitedError para que lo espere la cola, no el webhook.
 	maxBackoff = 20 * time.Second
 )
 
@@ -88,19 +84,27 @@ func parseBodyRetryAfter(body []byte) time.Duration {
 }
 
 // send POSTs payload to Groq's chat/completions and returns the 200 body. It
-// retries only transient failures — a network error, HTTP 429, or any 5xx —
-// up to maxSendAttempts. Wait between retries prefers, in order: the 429's
-// Retry-After header; Groq's body-stated TPM wait (parseGroqRetryAfterSeconds
-// — Groq doesn't send a header for token-based 429s); else blind exponential
-// backoff. All capped at maxBackoff. A non-429 4xx (a malformed request = our
-// bug) fails immediately. The whole sequence is bound by ctx. This is the
-// single Groq I/O chokepoint: every call type (router, create, update,
-// delete, onboarding, query) inherits the retry.
+// retries only a network error or a 5xx, up to maxSendAttempts, with
+// exponential backoff capped at maxBackoff.
+//
+// Un 429 NO se reintenta: falla al primer intento y vuelve como
+// RateLimitedError con el wait que recomienda Groq (header Retry-After >
+// header reset-tokens > el "try again in <dur>" del body), para que la cola de
+// pending jobs reintente cuando el cupo volvió. Ver el comentario en el bloque
+// del 429 para la medición que lo decidió.
+//
+// A non-429 4xx (a malformed request = our bug) fails immediately. The whole
+// sequence is bound by ctx. This is the single Groq I/O chokepoint: every call
+// type (router, create, update, delete, onboarding, query) inherits this.
 func (c *Client) send(ctx context.Context, callType, model string, payload []byte) ([]byte, error) {
 	start := time.Now()
 	var lastErr error
 	var lastStatus int
 	var lastRetryAfter time.Duration
+	// lastHeader guarda los headers del 429 para que la fila de llm_calls conserve
+	// ratelimit_remaining_*. Sin esto el camino de fallo grababa nil y las filas de
+	// 429 quedaban ciegas justo donde el cupo restante es el dato que importa.
+	var lastHeader http.Header
 	attempt := 0
 	wait := baseBackoff
 	for attempt = 0; attempt < maxSendAttempts; attempt++ {
@@ -140,21 +144,32 @@ func (c *Client) send(ctx context.Context, callType, model string, payload []byt
 			c.record(ctx, callType, model, start, attempt+1, resp.StatusCode, "", resp.Header, body)
 			return body, nil
 		}
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			lastErr = fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
 			// Prioridad del wait: header Retry-After (req-count) > header reset-tokens
 			// (TPM/TPD) > body "try again in <dur>". Groq no manda Retry-After para
 			// límites por token, de ahí los fallbacks.
 			ra := retryAfter(resp.Header)
-			if ra == 0 && resp.StatusCode == http.StatusTooManyRequests {
+			if ra == 0 {
 				if ra = parseResetTokens(resp.Header); ra == 0 {
 					ra = parseBodyRetryAfter(body)
 				}
 			}
-			if resp.StatusCode == http.StatusTooManyRequests {
-				lastRetryAfter = ra // el wait crudo de Groq, sin capear (la cola lo usa)
-			}
-			if ra > 0 {
+			lastRetryAfter = ra // el wait crudo de Groq, sin capear (la cola lo usa)
+			lastHeader = resp.Header
+			// Un 429 NO se reintenta acá. Medido el 2026-08-08: 12 de 12 reintentos
+			// fallaron, cada uno durmiendo ~20s (maxBackoff) antes de rendirse. El
+			// backoff espera DENTRO del mismo minuto que ya está agotado, así que no
+			// puede entrar nunca: son 20s de webhook muerto por fallo, con tasa de
+			// éxito cero. El reintento que sí sirve es el de la cola
+			// (internal/pendingjob), que espera lastRetryAfter y corre cuando el cupo
+			// volvió de verdad.
+			attempt++
+			break
+		}
+		if resp.StatusCode >= 500 {
+			lastErr = fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
+			if ra := retryAfter(resp.Header); ra > 0 {
 				wait = ra
 				if wait > maxBackoff {
 					wait = maxBackoff
@@ -178,7 +193,7 @@ func (c *Client) send(ctx context.Context, callType, model string, payload []byt
 		}
 		return nil, fmt.Errorf("orchestrator: groq returned status %d: %s", resp.StatusCode, string(body))
 	}
-	c.record(ctx, callType, model, start, attempt, lastStatus, errStr(lastErr), nil, nil)
+	c.record(ctx, callType, model, start, attempt, lastStatus, errStr(lastErr), lastHeader, nil)
 	if lastStatus == http.StatusTooManyRequests {
 		return nil, &RateLimitedError{RetryAfter: lastRetryAfter, err: lastErr}
 	}
