@@ -26,11 +26,18 @@ runs **after** the reads in its round — precisely the "the total excludes the 
 insert" bug that `orderCallsByKind`'s own comment warns about. The existing test pins today's
 single write tool, not a future mis-declared one.
 
-## `numberFormatRule` must contain no `%` and no backtick
+## Shared prompt fragments must contain no `%` and no backtick
 
-It is concatenated into three separate `fmt.Sprintf` templates (`number_format.go:8-9`). A
-literal `%` corrupts the rendered system prompt at runtime — no panic, no error, the model just
-receives a garbled instruction block.
+`numberFormatRule` (`number_format.go`) and the two consts in `movement_rules.go` are
+concatenated into `fmt.Sprintf` templates. A literal `%` corrupts the rendered system prompt at
+runtime — no panic, no error, the model just receives a garbled instruction block. Escape it as
+`%%`, as the "90%%" in `taxonomyAndAmountRules` does.
+
+`movement_rules.go` holds what `createSystemPromptTemplate` and `agentSystemPromptTemplate` say
+**verbatim**, deduplicated after a 2026-08-08 fix had to be pasted into both by hand. It is two
+consts, not one, because `REGLA DE FECHA` sits between them and genuinely differs — the loop
+adds the timezone and a date-range rule for its query tools. **That block stays duplicated on
+purpose**; unifying it would push a query instruction into `create`, which has no query tool.
 
 ## `Run` and `AnswerQuery` are two near-identical loops, kept apart on purpose
 
