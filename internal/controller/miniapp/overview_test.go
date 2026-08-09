@@ -46,7 +46,7 @@ func TestHandleOverview_RendersOK(t *testing.T) {
 		"":      {{Label: "", Total: decimal.NewFromInt(1000)}},
 		"month": {{Label: "2026-07", Total: decimal.NewFromInt(1000)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 
 	router := gin.New()
 	c.RegisterRoutes(router)
@@ -68,7 +68,7 @@ func TestHandleOverview_MonthWindowUsesDailyGrouping(t *testing.T) {
 		"":    {{Label: "", Total: decimal.NewFromInt(1000)}},
 		"day": {{Label: "2026-07-03", Total: decimal.NewFromInt(400)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -94,7 +94,7 @@ func TestHandleOverview_FormatsMoneyAndShowsPeriod(t *testing.T) {
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"": {{Label: "", Total: decimal.NewFromInt(1234567)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -119,7 +119,7 @@ func TestHandleOverview_FormatsMoneyAndShowsPeriod(t *testing.T) {
 
 func TestHandleOverview_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c := NewController(stubMovements{}, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(stubMovements{}, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -139,7 +139,7 @@ func TestHandleOverview_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
 
 func TestHandleOverview_HTMXWithoutInitData_401(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	c := NewController(stubMovements{}, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(stubMovements{}, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -164,7 +164,7 @@ func TestHandleOverview_ShowsBalanceVariationSeparately(t *testing.T) {
 		"day":  {{Label: "2026-08-05", Total: decimal.NewFromInt(1000)}},
 		"type": {{Label: "income", Total: decimal.NewFromInt(84200)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -189,7 +189,7 @@ func TestHandleOverview_NegativeVariationIsNotAnExpense(t *testing.T) {
 		"day":  {{Label: "2026-08-05", Total: decimal.NewFromInt(1000)}},
 		"type": {{Label: "expense", Total: decimal.NewFromInt(5000)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -208,7 +208,7 @@ func TestHandleOverview_NoVariationRowWhenNoAdjustments(t *testing.T) {
 		"":    {{Label: "", Total: decimal.NewFromInt(1000)}},
 		"day": {{Label: "2026-08-05", Total: decimal.NewFromInt(1000)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -228,7 +228,7 @@ func TestHandleOverview_VariationAloneIsNotAnEmptyPeriod(t *testing.T) {
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"type": {{Label: "income", Total: decimal.NewFromInt(84200)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 

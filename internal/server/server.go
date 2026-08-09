@@ -158,7 +158,7 @@ func InitServer(conf *config.Config) error {
 		conf.Agent.RouteCreateToLoop,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
-	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, conf.Telegram.Token)
+	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, invitationRepo, conf.Telegram.Token, conf.Telegram.Username)
 
 	healthController.RegisterRoutes(ginEngine)
 	invitationController.RegisterRoutes(ginEngine)
