@@ -96,6 +96,7 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 		// tiene por qué ocupar lugar ni pedir atención.
 		HasVariacion: !variation.IsZero(),
 		Variacion:    signedMoney(variation, p.Currency),
+		IsAdmin:      ctx.GetBool(contextIsAdminKey),
 	}
 
 	ctx.Status(http.StatusOK)

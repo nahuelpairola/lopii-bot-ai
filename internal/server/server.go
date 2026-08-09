@@ -13,7 +13,6 @@ import (
 	"lopiibot.com/internal/config"
 	adminctrl "lopiibot.com/internal/controller/admin"
 	healthctrl "lopiibot.com/internal/controller/health"
-	invitationctrl "lopiibot.com/internal/controller/invitation"
 	messagingctrl "lopiibot.com/internal/controller/messaging"
 	miniappctrl "lopiibot.com/internal/controller/miniapp"
 	"lopiibot.com/internal/conversation"
@@ -148,20 +147,15 @@ func InitServer(conf *config.Config) error {
 	conversationEngine.Register(messagingctrl.NewAskUserFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
-	invitationController, err := invitationctrl.NewController(invitationRepo, conf.Telegram.Username)
-	if err != nil {
-		return err
-	}
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
 		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo, actionsRepo,
 		conf.Agent.RouteCreateToLoop,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
-	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, conf.Telegram.Token)
+	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, invitationRepo, conf.Telegram.Token, conf.Telegram.Username)
 
 	healthController.RegisterRoutes(ginEngine)
-	invitationController.RegisterRoutes(ginEngine)
 	adminController.RegisterRoutes(ginEngine)
 	messagingController.RegisterHandlers(tgBot)
 	miniappController.RegisterRoutes(ginEngine)

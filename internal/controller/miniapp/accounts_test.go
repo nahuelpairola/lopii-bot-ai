@@ -52,7 +52,7 @@ func TestHandleAccounts_NeverMixesCurrencies(t *testing.T) {
 			2: {{Month: "2026-07", Delta: decimal.NewFromInt(500)}},
 		},
 	}
-	c := NewController(movements, stubAccountsTwoCurrencies{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccountsTwoCurrencies{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -76,7 +76,7 @@ func TestHandleAccounts_RendersBalances(t *testing.T) {
 			1: {{Month: "2026-06", Delta: decimal.NewFromInt(30000)}, {Month: "2026-07", Delta: decimal.NewFromInt(20000)}},
 		},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 

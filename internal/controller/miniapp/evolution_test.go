@@ -106,7 +106,7 @@ func TestHandleEvolution_RendersTableFallback(t *testing.T) {
 	movements := stubMovementsEvolution{byMonth: map[string][]movement.CategorySum{
 		current: {{Label: "Alimentación", Total: d(1500)}},
 	}}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -136,7 +136,7 @@ func TestHandleEvolution_ExpandShowsSubcategories(t *testing.T) {
 			"Alimentación": {{Label: "Supermercado", Total: d(1200)}},
 		},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 

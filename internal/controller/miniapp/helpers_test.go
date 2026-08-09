@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-const testBotToken = "123456:TEST-TOKEN"
+const (
+	testBotToken    = "123456:TEST-TOKEN"
+	testBotUsername = "testbot"
+)
 
 func timeNow() time.Time { return time.Now() }
 

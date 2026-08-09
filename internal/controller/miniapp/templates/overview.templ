@@ -31,6 +31,10 @@ type OverviewData struct {
 	// not spend screen space saying "nothing happened".
 	HasVariacion bool
 	Variacion    string
+	// IsAdmin muestra el acceso a /app/admin. La ruta es la única sin pestaña
+	// en la tabbar, así que sin este link no hay forma de llegar: un webview no
+	// tiene barra de direcciones.
+	IsAdmin bool
 }
 
 // The <h2> the view used to open with is gone: the tab already says where you
@@ -69,5 +73,23 @@ templ Overview(data OverviewData) {
 	} else {
 		<canvas id="resumen-trend" data-chart-type="bar-grouped" data-chart-data-id="resumen-trend-data"></canvas>
 		@templ.JSONScript("resumen-trend-data", data.TrendChart)
+	}
+	if data.IsAdmin {
+		// No se ve acá: hx-swap-oob lo saca del #content y lo mete en el slot
+		// que el TabBar dejó reservado, así que aterriza como una pestaña más
+		// del menú. Viaja con el Resumen porque es la primera respuesta
+		// autenticada — la única que sabe que quien mira es admin.
+		//
+		// Sin href/hx-target propios: al entrar al <nav> hereda hx-target,
+		// hx-push-url, hx-include y hx-indicator de él, igual que las otras
+		// cuatro. aria-current lo pone markActiveTab (app.js) contra data-tab.
+		<a
+			id={ AdminTabSlotID }
+			hx-swap-oob="true"
+			class="tab-link"
+			data-tab={ AdminPath }
+			href={ RouteAdmin }
+			hx-get={ RouteAdmin }
+		>Admin</a>
 	}
 }
