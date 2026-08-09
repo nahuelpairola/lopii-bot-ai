@@ -30,7 +30,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `database` | GORM+Postgres singleton. `Initialize`, `RunMigrations` (goose) |
 | `health` | `HealthChecker` that pings the DB |
 | `user` | Model + repository: `FindByTelegramID`, `FindByID`, `Insert` |
-| `invitation` | Model + repository: `Create` (generates random code), `FindByCode`, `MarkAsUsed` |
+| `invitation` | Model + repository: `Create` (generates random code), `FindByCode`, `MarkAsUsed`, `List` (newest 50, for the admin view) |
 | `account` | Model + full repository + messages for flows |
 | `subcategory` | Model + repository + messages for flows |
 | `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates) + **the guard** (`guard.go`: `Normalize`, `AssignTransactionIDs`, `CheckBalances`, the `Err*` sentinels) — the money invariants live next to the type they protect, and are pure: they never touch the DB |
@@ -49,10 +49,9 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `trace` | `NewID` (crypto/rand, 32 hex) + ctx carrier for the correlation id shared by `request_traces`/`llm_calls`/`intent_events` |
 | `logging` | Installs the process-wide `slog` logger; its handler stamps the ctx `trace_id` onto every record |
 | `controller/health` | HTTP: `/health/internal`, `/health/external` |
-| `controller/invitation` | HTTP: `POST /invitations` |
 | `controller/admin` | HTTP: `POST /admin/users/:telegramID/reset` (admin-only) |
 | `controller/messaging` | Telegram: `/start`, catch-all for free text and callbacks |
-| `controller/miniapp` | Telegram Mini App: templ-rendered HTML views (overview, accounts, categories, period, evolution) + `auth.go` initData validation |
+| `controller/miniapp` | Telegram Mini App: templ-rendered HTML views (overview, accounts, categories, period, evolution, admin) + `auth.go` initData validation and the `requireAdmin` gate |
 | `server` | Bootstrap: DB, migrations, bot, webhook, controllers, Gin |
 
 ## 2. Conventions
@@ -142,7 +141,12 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
 
 - `accounts` table has a `type DEFAULT 'standard'` column from a prior design — drop with a migration.
 - Migration `20260618230837_create_admin_user.sql` has literal `telegram_id = 'TELEGRAM_ID'` — must be edited manually before each new-environment deploy.
-- `middleware.RequireAdmin` is hardcoded to user ID 1 — needs real auth.
+- `middleware.RequireAdmin` authenticates nothing: it sets `user_id = 1` in the Gin
+  context and calls `Next()`. Its one remaining caller is
+  `POST /admin/users/:telegramID/reset`, which is therefore open to anyone who knows
+  the URL. The Mini App does **not** use it — `/app/*` authenticates via
+  Telegram-signed initData and gates its admin views on `users.is_admin`
+  (`miniapp/auth.go`).
 - `intent_events.needs_confirmation` (NOT NULL) went vestigial after the router's UNCLEAR redesign: it is always written `false`. Drop it with a migration if you want it cleaned up.
 - An account's two **opening** movements do not go through `movement.Normalize`, and cannot:
   they are a lone leg typed `Transfer` with no counterparty and no `transaction_id`, and the

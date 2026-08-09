@@ -8,7 +8,7 @@
 | Table | Key Fields | Notes |
 |-------|-----------|-------|
 | `users` | `id`, `telegram_id` (UNIQUE), `username`, `is_admin`, `deleted_at` | Soft delete |
-| `invitations` | `id`, `code` (6-char UNIQUE), `created_by`→users, `used_by`→users, `expires_at`, `used_at` | 72h expiry, single-use |
+| `invitations` | `id`, `code` (6-char UNIQUE), `created_by`→users, `used_by`→users, `expires_at`, `used_at` | 72h expiry, single-use. State (pending/used/expired) is derived from `used_at`/`expires_at`, never stored — both the redemption check in `handleStart` and the admin view derive it independently |
 | `accounts` | `id`, `user_id`→users, `name`, `type` (legacy), `currency`, `is_default`, `deleted_at` | `type` is a legacy artifact — needs a drop migration. Unique index is case-insensitive on name (`20260704120000`) |
 | `subcategories` | `id`, `user_id` (nullable)→users, `category`, `subcategory`, `description`, `is_global`, `icon`, `deleted_at` | `user_id = NULL` = global (visible to all). `description` is **not decorative** — it feeds LLM classification. Icons backfilled in `20260705120000` |
 | `movements` | `id`, `transaction_id` (UUID nullable), `user_id`→users, `account_id` (nullable)→accounts, `subcategory_id`→subcategories, `date`, `type`, `amount` (NUMERIC 15,2), `currency`, `payment_method`, `merchant`, `description`, `deleted_at` | `date` is a plain `DATE` — see the binding trap in `internal/movement/CLAUDE.md`. Rate columns pending: `bna_rate`, `mep_rate`, `ccl_rate`, `blue_rate`, `amount_usd` |

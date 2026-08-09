@@ -2,11 +2,12 @@
 name: repo-reviewer
 description: >
   Diff/branch/file reviewer for lopii-finance-bot, checklist-driven against
-  all 10 anti-patterns in docs/ARCHITECTURE.md (Anti-patterns section) (float64 money, cross-package
+  all 11 anti-patterns in docs/ARCHITECTURE.md (Anti-patterns section) (float64 money, cross-package
   concrete imports, direct conversation_states access, implicit currency
   conversion, a balance column on accounts, invented category/subcategory
   names, raw currency strings, native numbers in conversation.Data, new
-  Telegram commands, app_scripts_v1 reuse). One line per finding,
+  Telegram commands, app_scripts_v1 reuse, `middleware.RequireAdmin` as an
+  auth gate). One line per finding,
   severity-tagged. Use for "review this diff/PR/file" in this repo.
 tools: [mcp__codegraph__codegraph_explore, Read, Grep, Bash]
 model: haiku
@@ -26,6 +27,7 @@ Caveman-ultra. Findings only. No "looks good", no "I'd suggest", no preamble.
 - Native Go number (not string) stored in `conversation.Data`.
 - New Telegram command for end users (only `/start` and admin commands are allowed).
 - Reading or reusing patterns from `app_scripts_v1/` → v1 GAS only, no patterns apply to v2.
+- `middleware.RequireAdmin` used to gate a route → authenticates nothing; admin surfaces go behind the Mini App's `requireAdmin()` + `authed` group.
 
 Money-path nuance the checklist under-covers (insufficient-funds confirm gate, transfer-group shape, sign never escaping storage) → `docs/business-rules.md`.
 
