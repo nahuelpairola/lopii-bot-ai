@@ -3,6 +3,7 @@ package templates
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"time"
 	"unicode"
 
@@ -19,8 +20,12 @@ const (
 	PresetYear  = "year"
 )
 
-// anchorLayout is how the "m" param encodes the anchor month.
-const anchorLayout = "2006-01"
+// anchorLayout is how the "m" param encodes the anchor month. dayLayout is the
+// daily bucket key SumForUser's GroupByDay produces.
+const (
+	anchorLayout = "2006-01"
+	dayLayout    = "2006-01-02"
+)
 
 // presetMonths is each preset's window length in months.
 var presetMonths = map[string]int{PresetMonth: 1, Preset3M: 3, Preset6M: 6, PresetYear: 12}
@@ -133,6 +138,17 @@ func ShortMonth(key string) string {
 		return key
 	}
 	return monthShortEs[t.Month()-1]
+}
+
+// ShortDay renders a "YYYY-MM-DD" key as a column header ("7"). Just the day
+// number: the period header already says which month you are looking at, and a
+// one-character label is what lets a month's worth of columns stay horizontal.
+func ShortDay(key string) string {
+	t, err := time.Parse(dayLayout, key)
+	if err != nil {
+		return key
+	}
+	return strconv.Itoa(t.Day())
 }
 
 func periodLabel(from, anchor time.Time, months int) string {

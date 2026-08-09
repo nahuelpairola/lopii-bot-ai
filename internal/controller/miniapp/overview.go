@@ -2,6 +2,7 @@ package miniapp
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -24,11 +25,13 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 	incomeQ := base
 	incomeQ.Type = &incomeType
 
-	// A one-month window plots daily bars; anything wider plots months.
-	// Grouping 31 days into two series would be 62 bars on a phone.
+	// A one-month window plots daily bars; anything wider plots months. Both
+	// shapes carry the same two series — gastos e ingresos, lado a lado.
 	groupBy := movement.GroupByMonth
+	bucketLabel := templates.ShortMonth
 	if p.Months == 1 {
 		groupBy = movement.GroupByDay
+		bucketLabel = templates.ShortDay
 	}
 
 	expenseRows, err := c.movements.SumForUser(expenseQ, movement.GroupByNone)
@@ -42,6 +45,11 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 		return
 	}
 	expenseByBucket, err := c.movements.SumForUser(expenseQ, groupBy)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	incomeByBucket, err := c.movements.SumForUser(incomeQ, groupBy)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
@@ -71,15 +79,7 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 		status = templates.NetoCritical
 	}
 
-	trend := buildSingleTrend(expenseByBucket)
-	if p.Months > 1 {
-		incomeByBucket, err := c.movements.SumForUser(incomeQ, groupBy)
-		if err != nil {
-			ctx.AbortWithStatus(http.StatusInternalServerError)
-			return
-		}
-		trend = buildTrendChart(expenseByBucket, incomeByBucket)
-	}
+	trend := buildTrendChart(expenseByBucket, incomeByBucket, bucketLabel)
 
 	data := templates.OverviewData{
 		Period:     p,
@@ -134,46 +134,40 @@ func signedMoney(d decimal.Decimal, cur currency.Currency) string {
 	return templates.FormatMoney(d, cur)
 }
 
-// buildSingleTrend is the one-month shape: daily expense bars only. Income in
-// a month is one or two events — it belongs in the KPI, not in a daily series.
-func buildSingleTrend(expenses []movement.CategorySum) templates.TrendChartData {
-	labels := unionLabels(expenses, nil)
-	return templates.TrendChartData{
-		Labels: labels,
-		Datasets: []templates.TrendDataset{
-			{Label: "Gastos", Data: valuesForLabels(expenses, labels), BackgroundColor: templates.ColorExpense},
-		},
-	}
-}
-
 // buildTrendChart merges the two series into one Chart.js-ready shape, aligned
-// on the union of bucket labels present in either.
-func buildTrendChart(expenses, incomes []movement.CategorySum) templates.TrendChartData {
-	labels := unionLabels(expenses, incomes)
+// on the union of bucket labels present in either. display renders a bucket key
+// as its axis text; it runs last, so the alignment above works on the raw keys.
+func buildTrendChart(expenses, incomes []movement.CategorySum, display func(string) string) templates.TrendChartData {
+	keys := unionLabels(expenses, incomes)
+	labels := make([]string, len(keys))
+	for i, k := range keys {
+		labels[i] = display(k)
+	}
 	return templates.TrendChartData{
 		Labels: labels,
 		Datasets: []templates.TrendDataset{
-			{Label: "Gastos", Data: valuesForLabels(expenses, labels), BackgroundColor: templates.ColorExpense},
-			{Label: "Ingresos", Data: valuesForLabels(incomes, labels), BackgroundColor: templates.ColorIncome},
+			{Label: "Gastos", Data: valuesForLabels(expenses, keys), BackgroundColor: templates.ColorExpense},
+			{Label: "Ingresos", Data: valuesForLabels(incomes, keys), BackgroundColor: templates.ColorIncome},
 		},
 	}
 }
 
+// unionLabels returns every bucket key present in either series, oldest first.
+// SumForUser orders by total DESC — fine for a category ranking, nonsense for a
+// time axis — so the order is rebuilt here. Sorting the keys as strings is the
+// chronological sort: "YYYY-MM" and "YYYY-MM-DD" are zero-padded fixed-width.
 func unionLabels(a, b []movement.CategorySum) []string {
 	seen := map[string]bool{}
 	var labels []string
-	for _, r := range a {
-		if !seen[r.Label] {
-			seen[r.Label] = true
-			labels = append(labels, r.Label)
+	for _, rows := range [][]movement.CategorySum{a, b} {
+		for _, r := range rows {
+			if !seen[r.Label] {
+				seen[r.Label] = true
+				labels = append(labels, r.Label)
+			}
 		}
 	}
-	for _, r := range b {
-		if !seen[r.Label] {
-			seen[r.Label] = true
-			labels = append(labels, r.Label)
-		}
-	}
+	slices.Sort(labels)
 	return labels
 }
 
