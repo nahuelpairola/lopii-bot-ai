@@ -50,7 +50,17 @@ function initCharts(root) {
       chartRegistry.set(canvasId, new Chart(canvas, {
         type: 'bar',
         data: { labels: data.labels, datasets: [{ data: data.values, backgroundColor: data.color }] },
-        options: { indexAxis: 'y', responsive: true, animation, plugins: { legend: { display: false } } },
+        // autoSkip viene prendido por default y sobre el eje de categorías
+        // saltea etiquetas cuando las ve apretadas: en un gráfico horizontal
+        // eso deja una barra sí y una no sin nombre. Acá cada barra ES una
+        // categoría, así que ninguna etiqueta es opcional.
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          animation,
+          plugins: { legend: { display: false } },
+          scales: { y: { ticks: { autoSkip: false } } },
+        },
       }));
     } else if (chartType === 'line-multi') {
       chartRegistry.set(canvasId, new Chart(canvas, {
