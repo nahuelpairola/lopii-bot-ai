@@ -2,6 +2,7 @@ package miniapp
 
 import (
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -60,8 +61,9 @@ func TestHandleOverview_RendersOK(t *testing.T) {
 
 func TestHandleOverview_MonthWindowUsesDailyGrouping(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	// Con ventana de un mes el trend agrupa por día y va con UNA serie:
-	// 31 días × 2 series serían 62 barras en un teléfono.
+	// Con ventana de un mes el trend agrupa por día, y lleva las dos series
+	// igual que las ventanas más largas: un mes sin la columna de ingresos no
+	// deja comparar contra lo que entró.
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"":    {{Label: "", Total: decimal.NewFromInt(1000)}},
 		"day": {{Label: "2026-07-03", Total: decimal.NewFromInt(400)}},
@@ -76,11 +78,14 @@ func TestHandleOverview_MonthWindowUsesDailyGrouping(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if !bodyContains(w.Body.String(), "2026-07-03") {
-		t.Fatal("con ventana de mes el trend debe venir agrupado por día")
+	body := w.Body.String()
+	// La clave del bucket es diaria, pero al eje llega sólo el número de día:
+	// el header del período ya dice de qué mes se está hablando.
+	if !bodyContains(body, `"labels":["3"]`) {
+		t.Fatalf("con ventana de mes el eje va por día y sin la fecha completa; body=%s", body)
 	}
-	if bodyContains(w.Body.String(), `"label":"Ingresos"`) {
-		t.Fatal("la ventana de mes va con una sola serie (gastos)")
+	if !bodyContains(body, `"label":"Ingresos"`) {
+		t.Fatal("la ventana de mes también lleva la serie de ingresos")
 	}
 }
 
@@ -236,5 +241,81 @@ func TestHandleOverview_VariationAloneIsNotAnEmptyPeriod(t *testing.T) {
 	}
 	if bodyContains(body, "Sin movimientos") {
 		t.Fatal("no puede decir 'sin movimientos' mientras muestra una variación de saldos")
+	}
+}
+
+func sums(pairs ...any) []movement.CategorySum {
+	var out []movement.CategorySum
+	for i := 0; i < len(pairs); i += 2 {
+		out = append(out, movement.CategorySum{
+			Label: pairs[i].(string),
+			Total: decimal.NewFromInt(int64(pairs[i+1].(int))),
+		})
+	}
+	return out
+}
+
+// SumForUser devuelve los buckets ordenados por total DESC. Sobre un eje de
+// tiempo eso es ruido, así que buildTrendChart reconstruye la cronología — y
+// las dos series tienen que caer en la misma columna, incluso en los buckets
+// donde sólo una de ellas tiene fila.
+func TestBuildTrendChart(t *testing.T) {
+	tests := []struct {
+		name              string
+		expenses, incomes []movement.CategorySum
+		display           func(string) string
+		wantLabels        []string
+		wantGastos        []float64
+		wantIngresos      []float64
+	}{
+		{
+			name:         "los días se ordenan cronológicamente, no por monto",
+			expenses:     sums("2026-08-07", 300, "2026-08-03", 170, "2026-08-01", 60),
+			incomes:      nil,
+			display:      templates.ShortDay,
+			wantLabels:   []string{"1", "3", "7"},
+			wantGastos:   []float64{60, 170, 300},
+			wantIngresos: []float64{0, 0, 0},
+		},
+		{
+			name:         "un día con sólo ingresos igual abre columna de gastos",
+			expenses:     sums("2026-08-02", 500),
+			incomes:      sums("2026-08-09", 900, "2026-08-02", 100),
+			display:      templates.ShortDay,
+			wantLabels:   []string{"2", "9"},
+			wantGastos:   []float64{500, 0},
+			wantIngresos: []float64{100, 900},
+		},
+		{
+			name:         "los meses salen con nombre corto",
+			expenses:     sums("2026-08", 20, "2026-06", 90),
+			incomes:      sums("2026-07", 40),
+			display:      templates.ShortMonth,
+			wantLabels:   []string{"jun", "jul", "ago"},
+			wantGastos:   []float64{90, 0, 20},
+			wantIngresos: []float64{0, 40, 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildTrendChart(tt.expenses, tt.incomes, tt.display)
+
+			if !reflect.DeepEqual(got.Labels, tt.wantLabels) {
+				t.Errorf("labels = %v, want %v", got.Labels, tt.wantLabels)
+			}
+			if len(got.Datasets) != 2 {
+				t.Fatalf("datasets = %d, want 2 (gastos e ingresos)", len(got.Datasets))
+			}
+			if got.Datasets[0].Label != "Gastos" || got.Datasets[1].Label != "Ingresos" {
+				t.Fatalf("dataset labels = %q/%q", got.Datasets[0].Label, got.Datasets[1].Label)
+			}
+			if !reflect.DeepEqual(got.Datasets[0].Data, tt.wantGastos) {
+				t.Errorf("gastos = %v, want %v", got.Datasets[0].Data, tt.wantGastos)
+			}
+			if !reflect.DeepEqual(got.Datasets[1].Data, tt.wantIngresos) {
+				t.Errorf("ingresos = %v, want %v", got.Datasets[1].Data, tt.wantIngresos)
+			}
+		})
 	}
 }
