@@ -23,6 +23,15 @@ const (
 	RouteAccounts   = AppPrefix + "/" + TabAccounts
 	RouteEvolution     = AppPrefix + "/" + TabEvolution
 
+	// AdminPath is the unlisted admin view's segment under AppPrefix. It is
+	// deliberately NOT a Tab* const: tab keys exist to be matched against the
+	// tabbar, and this route is not in it.
+	AdminPath            = "admin"
+	AdminInvitationsPath = AdminPath + "/invitations"
+
+	RouteAdmin            = AppPrefix + "/" + AdminPath
+	RouteAdminInvitations = AppPrefix + "/" + AdminInvitationsPath
+
 	// Neto* are the KPI status keys shared with overview.go (status color).
 	NetoGood     = "good"
 	NetoCritical = "critical"

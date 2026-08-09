@@ -1,0 +1,43 @@
+package templates
+
+// InvitationRow is one invitation as the view needs it. State llega ya en
+// castellano y la fecha ya formateada: la derivación vive en el handler,
+// junto al reloj que necesita para decidir si venció.
+//
+// Link viene vacío salvo en una pendiente. Cada pendiente lleva el suyo, así
+// que una invitación generada ayer y nunca mandada se puede recuperar — no
+// hay una tarjeta de "recién creada" que se pierda al recargar.
+type InvitationRow struct {
+	Code  string
+	State string
+	Date  string
+	Link  string
+}
+
+type AdminData struct {
+	Rows []InvitationRow
+}
+
+templ Admin(data AdminData) {
+	<h2>Invitaciones</h2>
+	<button
+		hx-post={ RouteAdminInvitations }
+		hx-target="#content"
+		hx-disabled-elt="this"
+	>Generar invitación</button>
+	if len(data.Rows) == 0 {
+		@EmptyState("Todavía no generaste ninguna invitación.")
+	} else {
+		<div class="grid">
+			for _, r := range data.Rows {
+				<article>
+					<p><code>{ r.Code }</code></p>
+					<p class="muted">{ r.State } · { r.Date }</p>
+					if r.Link != "" {
+						<p><a href={ r.Link }>{ r.Link }</a></p>
+					}
+				</article>
+			}
+		</div>
+	}
+}
