@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	initDataMaxAge   = 24 * time.Hour
-	initDataHeader   = "X-Telegram-Init-Data"
-	contextUserIDKey = "miniapp_user_id"
+	initDataMaxAge    = 24 * time.Hour
+	initDataHeader    = "X-Telegram-Init-Data"
+	contextUserIDKey  = "miniapp_user_id"
+	contextIsAdminKey = "miniapp_is_admin"
 )
 
 // userLookup is the local interface authInitData needs — repo convention,
@@ -61,6 +62,27 @@ func authInitData(botToken string, users userLookup) gin.HandlerFunc {
 		}
 
 		c.Set(contextUserIDKey, u.ID)
+		// El row del usuario ya está en la mano acá, así que el flag de admin
+		// sale gratis: ningún handler tiene que volver a consultarlo.
+		c.Set(contextIsAdminKey, u.IsAdmin)
+		c.Next()
+	}
+}
+
+// requireAdmin gatea las vistas de admin encima de authInitData, leyendo el
+// flag que ese middleware ya estampó desde el row de users — cero queries
+// extra.
+//
+// Contesta 403 pelado en vez de renderizar un partial de error: htmx no
+// swapea 4xx, y la ruta no aparece en la UI de nadie que no sea admin, así que
+// el único que puede comerse este 403 es alguien que fue a buscar un path que
+// su propia app no le muestra.
+func requireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !c.GetBool(contextIsAdminKey) {
+			c.AbortWithStatus(http.StatusForbidden)
+			return
+		}
 		c.Next()
 	}
 }
