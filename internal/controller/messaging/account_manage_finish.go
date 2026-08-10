@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"time"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/account"
@@ -117,7 +116,7 @@ func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID
 			UserID:        data.UserID(),
 			AccountID:     &accountID,
 			SubcategoryID: uint64(sub.ID),
-			Date:          time.Now(),
+			Date:          todayCivil(),
 			Type:          mType,
 			Amount:        delta.Abs(),
 			Currency:      currency.Currency(stringOrEmpty(data[keyAccountCurrency])),
