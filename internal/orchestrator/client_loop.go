@@ -53,7 +53,23 @@ const maxQueryCompletionTokens = 1024
 // maxAgentCompletionTokens is Run's own cap. Higher than the query loop's
 // because of the turn cut: one assistant message may carry every tool call of a
 // round plus the final narration.
-const maxAgentCompletionTokens = 2048
+//
+// El número NO es libre: Groq cobra Requested = prompt + max_completion_tokens
+// contra el TPM, así que subirlo acerca cada llamada al techo. Medido el
+// 2026-08-10 en producción (prompt del agente ≈ 4.190 con 5 tools cableadas,
+// TPM 8.000):
+//
+//	cap 3000 → 7.190. Entra, y deja lugar para el router del mensaje siguiente (~660).
+//	cap 4096 → 8.286 > 8.000: TODAS las llamadas 429ean, no algunas.
+//
+// Se subió de 2048 a 3000 porque a 2048 un lote de 7 movimientos quedaba en el
+// filo: el que entró usó 1.949 tokens de completion, y los dos intentos previos
+// del MISMO mensaje volvieron 400 con el JSON cortado a la mitad.
+//
+// Cuando muera el router (etapa 5) esos ~660 se liberan pero el prompt unificado
+// engorda con las 9 tools que hoy no se cablean (~1.100 tokens de schema):
+// RECALCULAR el cap ahí contra el prompt_tokens real, no heredar este.
+const maxAgentCompletionTokens = 3000
 
 type loopResponse struct {
 	Choices []struct {

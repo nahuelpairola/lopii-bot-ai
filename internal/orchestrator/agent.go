@@ -136,6 +136,19 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 			// fail the turn, ask once more in "auto": a turn may legitimately
 			// end in a narrated question, which is the design's own escape.
 			//
+			// OJO ANTES DE BORRARLO POR INÚTIL: bajo TPM 8.000 este reintento no
+			// entra NUNCA, y aun así hay que dejarlo. Groq cobra
+			// Requested = prompt + max_completion_tokens, o sea ~7.200 por llamada:
+			// dos en el mismo minuto son 14.400. Medido el 2026-08-10, los 4
+			// reintentos observados (3 ese día, 1 el 09) devolvieron 429.
+			//
+			// Lo que lo hace load-bearing es justamente ese 429: es lo que dispara
+			// handleGroqError → pendingjob → replay, y ese replay es el que termina
+			// registrando el mensaje. Sin el reintento, el 400 sale como
+			// ErrNothingToExtract, que startAgentLoop no matchea, y el turno muere
+			// en msgSomethingBroke con el lote perdido. Cuesta 40ms (el 429 vuelve
+			// antes de procesar, sin gastar tokens).
+			//
 			// Silent data loss is not reopened by this. The model already
 			// declined to call a tool, so there was nothing to record; the risk
 			// it now claims to have recorded something is what the prompt's
