@@ -40,24 +40,39 @@ type loopRequest struct {
 	MaxCompletionTokens int           `json:"max_completion_tokens,omitempty"`
 }
 
-// maxQueryCompletionTokens caps narration length — a cost guard (the loop
-// multiplies Groq calls; a runaway narration would multiply tokens too).
+// EL MODELO DE COSTO DE GROQ, que gobierna las dos constantes de abajo y el cap de
+// iteraciones de cada loop (maxQueryIterations en query.go, maxAgentIterations en
+// agent.go). Leerlo antes de tocar cualquiera de esos números.
 //
-// It stays at 1024 for AnswerQuery. The agent loop needs more headroom
-// (maxAgentCompletionTokens) because its assistant message can carry a batch of
-// tool_calls AND the narration in the same response, but raising the shared
-// constant would have doubled the cap on the LIVE query path — a behaviour
-// change smuggled into a stage that promises none.
+// Groq NO cobra contra el TPM lo que el modelo escribe: cobra
+//
+//	Requested = prompt_tokens + max_completion_tokens
+//
+// reservado por adelantado, se use o no. Un cap de 1.024 que en la práctica narra
+// 176 tokens igual descuenta 1.024 del cupo del minuto. Por eso el costo real de un
+// loop es (cantidad de llamadas) × (prompt + cap), y no lo que se lee en
+// llm_calls.total_tokens, que mide el uso y no la reserva.
+//
+// Las dos veces que esto explotó en producción fue por no tener la cuenta a mano:
+// el 2026-08-08 con el agent loop (cap 4096 → 8.286 > 8.000, TODAS las llamadas
+// 429eaban) y el 2026-08-10 con el loop de query (4 llamadas × ~2.300 = ~9.200, con
+// el bucket lleno y un solo usuario). El techo era 8.000 TPM por modelo en las dos.
+//
+// La cuenta se hace contra prompt_tokens REAL de la tabla llm_calls, por call_type,
+// no contra una estimación.
+
+// maxQueryCompletionTokens caps narration length in AnswerQuery. Se queda en 1.024:
+// la que aprieta el TPM del loop de query es la cantidad de llamadas
+// (maxQueryIterations), no este cap — bajarlo trunca respuestas reales, porque la
+// narración normal sale de una ronda y no de la llamada final forzada.
 const maxQueryCompletionTokens = 1024
 
 // maxAgentCompletionTokens is Run's own cap. Higher than the query loop's
 // because of the turn cut: one assistant message may carry every tool call of a
 // round plus the final narration.
 //
-// El número NO es libre: Groq cobra Requested = prompt + max_completion_tokens
-// contra el TPM, así que subirlo acerca cada llamada al techo. Medido el
-// 2026-08-10 en producción (prompt del agente ≈ 4.190 con 5 tools cableadas,
-// TPM 8.000):
+// Medido el 2026-08-10 en producción (prompt del agente ≈ 4.190 con 5 tools
+// cableadas, TPM 8.000):
 //
 //	cap 3000 → 7.190. Entra, y deja lugar para el router del mensaje siguiente (~660).
 //	cap 4096 → 8.286 > 8.000: TODAS las llamadas 429ean, no algunas.

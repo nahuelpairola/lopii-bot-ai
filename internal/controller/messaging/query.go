@@ -104,8 +104,12 @@ type queryToolArgs struct {
 }
 
 // handleQuery answers a read-only question via the agent loop. Returns
-// (answered, err): err (or an empty answer) means the loop failed and the
-// caller should tell the user and resolve the metric as failed.
+// (answered, err): answered=false significa que el loop no produjo respuesta.
+//
+// El fracaso NO manda copy acá — la manda el caller, a propósito. Un 429 se encola
+// y se ackea (handleGroqError); si esta función mandara msgQueryFailed por su cuenta,
+// el usuario leería "no pude responder" Y el ack de la cola por el mismo mensaje.
+// Solo el caller sabe distinguir un 429 encolado de un fracaso de verdad.
 func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
 	prompt := c.buildQuerySystemPrompt()
 	execute := c.buildQueryExecutor(userID)
@@ -119,7 +123,6 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 
 	answer, err := c.orchestrator.AnswerQuery(ctx, prompt, text, history, queryTools, execute)
 	if err != nil || strings.TrimSpace(answer) == "" {
-		c.sendText(ctx, b, chatID, msgQueryFailed)
 		return false, err
 	}
 	c.sendText(ctx, b, chatID, answer)

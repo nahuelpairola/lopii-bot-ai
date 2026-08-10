@@ -49,23 +49,43 @@ type QueryTurn struct {
 	Answer   string
 }
 
-// maxQueryIterations caps how many tool rounds the loop runs before giving
-// up. Typed tools resolve fast; a well-behaved query is 1 tool round + 1
-// narration. The cap is a runaway guard, not the expected path.
-const maxQueryIterations = 3
+// maxQueryIterations caps how many tool rounds the loop runs before giving up.
+// Una consulta sana es 1 ronda de tools + 1 narración.
+//
+// El número NO es libre: es lo que decide cuántas llamadas a Groq puede hacer una
+// consulta, y cada llamada reserva contra el TPM (ver el modelo de costo en
+// client_loop.go). Medido el 2026-08-10 en producción, con prompts de 1.173 a 1.370
+// y maxQueryCompletionTokens en 1.024 → ~2.300 reservados por llamada, TPM 8.000:
+//
+//	cap 2 → 3 llamadas = ~6.850. Entra, y deja lugar para el router del mensaje siguiente (~670).
+//	cap 3 → 4 llamadas = ~9.200 > 8.000: la última llamada 429ea SIEMPRE, con el bucket lleno.
+//
+// Se bajó de 3 a 2 tras el incidente del 2026-08-10, donde cuatro consultas seguidas
+// murieron con 429 sin que hubiera otro tráfico en cuatro horas. No le saca ninguna
+// ronda a ninguna consulta que haya funcionado: en 14 días, ninguna consulta exitosa
+// pasó de 3 llamadas. La 4ª solo existió para fallar.
+const maxQueryIterations = 2
 
 var ErrQueryMaxIterations = errors.New("orchestrator: query loop exceeded max iterations")
 
 // AnswerQuery runs the read-only agent loop: it sends the tools with
 // tool_choice:"auto", executes every tool call the model emits in a round
 // (via the caller's execute closure, scoped to the user), feeds each result
-// back as a tool message, and repeats until the model returns content
-// instead of tool calls — that content is the final Spanish answer. A tool
-// executor error is fed back to the model as an error string, not aborted,
-// so the model can recover or explain. If the cap is reached while the model
-// still wants tools, one final tool_choice:"none" call forces a narration
-// from the accumulated results (only a truly empty final response yields
-// ErrQueryMaxIterations).
+// back as a tool message, and repeats. A tool executor error is fed back to the
+// model as an error string, not aborted, so the model can recover or explain.
+//
+// LA RESPUESTA FINAL SALE POR DOS PUERTAS, y las dos son normales:
+//
+//  1. Salida por ronda: una ronda devuelve contenido en vez de tool calls. Es el
+//     camino COMÚN — 16 de 22 consultas medidas narran así (ronda 0 pide tools,
+//     ronda 1 narra).
+//  2. Salida forzada: se agotó el cap con el modelo todavía pidiendo tools, así que
+//     una última llamada con tool_choice:"none" lo obliga a narrar con lo que juntó.
+//     Solo una respuesta final vacía devuelve ErrQueryMaxIterations.
+//
+// Quien toque los caps de tokens tiene que tener las dos en la cabeza: capear las
+// rondas "porque solo eligen tools" trunca la respuesta real de la mayoría de las
+// consultas. Ese razonamiento ya se intentó y estaba mal.
 func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []QueryTurn, tools []AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	toolDefs := make([]toolDef, len(tools))
 	for i, t := range tools {
@@ -114,11 +134,11 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		}
 	}
 
-	// Cap reached while the model still wanted tools. Force one final
-	// narration (tool_choice:"none") so it summarizes from the tool results
-	// it already has instead of failing — Groq's documented way to guarantee
-	// text over another tool round. 8b-instant is weak at deciding to stop on
-	// its own, so this is a common path to a clean answer, not a rare one.
+	// Puerta 2 (ver el doc comment): se agotó el cap con el modelo todavía pidiendo
+	// tools. Se fuerza una narración (tool_choice:"none") para que resuma con lo que
+	// ya juntó en vez de fallar — la forma documentada de Groq de garantizar texto en
+	// vez de otra ronda de tools. No es la puerta de siempre: la mayoría de las
+	// consultas salen por la puerta 1, narrando desde una ronda.
 	// Tools are omitted here (nil, not toolDefs): Groq 400s hard if the model
 	// attempts a tool call while tool_choice is "none" — a real failure seen
 	// with gpt-oss-120b, not just the weak models. With no tool schemas in
