@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 
 	"github.com/go-telegram/bot"
@@ -506,6 +507,11 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 			err = c.movements.SoftDeleteByIDs(oldIDs)
 		}
 		if err != nil {
+			// El error acá se convierte en copy y se pierde. Sin esta línea un
+			// update_failed no dice nada: medido el 2026-08-10, dos de dos salieron
+			// de este gate (el usuario ya había confirmado) y no hubo con qué saber
+			// por qué falló la escritura.
+			slog.ErrorContext(ctx, "update delete failed", "user_id", data.UserID(), "err", err)
 			c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
 			if b != nil {
 				b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCouldNotSave("el cambio")})
@@ -521,6 +527,7 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
+		slog.ErrorContext(ctx, "update insert failed", "user_id", data.UserID(), "err", err)
 		c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
