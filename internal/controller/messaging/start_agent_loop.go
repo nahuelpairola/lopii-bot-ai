@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -140,7 +139,7 @@ func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	return orchestrator.BuildAgentPrompt(time.Now().Format("2006-01-02"), accountOptions, taxonomy, "", tools), taxonomy, nil
+	return orchestrator.BuildAgentPrompt(todayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools), taxonomy, nil
 }
 
 // sendTyping avisa que el bot está pensando. Best-effort: que falle el aviso no

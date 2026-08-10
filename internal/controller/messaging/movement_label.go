@@ -91,7 +91,7 @@ func candidateLabel(g transactionGroup) string {
 // Convertir la fecha a ART tampoco sirve — la corre un día para atrás.
 func relativeDate(d time.Time) string {
 	day := civilDay(d)
-	today := civilDay(time.Now().In(constants.ArgentinaZone))
+	today := todayCivil()
 	switch {
 	case !day.Before(today):
 		return "hoy"
@@ -108,4 +108,14 @@ func relativeDate(d time.Time) string {
 func civilDay(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// todayCivil es el día de HOY para el usuario, no para el server. El server
+// corre en UTC, así que entre las 21:00 y las 24:00 ART time.Now() ya está en
+// el día siguiente: un gasto cargado 21:50 se guardaba con la fecha de mañana
+// (visto en producción). Todo lo que signifique "hoy" —la fecha por defecto de
+// un movimiento, el "Hoy es" de los prompts, el corte de relativeDate— sale de
+// acá y de ningún otro lado.
+func todayCivil() time.Time {
+	return civilDay(time.Now().In(constants.ArgentinaZone))
 }

@@ -584,7 +584,7 @@ func (c *controller) insertOpeningMovement(acc *account.Account, amount decimal.
 		UserID:        acc.UserID,
 		AccountID:     &accountID,
 		SubcategoryID: uint64(sub.ID),
-		Date:          time.Now(),
+		Date:          todayCivil(),
 		Type:          movement.Transfer,
 		Amount:        amount,
 		Currency:      acc.Currency,

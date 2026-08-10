@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"time"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/account"
@@ -87,7 +86,7 @@ func (c *controller) insertAccountOpeningMovement(acc *account.Account, balanceT
 		UserID:        acc.UserID,
 		AccountID:     &accountID,
 		SubcategoryID: uint64(sub.ID),
-		Date:          time.Now(),
+		Date:          todayCivil(),
 		Type:          movement.Transfer,
 		Amount:        amount,
 		Currency:      acc.Currency,

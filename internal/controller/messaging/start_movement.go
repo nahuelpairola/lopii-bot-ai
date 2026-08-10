@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
@@ -78,7 +77,7 @@ func (c *controller) startMovementCreate(ctx context.Context, b *bot.Bot, chatID
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	result, err := c.orchestrator.ClassifyCreate(ctx, text, taxonomy, accountOptions, time.Now().Format("2006-01-02"))
+	result, err := c.orchestrator.ClassifyCreate(ctx, text, taxonomy, accountOptions, todayCivil().Format("2006-01-02"))
 	if err != nil {
 		// "no había nada que extraer" no es una falla del sistema: el mensaje
 		// no traía el dato (típicamente el monto, o era una referencia como
