@@ -157,6 +157,37 @@ func TestAnswerQuery_FinalNarration_NeverOffersTools(t *testing.T) {
 	}
 }
 
+// Regresión del 2026-08-10: cuatro consultas seguidas murieron con 429 (TPM 8000,
+// gpt-oss-120b) con el bucket LLENO — ningún otro tráfico en 4 horas. Groq cobra
+// prompt + max_completion_tokens reservado por adelantado, así que cada llamada de
+// query cuesta ~2.300 aunque narre 176 tokens. Con el cap de iteraciones en 3, una
+// consulta podía hacer 4 llamadas: ~9.200 reservados, más que el techo entero.
+//
+// El techo real es este número de llamadas, no el cap de tokens: en 14 días de
+// consultas exitosas, NINGUNA pasó de 3 llamadas. La 4ª solo existió para fallar.
+// Este test falla si alguien vuelve a subir maxQueryIterations sin rehacer la cuenta.
+func TestAnswerQuery_NeverExceedsThreeGroqCalls(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		// Nunca para de pedir tools: fuerza el peor caso.
+		w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+			{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{}"}}
+		]}}]}`))
+	}))
+	defer server.Close()
+
+	execute := func(name string, args json.RawMessage) (string, error) { return "x", nil }
+	o := newQueryOrchestrator(server.URL)
+	o.AnswerQuery(context.Background(), "s", "u", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
+
+	if calls > 3 {
+		t.Errorf("llamadas a Groq = %d, want <= 3: a ~2.300 reservados cada una, 4 no entran en el TPM de 8.000", calls)
+	}
+}
+
 func TestAnswerQuery_PrependsHistory(t *testing.T) {
 	var gotMessages []loopMessage
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -102,6 +102,14 @@ func newQueryController(m *fakeQueryMovements, a *fakeQueryAccounts, s *fakeQuer
 func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }
 
 // Case: "qué categorías hay y para qué sirve cada una"
+//
+// Las descripciones viajan SOLO en la lista filtrada. Medido el 2026-08-10 con la
+// taxonomía real (66 filas): con descripciones son ~1.325 tokens, sin ellas ~500. El
+// resultado de una tool se reinyecta en cada ronda posterior, así que la diferencia
+// se paga dos o tres veces por consulta contra un TPM de 8.000 — una consulta
+// multi-entidad se pasaba del techo justo por eso, y el 429 resultante mandaba el
+// mensaje a la cola, que reintentaba y volvía a pasarse. Para contestar alcanza el
+// mapeo nombre → categoría | subcategoría.
 func TestExec_ListCategories(t *testing.T) {
 	s := &fakeQuerySubcats{subs: []subcategory.Subcategory{
 		{Category: "Comida", Subcategory: "Restaurante", Description: "cuando comés afuera"},
@@ -113,12 +121,19 @@ func TestExec_ListCategories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "comés afuera") || !strings.Contains(out, "combustible del auto") {
-		t.Fatalf("descriptions missing: %s", out)
+	if !strings.Contains(out, "Comida | Restaurante") || !strings.Contains(out, "Auto | Nafta") {
+		t.Fatalf("la lista completa tiene que traer el mapeo categoría | subcategoría: %s", out)
 	}
+	if strings.Contains(out, "comés afuera") || strings.Contains(out, "combustible del auto") {
+		t.Errorf("la lista SIN filtro no puede traer descripciones (son ~825 tokens de más por ronda): %s", out)
+	}
+
 	out, _ = exec("list_categories", json.RawMessage(`{"category":"Auto"}`))
 	if strings.Contains(out, "Restaurante") {
 		t.Errorf("category filter leaked another category: %s", out)
+	}
+	if !strings.Contains(out, "combustible del auto") {
+		t.Errorf("la lista filtrada SÍ trae descripciones — es como el modelo desambigua: %s", out)
 	}
 }
 

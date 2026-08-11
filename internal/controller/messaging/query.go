@@ -25,7 +25,7 @@ import (
 var queryTools = []orchestrator.AgentTool{
 	{
 		Name:        "list_categories",
-		Description: "Lista las categorías y subcategorías disponibles con la descripción de cuándo usar cada una. Usala cuando el usuario pregunta qué categorías existen o para qué sirve una.",
+		Description: "Lista las categorías y subcategorías disponibles. Sin filtro devuelve el listado completo (categoría | subcategoría). Pasá category para acotarla a una sola categoría: ahí además viene la descripción de cuándo usar cada subcategoría. Usala cuando el usuario pregunta qué categorías existen o para qué sirve una.",
 		Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
@@ -104,8 +104,12 @@ type queryToolArgs struct {
 }
 
 // handleQuery answers a read-only question via the agent loop. Returns
-// (answered, err): err (or an empty answer) means the loop failed and the
-// caller should tell the user and resolve the metric as failed.
+// (answered, err): answered=false significa que el loop no produjo respuesta.
+//
+// El fracaso NO manda copy acá — la manda el caller, a propósito. Un 429 se encola
+// y se ackea (handleGroqError); si esta función mandara msgQueryFailed por su cuenta,
+// el usuario leería "no pude responder" Y el ack de la cola por el mismo mensaje.
+// Solo el caller sabe distinguir un 429 encolado de un fracaso de verdad.
 func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
 	prompt := c.buildQuerySystemPrompt()
 	execute := c.buildQueryExecutor(userID)
@@ -119,7 +123,6 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 
 	answer, err := c.orchestrator.AnswerQuery(ctx, prompt, text, history, queryTools, execute)
 	if err != nil || strings.TrimSpace(answer) == "" {
-		c.sendText(ctx, b, chatID, msgQueryFailed)
 		return false, err
 	}
 	c.sendText(ctx, b, chatID, answer)
@@ -180,18 +183,31 @@ func (c *controller) execListCategories(userID uint64, args queryToolArgs) (stri
 	if err != nil {
 		return "", err
 	}
+	// Las descripciones ("cuándo usarla") SOLO viajan en la lista filtrada, y no en
+	// la completa. Medido el 2026-08-10 con 66 filas: la lista entera con
+	// descripciones son ~1.325 tokens y sin ellas ~500. El resultado de una tool se
+	// reinyecta en CADA ronda posterior, así que esos ~825 tokens se pagan dos o tres
+	// veces por consulta contra un TPM de 8.000 — y una consulta multi-entidad se
+	// pasaba del techo justo por eso (ver el modelo de costo en
+	// orchestrator/client_loop.go).
+	//
+	// Para CONTESTAR alcanza el mapeo nombre → categoría | subcategoría; las
+	// descripciones existen para clasificar en CREATE, no para consultar. Cuando el
+	// modelo sí las necesita para desambiguar, filtra por categoría y ahí el bloque
+	// es chico y las manda completas.
+	withDescriptions := args.Category != ""
 	var lines []string
 	for _, s := range subs {
 		if args.Category != "" && s.Category != args.Category {
 			continue
 		}
+		line := fmt.Sprintf("%s | %s", s.Category, s.Subcategory)
 		// Misma regla que orchestrator.buildTaxonomyBlock: una descripción vacía
 		// es deliberada (la migración de podado vacía las notas que no
 		// desambiguan), no un dato faltante. Sin esta guarda la respuesta al
 		// usuario sale con un separador colgante — "Alimentación | Supermercado | " —
 		// en 26 de las 65 globales.
-		line := fmt.Sprintf("%s | %s", s.Category, s.Subcategory)
-		if s.Description != "" {
+		if withDescriptions && s.Description != "" {
 			line += " | " + s.Description
 		}
 		if s.Icon != "" {
@@ -202,7 +218,11 @@ func (c *controller) execListCategories(userID uint64, args queryToolArgs) (stri
 	if len(lines) == 0 {
 		return "No hay categorías que coincidan.", nil
 	}
-	return "categoría | subcategoría | cuándo usarla:\n" + strings.Join(lines, "\n"), nil
+	header := "categoría | subcategoría:\n"
+	if withDescriptions {
+		header = "categoría | subcategoría | cuándo usarla:\n"
+	}
+	return header + strings.Join(lines, "\n"), nil
 }
 
 func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string, error) {

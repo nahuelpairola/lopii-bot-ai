@@ -63,7 +63,11 @@ func AgentTools() []AgentTool {
 			Name:        ToolListCategories,
 			When:        "preguntas por qué categorías existen.",
 			Kind:        KindRead,
-			Description: "Lista las categorías y subcategorías disponibles con la descripción de cuándo usar cada una. Usala cuando el usuario pregunta qué categorías existen o para qué sirve una.",
+			// El contrato tiene que seguir al de messaging/query.go: sin filtro NO
+			// viajan las descripciones (~825 tokens de más por ronda, ver el modelo
+			// de costo en client_loop.go). Cuando la etapa 4 cablee esta tool, su
+			// ejecutor tiene que llamar a execListCategories, no a una copia.
+			Description: "Lista las categorías y subcategorías disponibles. Sin filtro devuelve el listado completo (categoría | subcategoría). Pasá category para acotarla a una sola categoría: ahí además viene la descripción de cuándo usar cada subcategoría. Usala cuando el usuario pregunta qué categorías existen o para qué sirve una.",
 			Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {

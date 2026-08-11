@@ -50,12 +50,20 @@ func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int6
 		answered, qErr := c.handleQuery(ctx, b, chatID, userID, text)
 		if answered {
 			c.resolveMetric(ctx, userID, outcomeQueryAnswered)
-		} else {
-			if qErr != nil {
-				slog.ErrorContext(ctx, "query failed", "user_id", userID, "err", qErr)
-			}
-			c.resolveMetric(ctx, userID, outcomeQueryFailed)
+			return nil
 		}
+		// Un 429 encola el mensaje y ackea: ahí el intent_event tiene que seguir
+		// pendiente, porque la historia no terminó — la termina el drain. Mismo
+		// criterio que startAgentLoop. QUERY es el intent más seguro de replayar:
+		// es read-only, no puede registrar la misma plata dos veces.
+		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, qErr); handled {
+			return oerr
+		}
+		if qErr != nil {
+			slog.ErrorContext(ctx, "query failed", "user_id", userID, "err", qErr)
+		}
+		c.sendText(ctx, b, chatID, msgQueryFailed)
+		c.resolveMetric(ctx, userID, outcomeQueryFailed)
 		return qErr
 	case orchestrator.IntentCreate:
 		// El interruptor existe porque las etapas 2 y 3 despliegan juntas: si

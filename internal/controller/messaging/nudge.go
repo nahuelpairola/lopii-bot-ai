@@ -279,8 +279,14 @@ func (c *controller) handleNudgeQuery(ctx context.Context, b *bot.Bot, chatID in
 			slog.ErrorContext(ctx, "nudge tap mark failed", "key", key, "err", err)
 		}
 	}
-	if _, err := c.handleQuery(ctx, b, chatID, userID, question); err != nil {
-		slog.ErrorContext(ctx, "nudge query failed", "key", key, "err", err)
+	// La copy de fracaso la manda el caller (ver handleQuery): acá se manda siempre,
+	// incluso con un 429, que es justo lo que dice el comentario de arriba — el tap
+	// no se encola porque el botón sigue tocable en el historial.
+	if answered, err := c.handleQuery(ctx, b, chatID, userID, question); !answered {
+		if err != nil {
+			slog.ErrorContext(ctx, "nudge query failed", "key", key, "err", err)
+		}
+		c.sendText(ctx, b, chatID, msgQueryFailed)
 	}
 	return true
 }

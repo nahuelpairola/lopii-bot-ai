@@ -38,6 +38,12 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 
 	res, err := c.orchestrator.ClassifyCategoryCreate(ctx, text, taxonomy)
 	if err != nil {
+		// El 429 se atiende ANTES del wizard. Sin esto, un problema de cupo se
+		// disfraza de "no te entendí" y le cobra al usuario las 7 preguntas del
+		// wizard por algo que se resuelve solo en segundos.
+		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+			return oerr
+		}
 		return c.startSubcategoryWizard(ctx, b, chatID, userID)
 	}
 
