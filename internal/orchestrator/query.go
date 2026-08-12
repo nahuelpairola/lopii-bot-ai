@@ -104,6 +104,11 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	}
 	messages = append(messages, loopMessage{Role: "user", Content: userText})
 
+	// toolResults junta en texto plano lo que devolvió cada tool, para poder narrar
+	// desde ellos en la puerta 2 SIN reenviar el historial de tool_calls. Ver el
+	// bloque de la narración forzada más abajo.
+	var toolResults []string
+
 	for i := 0; i < maxQueryIterations; i++ {
 		// Force a tool call on the first round: weak models (8b-instant)
 		// sometimes deflect ("no puedo darte una respuesta exacta") without
@@ -131,19 +136,28 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 				ToolCallID: call.ID,
 				Content:    result,
 			})
+			toolResults = append(toolResults, result)
 		}
 	}
 
 	// Puerta 2 (ver el doc comment): se agotó el cap con el modelo todavía pidiendo
 	// tools. Se fuerza una narración (tool_choice:"none") para que resuma con lo que
-	// ya juntó en vez de fallar — la forma documentada de Groq de garantizar texto en
-	// vez de otra ronda de tools. No es la puerta de siempre: la mayoría de las
-	// consultas salen por la puerta 1, narrando desde una ronda.
-	// Tools are omitted here (nil, not toolDefs): Groq 400s hard if the model
-	// attempts a tool call while tool_choice is "none" — a real failure seen
-	// with gpt-oss-120b, not just the weak models. With no tool schemas in
-	// the request there's nothing for the model to call.
-	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, nil, "none", maxQueryCompletionTokens)
+	// ya juntó. No es la puerta de siempre: la mayoría de las consultas salen por la
+	// puerta 1, narrando desde una ronda.
+	//
+	// El request final se arma LIMPIO —system + pregunta + datos en texto plano—, sin
+	// reenviar los tool_calls ni los mensajes de rol "tool" del loop. Sacar solo los
+	// schemas (tools: nil) NO alcanza: el modelo imita el historial de tool calls y
+	// emite una tool call igual, y Groq la rechaza con 400 "Tool choice is none, but
+	// model called a tool" (visto en producción el 2026-08-10 con gpt-oss-120b). Sin
+	// rastro de tools en el historial, no hay nada que imitar. Lo fija
+	// TestAnswerQuery_FinalNarration_HistoryHasNoToolTrace.
+	finalMessages := []loopMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userText},
+		{Role: "user", Content: "Datos obtenidos de las herramientas:\n" + strings.Join(toolResults, "\n") + "\n\nRedactá la respuesta final para el usuario con estos datos."},
+	}
+	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, finalMessages, nil, "none", maxQueryCompletionTokens)
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: answer query (final): %w", err)
 	}

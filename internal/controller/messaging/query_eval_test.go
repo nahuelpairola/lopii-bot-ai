@@ -188,4 +188,17 @@ func TestQueryEval(t *testing.T) {
 			t.Errorf("answer must be plain text (no markdown '*'/'**'). Got: %s", ans)
 		}
 	})
+	// Multi-entidad: replica el patrón que rompió en producción el 2026-08-10
+	// ("cuánto gasté en lote, hbo y disney este mes"). Pide tres totales distintos,
+	// que es lo que empuja al modelo a agotar el cap de rondas y caer en la
+	// narración forzada (puerta 2) — el camino que volvía 400 "Tool choice is none,
+	// but model called a tool" antes del fix del request limpio. Que conteste 8000
+	// (Alimentación) y 8000 (Bienestar) prueba que la puerta 2 narra desde los datos.
+	t.Run("multi_entidad_fuerza_narracion", func(t *testing.T) {
+		ans := ask("¿cuánto gasté en Alimentación, cuánto en Bienestar y cuánto ingresé en julio de 2026? Dame cada total por separado.")
+		n := normDigits(ans)
+		if !strings.Contains(n, "8000") || !strings.Contains(n, "100000") {
+			t.Errorf("esperaba los tres totales (8000 alimentación, 8000 bienestar, 100000 ingreso), got: %s", ans)
+		}
+	})
 }
