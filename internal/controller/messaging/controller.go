@@ -252,6 +252,11 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		if c.handleNudgeQuery(ctx, b, chatID, u.ID, input.CallbackData) {
 			return &uid, nil
 		}
+		// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
+		// una opción de ningún flow, y un flow abierto no puede comérselo.
+		if c.handleNearDuplicateChoice(ctx, b, chatID, u.ID, input.CallbackData) {
+			return &uid, nil
+		}
 
 		result, found, err := c.engine.Handle(u.ID, input)
 		if err != nil {

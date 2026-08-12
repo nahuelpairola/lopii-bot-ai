@@ -558,3 +558,10 @@ func FlowResumeLabel(flowName string) string {
 		return "una conversación anterior"
 	}
 }
+
+// Copy del gate de casi-duplicado. "Va aparte" no confirma nada: el estado ya
+// era el correcto, así que decir "listo" sería anunciar un trabajo que nadie hizo.
+const (
+	msgNearDupSeparate = "Perfecto, los dejo separados."
+	msgNearDupMerged   = "Listo, quedó uno solo."
+)

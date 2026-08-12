@@ -99,6 +99,10 @@ type agentExecutor struct {
 	// reply es la respuesta que manda el controller (help / pedir reescritura),
 	// no el modelo: es copy nuestra y tiene que salir textual.
 	reply string
+	// replyButtons cuelga del recibo cuando el gate de casi-duplicado marca.
+	// Van EN el recibo y no en un mensaje aparte: el gate no puede agregar un
+	// mensaje ni un paso bloqueante, o deja de ser gratis ignorarlo.
+	replyButtons []conversation.Button
 	// noCandidates recuerda que no había nada que tocar, para que la métrica
 	// diga no_candidates en vez de un fracaso genérico.
 	noCandidates bool
@@ -231,6 +235,7 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	e.wrote = true
 	e.inserted = inserted
 	e.reply = msgConfirmMovements(inserted)
+	e.replyButtons = e.c.maybeNearDuplicate(e.userID, inserted)
 	return resultRecorded(len(inserted)), orchestrator.ErrAgentTurnDone
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -62,7 +63,11 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	// La copia nuestra (ayuda, pedir reescritura) le gana a la narración del
 	// modelo: es texto tuneado y tiene que salir textual.
 	if executor.reply != "" {
-		c.sendText(ctx, b, chatID, executor.reply)
+		if len(executor.replyButtons) > 0 {
+			c.sendPrompt(ctx, b, chatID, conversation.Prompt{Text: executor.reply, Buttons: executor.replyButtons})
+		} else {
+			c.sendText(ctx, b, chatID, executor.reply)
+		}
 	} else if narration := strings.TrimSpace(answer); narration != "" {
 		c.sendText(ctx, b, chatID, narration)
 	}

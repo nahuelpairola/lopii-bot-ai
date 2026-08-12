@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -440,3 +441,116 @@ func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t
 }
 
 
+
+// La capa 2 de punta a punta: el caso de las 22:27 del 2026-08-11. El usuario
+// escribió "Al café de hoy sumale 1070" cuatro veces y se llevó cuatro
+// movimientos nuevos. El gate no arregla al modelo — caza la FORMA del daño.
+//
+// Un helper por botón, porque lo que hay que probar es el estado final de la
+// BASE en cada rama, no que el botón exista.
+func (h *convHarness) insertCoffeeThenCorrection(t *testing.T) {
+	t.Helper()
+	h.ScriptIntent(orchestrator.IntentCreate)
+	h.ScriptToolCalls(recordMovementsCall(`{"movements":[
+		{"type":"expense","amount":"12700","currency":"ARS","category":"Alimentación",
+		 "subcategory":"Supermercado","description":"Café","date":"2026-08-12"}]}`))
+	h.SendText("Cafe 12700")
+
+	h.ScriptToolCalls(recordMovementsCall(`{"movements":[
+		{"type":"expense","amount":"1070","currency":"ARS","category":"Alimentación",
+		 "subcategory":"Supermercado","description":"Café","date":"2026-08-12"}]}`))
+	h.SendText("Al café de hoy sumale 1070")
+
+	// Sin esto los tests de abajo serían vacíos: arman el callback a mano, así
+	// que pasarían aunque el gate no hubiera marcado nada. Lo que se exige acá
+	// es que el RECIBO haya salido con los botones puestos.
+	if !h.lastMarkupHas(nearDupPrefix) {
+		t.Fatalf("el recibo salió sin los botones del gate. Markups: %v", h.rt.markups)
+	}
+}
+
+// lastMarkupHas dice si algún reply_markup emitido contiene el fragmento.
+func (h *convHarness) lastMarkupHas(want string) bool {
+	for _, m := range h.rt.markups {
+		if strings.Contains(m, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// nearDupButton arma el callback del botón tal como lo emitió el recibo.
+func (h *convHarness) nearDupButton(t *testing.T, action string) string {
+	t.Helper()
+	movs := h.Movements()
+	if len(movs) != 2 {
+		t.Fatalf("esperaba dos filas antes de tocar el botón, hay %d", len(movs))
+	}
+	return nearDupPrefix + action + ":" +
+		strconv.FormatUint(uint64(movs[1].ID), 10) + ":" +
+		strconv.FormatUint(uint64(movs[0].ID), 10)
+}
+
+func TestNearDuplicate_SumaloAEse_MergesAndDeletes(t *testing.T) {
+	h := newConversationHarness(t)
+	h.insertCoffeeThenCorrection(t)
+
+	h.TapButton(h.nearDupButton(t, nearDupMerge))
+
+	movs := h.Movements()
+	if len(movs) != 1 {
+		t.Fatalf("movimientos = %d, want 1: %+v", len(movs), movs)
+	}
+	if !movs[0].Amount.Equal(mustDec(t, "-13770")) {
+		t.Errorf("amount = %s, want -13770 (12.700 + 1.070)", movs[0].Amount)
+	}
+}
+
+func TestNearDuplicate_Reemplazalo_KeepsOnlyTheNewAmount(t *testing.T) {
+	h := newConversationHarness(t)
+	h.insertCoffeeThenCorrection(t)
+
+	h.TapButton(h.nearDupButton(t, nearDupReplace))
+
+	movs := h.Movements()
+	if len(movs) != 1 {
+		t.Fatalf("movimientos = %d, want 1: %+v", len(movs), movs)
+	}
+	if !movs[0].Amount.Equal(mustDec(t, "-1070")) {
+		t.Errorf("amount = %s, want -1070", movs[0].Amount)
+	}
+}
+
+// Ignorar el gate es SEGURO, y es la propiedad que lo hace shippeable: el
+// resultado por default es exactamente el de hoy — dos filas, totales
+// correctos. Sin esto, el gate sería un paso bloqueante disfrazado.
+func TestNearDuplicate_IgnoringItLeavesTodaysBehaviour(t *testing.T) {
+	h := newConversationHarness(t)
+	h.insertCoffeeThenCorrection(t)
+
+	// El usuario no toca nada y sigue hablando.
+	h.ScriptToolCalls(recordMovementsCall(`{"movements":[
+		{"type":"expense","amount":"500","currency":"ARS","category":"Alimentación",
+		 "subcategory":"Supermercado","description":"Kiosco","date":"2026-08-12"}]}`))
+	h.SendText("kiosco 500")
+
+	movs := h.Movements()
+	if len(movs) != 3 {
+		t.Fatalf("movimientos = %d, want 3: ignorar el gate no puede cambiar nada", len(movs))
+	}
+	total := movs[0].Amount.Add(movs[1].Amount)
+	if !total.Equal(mustDec(t, "-13770")) {
+		t.Errorf("los dos cafés suman %s, want -13770: los totales quedan bien igual", total)
+	}
+}
+
+func TestNearDuplicate_VaAparte_ChangesNothing(t *testing.T) {
+	h := newConversationHarness(t)
+	h.insertCoffeeThenCorrection(t)
+
+	h.TapButton(h.nearDupButton(t, nearDupSeparte))
+
+	if got := len(h.Movements()); got != 2 {
+		t.Errorf("movimientos = %d, want 2", got)
+	}
+}
