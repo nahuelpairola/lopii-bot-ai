@@ -215,7 +215,7 @@ func TestWiredTools_CorrectionStillPicksCorrectMovement(t *testing.T) {
 		t.Errorf("toolbox = %v, want las 5 de la etapa 3", names)
 	}
 
-	prompt := orchestrator.BuildAgentPrompt("2026-08-01", nil, nil, "", wiredAgentTools())
+	prompt := orchestrator.BuildAgentPrompt("2026-08-01", nil, nil, "", wiredAgentTools(), "")
 	if !strings.Contains(prompt, "era, eran, fue") {
 		t.Error("falta el copulativo en pasado: es lo único que separa corregir de registrar")
 	}

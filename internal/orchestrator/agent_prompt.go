@@ -71,6 +71,26 @@ PREGUNTA PENDIENTE: le hiciste al usuario esta pregunta y todavía no la contest
 %s
 Lo que escribió ahora es, muy probablemente, la respuesta. Interpretalo así antes de tratarlo como un pedido nuevo.`
 
+// recentEntitiesSection se agrega sólo cuando el usuario tocó algo en los
+// últimos minutos.
+//
+// "Al café de hoy sumale 1070" es una ANÁFORA: el trabajo es resolver una
+// referencia, no recordar una conversación. Pasarle al modelo la transcripción
+// de los turnos anteriores lo obliga a re-extraer la entidad de su propia
+// narración, le muestra sus turnos EQUIVOCADOS como ejemplos a imitar, y gasta
+// tokens en gramática. Este bloque lo arma la app desde `movements`, cuesta
+// ~100 tokens, y le da algo que la transcripción no puede: la fila misma, con
+// su id.
+//
+// Se reconstruye en cada prompt, así que un replay del 429 que llega tarde no
+// lo puede desordenar — a diferencia de un hilo al que se le van agregando
+// turnos.
+const recentEntitiesSection = `
+
+MOVIMIENTOS RECIENTES (últimos minutos, por si el usuario se refiere a uno):
+%s
+Si el mensaje habla de "el/la <algo> de hoy" o "eso que cargué", casi seguro es uno de estos: corregilo en vez de registrar uno nuevo.`
+
 // buildToolsBlock renders the "CUÁNDO USAR CADA HERRAMIENTA" list from the tools
 // that are actually going to be sent, en el orden en que vienen.
 //
@@ -99,10 +119,13 @@ func buildToolsBlock(tools []AgentTool) string {
 // pendingQuestion is the open ask_user question, or "" when nothing is
 // pending — in which case the section is omitted entirely rather than left
 // empty, so the model is never told about a question that does not exist.
-func BuildAgentPrompt(today string, accounts []AccountOption, taxonomy []TaxonomyEntry, pendingQuestion string, tools []AgentTool) string {
+func BuildAgentPrompt(today string, accounts []AccountOption, taxonomy []TaxonomyEntry, pendingQuestion string, tools []AgentTool, recentEntities string) string {
 	prompt := fmt.Sprintf(agentSystemPromptTemplate,
 		buildToolsBlock(tools), agentTieBreakers(tools), today,
 		buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
+	if recentEntities != "" {
+		prompt += fmt.Sprintf(recentEntitiesSection, recentEntities)
+	}
 	if pendingQuestion != "" {
 		prompt += fmt.Sprintf(pendingQuestionSection, pendingQuestion)
 	}

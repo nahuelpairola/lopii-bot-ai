@@ -80,11 +80,35 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 			return err
 		}
 	}
+	// El hilo compartido: hasta el 2026-08-12 este camino LEÍA chat_turns y no
+	// escribía nunca — sólo query.go llamaba a Append. El paquete chathistory
+	// dice que "desde la etapa 2 todos los intents comparten el mismo hilo", y no
+	// era cierto: cada CREATE, UPDATE y DELETE corría con el hilo vacío.
+	//
+	// La resolución de referencias NO depende de esto (para eso está el bloque de
+	// entidades recientes, que se reconstruye desde la base y no se desordena con
+	// un replay); el hilo es para el resto del contexto conversacional.
+	if reply := firstNonEmpty(executor.reply, strings.TrimSpace(answer)); reply != "" {
+		if err := c.chatHistory.Append(userID, text, reply); err != nil {
+			slog.WarnContext(ctx, "chat history append failed", "user_id", userID, "err", err)
+		}
+	}
+
 	c.resolveAgentLoopMetric(ctx, userID, executor)
 
 	// Destapa la cola acá mismo: este mensaje no abrió ningún flujo, así que no
 	// va a haber un terminal que dispare el drenaje más tarde.
 	return c.drainNextAgentAction(ctx, b, chatID, userID)
+}
+
+// firstNonEmpty devuelve el primero que no esté vacío.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // resolveAgentLoopMetric cierra el intent_event del turno.
@@ -144,7 +168,8 @@ func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	return orchestrator.BuildAgentPrompt(todayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools), taxonomy, nil
+	return orchestrator.BuildAgentPrompt(todayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools,
+		c.buildRecentEntities(userID)), taxonomy, nil
 }
 
 // sendTyping avisa que el bot está pensando. Best-effort: que falle el aviso no
