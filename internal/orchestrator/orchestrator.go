@@ -17,31 +17,38 @@ type Config struct {
 	// AgentModel is the model behind Run — the unified agent loop. A sixth
 	// field, not a replacement: the five per-call-type models keep serving the
 	// old path until stage 5 deletes it.
-	AgentModel     string
-	TimeoutSeconds int
-	Recorder       LLMRecorder // nil-safe
+	AgentModel string
+	// ClassifierModel es el modelo de la clasificación de categorías, que sale
+	// del loop en la etapa 5. Va aparte a propósito: el techo de TPM de Groq es
+	// POR MODELO, así que una llamada en otro modelo no le come nada al loop.
+	// Cuál conviene lo decide el eval, no esta config.
+	ClassifierModel string
+	TimeoutSeconds  int
+	Recorder        LLMRecorder // nil-safe
 }
 
 // Orchestrator wires the Groq client to the call types (router, create,
 // update-resolve, delete-resolve, query), each with its own model.
 type Orchestrator struct {
-	client      *Client
-	routerModel string
-	createModel string
-	updateModel string
-	deleteModel string
-	queryModel  string
-	agentModel  string
+	client          *Client
+	routerModel     string
+	createModel     string
+	updateModel     string
+	deleteModel     string
+	queryModel      string
+	agentModel      string
+	classifierModel string
 }
 
 func New(cfg Config) *Orchestrator {
 	return &Orchestrator{
-		client:      NewClient(cfg.APIKey, cfg.BaseURL, time.Duration(cfg.TimeoutSeconds)*time.Second, cfg.Recorder),
-		routerModel: cfg.RouterModel,
-		createModel: cfg.CreateModel,
-		updateModel: cfg.UpdateModel,
-		deleteModel: cfg.DeleteModel,
-		queryModel:  cfg.QueryModel,
-		agentModel:  cfg.AgentModel,
+		client:          NewClient(cfg.APIKey, cfg.BaseURL, time.Duration(cfg.TimeoutSeconds)*time.Second, cfg.Recorder),
+		routerModel:     cfg.RouterModel,
+		createModel:     cfg.CreateModel,
+		updateModel:     cfg.UpdateModel,
+		deleteModel:     cfg.DeleteModel,
+		queryModel:      cfg.QueryModel,
+		agentModel:      cfg.AgentModel,
+		classifierModel: cfg.ClassifierModel,
 	}
 }

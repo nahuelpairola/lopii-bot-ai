@@ -87,7 +87,11 @@ const (
 	callTypeOnboarding     = "onboarding"
 	callTypeQuery          = "query"
 	callTypeCategoryCreate = "category_create"
-	callTypeAccountManage  = "account_manage"
+	// callTypeClassifier: la clasificación sale del loop y pasa a su propia
+	// llamada, en su propio bucket de Grafana y —lo que importa— en su propio
+	// techo de TPM, porque el ceiling de Groq es POR MODELO.
+	callTypeClassifier    = "classifier"
+	callTypeAccountManage = "account_manage"
 	// callTypeAgent es el loop unificado (Run). Va aparte de callTypeQuery a
 	// propósito: desde la etapa 2 el loop atiende UPDATE y DELETE, y si compartiera
 	// bucket con query los paneles de costo y latencia de QUERY empezarían a
