@@ -81,22 +81,32 @@ const maxQueryCompletionTokens = 1024
 // filo: el que entró usó 1.949 tokens de completion, y los dos intentos previos
 // del MISMO mensaje volvieron 400 con el JSON cortado a la mitad.
 //
-// RECALCULADO el 2026-08-12, con el router ya muerto y la taxonomía fuera del
-// prompt. El prompt real del agente bajó de ~4.095 a **3.215-3.339** medidos.
+// MEDIDO contra el peor caso real, el 2026-08-12: el mensaje de 7 movimientos
+// del 10/08 —el más pesado de la base en 45 días— gastó **1.183** tokens de
+// completion. Antes gastaba 1.949; la diferencia es que `record_movements` ya no
+// emite categoría ni subcategoría, o sea ~40% menos salida por movimiento.
 //
-// Distribución de completion sobre las 90 llamadas 200 de `llm_calls`:
-// máximo 1.949 · p50 319 · p95 741 · 3 pasan de 1.000 · **ninguna pasa de 2.000**.
+// Distribución de movimientos por mensaje (77 mensajes con movimientos): 84% son
+// de UNO, 13% de dos, y hay exactamente un 5 y un 7. A ~170 tokens por
+// movimiento, 1.500 cubre unos 8-9.
 //
-// Se elige 2.500 y no 2.000: el máximo observado (1.949) está a 51 tokens de
-// 2.000, y hay un incidente escrito de que a cap 2.048 ESE MISMO lote de 7
-// movimientos volvió 400 con el JSON cortado a la mitad. 2.500 cubre el máximo
-// con 28% de aire y libera 500 por llamada.
+// Por qué NO 1.000, que es lo que la distribución de completions sugería: esas
+// completions eran casi todas de un movimiento. Medir sobre ellas y cortar en
+// 1.000 habría truncado el lote de 7 — el único caso que importa para este
+// número. Es el mismo error de muestreo que ya costó una vez.
 //
-// Lo que esto NO arregla: dos mensajes seguidos dentro del mismo minuto siguen
-// 429eando (3.339+2.500 = 5.839 reservados, dos llamadas = 11.678 contra 8.000).
-// Para eso está la cola `pending_llm_jobs`, no un cap más chico — bajarlo hasta
-// que dos llamadas entren truncaría las respuestas reales.
-const maxAgentCompletionTokens = 2500
+// Groq cobra `Requested = prompt + max_completion_tokens` contra el cupo, use o
+// no la completion entera. Con prompt ~3.533, bajar de 2.500 a 1.500 son 1.000
+// tokens menos por llamada: **17% menos de cupo diario por mensaje**.
+//
+// Lo que esto NO arregla, y conviene no esperarlo: las RÁFAGAS. Con 8.000 TPM
+// entra una sola llamada por minuto con 2.500 y también con 1.500 — para que
+// entraran dos haría falta un cap por debajo de 500. El techo de minuto lo
+// atiende la cola `pending_llm_jobs`, no este número.
+//
+// Revisar si aparece un mensaje de más de 8 movimientos (una importación en
+// lote, por ejemplo): ahí el 400 con el JSON cortado vuelve.
+const maxAgentCompletionTokens = 1500
 
 type loopResponse struct {
 	Choices []struct {
