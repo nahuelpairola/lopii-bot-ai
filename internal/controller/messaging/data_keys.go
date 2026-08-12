@@ -47,7 +47,6 @@ const (
 	keyCategory         dataKey = "category"     // shared: movementRow + category_proposal + free_text
 	keySubcategory      dataKey = "subcategory"
 	keyPaymentMethod    dataKey = "payment_method"
-	keyMerchant         dataKey = "merchant"
 	keyDescription      dataKey = "description"
 	keyDate             dataKey = "date"
 	keyIcon             dataKey = "icon"

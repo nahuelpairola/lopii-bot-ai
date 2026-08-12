@@ -15,16 +15,30 @@ import (
 //
 //   - "pagué el curso con Brubank" → Brubank es una cuenta del usuario que
 //     todavía no existe. Hay que preguntar y, si él lo pide, crearla.
-//   - "pizza con Pablo" → Pablo es la contraparte, no una cuenta. El prompt
-//     manda esos nombres a merchant ("ese nombre externo va en merchant, nunca
-//     como cuenta") y además los repite acá; crear una cuenta "Pablo" sería un
-//     error, y hasta preguntar sería interrumpir un gasto que hoy se guarda solo.
+//   - "pizza con Pablo" → Pablo es la contraparte, no una cuenta. Crear una
+//     cuenta "Pablo" sería un error, y hasta preguntar sería interrumpir un
+//     gasto que hoy se guarda solo.
 //
-// La señal que los separa es que en el segundo caso el nombre adivinado y el
-// merchant son el mismo. Es la fila exacta que fija
-// TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount.
-func guessNamesOwnAccount(guess, merchant string) bool {
-	return guess != "" && !strings.EqualFold(guess, merchant)
+// La señal es DÓNDE cae el nombre. Si es parte de lo que pasó, queda en la
+// description ("pizza con Pablo") y no es una cuenta. Si la description es la
+// cosa comprada y el nombre quedó afuera ("pagué el curso con Brubank"), es una
+// cuenta.
+//
+// Antes esto se decidía comparando el guess contra merchant, que ya no existe.
+// Sin reemplazo la condición colapsaba a `guess != ""` y CADA contraparte
+// abriría un gap ofreciendo crear una cuenta con el nombre de una persona.
+//
+// Limitación heredada, no introducida: tokenAppearsInString exige tokens de
+// minMatchTokenLen (4), así que un nombre de 3 letras ("Ana") no matchea y abre
+// un gap de más. Es estrictamente más raro que la falla que reemplaza.
+//
+// Las dos direcciones las fijan TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount
+// y TestResolveAndInsert_NonTransferCreatesNamedOwnAccount.
+func guessNamesOwnAccount(guess, description string) bool {
+	if guess == "" {
+		return false
+	}
+	return !tokenAppearsInString(guess, foldAccents(strings.ToLower(description)))
 }
 
 // accountPendingCreate is the sentinel movementRow.AccountID value
@@ -55,7 +69,6 @@ type movementRow struct {
 	Category         string
 	Subcategory      string
 	PaymentMethod    string
-	Merchant         string
 	Description      string
 	Date             string
 	Icon             string
@@ -69,15 +82,11 @@ func stringOrEmpty(v any) string {
 
 // movementGapDescriptor names a movementRow for the gap-fill ask-prompts, so
 // a compound message with several pending rows never asks two identical
-// questions in a row — merchant is preferred (concrete: "en Coto"),
-// description is the fallback (description is a required Call 2 CREATE
-// field — always populated, see orchestrator.MovementDraft).
+// questions in a row. La description es un campo requerido del Call 2 CREATE
+// —siempre viene poblada, ver orchestrator.MovementDraft—, así que desde el
+// fold de merchant es la única fuente y no hace falta fallback.
 func movementGapDescriptor(row movementRow) string {
-	detail := row.Merchant
-	if detail == "" {
-		detail = row.Description
-	}
-	return "$" + row.Amount + " · " + detail
+	return "$" + row.Amount + " · " + row.Description
 }
 
 // copyData es maps.Clone con una garantía extra: el resultado nunca es nil.
@@ -106,7 +115,6 @@ func decodeMovementRows(data conversation.Data) []movementRow {
 			Category:         stringOrEmpty(m[keyCategory]),
 			Subcategory:      stringOrEmpty(m[keySubcategory]),
 			PaymentMethod:    stringOrEmpty(m[keyPaymentMethod]),
-			Merchant:         stringOrEmpty(m[keyMerchant]),
 			Description:      stringOrEmpty(m[keyDescription]),
 			Date:             stringOrEmpty(m[keyDate]),
 			Icon:             stringOrEmpty(m[keyIcon]),
@@ -129,7 +137,6 @@ func encodeMovementRows(rows []movementRow) []interface{} {
 			keyCategory:         r.Category,
 			keySubcategory:      r.Subcategory,
 			keyPaymentMethod:    r.PaymentMethod,
-			keyMerchant:         r.Merchant,
 			keyDescription:      r.Description,
 			keyDate:             r.Date,
 			keyIcon:             r.Icon,
@@ -192,7 +199,6 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 			Category:         draft.Category,
 			Subcategory:      draft.Subcategory,
 			PaymentMethod:    draft.PaymentMethod,
-			Merchant:         draft.Merchant,
 			Description:      draft.Description,
 			Date:             draft.Date,
 			Group:            draft.Group,
@@ -214,8 +220,8 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 		//
 		// Una fila sin AccountNameGuess y sin AccountID NO es un gap: es el camino
 		// normal "usá mi default" y tiene que seguir siendo mudo. Tampoco lo es una
-		// que solo repite el merchant — ver guessNamesOwnAccount.
-		if draft.AccountID == nil && (draft.Type == constants.Transfer || guessNamesOwnAccount(draft.AccountNameGuess, draft.Merchant)) {
+		// que solo repite algo que ya está en la description — ver guessNamesOwnAccount.
+		if draft.AccountID == nil && (draft.Type == constants.Transfer || guessNamesOwnAccount(draft.AccountNameGuess, draft.Description)) {
 			accountGaps = append(accountGaps, idx)
 		}
 

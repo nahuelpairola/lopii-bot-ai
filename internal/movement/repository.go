@@ -35,7 +35,6 @@ type Movement struct {
 	Amount        decimal.Decimal          `gorm:"column:amount;type:numeric(15,2);not null"`
 	Currency      currency.Currency        `gorm:"column:currency;type:currency_type;not null"`
 	PaymentMethod *string                  `gorm:"column:payment_method"`
-	Merchant      *string                  `gorm:"column:merchant"`
 	Description   *string                  `gorm:"column:description"`
 }
 
@@ -185,20 +184,24 @@ func (r *repository) ReassignSubcategory(userID uint64, fromID uint64, toID uint
 		Update("subcategory_id", toID).Error
 }
 
-// TopMerchantsBySubcategory devuelve los comercios más frecuentes de una
-// subcategoría, del más usado al menos. Alimenta el texto que se le manda al
-// LLM para sugerir un destino de fusión: "Comida / Delivery — gastos en:
-// PedidosYa, Rappi".
-func (r *repository) TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
-	var merchants []string
+// TopDescriptionsBySubcategory devuelve las descripciones más frecuentes de
+// una subcategoría, de la más usada a la menos. Alimenta el texto que se le
+// manda al LLM para sugerir un destino de fusión: "Comida / Delivery — gastos
+// en: PedidosYa, Rappi".
+//
+// Regresión aceptada del fold de merchant: los comercios se repetían
+// ("Carrefour", "Carrefour") y las descripciones no ("18 mil pastas"), así que
+// el top-5 es más ruidoso. Es una sugerencia, no un dato.
+func (r *repository) TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
+	var descriptions []string
 	err := r.db.DB.Model(&Movement{}).
 		Where("user_id = ? AND subcategory_id = ?", userID, subcategoryID).
-		Where("merchant IS NOT NULL AND merchant <> ''").
-		Group("merchant").
+		Where("description IS NOT NULL AND description <> ''").
+		Group("description").
 		Order("COUNT(*) DESC").
 		Limit(limit).
-		Pluck("merchant", &merchants).Error
-	return merchants, err
+		Pluck("description", &descriptions).Error
+	return descriptions, err
 }
 
 // SoftDeleteByIDs borra (soft-delete vía deleted_at) todas las filas
@@ -329,8 +332,8 @@ func (r *repository) ReassignAccount(fromID, toID uint64) error {
 // struct serves both SumForUser and ListForUser — identical filters, so a
 // struct beats an 8-arg signature and keeps the two in sync. Type == nil
 // means "exclude transfers" (the cash-flow default); a non-nil Type filters
-// to exactly that type. Category/Subcategory/AccountID/Merchant are optional
-// narrowing filters (Merchant is a substring ILIKE match — merchant is
+// to exactly that type. Category/Subcategory/AccountID/Description are optional
+// narrowing filters (Description is a substring ILIKE match — description is
 // pg_trgm-indexed). Currency is always required — ARS and USD are never mixed.
 type MovementQuery struct {
 	UserID      uint64
@@ -341,7 +344,7 @@ type MovementQuery struct {
 	Category    *string
 	Subcategory *string
 	AccountID   *uint64
-	Merchant    *string
+	Description *string
 	// OnlyReserved flips the reserved-category filter. The zero value — every
 	// existing caller — EXCLUDES internal plumbing (opening balances, balance
 	// adjustments, investment yield), because those are corrections to the
@@ -384,8 +387,8 @@ func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 	if q.Subcategory != nil {
 		db = db.Where("s.subcategory = ?", *q.Subcategory)
 	}
-	if q.Merchant != nil {
-		db = db.Where("movements.merchant ILIKE ?", "%"+*q.Merchant+"%")
+	if q.Description != nil {
+		db = db.Where("movements.description ILIKE ?", "%"+*q.Description+"%")
 	}
 	// Reserved categories are excluded by default and returned alone when
 	// asked for — see MovementQuery.OnlyReserved. Both branches need the

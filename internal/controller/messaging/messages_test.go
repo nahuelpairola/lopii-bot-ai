@@ -26,17 +26,12 @@ func TestMsgConfirmUpdateDiff_ShowsAccountChange(t *testing.T) {
 	}
 }
 
-func TestMovementGapDescriptor_PrefersMerchantOverDescription(t *testing.T) {
-	row := movementRow{Amount: "5000", Merchant: "Coto", Description: "compra en el super"}
-	if got := movementGapDescriptor(row); got != "$5000 · Coto" {
-		t.Errorf("want merchant preferred, got %q", got)
-	}
-}
-
-func TestMovementGapDescriptor_FallsBackToDescription(t *testing.T) {
-	row := movementRow{Amount: "50000", Description: "transferencia a Mercado Pago"}
-	if got := movementGapDescriptor(row); got != "$50000 · transferencia a Mercado Pago" {
-		t.Errorf("want description fallback, got %q", got)
+// Desde el fold de merchant la description es la unica fuente del descriptor:
+// es un campo requerido del Call 2 CREATE, asi que siempre viene poblada.
+func TestMovementGapDescriptor_UsesDescription(t *testing.T) {
+	row := movementRow{Amount: "5000", Description: "compra en el super"}
+	if got := movementGapDescriptor(row); got != "$5000 · compra en el super" {
+		t.Errorf("want description, got %q", got)
 	}
 }
 
@@ -45,7 +40,7 @@ func TestMovementGapDescriptor_FallsBackToDescription(t *testing.T) {
 // category/subcategory ask-prompt twice — each has to name its own row.
 func TestAskPrompts_DistinguishRows(t *testing.T) {
 	rows := []movementRow{
-		{Amount: "5000", Merchant: "Coto", Category: "PENDING_REVIEW"},
+		{Amount: "5000", Description: "compra en Coto", Category: "PENDING_REVIEW"},
 		{Amount: "50000", AccountNameGuess: "Mercado Pago", Description: "transferencia a Mercado Pago", Category: "PENDING_REVIEW"},
 	}
 	data := conversation.Data{

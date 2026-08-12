@@ -27,9 +27,9 @@ const (
 	// defaultCategoryIcon es el ícono cuando una fila no tiene uno propio.
 	defaultCategoryIcon = "📂"
 
-	// topMerchantsForSuggestion acota cuántos comercios se le mandan al LLM
+	// topDescriptionsForSuggestion acota cuántas descripciones se le mandan al LLM
 	// como contexto: suficientes para desambiguar, pocos para no diluir.
-	topMerchantsForSuggestion = 5
+	topDescriptionsForSuggestion = 5
 )
 
 // ownedSubcategoryLister es lo único que el flujo 1 necesita: las filas que

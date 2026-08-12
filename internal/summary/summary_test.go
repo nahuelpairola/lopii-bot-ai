@@ -80,7 +80,7 @@ func TestBuild_ReportARSOnly(t *testing.T) {
 			"ARS|income|":          sums(row("", "1500")),
 			"ARS|expense|category": sums(row("Comida", "600"), row("Transporte", "400")),
 		},
-		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Merchant: strptr("Cena")}},
+		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Description: strptr("Cena")}},
 		counts: []movement.DayCount{{Date: to, Count: 5}, {Date: from, Count: 2}},
 		bals:   map[uint64]decimal.Decimal{0: dec("2500")},
 	}
@@ -121,7 +121,7 @@ func TestBuild_EscapesUserSuppliedStrings(t *testing.T) {
 			"ARS|income|":          sums(row("", "1500")),
 			"ARS|expense|category": sums(row("Comida & bebida", "600")),
 		},
-		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Merchant: strptr("Bar <El Rincón>")}},
+		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Description: strptr("Bar <El Rincón>")}},
 		counts: []movement.DayCount{{Date: to, Count: 5}},
 		bals:   map[uint64]decimal.Decimal{0: dec("2500")},
 	}
@@ -159,7 +159,7 @@ func TestBuild_BoldsTheValueThatAnswersEachLine(t *testing.T) {
 			"ARS|income|":          sums(row("", "1500")),
 			"ARS|expense|category": sums(row("Comida", "600")),
 		},
-		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Merchant: strptr("Cena")}},
+		tops:   map[string]*movement.Movement{"ARS": {Amount: dec("-350"), Description: strptr("Cena")}},
 		counts: []movement.DayCount{{Date: to, Count: 5}},
 		bals:   map[uint64]decimal.Decimal{0: dec("2500")},
 	}

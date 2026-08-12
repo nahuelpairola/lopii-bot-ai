@@ -55,7 +55,7 @@ func guardReason(err error) string {
 // cada parte se gana el lugar: qué fue, cuánto, cuándo. El monto va en formato
 // argentino (antes salía "2000 ARS", y un saldo grande como "21528105 ARS"),
 // la fecha en relativo (antes "2026-07-27"), y siempre hay un nombre: sin
-// descripción ni merchant caía a "· ·", que no le dice nada a nadie.
+// descripción caía a "· ·", que no le dice nada a nadie.
 //
 // El monto va SIEMPRE en positivo: los movimientos vienen de la DB con el signo
 // contable, y ese signo no escapa de storage — la dirección la da el tipo.
@@ -68,9 +68,6 @@ func candidateLabel(g transactionGroup) string {
 	name := ""
 	if m.Description != nil {
 		name = strings.TrimSpace(*m.Description)
-	}
-	if name == "" && m.Merchant != nil {
-		name = strings.TrimSpace(*m.Merchant)
 	}
 	if name == "" && m.Subcategory != nil {
 		name = m.Subcategory.Subcategory

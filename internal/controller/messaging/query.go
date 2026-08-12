@@ -47,7 +47,7 @@ var queryTools = []orchestrator.AgentTool{
 				"category": {"type": ["string", "null"]},
 				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
-				"merchant": {"type": ["string", "null"], "description": "opcional: nombre de comercio (coincidencia parcial, ej. Carrefour)"}
+				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial, ej. Carrefour)"}
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -65,7 +65,7 @@ var queryTools = []orchestrator.AgentTool{
 				"category": {"type": ["string", "null"]},
 				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"]},
-				"merchant": {"type": ["string", "null"], "description": "opcional: nombre de comercio (coincidencia parcial)"},
+				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial)"},
 				"limit": {"type": ["integer", "null"], "description": "máximo de filas (default 20, tope 50)"}
 			},
 			"required": ["from", "to", "currency"]
@@ -99,7 +99,7 @@ type queryToolArgs struct {
 	Category    string `json:"category"`
 	Subcategory string `json:"subcategory"`
 	Account     string `json:"account"`
-	Merchant    string `json:"merchant"`
+	Description string `json:"description"`
 	Limit       int    `json:"limit"`
 }
 
@@ -359,8 +359,8 @@ func (c *controller) buildMovementQuery(userID uint64, args queryToolArgs) (move
 	if args.Subcategory != "" {
 		q.Subcategory = &args.Subcategory
 	}
-	if args.Merchant != "" {
-		q.Merchant = &args.Merchant
+	if args.Description != "" {
+		q.Description = &args.Description
 	}
 	if args.Account != "" {
 		accts, err := c.accounts.FindByUserID(userID)

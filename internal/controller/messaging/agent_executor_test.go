@@ -94,7 +94,7 @@ func TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn(t *testing.T) {
 
 	args := `{"movements":[{"type":"expense","amount":"5000","currency":"ARS",
 		"category":"Alimentación","subcategory":"Supermercado","date":"2026-08-01",
-		"description":"super","merchant":"Coto","payment_method":"transfer"}]}`
+		"description":"super en Coto","payment_method":"transfer"}]}`
 	out := executeDone(t, e, orchestrator.ToolRecordMovements, args)
 
 	if !e.wrote {

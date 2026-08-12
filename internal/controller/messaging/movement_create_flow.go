@@ -599,9 +599,9 @@ func (c *controller) insertOpeningMovement(acc *account.Account, amount decimal.
 // Aun así un gasto o un ingreso no puede crear una cuenta que se llama como la
 // contraparte ("pizza con Juan" no es la cuenta de Juan): esas filas se dejan sin
 // cuenta y el guard las resuelve a la default de su moneda. Lo que sí crea es la
-// fila que nombró una cuenta propia distinta del merchant — "pagué con Brubank"
-// —, que desde que buildCreateSeed le abre gap llega hasta acá; sin esto el bot
-// preguntaría, ofrecería crearla y después tiraría la respuesta.
+// fila que nombró una cuenta propia que no aparece en la description — "pagué
+// con Brubank" —, que desde que buildCreateSeed le abre gap llega hasta acá; sin
+// esto el bot preguntaría, ofrecería crearla y después tiraría la respuesta.
 func (c *controller) createCounterpartyAccounts(userID uint64, rows []movementRow, idx *accountIndex) error {
 	created := make(map[string]uint64) // "nombre|moneda" -> id, para no crear dos veces la misma
 	for i, row := range rows {
@@ -609,7 +609,7 @@ func (c *controller) createCounterpartyAccounts(userID uint64, rows []movementRo
 			continue
 		}
 		if movement.TypeFromString(row.Type) != movement.Transfer &&
-			!guessNamesOwnAccount(row.AccountNameGuess, row.Merchant) {
+			!guessNamesOwnAccount(row.AccountNameGuess, row.Description) {
 			rows[i].AccountID = ""
 			continue
 		}
@@ -678,7 +678,6 @@ func (c *controller) buildMovements(userID uint64, rows []movementRow) ([]moveme
 			Amount:        amount,
 			Currency:      currency.Currency(row.Currency),
 			PaymentMethod: optionalString(row.PaymentMethod),
-			Merchant:      optionalString(row.Merchant),
 			Description:   optionalString(row.Description),
 		})
 		groups = append(groups, row.Group)

@@ -64,7 +64,7 @@ type movementRepository interface {
 	CountForUser(userID uint64) (int64, error)
 	CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error)
 	ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error
-	TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
+	TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
 	CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error)
 }
 

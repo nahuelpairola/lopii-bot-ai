@@ -172,17 +172,18 @@ func TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap(t *testing.T
 	}
 }
 
-// TestBuildCreateSeed_AccountNameEqualsMerchant_NoAccountGap: "pizza con Pablo"
-// deja AccountNameGuess Y Merchant en "Pablo" — Pablo es la contraparte, no una
-// cuenta. Ese gasto hoy se guarda solo contra la default y no puede ganar una
-// pregunta, ni terminar creando una cuenta que se llama como una persona
-// (la fila que ya fija TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount).
-func TestBuildCreateSeed_AccountNameEqualsMerchant_NoAccountGap(t *testing.T) {
+// TestBuildCreateSeed_CounterpartyInDescription_NoAccountGap: "pizza con Pablo"
+// deja AccountNameGuess en "Pablo" y a Pablo DENTRO de la description — Pablo es
+// la contraparte, no una cuenta. Ese gasto hoy se guarda solo contra la default
+// y no puede ganar una pregunta, ni terminar creando una cuenta que se llama
+// como una persona (la fila que ya fija
+// TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount).
+func TestBuildCreateSeed_CounterpartyInDescription_NoAccountGap(t *testing.T) {
 	result := orchestrator.CreateResult{
 		Movements: []orchestrator.MovementDraft{
 			{
 				Type: "expense", Amount: "100000", Currency: "ARS",
-				AccountNameGuess: "Pablo", Merchant: "Pablo",
+				AccountNameGuess: "Pablo", Description: "pizza con Pablo",
 				Category: "Ocio y salidas", Subcategory: "Restaurante",
 			},
 		},
@@ -192,6 +193,27 @@ func TestBuildCreateSeed_AccountNameEqualsMerchant_NoAccountGap(t *testing.T) {
 
 	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
 		t.Errorf("account gaps = %v, want []: el nombre de la contraparte no es una cuenta", gaps)
+	}
+}
+
+// La otra dirección: el nombre NO está en la description, así que es una cuenta
+// del usuario y tiene que abrir gap. Sin este caso la regla queda medio
+// verificada — y es la mitad que puede CREAR una cuenta.
+func TestBuildCreateSeed_OwnAccountNotInDescription_OpensGap(t *testing.T) {
+	result := orchestrator.CreateResult{
+		Movements: []orchestrator.MovementDraft{
+			{
+				Type: "expense", Amount: "35000", Currency: "ARS",
+				AccountNameGuess: "Brubank", Description: "curso de ingles",
+				Category: "Educación", Subcategory: "Cursos",
+			},
+		},
+	}
+
+	data := buildCreateSeed(result, nil)
+
+	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 1 {
+		t.Errorf("account gaps = %v, want 1: 'pagué el curso con Brubank' tiene que preguntar", gaps)
 	}
 }
 

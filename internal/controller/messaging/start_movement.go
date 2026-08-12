@@ -155,7 +155,7 @@ const (
 // ponytail: keywords, no LLM — es determinista, cuesta cero tokens y cero
 // latencia. No cubre una cuenta nombrada sin la palabra "cuenta" ("cambiar el
 // nombre del Fondo común de inversión Balanz"); eso pediría matchear contra los
-// nombres de cuentas del usuario, con el riesgo de pisar un merchant homónimo.
+// nombres de cuentas del usuario, con el riesgo de pisar un comercio homónimo.
 func redirectTargetFor(message string) string {
 	lower := strings.ToLower(message)
 	if strings.Contains(lower, "movimiento") {

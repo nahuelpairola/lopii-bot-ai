@@ -58,7 +58,6 @@ type MovementDraft struct {
 	Category         string  `json:"category"`
 	Subcategory      string  `json:"subcategory"`
 	PaymentMethod    string  `json:"payment_method"`
-	Merchant         string  `json:"merchant"`
 	Description      string  `json:"description"`
 	Date             string  `json:"date"`
 	Group            string  `json:"group"`

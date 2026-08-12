@@ -88,20 +88,17 @@ func groupByTransaction(ms []movement.Movement) []transactionGroup {
 }
 
 // matchesMessage is a cheap, dependency-free relevance filter over one
-// candidate group: it matches when any description/merchant TOKEN of
-// length >= 4 appears (case-insensitively) in the message, or the
-// message literally contains one of the group's amounts. Token-level (not
-// whole-phrase) so a verbose LLM description like "gasto en trabas"
-// matches a message that shares only "trabas". The DB layer no longer
-// pre-filters by similarity (see FindSimilarForUser / resolveCandidates),
-// so this is the primary textual relevance check.
+// candidate group: it matches when any description TOKEN of length >= 4
+// appears (case-insensitively) in the message, or the message literally
+// contains one of the group's amounts. Token-level (not whole-phrase) so a
+// verbose LLM description like "gasto en trabas" matches a message that
+// shares only "trabas". The DB layer no longer pre-filters by similarity
+// (see FindSimilarForUser / resolveCandidates), so this is the primary
+// textual relevance check.
 func matchesMessage(group transactionGroup, message string) bool {
 	lower := foldAccents(strings.ToLower(message))
 	for _, m := range group.Movements {
-		if descOrMerchantTokenInMessage(m.Description, lower) {
-			return true
-		}
-		if descOrMerchantTokenInMessage(m.Merchant, lower) {
+		if tokenAppearsIn(m.Description, lower) {
 			return true
 		}
 		if !m.Amount.IsZero() && strings.Contains(message, m.Amount.String()) {
@@ -111,19 +108,26 @@ func matchesMessage(group transactionGroup, message string) bool {
 	return false
 }
 
-// descOrMerchantTokenInMessage reports whether any whitespace-separated
-// token of `field` with length >= minMatchTokenLen is a substring of the
-// already-lowercased message.
-func descOrMerchantTokenInMessage(field *string, lowerMessage string) bool {
+// tokenAppearsIn reports whether any whitespace-separated token of `field`
+// with length >= minMatchTokenLen is a substring of the already-lowercased
+// haystack.
+func tokenAppearsIn(field *string, lowerHaystack string) bool {
 	if field == nil || *field == "" {
 		return false
 	}
-	for _, tok := range strings.Fields(foldAccents(strings.ToLower(*field))) {
+	return tokenAppearsInString(*field, lowerHaystack)
+}
+
+// tokenAppearsInString es la misma prueba sobre un string ya desreferenciado.
+// La usa guessNamesOwnAccount, que compara contra la description de la fila y
+// no contra el mensaje.
+func tokenAppearsInString(field, lowerHaystack string) bool {
+	for _, tok := range strings.Fields(foldAccents(strings.ToLower(field))) {
 		// ponytail: length>=4 skips es stopwords (de/en/el/con/por) without a
 		// stopword list; standalone <=3-char descriptions like "pan"/"ypf"
 		// won't match as tokens — revisit if that bites.
 		if len([]rune(tok)) >= minMatchTokenLen {
-			if strings.Contains(lowerMessage, tok) {
+			if strings.Contains(lowerHaystack, tok) {
 				return true
 			}
 		}

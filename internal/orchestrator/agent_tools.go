@@ -91,7 +91,7 @@ func AgentTools() []AgentTool {
 				"category": {"type": ["string", "null"]},
 				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
-				"merchant": {"type": ["string", "null"], "description": "opcional: nombre de comercio (coincidencia parcial, ej. Carrefour)"}
+				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial, ej. Carrefour)"}
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -111,7 +111,7 @@ func AgentTools() []AgentTool {
 				"category": {"type": ["string", "null"]},
 				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"]},
-				"merchant": {"type": ["string", "null"], "description": "opcional: nombre de comercio (coincidencia parcial)"},
+				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial)"},
 				"limit": {"type": ["integer", "null"], "description": "máximo de filas (default 20, tope 50)"}
 			},
 			"required": ["from", "to", "currency"]

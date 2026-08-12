@@ -109,9 +109,6 @@ func movementToRow(m movement.Movement) movementRow {
 	if m.PaymentMethod != nil {
 		row.PaymentMethod = *m.PaymentMethod
 	}
-	if m.Merchant != nil {
-		row.Merchant = *m.Merchant
-	}
 	if m.Description != nil {
 		row.Description = *m.Description
 	}
@@ -127,7 +124,6 @@ func rowToDraft(r movementRow) orchestrator.MovementDraft {
 		Category:         r.Category,
 		Subcategory:      r.Subcategory,
 		PaymentMethod:    r.PaymentMethod,
-		Merchant:         r.Merchant,
 		Description:      r.Description,
 		Date:             r.Date,
 		Group:            r.Group,
@@ -149,7 +145,6 @@ func draftToRow(d orchestrator.MovementDraft) movementRow {
 		Category:         d.Category,
 		Subcategory:      d.Subcategory,
 		PaymentMethod:    d.PaymentMethod,
-		Merchant:         d.Merchant,
 		Description:      d.Description,
 		Date:             d.Date,
 		Group:            d.Group,
@@ -356,7 +351,6 @@ func sameMovementForCorrection(before, after movementRow) bool {
 		unchanged(before.Subcategory, after.Subcategory) &&
 		unchanged(before.Date, after.Date) &&
 		unchanged(before.AccountID, after.AccountID) &&
-		unchanged(before.Merchant, after.Merchant) &&
 		unchanged(before.Description, after.Description)
 }
 

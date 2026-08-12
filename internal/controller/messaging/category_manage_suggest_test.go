@@ -25,7 +25,7 @@ func TestMergeSuggestionText_WithDescription(t *testing.T) {
 	}
 }
 
-func TestMergeSuggestionText_WithMerchants(t *testing.T) {
+func TestMergeSuggestionText_WithSamples(t *testing.T) {
 	got := mergeSuggestionText("Comida", "Delivery", "", []string{"PedidosYa", "Rappi"})
 	want := "Comida / Delivery — gastos en: PedidosYa, Rappi"
 	if got != want {
@@ -33,7 +33,7 @@ func TestMergeSuggestionText_WithMerchants(t *testing.T) {
 	}
 }
 
-func TestMergeSuggestionText_DescriptionAndMerchants(t *testing.T) {
+func TestMergeSuggestionText_DescriptionAndSamples(t *testing.T) {
 	got := mergeSuggestionText("Comida", "Delivery", "Pedidos a domicilio", []string{"Rappi"})
 	want := "Comida / Delivery — Pedidos a domicilio — gastos en: Rappi"
 	if got != want {
