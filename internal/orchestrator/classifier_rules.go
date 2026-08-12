@@ -24,7 +24,7 @@ const (
 // Así que el clasificador puede pisar esto. Lo que el default compra igual es
 // que el caso abrumador (una transferencia de verdad) no gaste una decisión del
 // modelo, y que el par salga bien escrito de la app en vez de copiado a mano.
-func structuralPair(rows []MovementDraft) (category, subcategory string, ok bool) {
+func StructuralPair(rows []MovementDraft) (category, subcategory string, ok bool) {
 	if len(rows) != 2 {
 		return "", "", false
 	}

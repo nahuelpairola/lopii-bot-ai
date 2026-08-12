@@ -145,7 +145,13 @@ func newConversationHarness(t *testing.T) *convHarness {
 	engine.Register(NewReminderSetupFlow())
 	engine.Register(NewAskUserFlow())
 
-	orc := &fakeFullOrchestrator{}
+	// El clasificador va scripteado con un par válido por default: desde que la
+	// clasificación salió del loop, sin par TODA fila cae en PENDING_REVIEW y
+	// abre el picker — y cada escenario mediría el gap-fill en vez de lo suyo.
+	// ScriptCategory lo pisa donde el escenario necesite otra cosa.
+	orc := &fakeFullOrchestrator{
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
+	}
 	c := &controller{
 		engine:        engine,
 		orchestrator:  orc,
@@ -173,6 +179,9 @@ func newConversationHarness(t *testing.T) *convHarness {
 // handleFreeText llama a ClassifyIntent ANTES de que nada llegue al loop, así
 // que sin esto ningún escenario alcanza record_movements.
 func (h *convHarness) ScriptIntent(i orchestrator.Intent) { h.orc.intent = i }
+
+// ScriptCategory fija el par que devuelve el clasificador.
+func (h *convHarness) ScriptCategory(pairs ...orchestrator.Pair) { h.orc.classifyPairs = pairs }
 
 // ScriptToolCalls encola lo que el loop "emite": una ronda por llamada. El
 // executor es el REAL, así que lo que pasa después de la tool call es

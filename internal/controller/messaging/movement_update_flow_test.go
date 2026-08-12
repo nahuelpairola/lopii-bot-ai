@@ -10,6 +10,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -537,4 +538,15 @@ func TestCorrectionIsDeletion(t *testing.T) {
 			t.Errorf("%s: correctionIsDeletion(%q) = %v, want %v", tc.name, tc.message, got, tc.want)
 		}
 	}
+}
+
+// Este fake no clasifica: los tests que lo usan van por el camino de UPDATE,
+// que trae el par de la fila vieja. Devolver PENDING_REVIEW en todo es lo mismo
+// que hace el real cuando falla.
+func (o *fakeOrchestrator) ClassifyCategories(_ context.Context, _ string, rows []orchestrator.ClassifyRow, _ []orchestrator.TaxonomyEntry) []orchestrator.Pair {
+	out := make([]orchestrator.Pair, len(rows))
+	for i := range out {
+		out[i] = orchestrator.Pair{Category: constants.PendingReview}
+	}
+	return out
 }

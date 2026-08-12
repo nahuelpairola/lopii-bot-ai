@@ -34,7 +34,7 @@ func TestStructuralPair(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cat, sub, ok := structuralPair(tc.rows)
+			cat, sub, ok := StructuralPair(tc.rows)
 			if ok != tc.wantOK || cat != tc.wantCat || sub != tc.wantSub {
 				t.Errorf("structuralPair = (%q,%q,%v), want (%q,%q,%v)", cat, sub, ok, tc.wantCat, tc.wantSub, tc.wantOK)
 			}
@@ -52,7 +52,7 @@ func TestStructuralPair_FCILooksExactlyLikeATransfer(t *testing.T) {
 		{Amount: "50000", Currency: "ARS"},
 		{Amount: "50000", Currency: "ARS"},
 	}
-	cat, sub, ok := structuralPair(fci)
+	cat, sub, ok := StructuralPair(fci)
 	if !ok || cat != catSistema || sub != subTransferencia {
 		t.Fatalf("structuralPair = (%q,%q,%v): la forma es indistinguible de una transferencia", cat, sub, ok)
 	}

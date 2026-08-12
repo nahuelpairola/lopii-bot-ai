@@ -75,12 +75,21 @@ func subcategoriesForTest() *fakeSubcategoryRepoFull {
 
 // newCreateExecutor arma el ejecutor con lo mínimo que necesita un CREATE:
 // cuentas, saldo y taxonomía.
-func newCreateExecutor(t *testing.T, balance, userText string) *agentExecutor {
+// newCreateExecutor arma el executor con el clasificador scripteado.
+//
+// Desde que la clasificación salió del loop, record_movements NO trae el par:
+// lo pone ClassifyCategories. Un test que no lo programe recibe PENDING_REVIEW
+// en todas las filas y termina midiendo el gap-fill en vez de lo suyo.
+func newCreateExecutor(t *testing.T, balance, userText string, pairs ...orchestrator.Pair) *agentExecutor {
 	t.Helper()
+	if pairs == nil {
+		pairs = []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}}
+	}
 	c := &controller{
 		movements:     movementsWithBalance(balance),
 		accounts:      accountsWithDefault(),
 		subcategories: subcategoriesForTest(),
+		orchestrator:  &fakeFullOrchestrator{classifyPairs: pairs},
 	}
 	return newAgentExecutor(c, 1, userText, taxonomyForTest())
 }

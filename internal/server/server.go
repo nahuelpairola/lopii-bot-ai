@@ -124,16 +124,17 @@ func InitServer(conf *config.Config) error {
 	actionsRepo := pendingaction.NewRepository(conn)
 
 	llmOrchestrator := orchestrator.New(orchestrator.Config{
-		APIKey:         conf.Groq.APIKey,
-		BaseURL:        conf.Groq.BaseURL,
-		RouterModel:    conf.Groq.RouterModel,
-		CreateModel:    conf.Groq.CreateModel,
-		UpdateModel:    conf.Groq.UpdateModel,
-		DeleteModel:    conf.Groq.DeleteModel,
-		QueryModel:     conf.Groq.QueryModel,
-		AgentModel:     conf.Groq.AgentModel,
-		TimeoutSeconds: conf.Groq.TimeoutSeconds,
-		Recorder:       llmCallRecorder{insert: metricRepo.InsertLLMCall},
+		APIKey:          conf.Groq.APIKey,
+		BaseURL:         conf.Groq.BaseURL,
+		RouterModel:     conf.Groq.RouterModel,
+		CreateModel:     conf.Groq.CreateModel,
+		UpdateModel:     conf.Groq.UpdateModel,
+		DeleteModel:     conf.Groq.DeleteModel,
+		QueryModel:      conf.Groq.QueryModel,
+		AgentModel:      conf.Groq.AgentModel,
+		ClassifierModel: conf.Groq.ClassifierModel,
+		TimeoutSeconds:  conf.Groq.TimeoutSeconds,
+		Recorder:        llmCallRecorder{insert: metricRepo.InsertLLMCall},
 	})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)

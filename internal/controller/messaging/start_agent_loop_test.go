@@ -305,6 +305,9 @@ func TestLoop_InsertedResolvesCreateInserted(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	orch := &fakeFullOrchestrator{
 		intent: orchestrator.IntentCreate,
+		// Sin el par scripteado la fila sale en PENDING_REVIEW, abre gap y el
+		// turno parkea en vez de insertar: mediria el gap-fill, no esto.
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			_, err := execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
 				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
@@ -339,6 +342,9 @@ func TestLoop_NoQueueAfterAWrite(t *testing.T) {
 	// en vez de setear el flag a mano.
 	orch := &fakeFullOrchestrator{
 		intent: orchestrator.IntentCreate,
+		// Sin el par scripteado la fila sale en PENDING_REVIEW, abre gap y el
+		// turno parkea en vez de insertar: mediria el gap-fill, no esto.
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			_, _ = execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
 				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",

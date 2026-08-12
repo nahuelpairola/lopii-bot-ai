@@ -7,6 +7,7 @@ import (
 
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/chathistory"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -35,6 +36,7 @@ type fakeFullOrchestrator struct {
 	categoryErr         error
 	accountManageResult orchestrator.AccountManageResult
 	accountManageErr    error
+	classifyPairs       []orchestrator.Pair
 	runFn               func(execute func(string, json.RawMessage) (string, error)) (string, error)
 	runCalled           bool
 }
@@ -869,4 +871,17 @@ func TestStartMovementUpdate_AccountRequest_RedirectsToAccountManage(t *testing.
 	if store.flowName != accountCreateFlowName {
 		t.Errorf("started flow = %q, want %q", store.flowName, accountCreateFlowName)
 	}
+}
+
+// classifyPairs es lo que devuelve el clasificador fake. Vacío = PENDING_REVIEW
+// en todas las filas, que es exactamente lo que hace el real cuando falla.
+func (o *fakeFullOrchestrator) ClassifyCategories(_ context.Context, _ string, rows []orchestrator.ClassifyRow, _ []orchestrator.TaxonomyEntry) []orchestrator.Pair {
+	if o.classifyPairs != nil {
+		return o.classifyPairs
+	}
+	out := make([]orchestrator.Pair, len(rows))
+	for i := range out {
+		out[i] = orchestrator.Pair{Category: constants.PendingReview}
+	}
+	return out
 }

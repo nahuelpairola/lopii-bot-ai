@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -208,6 +209,17 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	// desarman a mano, así que hay que pedirlo. Sin esto el modelo devuelve
 	// "Vivienda | Luz" en el campo categoría, el par no matchea la taxonomía y
 	// el gap-fill le pregunta al usuario la categoría que ya había dicho.
+	// La categoría ya no viene del loop: el schema de record_movements no la
+	// pide. Se asigna acá, en dos pasos — primero por la FORMA del movimiento
+	// (gratis, sin modelo), y lo que quede va a una llamada dedicada en otro
+	// modelo, o sea en otro techo de TPM.
+	e.classify(result.Movements)
+
+	// Normalize va DESPUÉS de clasificar, no antes: el que puede devolver
+	// "Vivienda | Luz" metido en el campo categoría ahora es el clasificador,
+	// no el loop. Normalizar antes dejaría el par mal formado, el par no
+	// matchearía la taxonomía, y el gap-fill le preguntaría al usuario una
+	// categoría que el sistema ya sabía.
 	result.Normalize()
 
 	seed := buildCreateSeed(result, e.taxonomy)
@@ -237,6 +249,47 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	e.reply = msgConfirmMovements(inserted)
 	e.replyButtons = e.c.maybeNearDuplicate(e.userID, inserted)
 	return resultRecorded(len(inserted)), orchestrator.ErrAgentTurnDone
+}
+
+// classify completa el par (categoría, subcategoría) de cada fila.
+//
+// Paso 1, por regla y sin modelo: hay pares que son función de la FORMA del
+// movimiento, y la app conoce la forma. Es un DEFAULT, no una regla dura —una
+// suscripción de FCI tiene la misma forma que una transferencia—, así que el
+// clasificador puede pisarlo; lo que compra es que el caso abrumador no gaste
+// una decisión del modelo y que el par salga bien escrito.
+//
+// Paso 2, una llamada para TODAS las filas que quedaron: comparten el mensaje,
+// y separarlas les quitaría el contexto que se dan entre sí.
+//
+// Si algo falla, las filas quedan en PENDING_REVIEW y buildCreateSeed les abre
+// gap: degradar a una pregunta es correcto, degradar a un dato inventado no.
+func (e *agentExecutor) classify(movements []orchestrator.MovementDraft) {
+	if len(movements) == 0 {
+		return
+	}
+
+	if cat, sub, ok := orchestrator.StructuralPair(movements); ok {
+		for i := range movements {
+			movements[i].Category, movements[i].Subcategory = cat, sub
+		}
+		return
+	}
+
+	rows := make([]orchestrator.ClassifyRow, 0, len(movements))
+	for _, m := range movements {
+		rows = append(rows, orchestrator.ClassifyRow{
+			Description: m.Description,
+			Type:        m.Type,
+			AccountName: m.AccountNameGuess,
+		})
+	}
+	pairs := e.c.orchestrator.ClassifyCategories(context.Background(), e.userText, rows, e.taxonomy)
+	for i := range movements {
+		if i < len(pairs) {
+			movements[i].Category, movements[i].Subcategory = pairs[i].Category, pairs[i].Subcategory
+		}
+	}
 }
 
 // park resuelve el candidato del lado de la app y deja la acción lista.

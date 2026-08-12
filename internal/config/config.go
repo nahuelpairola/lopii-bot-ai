@@ -45,8 +45,13 @@ type groq struct {
 	// AgentModel es el modelo del loop unificado (orchestrator.Run). Es un
 	// sexto campo, no un reemplazo: los cinco por tipo de llamada siguen
 	// sirviendo el camino viejo hasta la etapa 5.
-	AgentModel     string `mapstructure:"agentModel"`
-	TimeoutSeconds int    `mapstructure:"timeoutSeconds"`
+	AgentModel string `mapstructure:"agentModel"`
+	// ClassifierModel es el modelo de la clasificación de categorías, que en la
+	// etapa 5 sale del loop. Va en OTRO modelo a propósito: el techo de TPM de
+	// Groq es por modelo, y medido el 2026-08-12 el loop ya entra al suyo una vez
+	// por minuto y medio. Cuál conviene lo decide el eval, no este default.
+	ClassifierModel string `mapstructure:"classifierModel"`
+	TimeoutSeconds  int    `mapstructure:"timeoutSeconds"`
 }
 
 // agent son los interruptores del loop unificado. Hoy uno solo: el que decide
@@ -97,6 +102,9 @@ func Initialize() (*Config, error) {
 	// nadie llama a Run, pero desde la etapa 2 seria una mina para cualquier
 	// entorno nuevo.
 	viper.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
+	// llama-3.3-70b-versatile: el techo medido más alto (12.000 TPM), bucket
+	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
+	viper.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")
 	viper.SetDefault("Log.Level", "info")
 	viper.SetDefault("Log.Format", "json")
 
