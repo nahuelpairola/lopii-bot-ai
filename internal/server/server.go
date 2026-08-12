@@ -52,6 +52,12 @@ type llmCallRecorder struct {
 
 func (r llmCallRecorder) Record(c orchestrator.LLMCall) {
 	go func() {
+		// Vacío → NULL, para que `WHERE tool_calls IS NOT NULL` signifique "el
+		// modelo llamó algo" y no "la columna trae un array vacío".
+		var toolCalls *string
+		if c.ToolCalls != "" {
+			toolCalls = &c.ToolCalls
+		}
 		if err := r.insert(&metric.LLMCall{
 			TraceID:                    c.TraceID,
 			CallType:                   c.CallType,
@@ -65,6 +71,7 @@ func (r llmCallRecorder) Record(c orchestrator.LLMCall) {
 			Error:                      c.Err,
 			RateLimitRemainingRequests: c.RateLimitRemainingRequests,
 			RateLimitRemainingTokens:   c.RateLimitRemainingTokens,
+			ToolCalls:                  toolCalls,
 		}); err != nil {
 			slog.Error("llm_call insert failed", "err", err)
 		}

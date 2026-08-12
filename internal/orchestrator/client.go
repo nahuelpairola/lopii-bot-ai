@@ -218,6 +218,7 @@ func (c *Client) record(ctx context.Context, callType, model string, start time.
 	}
 	if body != nil {
 		rec.PromptTokens, rec.CompletionTokens, rec.TotalTokens = parseUsage(body)
+		rec.ToolCalls = parseToolCalls(body)
 	}
 	if header != nil {
 		rec.RateLimitRemainingRequests, rec.RateLimitRemainingTokens = parseRateLimitRemaining(header)
