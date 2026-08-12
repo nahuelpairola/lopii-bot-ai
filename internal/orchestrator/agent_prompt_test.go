@@ -18,7 +18,6 @@ func TestBuildAgentPrompt_CarriesTheLoadBearingRules(t *testing.T) {
 		"2026-07-31",   // the date rule's anchor
 		"Mercado Pago", // the accounts block
 		"el destino decide el tipo",
-		"Rendimiento inversión",
 		"van en POSITIVO",
 		"MISMO group",
 		"America/Argentina/Buenos_Aires",
@@ -42,6 +41,13 @@ func TestBuildAgentPrompt_CarriesTheLoadBearingRules(t *testing.T) {
 		"PENDING_REVIEW",          // la regla de taxonomía
 		"Sistema | Transferencia", // los pares literales de los patrones
 		"Inversiones | Dólares",
+		// La REGLA DE GANANCIA entera: su único contenido era asignar este par, y
+		// `record_movements` ya no tiene campo de categoría. Medido antes de
+		// sacarla: 0 usos en 442 mensajes de 45 días, ~85 tokens por llamada.
+		// Que un rendimiento es un income sale solo de la regla de tipo; el par lo
+		// pone el clasificador, que es el único que puede — no se deduce de la
+		// forma (un ingreso a una cuenta de inversión y un depósito son idénticos).
+		"Rendimiento inversión",
 	} {
 		if strings.Contains(prompt, gone) {
 			t.Errorf("el prompt del loop todavía lleva %q: clasificar salió del loop", gone)

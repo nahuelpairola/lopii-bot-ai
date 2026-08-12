@@ -71,4 +71,17 @@ REGLA DE AGRUPACIÓN (campo group):
 var agentPatternRules = strings.NewReplacer(
 	`, subcategoría "Inversiones | Dólares"`, "",
 	`, subcategoría "Sistema | Transferencia"`, "",
+	// La REGLA DE GANANCIA entera se va del loop. Su contenido era "es un income
+	// con subcategoría X", y `record_movements` YA NO TIENE campo de categoría:
+	// le pedía al modelo llenar algo inexistente. Lo que queda —que un
+	// rendimiento es un income— sale solo de la regla de tipo.
+	//
+	// Medido antes de sacarla: 0 usos en 442 mensajes de 45 días. Cuesta ~85
+	// tokens en CADA llamada del loop.
+	rendimientoRule, "",
 ).Replace(movementPatternRules)
+
+const rendimientoRule = `
+REGLA DE GANANCIA:
+- Una cuenta que rinde ("el plazo fijo rindió 5000", "el broker ganó 10 mil") es un income en esa cuenta, subcategoría "Sistema | Rendimiento inversión". Nunca un income genérico, nunca un transfer.
+`
