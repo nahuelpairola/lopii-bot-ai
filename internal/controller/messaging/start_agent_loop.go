@@ -44,7 +44,17 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	// diga el intent de antemano — lo dice la primera tool que el loop eligió.
 	// Log abre y Resolve cierra, y Resolve NO toca la columna intent: por eso el
 	// orden es al revés que antes.
-	c.logIntent(ctx, userID, text, intentForExecutor(executor, err))
+	//
+	// Pero un REPLAY no abre nada: el evento del mensaje ya existe y sigue
+	// pendiente, esperando justamente a que el drenaje lo resuelva. Sin esta
+	// guarda cada reintento del 429 escribía un `unclear` de más — medido en vivo
+	// el 2026-08-12: "10k panaderia" llevaba TRES eventos fallidos, de 0 tokens
+	// cada uno, antes de siquiera procesarse. Es ruido puro en la única columna
+	// que lee el portón de la etapa, y hace que el bot se vea peor cuanto más
+	// apretado esté el cupo.
+	if !isReplaying(ctx) {
+		c.logIntent(ctx, userID, text, intentForExecutor(executor, err))
+	}
 
 	if err != nil {
 		// Un 429 DESPUÉS de escribir no se encola: el drenaje volvería a correr el

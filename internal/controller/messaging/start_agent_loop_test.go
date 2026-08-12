@@ -406,3 +406,33 @@ func TestDrainAfterLoop_OpensTheQuestion(t *testing.T) {
 		t.Error("el drenaje tenía que dejar la pregunta abierta")
 	}
 }
+
+// Un replay del drenaje NO abre un intent_event nuevo: el del mensaje original
+// sigue pendiente, esperando que este mismo replay lo resuelva.
+//
+// Medido en vivo el 2026-08-12: "10k panaderia" acumuló TRES eventos `unclear`
+// de 0 tokens cada uno —los reintentos del 429— antes de siquiera procesarse.
+// Es ruido en la única columna que lee el portón de la etapa.
+func TestLoop_ReplayDoesNotOpenANewIntentEvent(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+		_, err := execute(orchestrator.ToolReplyHelp, json.RawMessage(`{}`))
+		return "", err
+	}}
+	c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
+	c.metrics = metrics
+
+	// Turno normal del webhook: abre el evento.
+	if err := c.startAgentLoop(context.Background(), nil, 0, 1, "que podés hacer"); err != nil {
+		t.Fatal(err)
+	}
+	afterWebhook := len(metrics.logged)
+
+	// El mismo mensaje, ahora drenado: no puede abrir otro.
+	if err := c.startAgentLoop(withReplaying(context.Background()), nil, 0, 1, "que podés hacer"); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.logged) != afterWebhook {
+		t.Errorf("el replay abrió %d eventos de más", len(metrics.logged)-afterWebhook)
+	}
+}
