@@ -20,7 +20,17 @@ const (
 	outcomeCreateFailed        = "create_failed"
 	outcomeUpdateConfirmed     = "update_confirmed"
 	outcomeUpdateCancelled     = "update_cancelled"
-	outcomeUpdateFailed        = "update_failed"
+
+	// Los cuatro que reemplazan a update_failed. Se escribía desde SIETE
+	// lugares con significados opuestos —el loop reventó, el parking falló, el
+	// turno no hizo nada, y el usuario confirmó pero falló la escritura— y esa
+	// sobrecarga hizo que el 2026-08-10 se diagnosticara mal: leímos "el loop
+	// narró sin actuar" cuando en realidad la corrección había llegado a
+	// confirmarse. El portón de la etapa lee esta columna.
+	outcomeLoopErrored    = "loop_errored"     // la llamada al loop falló (transporte, no-429)
+	outcomeParkFailed     = "park_failed"      // no se pudo guardar la acción parkeada
+	outcomeLoopDidNothing = "loop_did_nothing" // el turno no parkeó ni escribió nada
+	outcomeWriteFailed    = "write_failed"     // el usuario confirmó y falló la escritura
 	outcomeDeleteConfirmed     = "delete_confirmed"
 	outcomeDeleteCancelled     = "delete_cancelled"
 	outcomeNoCandidates        = "no_candidates"

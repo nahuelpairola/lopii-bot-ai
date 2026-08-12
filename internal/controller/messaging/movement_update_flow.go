@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -308,7 +309,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		if ask.gaveValue {
 			// Ya nos dijo el valor por texto y seguimos sin entender: cortar es
 			// más honesto que volver a preguntar lo mismo.
-			c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+			c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
 			c.sendText(ctx, b, chatID, msgStillCannotCorrect)
 			return nil
 		}
@@ -380,7 +381,7 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 	if c.actions == nil {
 		// Sin cola no hay a dónde parkear: el camino viejo sigue siendo mejor
 		// que quedarse mudo.
-		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.resolveMetric(ctx, userID, outcomeParkFailed)
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return nil
 	}
@@ -502,7 +503,7 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 	// A correction that zeroes the movement (regalo/gratis total) deletes it
 	// instead of storing an illegal amount-0 row — see correctionIsDeletion.
 	if flag(data, keyDeleteInstead) {
-		oldIDs, err := parseUintSlice(decodeStringSlice(data, "old_movement_ids"))
+		oldIDs, err := parseUintSlice(decodeStringSlice(data, keyOldMovementIDs))
 		if err == nil {
 			err = c.movements.SoftDeleteByIDs(oldIDs)
 		}
@@ -511,11 +512,16 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 			// update_failed no dice nada: medido el 2026-08-10, dos de dos salieron
 			// de este gate (el usuario ya había confirmado) y no hubo con qué saber
 			// por qué falló la escritura.
-			slog.ErrorContext(ctx, "update delete failed", "user_id", data.UserID(), "err", err)
-			c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
-			if b != nil {
-				b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCouldNotSave("el cambio")})
+			slog.ErrorContext(ctx, "update delete failed", "user_id", data.UserID(), "old_ids", oldIDs, "err", err)
+			// El movimiento ya no está: el usuario pidió que desapareciera y no
+			// está. Decirle que falló sería mentirle, y lo mandaría a reintentar.
+			if errors.Is(err, movement.ErrMovementNotFound) {
+				c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, oldIDs...)
+				c.sendText(ctx, b, chatID, msgUpdateDeleted)
+				return
 			}
+			c.resolveMetric(ctx, data.UserID(), outcomeWriteFailed)
+			c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
 			return
 		}
 		c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, oldIDs...)
@@ -528,7 +534,7 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
 		slog.ErrorContext(ctx, "update insert failed", "user_id", data.UserID(), "err", err)
-		c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
+		c.resolveMetric(ctx, data.UserID(), outcomeWriteFailed)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
 		}

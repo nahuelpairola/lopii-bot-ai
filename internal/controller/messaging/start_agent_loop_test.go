@@ -251,7 +251,7 @@ func TestLoop_AlwaysResolvesTheMetric(t *testing.T) {
 		{"ayuda", orchestrator.ToolReplyHelp, outcomeHelpShown},
 		{"pedir reescritura", orchestrator.ToolAskRewrite, outcomeUnclear},
 		{"sin candidatos", orchestrator.ToolCorrectMovement, outcomeNoCandidates},
-		{"narró sin hacer nada", orchestrator.ToolSumMovements, outcomeUpdateFailed},
+		{"narró sin hacer nada", orchestrator.ToolSumMovements, outcomeLoopDidNothing},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			metrics := &fakeMetricRepo{}

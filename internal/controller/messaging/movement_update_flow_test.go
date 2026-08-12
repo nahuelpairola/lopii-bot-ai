@@ -435,7 +435,7 @@ func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
 	if len(actions.rows) != 0 {
 		t.Errorf("ya se preguntó una vez: no puede volver a parkear la misma pregunta")
 	}
-	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeUpdateFailed {
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeLoopDidNothing {
 		t.Errorf("el evento tiene que cerrar como fallo, got %v", metrics.resolved)
 	}
 }

@@ -53,7 +53,7 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
 			return oerr
 		}
-		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.resolveMetric(ctx, userID, outcomeLoopErrored)
 		slog.ErrorContext(ctx, "agent loop failed", "user_id", userID, "err", err)
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("agent loop: %w", err)
@@ -69,7 +69,7 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 
 	if len(executor.parked) > 0 {
 		if err := c.parkAgentActions(ctx, userID, executor.parked); err != nil {
-			c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+			c.resolveMetric(ctx, userID, outcomeParkFailed)
 			slog.ErrorContext(ctx, "park agent actions failed", "user_id", userID, "err", err)
 			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return err
@@ -108,7 +108,7 @@ func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, 
 	default:
 		// El loop narró sin hacer nada. Es un fracaso, y tiene que verse como
 		// tal: es justo el caso que hay que poder contar.
-		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
 	}
 }
 
