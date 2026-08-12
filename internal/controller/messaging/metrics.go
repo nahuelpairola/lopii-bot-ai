@@ -114,12 +114,19 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 	case ex.reply == msgAskRewrite:
 		return orchestrator.IntentUnclear
 	case len(ex.parked) > 0:
-		// Lo único que parkea hoy es una corrección o un borrado, y el tool del
-		// primero parkeado lo dice.
-		if ex.parked[0].Tool == orchestrator.ToolDeleteMovements {
+		// El tool del primero parkeado dice qué era. Los TRES casos importan: un
+		// CREATE que se parkea para llenar un gap no insertó nada, así que la rama
+		// de `inserted` no lo agarra y caía en el default de abajo — quedaba
+		// contado como UPDATE. Medido en vivo el 2026-08-12 con "Lote cemento
+		// 45000", que abrió un gap de cuenta y se registró como corrección.
+		switch ex.parked[0].Tool {
+		case orchestrator.ToolDeleteMovements:
 			return orchestrator.IntentDelete
+		case orchestrator.ToolRecordMovements:
+			return orchestrator.IntentCreate
+		default:
+			return orchestrator.IntentUpdate
 		}
-		return orchestrator.IntentUpdate
 	default:
 		return orchestrator.IntentUnclear
 	}

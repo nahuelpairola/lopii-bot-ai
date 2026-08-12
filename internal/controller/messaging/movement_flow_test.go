@@ -3,8 +3,11 @@ package messaging
 import (
 	"testing"
 
+	"gorm.io/gorm"
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -52,7 +55,7 @@ func TestBuildCreateSeed_QueuesCategoryAndAccountGaps(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 
 	categoryGaps := decodeStringSlice(data, "pending_category_gaps")
 	if len(categoryGaps) != 1 || categoryGaps[0] != "0" {
@@ -74,7 +77,7 @@ func TestBuildCreateSeed_NoGaps_EmptyQueues(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 
 	if len(decodeStringSlice(data, "pending_category_gaps")) != 0 {
 		t.Error("expected no category gaps")
@@ -102,7 +105,7 @@ func TestBuildCreateSeed_UnknownCategoryPair_QueuesGap(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, taxonomy)
+	data := buildCreateSeed(result, taxonomy, nil)
 
 	gaps := decodeStringSlice(data, "pending_category_gaps")
 	if len(gaps) != 1 || gaps[0] != "0" {
@@ -123,7 +126,7 @@ func TestBuildCreateSeed_KnownCategoryPair_NoGap(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, taxonomy)
+	data := buildCreateSeed(result, taxonomy, nil)
 
 	if gaps := decodeStringSlice(data, "pending_category_gaps"); len(gaps) != 0 {
 		t.Errorf("category gaps = %v, want []: un par que existe no debe preguntar nada", gaps)
@@ -145,7 +148,7 @@ func TestBuildCreateSeed_NonTransferWithUnmatchedAccountName_QueuesAccountGap(t 
 		},
 	}
 
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 
 	accountGaps := decodeStringSlice(data, "pending_account_gaps")
 	if len(accountGaps) != 1 || accountGaps[0] != "0" {
@@ -166,7 +169,7 @@ func TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap(t *testing.T
 		},
 	}
 
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 
 	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
 		t.Errorf("account gaps = %v, want []: sin cuenta nombrada no se pregunta nada", gaps)
@@ -190,7 +193,7 @@ func TestBuildCreateSeed_CounterpartyInDescription_NoAccountGap(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 
 	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
 		t.Errorf("account gaps = %v, want []: el nombre de la contraparte no es una cuenta", gaps)
@@ -211,7 +214,7 @@ func TestBuildCreateSeed_OwnAccountNotInDescription_OpensGap(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 
 	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 1 {
 		t.Errorf("account gaps = %v, want 1: 'pagué el curso con Brubank' tiene que preguntar", gaps)
@@ -309,5 +312,69 @@ func TestCategoryGapsFor(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Nombrar una cuenta que EXISTE no puede abrir un picker: el usuario ya dijo
+// cuál. Medido en vivo el 2026-08-12 con "Lote cemento 45000", donde el modelo
+// mandó account_name_guess="Mercado Pago" —la cuenta default, que existe— y el
+// bot preguntó igual a cuál iba.
+func TestBuildCreateSeed_NamedAccountThatExistsResolvesWithoutAsking(t *testing.T) {
+	accounts := []account.Account{
+		{Model: gorm.Model{ID: 46}, Name: "Mercado Pago", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 51}, Name: "Balala", Currency: currency.USD},
+	}
+	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
+		Type: "expense", Amount: "45000", Currency: "ARS",
+		AccountNameGuess: "mercado pago", // sin mayúsculas, como lo escribiría el usuario
+		Category:         "Alimentación", Subcategory: "Supermercado",
+		Description: "Lote cemento", Date: "2026-08-12",
+	}}}
+
+	data := buildCreateSeed(result, nil, accounts)
+
+	if gaps := decodeStringSlice(data, keyPendingAccountGaps); len(gaps) != 0 {
+		t.Fatalf("se abrió un gap de cuenta pese a que la nombró: %v", gaps)
+	}
+	rows := decodeMovementRows(data)
+	if rows[0].AccountID != "46" {
+		t.Errorf("account_id = %q, want 46", rows[0].AccountID)
+	}
+}
+
+// Y la dirección contraria, que es la que protege la plata: un nombre que NO es
+// exactamente una cuenta del usuario NO se adivina. "Galicia" contra "banco
+// galicia" cae al gap y pregunta.
+func TestBuildCreateSeed_PartialAccountNameStillAsks(t *testing.T) {
+	accounts := []account.Account{{Model: gorm.Model{ID: 72}, Name: "banco galicia", Currency: currency.ARS}}
+	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
+		Type: "expense", Amount: "45000", Currency: "ARS",
+		AccountNameGuess: "Galicia",
+		Description:      "Lote cemento", Date: "2026-08-12",
+	}}}
+
+	data := buildCreateSeed(result, nil, accounts)
+
+	if gaps := decodeStringSlice(data, keyPendingAccountGaps); len(gaps) != 1 {
+		t.Errorf("un nombre parcial tiene que preguntar, gaps = %v", gaps)
+	}
+}
+
+// Dos cuentas con el mismo nombre en monedas distintas: la moneda desempata. Sin
+// eso, un gasto en pesos podría caer en la cuenta en dólares.
+func TestBuildCreateSeed_SameNameDifferentCurrencyPicksByCurrency(t *testing.T) {
+	accounts := []account.Account{
+		{Model: gorm.Model{ID: 10}, Name: "Brubank", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 11}, Name: "Brubank", Currency: currency.USD},
+	}
+	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
+		Type: "expense", Amount: "100", Currency: "USD",
+		AccountNameGuess: "Brubank",
+		Description:      "algo", Date: "2026-08-12",
+	}}}
+
+	rows := decodeMovementRows(buildCreateSeed(result, nil, accounts))
+	if rows[0].AccountID != "11" {
+		t.Errorf("account_id = %q, want 11 (la de USD)", rows[0].AccountID)
 	}
 }

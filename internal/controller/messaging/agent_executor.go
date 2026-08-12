@@ -257,7 +257,12 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	// categoría que el sistema ya sabía.
 	result.Normalize()
 
-	seed := buildCreateSeed(result, e.taxonomy)
+	// Las cuentas van al seed para resolver el nombre que dijo el usuario contra
+	// una cuenta real ANTES de decidir que hay que preguntar. Un error de lectura
+	// acá no puede inventar un gap: matchNamedAccount devuelve 0 y sigue el
+	// camino de hoy.
+	accounts, _ := e.c.accounts.FindByUserID(e.userID)
+	seed := buildCreateSeed(result, e.taxonomy, accounts)
 	seed[conversation.UserIDKey] = e.userID
 
 	hasGaps := len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 ||

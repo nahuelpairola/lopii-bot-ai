@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/orchestrator"
@@ -175,7 +176,43 @@ func encodeStringSlice(items []string) []interface{} {
 // movement_update_flow.go builds its own seed (buildUpdateSeed) since an
 // UPDATE's shape differs — before/after movements, no gap-filling in
 // this feature's scope — rather than reusing this function.
-func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry) conversation.Data {
+// matchNamedAccount resuelve el nombre de cuenta que dijo el usuario contra sus
+// cuentas reales. Devuelve 0 si no hay UNA sola coincidencia exacta.
+//
+// La comparación es exacta (plegando acentos y mayúsculas), nunca parcial: acá
+// una coincidencia errada escribe el movimiento en la cuenta EQUIVOCADA, que es
+// el único lugar del código donde un error chico es un bug contable. "Galicia"
+// contra "banco galicia" NO matchea a propósito — cae al gap y pregunta, que es
+// el comportamiento de hoy.
+//
+// Sin esto, nombrar una cuenta que existe abría el picker igual: medido en vivo
+// el 2026-08-12 con "Lote cemento 45000", donde el modelo mandó
+// account_name_guess="Mercado Pago" —la cuenta default del usuario, que existe—
+// y el bot preguntó a cuál iba.
+func matchNamedAccount(guess string, accounts []account.Account, cur string) uint64 {
+	needle := foldAccents(strings.ToLower(strings.TrimSpace(guess)))
+	if needle == "" {
+		return 0
+	}
+	var found uint64
+	for _, a := range accounts {
+		// La moneda tiene que coincidir: dos cuentas pueden llamarse igual en ARS
+		// y USD, y meter el gasto en la otra rompe los dos saldos.
+		if cur != "" && a.Currency.String() != cur {
+			continue
+		}
+		if foldAccents(strings.ToLower(a.Name)) != needle {
+			continue
+		}
+		if found != 0 {
+			return 0 // ambiguo: que pregunte
+		}
+		found = uint64(a.ID)
+	}
+	return found
+}
+
+func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry, accounts []account.Account) conversation.Data {
 	rows := make([]movementRow, 0, len(result.Movements))
 	var categoryGaps, accountGaps []string
 
@@ -222,7 +259,14 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 		// normal "usá mi default" y tiene que seguir siendo mudo. Tampoco lo es una
 		// que solo repite algo que ya está en la description — ver guessNamesOwnAccount.
 		if draft.AccountID == nil && (draft.Type == constants.Transfer || guessNamesOwnAccount(draft.AccountNameGuess, draft.Description)) {
-			accountGaps = append(accountGaps, idx)
+			// Antes de preguntar: si el nombre que dijo el usuario ES una de sus
+			// cuentas, ya está resuelto. Preguntarle a cuál va después de que la
+			// nombró es hacerle repetir lo que acaba de decir.
+			if id := matchNamedAccount(draft.AccountNameGuess, accounts, draft.Currency); id != 0 {
+				row.AccountID = strconv.FormatUint(id, 10)
+			} else {
+				accountGaps = append(accountGaps, idx)
+			}
 		}
 
 		rows = append(rows, row)
