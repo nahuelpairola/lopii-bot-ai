@@ -312,3 +312,28 @@ func describeRows(ms []movement.Movement) string {
 	}
 	return "[" + strings.Join(out, " | ") + "]"
 }
+
+// Una corrección que deja todo igual no se escribe. Confirmarla haría un
+// DELETE+INSERT para no cambiar nada: quema un id y cuenta como
+// update_confirmed. Visto en vivo el 2026-08-12 al contestar la categoría que el
+// movimiento YA tenía.
+func TestConversation_NoOpCorrectionWritesNothing(t *testing.T) {
+	h := newConversationHarness(t)
+	super := h.subID("Alimentación", "Supermercado")
+	id := h.SeedMovementOn("Carrefour", "-12700", super, startOfTodayArgentina())
+
+	// El "cambio" nombra la categoría que la fila ya tiene.
+	h.ScriptToolCalls(correctMovementCall(`{
+		"change":"ponelo en supermercado",
+		"changes":[{"field":"category","op":"set","value":"Supermercado"}]}`))
+
+	h.SendText("el carrefour ponelo en supermercado")
+
+	movs := h.Movements()
+	if len(movs) != 1 || movs[0].ID != id {
+		t.Fatalf("la fila se reemplazó por una idéntica: %s", describeRows(movs))
+	}
+	if !containsAny(h.Messages(), "ya estaba así") {
+		t.Errorf("no se le avisó al usuario que no cambiaba nada: %v", h.Messages())
+	}
+}

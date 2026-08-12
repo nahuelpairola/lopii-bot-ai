@@ -492,6 +492,20 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 		}
 	}
 
+	// Una corrección que deja todo igual NO es una corrección. Confirmarla haría
+	// un DELETE+INSERT para no cambiar nada: quema un id, cuenta como
+	// update_confirmed, y al usuario le muestra "$45.000 (antes: $45.000)".
+	//
+	// El camino viejo ya tenía esta guarda (correctionIsNoOp en
+	// proceedToUpdateConfirm) y el estructurado nació sin ella — paridad de
+	// migración otra vez. Se vio en vivo el 2026-08-12: contestar la categoría
+	// que el movimiento YA tenía reemplazó la fila igual.
+	if correctionIsNoOp(beforeRows, drafts) {
+		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
+		c.sendText(ctx, b, chatID, msgCorrectionChangesNothing)
+		return nil
+	}
+
 	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, payload.Change, oldIDs, beforeRows,
 		orchestrator.UpdateResult{Resolved: true, Movements: drafts})
 }

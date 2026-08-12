@@ -321,6 +321,10 @@ const (
 	// respuesta tampoco sale una corrección. Volver a preguntar lo mismo sería
 	// hacerlo girar; se corta nombrando el formato que sí funciona.
 	msgStillCannotCorrect = "Sigo sin darme cuenta qué cambiarle. Probá diciéndomelo derecho — ej: «el café fueron 2000»."
+
+	// msgCorrectionChangesNothing: el cambio pedido deja el movimiento igual.
+	// Decirlo es mejor que confirmar un reemplazo que no reemplaza nada.
+	msgCorrectionChangesNothing = "Eso ya estaba así, no cambié nada."
 )
 
 // msgAskWhatToChange se usa cuando el movimiento SÍ se encontró pero el mensaje
