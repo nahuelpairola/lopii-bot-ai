@@ -3,6 +3,7 @@ package messaging
 import (
 	"testing"
 
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -256,4 +257,57 @@ func TestCopyDataNeverReturnsNil(t *testing.T) {
 		t.Fatal("copyData(nil) devolvió nil: el próximo write va a paniquear")
 	}
 	got[keyCancelled] = "true" // no debe paniquear
+}
+
+// categoryGapsFor es la paridad que a UPDATE le faltaba: hasta el 2026-08-12
+// seedAndStartUpdateConfirm escribía keyPendingCategoryGaps en nil hardcodeado,
+// así que una corrección que nombraba una categoría inexistente no marcaba gap,
+// insertaba derecho y FindByCategoryAndSubcategory fallaba — el movimiento se
+// perdía con un error genérico.
+func TestCategoryGapsFor(t *testing.T) {
+	taxonomy := []orchestrator.TaxonomyEntry{
+		{Category: "Alimentación", Subcategory: "Supermercado"},
+		{Category: "Ocio y salidas", Subcategory: "Salir a comer"},
+	}
+
+	cases := []struct {
+		name     string
+		rows     []movementRow
+		taxonomy []orchestrator.TaxonomyEntry
+		want     []string
+	}{
+		{"par conocido no abre gap",
+			[]movementRow{{Category: "Alimentación", Subcategory: "Supermercado"}}, taxonomy, nil},
+		{"par inventado abre gap",
+			[]movementRow{{Category: "proyecto hogar", Subcategory: "agua"}}, taxonomy, []string{"0"}},
+		{"categoría real con subcategoría inventada abre gap",
+			[]movementRow{{Category: "Alimentación", Subcategory: "no existe"}}, taxonomy, []string{"0"}},
+		{"PENDING_REVIEW abre gap",
+			[]movementRow{{Category: constants.PendingReview, Subcategory: ""}}, taxonomy, []string{"0"}},
+		{"sólo las filas malas, con su índice",
+			[]movementRow{
+				{Category: "Alimentación", Subcategory: "Supermercado"},
+				{Category: "inventada", Subcategory: "x"},
+				{Category: "Ocio y salidas", Subcategory: "Salir a comer"},
+				{Category: "otra inventada", Subcategory: "y"},
+			}, taxonomy, []string{"1", "3"}},
+		// Sin con qué comparar no se inventan gaps: preguntar por TODO sería peor
+		// que no validar.
+		{"taxonomía vacía no valida",
+			[]movementRow{{Category: "cualquier cosa", Subcategory: "x"}}, nil, nil},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := categoryGapsFor(tc.rows, tc.taxonomy)
+			if len(got) != len(tc.want) {
+				t.Fatalf("gaps = %v, want %v", got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("gaps = %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
 }

@@ -437,12 +437,31 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 		afterRows = append(afterRows, row)
 	}
 
+	// La taxonomía del usuario, para validar el par igual que CREATE. Si no
+	// carga, taxonomy queda vacía y categoryGapsFor no inventa gaps — degradar a
+	// "no valido" es correcto; degradar a "borro el movimiento" no lo era.
+	var taxonomy []orchestrator.TaxonomyEntry
+	if subs, err := c.subcategories.FindAllForUser(userID); err == nil {
+		taxonomy = make([]orchestrator.TaxonomyEntry, 0, len(subs))
+		for _, s := range subs {
+			taxonomy = append(taxonomy, orchestrator.TaxonomyEntry{Category: s.Category, Subcategory: s.Subcategory})
+		}
+	}
+
+	// Paridad con CREATE, y era un bug VIVO: acá iba encodeStringSlice(nil)
+	// hardcodeado, así que una corrección que nombraba una categoría inexistente
+	// no marcaba gap, el flujo insertaba derecho y FindByCategoryAndSubcategory
+	// fallaba — el movimiento se perdía con un error genérico. Es exactamente lo
+	// que el comentario de buildCreateSeed documenta que pasaba en CREATE antes de
+	// tener el set `known`. Y updateSystemPromptTemplate no lleva taxonomía NI la
+	// regla de "no inventes nombres", así que el camino de corrección emite pares
+	// arbitrarios con total libertad.
 	seed := conversation.Data{
 		keyMode:                modeUpdate,
 		keyOldMovementIDs:      encodeStringSlice(oldIDs),
 		keyBeforeMovements:     encodeMovementRows(beforeRows),
 		keyMovements:           encodeMovementRows(afterRows),
-		keyPendingCategoryGaps: encodeStringSlice(nil),
+		keyPendingCategoryGaps: encodeStringSlice(categoryGapsFor(afterRows, taxonomy)),
 		keyPendingAccountGaps:  encodeStringSlice(nil),
 		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows, userMessage)),
 	}

@@ -237,6 +237,31 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 	}
 }
 
+// categoryGapsFor devuelve los índices de las filas cuyo par
+// (categoría, subcategoría) no existe en la taxonomía del usuario, o quedó en
+// PENDING_REVIEW. Es la misma prueba que hace buildCreateSeed, extraída para que
+// UPDATE la use también: tenerla sólo en CREATE fue un bug vivo en el que una
+// corrección que nombraba una categoría inexistente perdía el movimiento.
+//
+// Taxonomía vacía = no validar: sin con qué comparar, no se inventan gaps.
+func categoryGapsFor(rows []movementRow, taxonomy []orchestrator.TaxonomyEntry) []string {
+	if len(taxonomy) == 0 {
+		return nil
+	}
+	known := make(map[string]bool, len(taxonomy))
+	for _, t := range taxonomy {
+		known[t.Category+"\x00"+t.Subcategory] = true
+	}
+
+	var gaps []string
+	for i, r := range rows {
+		if r.Category == constants.PendingReview || !known[r.Category+"\x00"+r.Subcategory] {
+			gaps = append(gaps, strconv.Itoa(i))
+		}
+	}
+	return gaps
+}
+
 // parseUintSlice turns the string-encoded movement IDs carried through
 // conversation.Data back into real uint IDs, for repository calls that
 // take []uint (SoftDeleteByIDs, ReplaceMovements).
