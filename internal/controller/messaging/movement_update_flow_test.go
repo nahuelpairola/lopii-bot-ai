@@ -495,7 +495,7 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	result := orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3500", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},
 	}}
-	if err := c.seedAndStartUpdateConfirm(context.Background(), nil, 0, 1, []string{"7"}, nil, result); err != nil {
+	if err := c.seedAndStartUpdateConfirm(context.Background(), nil, 0, 1, "eran 3500", []string{"7"}, nil, result); err != nil {
 		t.Fatalf("seedAndStartUpdateConfirm: %v", err)
 	}
 	if store.flowName != movementUpdateConfirmFlowName {
@@ -505,20 +505,36 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 
 func TestCorrectionIsDeletion(t *testing.T) {
 	cases := []struct {
-		name string
-		rows []movementRow
-		want bool
+		name    string
+		rows    []movementRow
+		message string
+		want    bool
 	}{
-		{"empty set is not a deletion", nil, false},
-		{"single zero row deletes", []movementRow{{Amount: "0"}}, true},
-		{"zero with decimals deletes", []movementRow{{Amount: "0.00"}}, true},
-		{"non-zero is a real correction", []movementRow{{Amount: "600"}}, false},
-		{"mixed zero and non-zero is not a deletion", []movementRow{{Amount: "0"}, {Amount: "500"}}, false},
-		{"unparseable amount is not a deletion", []movementRow{{Amount: ""}}, false},
+		{"empty set is not a deletion", nil, "salió 0", false},
+		{"single zero row deletes", []movementRow{{Amount: "0"}}, "en realidad fue 0", true},
+		{"zero with decimals deletes", []movementRow{{Amount: "0.00"}}, "0 pesos", true},
+		{"non-zero is a real correction", []movementRow{{Amount: "600"}}, "eran 600", false},
+		{"mixed zero and non-zero is not a deletion", []movementRow{{Amount: "0"}, {Amount: "500"}}, "poné 0 y 500", false},
+		{"unparseable amount is not a deletion", []movementRow{{Amount: ""}}, "gratis", false},
+
+		// El caso que casi borra datos: el 2026-08-10 "Editá los movimientos de
+		// lote de hoy" no dice ningún cambio, el modelo devolvió montos en 0, y
+		// esto armó un borrado que el usuario confirmó. Sólo no borró porque la
+		// escritura falló — y ese accidente ya no está.
+		{"todo cero SIN monto en el mensaje NO borra", []movementRow{{Amount: "0"}, {Amount: "0"}},
+			"Editá los movimientos de lote de hoy", false},
+		{"tampoco con un solo movimiento", []movementRow{{Amount: "0"}},
+			"editá el café", false},
+
+		// Las formas de decir "no salió nada" que no traen ningún dígito.
+		{"me lo regalaron", []movementRow{{Amount: "0"}}, "me regalaron el helado", true},
+		{"al final fue gratis", []movementRow{{Amount: "0"}}, "al final fue gratis", true},
+		{"no me cobraron nada", []movementRow{{Amount: "0"}}, "no me cobraron nada", true},
+		{"me invitaron, con acento de por medio", []movementRow{{Amount: "0"}}, "me invitó él", true},
 	}
 	for _, tc := range cases {
-		if got := correctionIsDeletion(tc.rows); got != tc.want {
-			t.Errorf("%s: correctionIsDeletion = %v, want %v", tc.name, got, tc.want)
+		if got := correctionIsDeletion(tc.rows, tc.message); got != tc.want {
+			t.Errorf("%s: correctionIsDeletion(%q) = %v, want %v", tc.name, tc.message, got, tc.want)
 		}
 	}
 }

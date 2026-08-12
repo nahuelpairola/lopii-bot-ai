@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
@@ -269,7 +270,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	// El gate de confirmación NO se saltea: sigue pasando por
 	// seedAndStartUpdateConfirm, así que el usuario ve el antes/después igual.
 	if after, ok := amountOnlyCorrection(beforeRows, ask); ok {
-		return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows,
+		return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, message, oldIDs, beforeRows,
 			orchestrator.UpdateResult{Resolved: true, Movements: after})
 	}
 
@@ -321,7 +322,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
-	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows, result)
+	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, message, oldIDs, beforeRows, result)
 }
 
 // correctionIsNoOp dice si la corrección "resuelta" deja el movimiento igual
@@ -423,7 +424,7 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 // already-resolved UpdateResult (never calls the orchestrator itself)
 // and starts it. Called by proceedToUpdateConfirm once Call 2 UPDATE
 // resolves.
-func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, oldIDs []string, beforeRows []movementRow, result orchestrator.UpdateResult) error {
+func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, userMessage string, oldIDs []string, beforeRows []movementRow, result orchestrator.UpdateResult) error {
 	accs, _ := c.accounts.FindByUserID(userID)
 	nameByID := make(map[string]string, len(accs))
 	for _, a := range accs {
@@ -449,7 +450,7 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 		keyMovements:           encodeMovementRows(afterRows),
 		keyPendingCategoryGaps: encodeStringSlice(nil),
 		keyPendingAccountGaps:  encodeStringSlice(nil),
-		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows)),
+		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows, userMessage)),
 	}
 
 	prompt, err := c.engine.StartWithData(userID, movementUpdateConfirmFlowName, seed)
@@ -546,14 +547,39 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 	}
 }
 
+// palabrasDeMontoCero: las formas de decir "no salió nada" que no traen ningún
+// dígito. Sin esto "me lo regalaron" no podría borrar nunca.
+var palabrasDeMontoCero = []string{"gratis", "regal", "nada", "cero", "invit"}
+
+// messageNamesAnAmount dice si el usuario habló de plata: un dígito, o una de
+// las palabras que significan que no salió nada.
+func messageNamesAnAmount(s string) bool {
+	low := foldAccents(strings.ToLower(s))
+	if strings.ContainsAny(low, "0123456789") {
+		return true
+	}
+	for _, w := range palabrasDeMontoCero {
+		if strings.Contains(low, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // correctionIsDeletion reports whether an UPDATE's corrected set nullifies the
 // movement entirely — every row's amount parses to zero. Per the chosen
 // "regalo/gratis total" semantics a correction to 0 deletes the movement
 // rather than storing an illegal amount-0 row (the guard rejects amount 0). A
 // mixed set (some 0, some not) or an unparseable amount returns false and
 // falls through to the guard.
-func correctionIsDeletion(rows []movementRow) bool {
-	if len(rows) == 0 {
+//
+// userMessage NO es decorativo. El 2026-08-10 "Editá los movimientos de lote
+// de hoy" —que no dice ningún cambio— llegó acá con los montos en 0 y armó un
+// BORRADO que el usuario confirmó; sólo no borró porque la escritura falló. Si
+// el usuario no habló de plata, unos montos en 0 son un fallo del modelo y no
+// una intención, y borrar seria destruir datos por una alucinación.
+func correctionIsDeletion(rows []movementRow, userMessage string) bool {
+	if len(rows) == 0 || !messageNamesAnAmount(userMessage) {
 		return false
 	}
 	for _, r := range rows {
