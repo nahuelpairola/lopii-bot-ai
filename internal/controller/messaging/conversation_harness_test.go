@@ -66,6 +66,27 @@ type convHarness struct {
 	chatID      int64
 
 	accounts map[string]uint64
+	// cache es el mismo que usa el controller. Un escenario que siembre
+	// taxonomía tiene que pasar por acá: el cache se arma al arrancar, así que
+	// un INSERT crudo a subcategories no lo ve hasta un Reload.
+	cache *subcategory.Cache
+}
+
+// SeedOwnCategory crea una categoría PROPIA del usuario por el camino real
+// (Cache.Insert), que es el único que deja el cache al día.
+func (h *convHarness) SeedOwnCategory(category, sub, description, icon string) uint64 {
+	h.t.Helper()
+	s := &subcategory.Subcategory{
+		UserID: &h.userID, Category: category, Subcategory: sub,
+		Description: description, Icon: icon,
+	}
+	if err := h.cache.Insert(s); err != nil {
+		h.t.Fatalf("SeedOwnCategory: %v", err)
+	}
+	if err := h.cache.Reload(); err != nil {
+		h.t.Fatalf("SeedOwnCategory reload: %v", err)
+	}
+	return uint64(s.ID)
 }
 
 func newConversationHarness(t *testing.T) *convHarness {
@@ -172,6 +193,7 @@ func newConversationHarness(t *testing.T) *convHarness {
 		t: t, c: c, b: b, rt: rt, orc: orc, conn: conn,
 		userID: uid, telegramID: tgID, telegramNum: tgNum, chatID: 4242,
 		accounts: map[string]uint64{"Banco Test": uint64(banco.ID)},
+		cache:    cache,
 	}
 }
 

@@ -44,9 +44,14 @@ func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatI
 	case settingsAreaAccount:
 		return c.startAccountManage(ctx, b, chatID, userID, text)
 	case settingsAreaCategory:
-		// Crear y administrar categorías comparten área: el modelo no puede saber
-		// si lo que sigue es una alta o una fusión, y el wizard sí.
 		return c.startSubcategorySetup(ctx, b, chatID, userID, text)
+	case settingsAreaCategoryManage:
+		// Sacar o fusionar una categoría propia es OTRO wizard, y hasta el
+		// 2026-08-12 era inalcanzable: las dos cosas compartían área y el área
+		// entera iba al wizard de ALTA. "Elimina subcategorias" abría "crear
+		// categoría nueva". Al morir el router, category_manage_pick se quedó sin
+		// ningún camino que lo abriera.
+		return c.startCategoryManage(ctx, b, chatID, userID)
 	case settingsAreaReminder:
 		return c.startReminderSetup(ctx, b, chatID, userID)
 	default:
@@ -59,7 +64,12 @@ func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatI
 // Las áreas de manage_settings. Son el enum del schema: si divergen, el modelo
 // manda un área que el switch no conoce y el pedido muere en ask_rewrite.
 const (
-	settingsAreaAccount  = "cuenta"
-	settingsAreaCategory = "categoria"
-	settingsAreaReminder = "recordatorio"
+	settingsAreaAccount = "cuenta"
+	// settingsAreaCategory es ALTA de categoría; settingsAreaCategoryManage es
+	// sacar o fusionar una que el usuario ya creó. Son dos wizards distintos y
+	// ninguno sabe hacer lo del otro, así que la distinción tiene que llegar
+	// desde el modelo — que la tiene fácil: la dice el verbo.
+	settingsAreaCategory       = "categoria"
+	settingsAreaCategoryManage = "categoria_administrar"
+	settingsAreaReminder       = "recordatorio"
 )

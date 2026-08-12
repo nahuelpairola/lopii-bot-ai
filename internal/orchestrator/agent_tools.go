@@ -218,7 +218,7 @@ func AgentTools() []AgentTool {
 			Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"area": {"type": "string", "enum": ["cuenta", "categoria", "recordatorio"], "description": "qué está configurando"}
+				"area": {"type": "string", "enum": ["cuenta", "categoria", "categoria_administrar", "recordatorio"], "description": "qué está configurando. 'categoria' = quiere UNA NUEVA; 'categoria_administrar' = sacar, borrar o fusionar una que ya tiene (\"eliminá subcategorías\", \"unificá estas dos\")"}
 			},
 			"required": ["area"]
 		}`),

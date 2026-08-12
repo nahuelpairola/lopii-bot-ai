@@ -337,3 +337,23 @@ func TestConversation_NoOpCorrectionWritesNothing(t *testing.T) {
 		t.Errorf("no se le avisó al usuario que no cambiaba nada: %v", h.Messages())
 	}
 }
+
+// Sacar una categoría propia es OTRO wizard que el de crearla, y hasta el
+// 2026-08-12 era inalcanzable: las dos cosas compartían el área "categoria" y el
+// área entera iba al wizard de ALTA. Al morir el router, category_manage_pick se
+// quedó sin ningún camino que lo abriera — una feature huérfana, registrada en
+// server.go y sin llamador.
+func TestConversation_ManageSettingsCategoryManage_OpensThePickFlow(t *testing.T) {
+	h := newConversationHarness(t)
+	// El flow de administrar exige al menos una categoría PROPIA: sin eso corta
+	// antes con "no creaste ninguna", que es una respuesta correcta pero de otro
+	// caso.
+	h.SeedOwnCategory("Mascotas", "Paseador", "El que saca al perro", "🐕")
+
+	h.ScriptToolCalls(manageSettingsCall(settingsAreaCategoryManage))
+	h.SendText("eliminá subcategorías")
+
+	if flow, _ := h.FlowState(); flow != categoryManagePickFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, categoryManagePickFlowName, h.Messages())
+	}
+}

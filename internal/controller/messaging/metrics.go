@@ -105,6 +105,11 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 		return orchestrator.IntentAccountManage
 	case ex.settingsArea == settingsAreaCategory:
 		return orchestrator.IntentCreateCategory
+	case ex.settingsArea == settingsAreaCategoryManage:
+		// Serie propia: administrar categorías tenía su intent antes del router,
+		// y fusionarla con el alta escondería que son dos caminos con tasas de
+		// éxito distintas.
+		return orchestrator.IntentCategoryManage
 	case ex.settingsArea == settingsAreaReminder:
 		return orchestrator.IntentReminderSet
 	case len(ex.inserted) > 0:
