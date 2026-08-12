@@ -182,7 +182,7 @@ func AgentTools() []AgentTool {
 		// ---- action: each one parks the request; the app takes it from there ----
 		{
 			Name:        ToolCorrectMovement,
-			When:        "el mensaje toca un movimiento YA registrado. Tres familias: reemplazo (\"en realidad eran 2000\", \"estaba mal\"), reintegro (\"me devolvieron 100\", \"me lo regalaron\", \"me reintegraron la mitad\") y INCREMENTO (\"sumale 1070\", \"agregale\", \"restale\", \"son X más\", \"al … de hoy\"). No busques cuál: la app lo busca sola. Si el pedido es BORRARLO entero, usá delete_movements.",
+			When:        "el mensaje toca un MOVIMIENTO ya registrado. Tres familias: reemplazo (\"en realidad eran 2000\", \"estaba mal\"), reintegro (\"me devolvieron 100\", \"me lo regalaron\", \"me reintegraron la mitad\") y INCREMENTO (\"sumale 1070\", \"agregale\", \"restale\", \"son X más\", \"al … de hoy\"). No busques cuál: la app lo busca sola. Si el pedido es BORRARLO entero, usá delete_movements. FRONTERA: el monto de una CUENTA es un saldo, no un movimiento — \"modificá el monto de la cuenta X\", \"ajustá el saldo\", \"dejá la cuenta en 5000\" son manage_settings.",
 			Kind:        KindAction,
 			Description: "Corrige un movimiento ya registrado (monto, fecha, categoría, cuenta o descripción). La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
 			Parameters: json.RawMessage(`{
@@ -212,7 +212,7 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolManageSettings,
-			When:        "configurar sus CUENTAS, sus CATEGORÍAS o su RECORDATORIO. Incluye preguntar cómo los tiene configurados.",
+			When:        "configurar sus CUENTAS, sus CATEGORÍAS o su RECORDATORIO. Incluye preguntar cómo los tiene configurados. Y todo lo que le pase al SALDO de una cuenta: crearla, renombrarla, ajustarle el monto, ponerla en cero, hacerla default (\"modificá el monto de la cuenta X\", \"corregí lo que tengo en X\"). Que aparezca un monto NO la vuelve una corrección de movimiento: lo que decide es si el monto es de una CUENTA o de un GASTO.",
 			Kind:        KindAction,
 			Description: "Abre la configuración de cuentas, categorías o recordatorio. Cubre crear, renombrar, ajustar saldo, fusionar, borrar, y también consultar cómo está configurado hoy.",
 			Parameters: json.RawMessage(`{
