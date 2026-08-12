@@ -55,6 +55,25 @@ var (
 	errTransferNotACorrection = errors.New("correction: transfer no es una corrección")
 )
 
+// defaultChangeOps completa el `op` que el modelo omitió, que es `set`.
+//
+// Era un campo REQUERIDO del schema y costó un turno entero en la primera
+// prueba real (2026-08-12): ante "El café de hoy fue en un bar" el modelo emitió
+// `{"field":"description","value":"bar"}` sin `op`, Groq valida los argumentos
+// del lado del SERVIDOR y devolvió un 400 duro — el turno murió como `unclear`
+// sin que la app llegara a ver nada.
+//
+// Y el modelo tenía razón: `op` sólo significa algo para `amount`. Para los otros
+// seis campos "set" es el único valor legal, o sea información que el modelo
+// tiene que repetir sin que aporte nada. Ahora es opcional y lo completa la app.
+func defaultChangeOps(changes []correctionChange) {
+	for i := range changes {
+		if changes[i].Op == "" {
+			changes[i].Op = opSet
+		}
+	}
+}
+
 // applyChange aplica UN cambio a UNA fila y devuelve la fila corregida. Nunca
 // muta la de entrada.
 //

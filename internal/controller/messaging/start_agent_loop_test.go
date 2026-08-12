@@ -59,15 +59,51 @@ func TestRouting_EverythingGoesThroughTheLoop(t *testing.T) {
 }
 
 // correctInTheLoop programa un loop que pide corregir sin nombrar cuál.
+// correctInTheLoop emite la corrección tal como la pide el schema desde el
+// 2026-08-12: `changes` es REQUERIDO. Antes iba sólo el texto libre y la app
+// hacía una segunda llamada al modelo para interpretarlo; esa llamada ya no
+// existe (ver applyStructuredCorrection).
 func correctInTheLoop(intent orchestrator.Intent) *fakeFullOrchestrator {
 	return &fakeFullOrchestrator{
 		intent: intent,
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			// El texto nombra la panadería: sin eso resolveCandidates cae al atajo
 			// de "lo último que cargaste" y devuelve uno solo, nunca dos.
-			_, err := execute(orchestrator.ToolCorrectMovement, json.RawMessage(`{"change":"la panaderia era 2000"}`))
+			_, err := execute(orchestrator.ToolCorrectMovement, json.RawMessage(
+				`{"change":"la panaderia era 2000","changes":[{"field":"amount","op":"set","value":"2000"}]}`))
 			return "", err
 		},
+	}
+}
+
+// Con `changes` VACÍO el usuario dijo qué movimiento pero no qué cambiarle
+// ("editá los movimientos de hoy"). No se llama al modelo: se pregunta.
+//
+// Antes de esto la app llamaba a ResolveUpdate, que le pedía re-emitir la fila
+// entera — y el 2026-08-12 devolvió las once columnas menos `date`, Groq la
+// rechazó con un 400, y la corrección se perdió completa.
+func TestLoop_EmptyChangesAsksWhatToChange(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	movements := &fakeMovementRepoFull{similar: []movement.Movement{
+		candidateMovement(10, nil, "compra en panadería", 3000),
+	}}
+	orch := &fakeFullOrchestrator{
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, err := execute(orchestrator.ToolCorrectMovement, json.RawMessage(
+				`{"change":"editá la panaderia","changes":[]}`))
+			return "", err
+		},
+	}
+	c := newLoopController(t, orch, repo, movements)
+
+	if err := c.startAgentLoop(context.Background(), nil, 0, 1, "editá la panaderia"); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.rows) != 1 {
+		t.Fatalf("tenía que quedar parkeada la pregunta de qué cambiar, quedan %d", len(repo.rows))
+	}
+	if orch.updateCalled {
+		t.Error("se llamó a ResolveUpdate: con changes vacío se PREGUNTA, no se interpreta")
 	}
 }
 

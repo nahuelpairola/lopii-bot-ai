@@ -38,6 +38,9 @@ type fakeFullOrchestrator struct {
 	classifyPairs       []orchestrator.Pair
 	runFn               func(execute func(string, json.RawMessage) (string, error)) (string, error)
 	runCalled           bool
+	// updateCalled marca que se llegó a ResolveUpdate. Es una aserción NEGATIVA:
+	// el camino estructurado existe para no hacer esa segunda llamada.
+	updateCalled bool
 	// queryRunFn deja que el test maneje el loop de QUERY igual que runFn maneja
 	// el unificado: recibe el executor REAL, así que las tools de lectura corren
 	// contra la base. Sin esto, AnswerQuery devuelve una respuesta fija y el test
@@ -49,6 +52,7 @@ func (o *fakeFullOrchestrator) ClassifyCreate(ctx context.Context, text string, 
 	return o.createResult, nil
 }
 func (o *fakeFullOrchestrator) ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error) {
+	o.updateCalled = true
 	return o.updateResult, nil
 }
 func (o *fakeFullOrchestrator) ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error) {

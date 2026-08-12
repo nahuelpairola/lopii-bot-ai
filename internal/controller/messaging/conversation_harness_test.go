@@ -381,12 +381,11 @@ func TestConversation_CorrectionWithUnknownCategoryKeepsTheMovement(t *testing.T
 	id := h.SeedMovement("Café", "-12700", 1)
 
 	h.ScriptIntent(orchestrator.IntentUpdate)
-	h.ScriptToolCalls(correctMovementCall(`{"change":"ponelo en proyecto hogar"}`))
-	h.ScriptUpdateResult(orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{{
-		Type: "expense", Amount: "12700", Currency: "ARS",
-		Category: "proyecto hogar", Subcategory: "agua", // par inventado, no existe
-		Description: "Café", Date: "2026-08-12",
-	}}})
+	// El par que nombra el usuario NO existe en la taxonomía. Va por el camino
+	// estructurado, que es el único desde que `changes` es requerido.
+	h.ScriptToolCalls(correctMovementCall(`{
+		"change":"ponelo en proyecto hogar",
+		"changes":[{"field":"category","op":"set","value":"proyecto hogar"}]}`))
 
 	h.SendText("el café ponelo en proyecto hogar")
 	h.TapButton(optionConfirm) // resuelve el picker de candidatos

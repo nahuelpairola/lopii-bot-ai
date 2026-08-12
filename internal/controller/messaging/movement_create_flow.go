@@ -309,13 +309,13 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 			return
 		}
 		slog.ErrorContext(ctx, "movement insert failed", "user_id", data.UserID(), "reason", guardReason(err))
-		c.resolveMetric(ctx, data.UserID(), outcomeCreateFailed)
+		c.resolveMetric(ctx, data.UserID(), failureOutcomeFor(data))
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
 		}
 		return
 	}
-	c.resolveMetric(ctx, data.UserID(), outcomeCreateInserted, collectMovementIDs(inserted)...)
+	c.resolveMetric(ctx, data.UserID(), writeOutcomeFor(data), collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
 		if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {

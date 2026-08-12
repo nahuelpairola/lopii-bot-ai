@@ -547,3 +547,59 @@ func (o *fakeOrchestrator) ClassifyCategories(_ context.Context, _ string, rows 
 	}
 	return out
 }
+
+// El botón dice el CAMPO y el texto dice el VALOR: con los dos, la app arma la
+// corrección sola y no llama al modelo.
+//
+// Antes esta combinación iba a ResolveUpdate, que pedía re-emitir la fila
+// entera. El 2026-08-12, ante "Era pollo", devolvió las once columnas menos
+// `date`: Groq la rechazó con un 400 y la corrección se perdió completa.
+func TestApplyAnswers_ButtonPlusValueBuildsTheChange(t *testing.T) {
+	// Primera vuelta: toca el botón, que nombra el campo y nada más.
+	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
+		Change: "editá la panadería", Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
+	})}
+	options := changeFieldOptions()
+	picked, _ := applyAnswers(action, []pendingaction.OpenQuestion{
+		{Key: questionKeyChange, Answer: labelChangeCategory, Options: options},
+	})
+	if picked.PickedField != string(fieldCategory) {
+		t.Fatalf("picked_field = %q, want %q", picked.PickedField, fieldCategory)
+	}
+	if len(picked.Changes) != 0 {
+		t.Errorf("el botón solo no alcanza: todavía falta el valor, y hay %d cambios", len(picked.Changes))
+	}
+
+	// Segunda vuelta: escribe el valor. Ahí sí se arma el cambio.
+	action.Payload = mustJSON(t, picked)
+	resolvedPayload, resolved := applyAnswers(action, []pendingaction.OpenQuestion{
+		{Key: questionKeyChange, Answer: "Vivienda", Options: nil},
+	})
+	if !resolved {
+		t.Fatal("contestar el valor tiene que resolver la acción")
+	}
+	if len(resolvedPayload.Changes) != 1 {
+		t.Fatalf("cambios = %d, want 1: el campo salió del botón y el valor del texto", len(resolvedPayload.Changes))
+	}
+	got := resolvedPayload.Changes[0]
+	if got.Field != fieldCategory || got.Op != opSet || got.Value != "Vivienda" {
+		t.Errorf("cambio = %+v, want {category set Vivienda}", got)
+	}
+}
+
+// Sin botón previo no se inventa ningún campo: un número suelto es el atajo del
+// monto (amountOnlyCorrection), no un cambio de categoría.
+func TestApplyAnswers_ValueWithoutAButtonBuildsNothing(t *testing.T) {
+	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
+		Change: "el café estaba mal", Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
+	})}
+	payload, _ := applyAnswers(action, []pendingaction.OpenQuestion{
+		{Key: questionKeyChange, Answer: "2000"},
+	})
+	if len(payload.Changes) != 0 {
+		t.Errorf("sin campo elegido no se arma un cambio, hay %d", len(payload.Changes))
+	}
+	if !payload.GaveChangeValue {
+		t.Error("tenía que quedar marcado que dio un valor")
+	}
+}

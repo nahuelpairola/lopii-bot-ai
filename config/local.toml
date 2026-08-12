@@ -24,7 +24,12 @@ createModel = "openai/gpt-oss-20b"
 updateModel = "openai/gpt-oss-20b"
 deleteModel = "llama-3.1-8b-instant"
 queryModel = "openai/gpt-oss-120b"
-agentModel = "openai/gpt-oss-20b"
+# SOLO LOCAL, y sólo porque el 2026-08-12 se agotó el TPD de gpt-oss-20b
+# (200.000/día, compartido por toda la organización: prod, evals y esto).
+# dev y prod siguen en gpt-oss-20b — NO copiar esta línea allá sin medir.
+# Cuidado al leer los resultados: el 120b comparte bucket con queryModel, así
+# que acá una consulta SÍ le come TPM al loop, cosa que en prod no pasa.
+agentModel = "openai/gpt-oss-120b"
 # El clasificador va en OTRO modelo a proposito: el techo de TPM de Groq es por
 # modelo, y el loop ya entra al suyo una vez por minuto y medio.
 classifierModel = "llama-3.3-70b-versatile"

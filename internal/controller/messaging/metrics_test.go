@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -52,5 +53,24 @@ func TestResolveMetric_PassesMovementIDs(t *testing.T) {
 	c.resolveMetric(context.Background(), 7, outcomeDeleteConfirmed, 71, 72)
 	if len(f.resolvedIDs) != 1 || len(f.resolvedIDs[0]) != 2 || f.resolvedIDs[0][0] != 71 || f.resolvedIDs[0][1] != 72 {
 		t.Fatalf("expected ids [71 72], got %v", f.resolvedIDs)
+	}
+}
+
+// Una corrección que se desvía al flujo de alta para llenar un gap de categoría
+// NO es un alta. Medido en vivo el 2026-08-12: "Era pollo" corrigió el
+// movimiento y quedó como create_inserted, que es la columna que lee el portón
+// de la etapa.
+func TestWriteOutcomeFor(t *testing.T) {
+	if got := writeOutcomeFor(conversation.Data{keyMode: modeUpdate}); got != outcomeUpdateConfirmed {
+		t.Errorf("modo update escribió %q, want %q", got, outcomeUpdateConfirmed)
+	}
+	if got := writeOutcomeFor(conversation.Data{}); got != outcomeCreateInserted {
+		t.Errorf("sin modo escribió %q, want %q", got, outcomeCreateInserted)
+	}
+	if got := failureOutcomeFor(conversation.Data{keyMode: modeUpdate}); got != outcomeWriteFailed {
+		t.Errorf("falla en modo update escribió %q, want %q", got, outcomeWriteFailed)
+	}
+	if got := failureOutcomeFor(conversation.Data{}); got != outcomeCreateFailed {
+		t.Errorf("falla sin modo escribió %q, want %q", got, outcomeCreateFailed)
 	}
 }

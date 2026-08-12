@@ -128,3 +128,38 @@ func TestApplyChange_DoesNotMutateInput(t *testing.T) {
 		t.Errorf("la fila de entrada se mutó: %q", row.Amount)
 	}
 }
+
+// Regresión del 400 del 2026-08-12. El modelo omite `op` cuando no significa
+// nada —o sea en los seis campos que no son amount— y antes eso era un campo
+// REQUERIDO del schema: Groq validaba del lado del servidor y devolvía un 400
+// duro, matando el turno entero como "unclear".
+//
+// Sin defaultChangeOps, applyChange rechaza el cambio con errOpNotForField,
+// porque un op vacío no es opSet.
+func TestDefaultChangeOps_FillsTheOmittedSet(t *testing.T) {
+	// Tal cual lo emitió el modelo ante "El café de hoy fue en un bar".
+	changes := []correctionChange{{Field: fieldDescription, Value: "bar"}}
+	defaultChangeOps(changes)
+
+	if changes[0].Op != opSet {
+		t.Fatalf("op = %q, want %q", changes[0].Op, opSet)
+	}
+	got, err := applyChange(movementRow{Type: "expense", Amount: "3500", Description: "Café"}, changes[0])
+	if err != nil {
+		t.Fatalf("applyChange: %v", err)
+	}
+	if got.Description != "bar" {
+		t.Errorf("description = %q, want %q", got.Description, "bar")
+	}
+}
+
+// El op explícito NO se pisa: si el modelo dice "sumale", tiene que seguir
+// siendo una suma.
+func TestDefaultChangeOps_KeepsAnExplicitOp(t *testing.T) {
+	changes := []correctionChange{{Field: fieldAmount, Op: opAdd, Value: "1070"}}
+	defaultChangeOps(changes)
+
+	if changes[0].Op != opAdd {
+		t.Fatalf("op = %q, want %q — un op explícito no se pisa", changes[0].Op, opAdd)
+	}
+}

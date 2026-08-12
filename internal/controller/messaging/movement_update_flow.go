@@ -217,6 +217,10 @@ type changeAsk struct {
 	// answer es lo que contestó, SIN el texto original pegado adelante. Es lo
 	// único que se puede parsear.
 	answer string
+	// field es CUÁL campo eligió con el botón. Tiene que sobrevivir a la segunda
+	// vuelta de la pregunta: sin él, al llegar el valor la app sabe que eligió
+	// algo pero no qué, y la corrección se le vuelve a caer al modelo.
+	field string
 }
 
 // amountOnlyCorrection arma la corrección del lado de la app cuando lo único
@@ -385,6 +389,7 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 		Candidates:        []candidateGroup{{TransactionID: transactionID, OldIDs: oldIDs, Rows: rows}},
 		Chosen:            0,
 		PickedChangeField: ask.pickedField,
+		PickedField:       ask.field,
 	})
 	if err != nil {
 		return fmt.Errorf("park change question: payload: %w", err)

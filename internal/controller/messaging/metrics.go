@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/trace"
@@ -122,6 +123,31 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 	default:
 		return orchestrator.IntentUnclear
 	}
+}
+
+// writeOutcomeFor y failureOutcomeFor dicen si una escritura del flujo
+// movement_create es un ALTA o una CORRECCIÓN.
+//
+// El mismo flow atiende las dos: una corrección que nombra una categoría que no
+// existe se desvía acá para llenar el gap, y ahí escribía `create_inserted`
+// SIEMPRE. Medido en vivo el 2026-08-12: "Era pollo" corrigió un movimiento y
+// quedó registrado como alta nueva. Eso infla CREATE, borra UPDATE, y el portón
+// de la etapa 5 lee exactamente esta columna — o sea que la métrica mentía justo
+// en los casos que la etapa viene a arreglar.
+//
+// El seed ya traía el dato (`keyMode`); nadie lo miraba.
+func writeOutcomeFor(data conversation.Data) string {
+	if stringOrEmpty(data[keyMode]) == modeUpdate {
+		return outcomeUpdateConfirmed
+	}
+	return outcomeCreateInserted
+}
+
+func failureOutcomeFor(data conversation.Data) string {
+	if stringOrEmpty(data[keyMode]) == modeUpdate {
+		return outcomeWriteFailed
+	}
+	return outcomeCreateFailed
 }
 
 // resolveMetric mueve el último pending del usuario a un outcome terminal.

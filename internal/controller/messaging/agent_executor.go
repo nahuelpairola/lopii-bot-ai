@@ -66,6 +66,9 @@ type agentPayload struct {
 	// sea que nombró el CAMPO y todavía falta el valor. Ahí no se corta: se
 	// pregunta el valor, que es la segunda mitad de la misma pregunta.
 	PickedChangeField bool `json:"picked_change_field,omitempty"`
+	// PickedField es CUÁL campo eligió, no sólo que eligió uno. Con el campo y
+	// el valor la app arma la corrección sola.
+	PickedField string `json:"picked_field,omitempty"`
 	// ChangeAnswer es lo ÚLTIMO que contestó, sin concatenar. Change lleva el
 	// texto original pegado adelante ("el café estaba mal 2000") y así no
 	// parsea; el atajo del monto necesita el "2000" solo.
@@ -179,6 +182,7 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		// Un argumento ilegible no puede tumbar el turno: el pedido igual se
 		// entiende por el nombre de la tool, y el candidato sale del texto.
 		_ = json.Unmarshal(args, &a)
+		defaultChangeOps(a.Changes)
 		return e.park(parkRequest{
 			tool: orchestrator.ToolCorrectMovement, change: a.Change,
 			question: msgPickUpdateCandidate(nil), scope: a.Scope, changes: a.Changes,

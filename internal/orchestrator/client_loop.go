@@ -81,10 +81,22 @@ const maxQueryCompletionTokens = 1024
 // filo: el que entró usó 1.949 tokens de completion, y los dos intentos previos
 // del MISMO mensaje volvieron 400 con el JSON cortado a la mitad.
 //
-// Cuando muera el router (etapa 5) esos ~660 se liberan pero el prompt unificado
-// engorda con las 9 tools que hoy no se cablean (~1.100 tokens de schema):
-// RECALCULAR el cap ahí contra el prompt_tokens real, no heredar este.
-const maxAgentCompletionTokens = 3000
+// RECALCULADO el 2026-08-12, con el router ya muerto y la taxonomía fuera del
+// prompt. El prompt real del agente bajó de ~4.095 a **3.215-3.339** medidos.
+//
+// Distribución de completion sobre las 90 llamadas 200 de `llm_calls`:
+// máximo 1.949 · p50 319 · p95 741 · 3 pasan de 1.000 · **ninguna pasa de 2.000**.
+//
+// Se elige 2.500 y no 2.000: el máximo observado (1.949) está a 51 tokens de
+// 2.000, y hay un incidente escrito de que a cap 2.048 ESE MISMO lote de 7
+// movimientos volvió 400 con el JSON cortado a la mitad. 2.500 cubre el máximo
+// con 28% de aire y libera 500 por llamada.
+//
+// Lo que esto NO arregla: dos mensajes seguidos dentro del mismo minuto siguen
+// 429eando (3.339+2.500 = 5.839 reservados, dos llamadas = 11.678 contra 8.000).
+// Para eso está la cola `pending_llm_jobs`, no un cap más chico — bajarlo hasta
+// que dos llamadas entren truncaría las respuestas reales.
+const maxAgentCompletionTokens = 2500
 
 type loopResponse struct {
 	Choices []struct {
