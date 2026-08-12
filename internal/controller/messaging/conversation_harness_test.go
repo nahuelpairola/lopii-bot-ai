@@ -72,6 +72,41 @@ type convHarness struct {
 	cache *subcategory.Cache
 }
 
+// SeedAccount agrega una cuenta con su apertura, por el camino real
+// (InsertAccountsWithOpenings). El saldo inicial importa: una cuenta en cero
+// hace que cualquier gasto dispare el gate de saldo insuficiente y el escenario
+// termine midiendo eso en vez de lo suyo.
+func (h *convHarness) SeedAccount(name string, cur currency.Currency, opening string) uint64 {
+	h.t.Helper()
+	acc := &account.Account{UserID: h.userID, Name: name, Type: account.StandardType, Currency: cur}
+	if err := movement.InitRepository(h.conn).InsertAccountsWithOpenings([]movement.AccountOpening{{
+		Account: acc,
+		Movement: movement.Movement{
+			UserID: h.userID, SubcategoryID: 1, Date: time.Now(),
+			Type: movement.Transfer, Amount: mustDec(h.t, opening), Currency: cur,
+		},
+	}}); err != nil {
+		h.t.Fatalf("SeedAccount(%q): %v", name, err)
+	}
+	h.accounts[name] = uint64(acc.ID)
+	return uint64(acc.ID)
+}
+
+// Balance es la suma de los movimientos de una cuenta — que ES el saldo: no hay
+// columna de balance, y por eso un signo mal escrito no se nota hasta que
+// alguien suma.
+func (h *convHarness) Balance(name string) decimal.Decimal {
+	h.t.Helper()
+	var total decimal.Decimal
+	if err := h.conn.DB.Raw(
+		`SELECT COALESCE(SUM(amount),0) FROM movements WHERE account_id = ? AND deleted_at IS NULL`,
+		h.accounts[name],
+	).Scan(&total).Error; err != nil {
+		h.t.Fatalf("Balance(%q): %v", name, err)
+	}
+	return total
+}
+
 // SeedOwnCategory crea una categoría PROPIA del usuario por el camino real
 // (Cache.Insert), que es el único que deja el cache al día.
 func (h *convHarness) SeedOwnCategory(category, sub, description, icon string) uint64 {
