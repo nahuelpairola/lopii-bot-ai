@@ -63,10 +63,9 @@ func TestBuildAgentPrompt_TellsTheModelWhenToUseEachTool(t *testing.T) {
 			t.Errorf("prompt never mentions the %s tool", want)
 		}
 	}
-	// The router's hardest-won tie-breakers.
-	// Los desempates ahora vienen de tie_breakers.go y hablan en tools, no
-	// en intents: manage_account, no ACCOUNT_MANAGE.
-	for _, want := range []string{"era, eran, fue", ToolManageAccount, "sin respaldo"} {
+	// Los desempates más caros de ganar, heredados del router que ya no existe.
+	// Hablan en tools, no en intents: manage_settings, no ACCOUNT_MANAGE.
+	for _, want := range []string{"era, eran, fue", ToolManageSettings, "sin respaldo"} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt missing the tie-breaker %q", want)
 		}

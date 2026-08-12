@@ -4,7 +4,7 @@ import "strings"
 
 // Las reglas de clasificación de movimientos que comparten, verbatim, los dos
 // caminos de CREATE: createSystemPromptTemplate (el camino pre-loop, que sigue
-// vivo detrás de routeCreateToLoop) y agentSystemPromptTemplate (el loop).
+// vivo mientras exista ese camino) y agentSystemPromptTemplate (el loop).
 //
 // Estaban duplicadas. El 2026-08-08 el fix de las piernas del transfer tuvo que
 // pegar el mismo párrafo en los dos archivos; tocar uno solo dejaba el camino

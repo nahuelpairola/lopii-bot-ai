@@ -11,6 +11,16 @@ const (
 	ToolCorrectMovement        = "correct_movement"
 	ToolDeleteMovements        = "delete_movements"
 	ToolManageAccount          = "manage_account"
+	// ToolAnswerQuery y ToolManageSettings son de la etapa 5.
+	//
+	// answer_query NO lleva argumentos: la app le pasa el texto original del
+	// usuario. Un campo "pregunta" invita al modelo a parafrasear, y entonces el
+	// loop de query contesta algo que el usuario nunca preguntó.
+	ToolAnswerQuery = "answer_query"
+	// manage_settings reemplaza a las cinco de configuración. Son de bajo volumen
+	// y todas hacen lo mismo: parkear a un wizard. Cinco tools casi iguales son
+	// justo donde este modelo elige mal.
+	ToolManageSettings = "manage_settings"
 	ToolCreateCategory         = "create_category"
 	ToolManageCategories       = "manage_categories"
 	ToolSetReminder            = "set_reminder"
@@ -84,7 +94,7 @@ func AgentTools() []AgentTool {
 		// ---- write (exactly one) ----
 		{
 			Name:        ToolRecordMovements,
-			When:        "cuenta un gasto, un ingreso o un movimiento de plata. Incluye montos sueltos (\"20k\", \"nafta\"). Un rendimiento de inversión también se registra acá.",
+			When:        "cuenta un gasto, un ingreso o un movimiento de plata NUEVO. Un rendimiento de inversión también se registra acá. NO la uses si el mensaje se refiere a algo que ya cargó (\"al café de hoy\", \"eso que puse\", \"el del lote\"): eso es correct_movement.",
 			Kind:        KindWrite,
 			Description: "Registra uno o más movimientos financieros a partir del mensaje del usuario. Usala siempre que cuente un gasto, un ingreso o un movimiento de plata entre sus cuentas.",
 			Parameters:  recordMovementsParams,
@@ -172,7 +182,7 @@ func AgentTools() []AgentTool {
 		// ---- action: each one parks the request; the app takes it from there ----
 		{
 			Name:        ToolCorrectMovement,
-			When:        "corrección, reintegro, devolución o regalo sobre un movimiento previo (\"en realidad\", \"me devolvieron\", \"al final me regalaron\", \"eran 2000\", \"estaba mal\"). No busques cuál: la app lo busca sola y le pide confirmación al usuario.",
+			When:        "el mensaje toca un movimiento YA registrado. Tres familias: reemplazo (\"en realidad eran 2000\", \"estaba mal\"), reintegro (\"me devolvieron 100\", \"me lo regalaron\", \"me reintegraron la mitad\") y INCREMENTO (\"sumale 1070\", \"agregale\", \"restale\", \"son X más\", \"al … de hoy\"). No busques cuál: la app lo busca sola. Si el pedido es BORRARLO entero, usá delete_movements.",
 			Kind:        KindAction,
 			Description: "Corrige un movimiento ya registrado (monto, fecha, categoría, cuenta o descripción). La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
 			Parameters: json.RawMessage(`{
@@ -185,66 +195,34 @@ func AgentTools() []AgentTool {
 		},
 		{
 			Name:        ToolDeleteMovements,
-			When:        "pedido explícito de borrar (\"borrá\", \"eliminá\"). Tampoco busques cuál.",
+			When:        "pedido explícito de borrar (\"borrá\", \"eliminá\"). Tampoco busques cuál. Si en cambio hay que CAMBIARLE algo —incluso dejarlo en cero porque se lo regalaron— es correct_movement.",
 			Kind:        KindAction,
 			Description: "Borra uno o más movimientos ya registrados. La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
 			Parameters:  json.RawMessage(schemaNoArgs),
 		},
 		{
-			Name:        ToolManageAccount,
-			When:        "crear, renombrar, ajustar el saldo o configurar una CUENTA.",
+			Name:        ToolManageSettings,
+			When:        "configurar sus CUENTAS, sus CATEGORÍAS o su RECORDATORIO. Incluye preguntar cómo los tiene configurados.",
 			Kind:        KindAction,
-			Description: "Crear, renombrar, ajustar el saldo o dar de baja una cuenta del usuario.",
+			Description: "Abre la configuración de cuentas, categorías o recordatorio. Cubre crear, renombrar, ajustar saldo, fusionar, borrar, y también consultar cómo está configurado hoy.",
 			Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"request": {"type": "string", "description": "qué quiere hacer con la cuenta, en palabras del usuario"}
+				"area": {"type": "string", "enum": ["cuenta", "categoria", "recordatorio"], "description": "qué está configurando"}
 			},
-			"required": ["request"]
+			"required": ["area"]
 		}`),
 		},
 		{
-			Name:        ToolCreateCategory,
-			When:        "crear una categoría nueva.",
+			Name:        ToolAnswerQuery,
+			When:        "una PREGUNTA sobre plata ya registrada: cuánto gastó, en qué, saldos, comparaciones entre períodos.",
 			Kind:        KindAction,
-			Description: "Cuando el usuario quiere crear una categoría o subcategoría nueva.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"request": {"type": "string", "description": "la categoría o subcategoría que quiere crear, en palabras del usuario"}
-			},
-			"required": ["request"]
-		}`),
-		},
-		{
-			Name:        ToolManageCategories,
-			When:        "fusionar, renombrar o borrar una categoría propia que ya existe.",
-			Kind:        KindAction,
-			Description: "Cuando el usuario quiere fusionar, renombrar o borrar una subcategoría propia que ya existe.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"request": {"type": "string", "description": "qué quiere hacer con sus categorías, en palabras del usuario"}
-			},
-			"required": ["request"]
-		}`),
-		},
-		{
-			Name:        ToolSetReminder,
-			When:        "activar, cambiar o apagar el recordatorio diario.",
-			Kind:        KindAction,
-			Description: "Cuando el usuario quiere activar, cambiar o apagar su recordatorio diario de carga de gastos. Para SABER cómo lo tiene configurado usá get_reminder.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"request": {"type": "string", "description": "qué quiere hacer con el recordatorio, en palabras del usuario"}
-			},
-			"required": ["request"]
-		}`),
+			Description: "Contesta una pregunta sobre los movimientos y saldos ya registrados. No lleva argumentos: la app le pasa la pregunta tal cual la escribió el usuario.",
+			Parameters:  json.RawMessage(schemaNoArgs),
 		},
 		{
 			Name:        ToolReplyHelp,
-			When:        "\"¿qué podés hacer?\", \"¿cómo funcionás?\", o un saludo sin pedido concreto.",
+			When:        "\"¿qué podés hacer?\", \"¿cómo funcionás?\", o un saludo sin pedido concreto. Si el mensaje SÍ pide algo pero no se entiende, usá ask_rewrite.",
 			Kind:        KindAction,
 			Description: "Cuando el usuario pregunta qué podés hacer, cómo se usa el bot, o saluda sin pedir nada concreto.",
 			Parameters:  json.RawMessage(schemaNoArgs),

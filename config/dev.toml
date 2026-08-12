@@ -29,13 +29,6 @@ agentModel = "openai/gpt-oss-20b"
 classifierModel = "llama-3.3-70b-versatile"
 timeoutSeconds = 10
 
-[agent]
-# routeCreateToLoop manda CREATE por el loop unificado (etapa 3) en vez del
-# camino router+Call 2. Es el interruptor de emergencia: las etapas 2 y 3
-# despliegan juntas, asi que sin esto una caida de create_inserted no se puede
-# atribuir a una de las dos. Apagarlo deja la etapa 2 viva y CREATE como estaba.
-routeCreateToLoop = true
-
 [query]
 historyTtlMinutes = 10
 historyLimit = 5

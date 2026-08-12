@@ -57,7 +57,6 @@ type groq struct {
 // agent son los interruptores del loop unificado. Hoy uno solo: el que decide
 // si CREATE va por el loop o por el camino viejo.
 type agent struct {
-	RouteCreateToLoop bool `mapstructure:"routeCreateToLoop"`
 }
 
 type query struct {

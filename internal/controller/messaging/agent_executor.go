@@ -100,6 +100,12 @@ type agentExecutor struct {
 	// reply es la respuesta que manda el controller (help / pedir reescritura),
 	// no el modelo: es copy nuestra y tiene que salir textual.
 	reply string
+	// answerQuery: el loop decidió que esto es una consulta. La atiende el
+	// controller después del turno, con el loop de query.
+	answerQuery bool
+	// settingsArea: cuenta | categoria | recordatorio. El loop ya leyó el
+	// mensaje, así que elegir el área no cuesta una llamada extra.
+	settingsArea string
 	// replyButtons cuelga del recibo cuando el gate de casi-duplicado marca.
 	// Van EN el recibo y no en un mensaje aparte: el gate no puede agregar un
 	// mensaje ni un paso bloqueante, o deja de ser gratis ignorarlo.
@@ -142,6 +148,8 @@ func wiredAgentTools() []orchestrator.AgentTool {
 		orchestrator.ToolRecordMovements: true,
 		orchestrator.ToolCorrectMovement: true,
 		orchestrator.ToolDeleteMovements: true,
+		orchestrator.ToolAnswerQuery:     true,
+		orchestrator.ToolManageSettings:  true,
 		orchestrator.ToolReplyHelp:       true,
 		orchestrator.ToolAskRewrite:      true,
 	}
@@ -169,6 +177,19 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		return e.record(args)
 	case orchestrator.ToolDeleteMovements:
 		return e.park(orchestrator.ToolDeleteMovements, "", msgPickDeleteCandidate(nil))
+	case orchestrator.ToolAnswerQuery:
+		// Sin argumentos: la app pasa el texto ORIGINAL. QUERY se queda en su
+		// propio loop y su propio modelo a propósito — el techo de Groq es por
+		// modelo, así que una consulta no le come TPM al loop unificado.
+		e.answerQuery = true
+		return "ya le contestaste la consulta al usuario", orchestrator.ErrAgentTurnDone
+	case orchestrator.ToolManageSettings:
+		var a struct {
+			Area string `json:"area"`
+		}
+		_ = json.Unmarshal(args, &a)
+		e.settingsArea = a.Area
+		return "ya abriste la configuración que pidió el usuario", orchestrator.ErrAgentTurnDone
 	case orchestrator.ToolReplyHelp:
 		e.reply = msgHelp
 		return "ya le mandaste al usuario la explicación de qué podés hacer", orchestrator.ErrAgentTurnDone

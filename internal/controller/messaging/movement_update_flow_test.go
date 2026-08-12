@@ -29,9 +29,6 @@ type fakeOrchestrator struct {
 	gotRunTools  []orchestrator.AgentTool
 }
 
-func (o *fakeOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
-	return orchestrator.IntentResult{}, nil
-}
 func (o *fakeOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
 	return orchestrator.CreateResult{}, nil
 }

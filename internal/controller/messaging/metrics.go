@@ -13,13 +13,13 @@ import (
 // movimiento arrancan en pending y se resuelven en su terminal; el resto es
 // terminal directo.
 const (
-	outcomePending             = "pending"
-	outcomeCreateInserted      = "create_inserted"
-	outcomeCreateCancelled     = "create_cancelled"
-	outcomeCreateRewrite       = "create_rewrite"
-	outcomeCreateFailed        = "create_failed"
-	outcomeUpdateConfirmed     = "update_confirmed"
-	outcomeUpdateCancelled     = "update_cancelled"
+	outcomePending         = "pending"
+	outcomeCreateInserted  = "create_inserted"
+	outcomeCreateCancelled = "create_cancelled"
+	outcomeCreateRewrite   = "create_rewrite"
+	outcomeCreateFailed    = "create_failed"
+	outcomeUpdateConfirmed = "update_confirmed"
+	outcomeUpdateCancelled = "update_cancelled"
 
 	// Los cuatro que reemplazan a update_failed. Se escribía desde SIETE
 	// lugares con significados opuestos —el loop reventó, el parking falló, el
@@ -27,10 +27,10 @@ const (
 	// sobrecarga hizo que el 2026-08-10 se diagnosticara mal: leímos "el loop
 	// narró sin actuar" cuando en realidad la corrección había llegado a
 	// confirmarse. El portón de la etapa lee esta columna.
-	outcomeLoopErrored    = "loop_errored"     // la llamada al loop falló (transporte, no-429)
-	outcomeParkFailed     = "park_failed"      // no se pudo guardar la acción parkeada
-	outcomeLoopDidNothing = "loop_did_nothing" // el turno no parkeó ni escribió nada
-	outcomeWriteFailed    = "write_failed"     // el usuario confirmó y falló la escritura
+	outcomeLoopErrored         = "loop_errored"     // la llamada al loop falló (transporte, no-429)
+	outcomeParkFailed          = "park_failed"      // no se pudo guardar la acción parkeada
+	outcomeLoopDidNothing      = "loop_did_nothing" // el turno no parkeó ni escribió nada
+	outcomeWriteFailed         = "write_failed"     // el usuario confirmó y falló la escritura
 	outcomeDeleteConfirmed     = "delete_confirmed"
 	outcomeDeleteCancelled     = "delete_cancelled"
 	outcomeNoCandidates        = "no_candidates"
@@ -84,6 +84,43 @@ func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage st
 	// needs_confirmation quedó vestigial (columna NOT NULL): se escribe false.
 	if err := c.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), false, routerOutcome(intent)); err != nil {
 		slog.ErrorContext(ctx, "metric log intent failed", "err", err)
+	}
+}
+
+// intentForExecutor traduce lo que hizo el loop al nombre de intent histórico,
+// para que la serie de intent_events siga siendo comparable después de que el
+// router desapareciera.
+//
+// Se usa el nombre EXISTENTE de cada intent, nunca un literal nuevo: un string
+// inventado forkea la serie en silencio, que es exactamente lo que esta función
+// existe para evitar.
+func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
+	switch {
+	case runErr != nil:
+		return orchestrator.IntentUnclear
+	case ex.answerQuery:
+		return orchestrator.IntentQuery
+	case ex.settingsArea == settingsAreaAccount:
+		return orchestrator.IntentAccountManage
+	case ex.settingsArea == settingsAreaCategory:
+		return orchestrator.IntentCreateCategory
+	case ex.settingsArea == settingsAreaReminder:
+		return orchestrator.IntentReminderSet
+	case len(ex.inserted) > 0:
+		return orchestrator.IntentCreate
+	case ex.reply == msgHelp:
+		return orchestrator.IntentHelp
+	case ex.reply == msgAskRewrite:
+		return orchestrator.IntentUnclear
+	case len(ex.parked) > 0:
+		// Lo único que parkea hoy es una corrección o un borrado, y el tool del
+		// primero parkeado lo dice.
+		if ex.parked[0].Tool == orchestrator.ToolDeleteMovements {
+			return orchestrator.IntentDelete
+		}
+		return orchestrator.IntentUpdate
+	default:
+		return orchestrator.IntentUnclear
 	}
 }
 

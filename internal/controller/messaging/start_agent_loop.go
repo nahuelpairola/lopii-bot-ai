@@ -39,6 +39,13 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 
 	executor := newAgentExecutor(c, userID, text, taxonomy)
 	answer, err := c.orchestrator.Run(ctx, prompt, text, history, tools, executor.execute)
+
+	// El intent_event se ABRE acá, después del loop, porque ya no hay router que
+	// diga el intent de antemano — lo dice la primera tool que el loop eligió.
+	// Log abre y Resolve cierra, y Resolve NO toca la columna intent: por eso el
+	// orden es al revés que antes.
+	c.logIntent(ctx, userID, text, intentForExecutor(executor, err))
+
 	if err != nil {
 		// Un 429 DESPUÉS de escribir no se encola: el drenaje volvería a correr el
 		// mensaje y la plata quedaría registrada dos veces. Se informa el éxito
@@ -58,6 +65,15 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		slog.ErrorContext(ctx, "agent loop failed", "user_id", userID, "err", err)
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("agent loop: %w", err)
+	}
+
+	// Las dos tools que delegan a otro subsistema. Van antes de la narración: la
+	// respuesta se la da el que atiende, no el loop.
+	if executor.answerQuery {
+		return c.finishAnswerQuery(ctx, b, chatID, userID, text)
+	}
+	if executor.settingsArea != "" {
+		return c.finishManageSettings(ctx, b, chatID, userID, text, executor.settingsArea)
 	}
 
 	// La copia nuestra (ayuda, pedir reescritura) le gana a la narración del

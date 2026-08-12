@@ -13,7 +13,6 @@ import (
 // fails on any schema — present or future — that forgets the null-union.
 func TestToolSchemas_OptionalFieldsAllowNull(t *testing.T) {
 	tools := map[string]toolSchema{
-		"routerTool":     routerTool,
 		"createTool":     createTool,
 		"deleteTool":     deleteTool,
 		"updateTool":     updateTool,

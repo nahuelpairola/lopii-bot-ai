@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 )
 
@@ -39,45 +38,21 @@ var ErrAgentMaxIterations = errors.New("orchestrator: agent loop exceeded max it
 // mensaje del usuario terminaba en la cola en vez de en el gate.
 var ErrAgentTurnDone = errors.New("orchestrator: agent turn done")
 
-// kindRank orders a round's calls: every write, then every read, then every
-// parking. See orderCallsByKind.
-func kindRank(k AgentToolKind) int {
-	switch k {
-	case KindWrite:
-		return 0
-	case KindAction:
-		return 2
-	default:
-		// KindRead and anything undeclared. Read is the conservative slot: it
-		// neither jumps ahead of a write nor gets deferred past one.
-		return 1
-	}
-}
-
-// orderCallsByKind returns the round's calls sorted write → read → action,
-// preserving the model's relative order within each class.
+// El orden lectura-antes-de-escritura se BORRÓ con la etapa 5.
 //
-// This is load-bearing, not tidiness. Under batching a sum_movements and the
-// record_movements it must count arrive in the SAME round, and the order the
-// model happened to list them in is not something to rely on. Running the read
-// first reports a total that excludes the rows about to be inserted — wrong
-// money, and silently wrong.
+// Existía para que un total no se calculara sin las filas que estaban por
+// insertarse. Este toolbox no tiene NINGUNA tool de lectura —record_movements
+// es la única KindWrite y todo lo demás es una acción—, así que ordenaba un
+// conjunto cuyos elementos comparten rango: no hacía nada.
 //
-// Reordering is free at the protocol level because results map back by
-// tool_call_id, not position; and it is safe semantically because within one
-// round the model chose every call before seeing any result.
-func orderCallsByKind(calls []loopToolCall, tools []AgentTool) []loopToolCall {
-	kindOf := make(map[string]AgentToolKind, len(tools))
-	for _, t := range tools {
-		kindOf[t.Name] = t.Kind
-	}
-	ordered := make([]loopToolCall, len(calls))
-	copy(ordered, calls)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return kindRank(kindOf[ordered[i].Function.Name]) < kindRank(kindOf[ordered[j].Function.Name])
-	})
-	return ordered
-}
+// Y borrarlo saca una trampa en vez de volver a documentarla: kindRank metía un
+// Kind SIN SETEAR en el mismo bucket que un KindRead explícito, así que una tool
+// de escritura futura declarada sin Kind compilaba, corría, y se ejecutaba
+// DESPUÉS de las lecturas — exactamente el bug contra el que advertía el
+// comentario de la propia función. Ningún test lo cubría.
+//
+// Si una etapa futura vuelve a meter tools de lectura acá (por ejemplo plegando
+// QUERY), esto vuelve CON el valor cero hecho irrepresentable, no como estaba.
 
 // Run drives the unified agent loop: it sends the tools, executes every call a
 // round emits via the caller's execute closure (scoped to the user), feeds each
@@ -92,7 +67,6 @@ func orderCallsByKind(calls []loopToolCall, tools []AgentTool) []loopToolCall {
 //     means the model already said what it had to. The calls still run — their
 //     side effects are wanted — and then the turn ends without spending another
 //     round replaying the whole prefix.
-//   - Class order inside a round: orderCallsByKind, above.
 //   - A cap of 5 rounds instead of 3.
 //
 // A tool executor error is fed back to the model as text, not aborted, so it
@@ -174,7 +148,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 
 		messages = append(messages, assistant)
 		turnDone := false
-		for _, call := range orderCallsByKind(assistant.ToolCalls, tools) {
+		for _, call := range assistant.ToolCalls {
 			result, execErr := execute(call.Function.Name, json.RawMessage(call.Function.Arguments))
 			switch {
 			case errors.Is(execErr, ErrAgentTurnDone):

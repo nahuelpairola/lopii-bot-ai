@@ -140,32 +140,10 @@ func TestRun_TurnDoneEndsTheTurnWithoutANarrationRound(t *testing.T) {
 		t.Errorf("%d rounds, want 1 — la segunda vuelta es la que revienta el TPM", len(*reqs))
 	}
 }
+// El test que fijaba "escrituras antes que lecturas" se borro con
+// orderCallsByKind: este toolbox no tiene tools de lectura, asi que ordenaba un
+// conjunto cuyos elementos comparten rango. Ver el comentario en agent.go.
 
-func TestRun_RunsWritesBeforeReadsRegardlessOfModelOrder(t *testing.T) {
-	// §4.1.2: the model lists the read FIRST. If the loop honoured that, the
-	// sum would exclude the movements record_movements is about to insert —
-	// wrong money, silently.
-	srv, _ := loopServer(t, `{"choices":[{"message":{"content":"listo","tool_calls":[
-		{"id":"c1","type":"function","function":{"name":"sum_movements","arguments":"{}"}},
-		{"id":"c2","type":"function","function":{"name":"correct_movement","arguments":"{}"}},
-		{"id":"c3","type":"function","function":{"name":"record_movements","arguments":"{}"}}]}}]}`)
-	defer srv.Close()
-	o := New(Config{BaseURL: srv.URL, AgentModel: "m", TimeoutSeconds: 5})
-
-	var ran []string
-	if _, err := o.Run(context.Background(), "sys", "x", nil, agentToolsForTest(),
-		func(name string, _ json.RawMessage) (string, error) {
-			ran = append(ran, name)
-			return "ok", nil
-		}); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-
-	want := []string{"record_movements", "sum_movements", "correct_movement"}
-	if strings.Join(ran, ",") != strings.Join(want, ",") {
-		t.Errorf("ran %v, want %v (write, then read, then action)", ran, want)
-	}
-}
 
 func TestRun_ToolErrorIsFedBackNotFatal(t *testing.T) {
 	// A failing executor must reach the model as text so it can recover or

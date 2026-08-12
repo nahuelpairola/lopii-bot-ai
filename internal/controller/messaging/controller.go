@@ -82,8 +82,6 @@ type subcategoryRepository interface {
 // movementOrchestrator is the local interface for orchestrator.Orchestrator
 // — only the methods this package's flows need.
 type movementOrchestrator interface {
-	ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error)
-	ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error)
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error)
 	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
@@ -166,13 +164,8 @@ type controller struct {
 	nudges        nudgeRepository
 	jobs          jobsRepository
 	actions       actionsRepository
-	// routeCreateToLoop manda CREATE por el loop unificado. Es config y no una
-	// constante porque las etapas 2 y 3 despliegan juntas: si create_inserted
-	// cae, apagarlo devuelve CREATE al camino viejo dejando la etapa 2 viva, que
-	// es el único bisect que queda.
-	routeCreateToLoop bool
-	nextDrainAt       time.Time
-	drainMu           sync.Mutex
+	nextDrainAt   time.Time
+	drainMu       sync.Mutex
 }
 
 func NewController(
@@ -190,7 +183,6 @@ func NewController(
 	nudges nudgeRepository,
 	jobs jobsRepository,
 	actions actionsRepository,
-	routeCreateToLoop bool,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -207,8 +199,6 @@ func NewController(
 		nudges:        nudges,
 		jobs:          jobs,
 		actions:       actions,
-
-		routeCreateToLoop: routeCreateToLoop,
 	}
 }
 

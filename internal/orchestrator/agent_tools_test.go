@@ -7,8 +7,12 @@ import (
 
 func TestAgentTools_AllWellFormed(t *testing.T) {
 	tools := AgentTools()
-	if len(tools) != 14 {
-		t.Fatalf("%d tools, want 14 — las 15 de la §4.10 menos find_movements_to_correct, que costaba una vuelta entera del loop y no compraba nada (ver AgentTools)", len(tools))
+	// 12 desde la etapa 5: las cinco de configuración colapsaron en
+	// manage_settings, y answer_query se sumó. Cinco tools casi iguales que
+	// hacían lo mismo —parkear a un wizard— eran justo donde este modelo elige
+	// mal.
+	if len(tools) != 12 {
+		t.Fatalf("%d tools, want 12", len(tools))
 	}
 
 	seen := make(map[string]bool, len(tools))

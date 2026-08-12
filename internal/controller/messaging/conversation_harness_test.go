@@ -162,10 +162,6 @@ func newConversationHarness(t *testing.T) *convHarness {
 		actions:       pendingaction.NewRepository(conn),
 		metrics:       &fakeMetricRepo{},
 		chatHistory:   stubChatHistory{},
-		// El kill switch de la etapa 3 va PRENDIDO: sin esto el router manda
-		// CREATE por startMovementCreate y el escenario nunca toca el loop. La
-		// Parte E lo borra junto con el router.
-		routeCreateToLoop: true,
 	}
 
 	return &convHarness{
@@ -175,10 +171,10 @@ func newConversationHarness(t *testing.T) *convHarness {
 	}
 }
 
-// ScriptIntent fija lo que devuelve el router. Hace falta hasta la Parte E:
-// handleFreeText llama a ClassifyIntent ANTES de que nada llegue al loop, así
-// que sin esto ningún escenario alcanza record_movements.
-func (h *convHarness) ScriptIntent(i orchestrator.Intent) { h.orc.intent = i }
+// ScriptIntent quedó sin efecto: la etapa 5 borró el router, así que ya no hay
+// intent que fijar. Se conserva como no-op para no reescribir cada escenario, y
+// como recordatorio de que el mensaje ya no se clasifica antes del loop.
+func (h *convHarness) ScriptIntent(orchestrator.Intent) {}
 
 // ScriptCategory fija el par que devuelve el clasificador.
 func (h *convHarness) ScriptCategory(pairs ...orchestrator.Pair) { h.orc.classifyPairs = pairs }
@@ -448,8 +444,6 @@ func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t
 		t.Error("quedó un movimiento en 0: el guard lo rechaza y no es un estado válido")
 	}
 }
-
-
 
 // La capa 2 de punta a punta: el caso de las 22:27 del 2026-08-11. El usuario
 // escribió "Al café de hoy sumale 1070" cuatro veces y se llevó cuatro

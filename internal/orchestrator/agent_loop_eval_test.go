@@ -265,10 +265,20 @@ func TestAgentPromptSize(t *testing.T) {
 		tools += len([]rune(tool.Description)) + len(tool.Parameters)
 	}
 
+	// El router ya no existe, así que la comparación es contra lo único que
+	// queda del camino viejo: el prompt de CREATE.
 	t.Logf("prompt unificado : %5d runas", len([]rune(unified)))
-	t.Logf("prompt CREATE hoy: %5d runas", len([]rune(create)))
-	t.Logf("router hoy       : %5d runas", len([]rune(routerSystemPrompt)))
+	t.Logf("prompt CREATE    : %5d runas", len([]rune(create)))
 	t.Logf("schemas de tools : %5d runas (van en CADA request del loop)", tools)
-	t.Logf("loop por request : %5d runas vs %d de router+CREATE hoy",
-		len([]rune(unified))+tools, len([]rune(routerSystemPrompt))+len([]rune(create)))
+	t.Logf("loop por request : %5d runas", len([]rune(unified))+tools)
+}
+
+// truncate acorta una narración para el log del eval. Vivía en el eval del
+// router; se muda acá porque ese archivo murió con el router.
+func truncate(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len([]rune(s)) > 60 {
+		return string([]rune(s)[:57]) + "..."
+	}
+	return s
 }

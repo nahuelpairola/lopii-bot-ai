@@ -9,7 +9,7 @@ import (
 )
 
 // AgentToolKind is a tool's execution class. It decides the order the loop
-// runs a round's calls in (see agent.go orderCallsByKind) — never the order
+// runs a round's calls in — never the order
 // the model happened to list them in.
 type AgentToolKind string
 

@@ -32,14 +32,15 @@ func newLoopController(t *testing.T, orch *fakeFullOrchestrator, repo *fakeActio
 	}
 }
 
-// TestRouting_UpdateAndDeleteGoThroughTheLoop es el cambio de la etapa: esos dos
-// intents dejan de abrir el picker y pasan por Run. Los otros ocho no se tocan.
-func TestRouting_UpdateAndDeleteGoThroughTheLoop(t *testing.T) {
-	for _, intent := range []orchestrator.Intent{orchestrator.IntentUpdate, orchestrator.IntentDelete} {
-		t.Run(string(intent), func(t *testing.T) {
+// TestRouting_EverythingGoesThroughTheLoop: desde la etapa 5 no hay router, así
+// que CUALQUIER mensaje sin flow abierto va al loop. Antes esto valía sólo para
+// UPDATE y DELETE, y el resto se repartía en un switch de diez ramas — que es
+// donde el mismo pedido moría de seis formas distintas.
+func TestRouting_EverythingGoesThroughTheLoop(t *testing.T) {
+	for _, msg := range []string{"Cafe 12700", "¿cuánto gasté en julio?", "editá los del lote", "renombrá Galicia", "hola", "asdkjhasd"} {
+		t.Run(msg, func(t *testing.T) {
 			called := false
 			orch := &fakeFullOrchestrator{
-				intent: intent,
 				runFn: func(func(string, json.RawMessage) (string, error)) (string, error) {
 					called = true
 					return "listo", nil
@@ -47,33 +48,13 @@ func TestRouting_UpdateAndDeleteGoThroughTheLoop(t *testing.T) {
 			}
 			c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
 
-			if err := c.handleFreeText(context.Background(), nil, 0, 1, "el café en realidad fue 3500"); err != nil {
+			if err := c.handleFreeText(context.Background(), nil, 0, 1, msg); err != nil {
 				t.Fatal(err)
 			}
 			if !called {
-				t.Fatalf("%s tiene que ir por el agent loop", intent)
+				t.Fatalf("%q tiene que ir por el agent loop", msg)
 			}
 		})
-	}
-}
-
-// TestFreeText_CreateRoutingRespectsTheFlag: el interruptor es la única forma de
-// bisectar, porque las etapas 2 y 3 despliegan juntas. Apagado, CREATE tiene que
-// volver al camino de siempre sin tocar nada más.
-func TestFreeText_CreateRoutingRespectsTheFlag(t *testing.T) {
-	for _, tc := range []struct{ flag, wantLoop bool }{{true, true}, {false, false}} {
-		orch := &fakeFullOrchestrator{
-			intent: orchestrator.IntentCreate,
-			runFn:  func(func(string, json.RawMessage) (string, error)) (string, error) { return "ok", nil },
-		}
-		c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
-		c.routeCreateToLoop = tc.flag
-
-		_ = c.handleFreeText(context.Background(), nil, 0, 1, "gasté 5000 en el super")
-
-		if orch.runCalled != tc.wantLoop {
-			t.Errorf("flag=%v: loop usado = %v, want %v", tc.flag, orch.runCalled, tc.wantLoop)
-		}
 	}
 }
 
@@ -179,10 +160,10 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 	if !strings.Contains(orch.gotRunPrompt, "CUENTAS DEL USUARIO") {
 		t.Errorf("el prompt no lleva las cuentas:\n%s", orch.gotRunPrompt)
 	}
-	// Sólo las tools que el ejecutor sabe correr. En la etapa 3 son 5:
-	// record_movements se suma porque CREATE ya pasa por acá.
-	if len(orch.gotRunTools) != 5 {
-		t.Errorf("want las 5 tools cableadas, got %d", len(orch.gotRunTools))
+	// Sólo las tools que el ejecutor sabe correr. En la etapa 5 son 7: se suman
+	// answer_query y manage_settings, que reemplaza a las cinco de configuración.
+	if len(orch.gotRunTools) != 7 {
+		t.Errorf("want las 7 tools cableadas, got %d", len(orch.gotRunTools))
 	}
 	// Y el prompt tiene que hablar de ESAS, no de las 14: si nombra una que no
 	// se manda, el modelo la pide igual y el turno se cae.
@@ -209,10 +190,10 @@ func TestWiredTools_CorrectionStillPicksCorrectMovement(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	if !slices.Contains(names, orchestrator.ToolRecordMovements) {
-		t.Fatal("record_movements tiene que estar cableada en la etapa 3")
+		t.Fatal("record_movements tiene que estar cableada")
 	}
-	if len(names) != 5 {
-		t.Errorf("toolbox = %v, want las 5 de la etapa 3", names)
+	if len(names) != 7 {
+		t.Errorf("toolbox = %v, want las 7 de la etapa 5", names)
 	}
 
 	prompt := orchestrator.BuildAgentPrompt("2026-08-01", nil, nil, "", wiredAgentTools(), "")
