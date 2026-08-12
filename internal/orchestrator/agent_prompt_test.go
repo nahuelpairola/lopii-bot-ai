@@ -15,10 +15,8 @@ func TestBuildAgentPrompt_CarriesTheLoadBearingRules(t *testing.T) {
 		"", AgentTools(), "")
 
 	for _, want := range []string{
-		"2026-07-31",            // the date rule's anchor
-		"Mercado Pago",          // the accounts block
-		"Comida | Supermercado", // the taxonomy block
-		"PENDING_REVIEW",
+		"2026-07-31",   // the date rule's anchor
+		"Mercado Pago", // the accounts block
 		"el destino decide el tipo",
 		"Rendimiento inversión",
 		"van en POSITIVO",
@@ -27,6 +25,26 @@ func TestBuildAgentPrompt_CarriesTheLoadBearingRules(t *testing.T) {
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt missing %q", want)
+		}
+	}
+
+	// Y lo que YA NO puede estar. La taxonomía se pagaba en CADA ronda del loop
+	// —incluso en "¿cuánto gasté en julio?", donde no hay nada que clasificar— y
+	// el loop resiente cada token: medido el 2026-08-12, un turno pide ~7.000
+	// contra un techo de 8.000 TPM.
+	//
+	// Los nombres literales de subcategoría tampoco: estaban ahí para que el
+	// modelo los COPIE, y por lo tanto también para que los copie mal. Ahora los
+	// pone la app desde la forma del movimiento.
+	for _, gone := range []string{
+		"Comida | Supermercado", // el bloque de taxonomía
+		"TAXONOMÍA DISPONIBLE",
+		"PENDING_REVIEW",          // la regla de taxonomía
+		"Sistema | Transferencia", // los pares literales de los patrones
+		"Inversiones | Dólares",
+	} {
+		if strings.Contains(prompt, gone) {
+			t.Errorf("el prompt del loop todavía lleva %q: clasificar salió del loop", gone)
 		}
 	}
 }

@@ -34,11 +34,11 @@ CUÁNDO USAR CADA HERRAMIENTA:
 
 DESEMPATES (los casos que en la práctica se confunden):
 %s
-` + taxonomyAndAmountRules + `
+` + amountRules + `
 REGLA DE FECHA:
 - Hoy es %s (zona America/Argentina/Buenos_Aires). Por defecto la fecha del movimiento es hoy. Si el mensaje aclara una fecha o día relativo ("el 3 de enero", "ayer", "el lunes pasado"), usá esa fecha. Sin año aclarado, asumí el año actual salvo que caiga en el futuro, en cuyo caso usá el año anterior. Todos los movimientos de un mismo mensaje comparten la misma fecha.
 - Para consultar, resolvé las fechas relativas ("esta semana", "el mes pasado", "mayo") a rangos concretos YYYY-MM-DD antes de llamar la herramienta.
-` + movementPatternRules + `
+` + agentPatternRules + `
 CÓMO TRABAJAR EN UN TURNO:
 - Atendé TODO lo que pide el mensaje antes de narrar. Si pide registrar algo y además pregunta cuánto lleva gastado, hacé las dos cosas.
 - Llamá en el mismo turno todas las herramientas que no dependan del resultado de otra, y escribí tu respuesta final junto con ellas. Solo dejá para una segunda vuelta lo que de verdad necesita el resultado de la primera.
@@ -57,9 +57,6 @@ CÓMO RESPONDER:
 - Si algo no se puede resolver con estas herramientas, decilo con amabilidad en una línea.
 
 CUENTAS DEL USUARIO (id | nombre (moneda)):
-%s
-
-TAXONOMÍA DISPONIBLE (categoría | subcategoría | descripción):
 %s`
 
 // pendingQuestionSection is appended only when an ask_user is open. Without it
@@ -120,9 +117,18 @@ func buildToolsBlock(tools []AgentTool) string {
 // pending — in which case the section is omitted entirely rather than left
 // empty, so the model is never told about a question that does not exist.
 func BuildAgentPrompt(today string, accounts []AccountOption, taxonomy []TaxonomyEntry, pendingQuestion string, tools []AgentTool, recentEntities string) string {
+	// La taxonomía YA NO VA. Se pagaba en cada ronda —y el loop resiente cada
+	// token: medido el 2026-08-12, un turno pide ~7.000 contra un techo de 8.000
+	// TPM. Clasificar es ahora una llamada aparte, en otro modelo y por lo tanto
+	// en otro techo (ver ClassifyCategories).
+	//
+	// El parámetro sigue en la firma porque el llamador la necesita igual para
+	// validar el par contra `known`, y pedirla dos veces serían dos queries y
+	// —peor— dos listas que pueden diferir.
+	_ = taxonomy
 	prompt := fmt.Sprintf(agentSystemPromptTemplate,
 		buildToolsBlock(tools), agentTieBreakers(tools), today,
-		buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
+		buildAccountsBlock(accounts))
 	if recentEntities != "" {
 		prompt += fmt.Sprintf(recentEntitiesSection, recentEntities)
 	}

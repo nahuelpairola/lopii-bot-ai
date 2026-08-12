@@ -47,6 +47,38 @@ const schemaNoArgs = `{"type": "object", "properties": {}}`
 // Tool-calling models routinely emit an explicit null for an argument they do
 // not want to set, and Groq validates arguments against the schema server-side,
 // so a plain "string" type 400s on that null before the executor ever runs.
+// recordMovementsParams es el schema del loop, y NO es el de createTool: acá
+// category y subcategory NO existen.
+//
+// El trabajo del loop pasa a ser extraer el HECHO económico; clasificarlo es
+// una llamada aparte, en otro modelo y por lo tanto en otro techo de TPM (ver
+// ClassifyCategories). createTool conserva los dos campos porque el camino
+// viejo sigue vivo hasta que la etapa 5 lo borre.
+var recordMovementsParams = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"movements": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"type": {"type": "string", "enum": ["expense", "income", "transfer"]},
+					"amount": {"type": "string", "description": "positivo, EXCEPTO la pierna de un transfer que sale de una cuenta: esa va negativa. Las 2 piernas de un transfer suman 0"},
+					"currency": {"type": "string", "enum": ["ARS", "USD"]},
+					"account_id": {"type": ["integer", "null"]},
+					"account_name_guess": {"type": ["string", "null"]},
+					"payment_method": {"type": "string"},
+					"description": {"type": "string"},
+					"date": {"type": "string"},
+					"group": {"type": ["string", "null"]}
+				},
+				"required": ["type", "amount", "currency", "payment_method", "description", "date"]
+			}
+		}
+	},
+	"required": ["movements"]
+}`)
+
 func AgentTools() []AgentTool {
 	return []AgentTool{
 		// ---- write (exactly one) ----
@@ -55,7 +87,7 @@ func AgentTools() []AgentTool {
 			When:        "cuenta un gasto, un ingreso o un movimiento de plata. Incluye montos sueltos (\"20k\", \"nafta\"). Un rendimiento de inversión también se registra acá.",
 			Kind:        KindWrite,
 			Description: "Registra uno o más movimientos financieros a partir del mensaje del usuario. Usala siempre que cuente un gasto, un ingreso o un movimiento de plata entre sus cuentas.",
-			Parameters:  createTool.Parameters,
+			Parameters:  recordMovementsParams,
 		},
 
 		// ---- read ----

@@ -1,5 +1,7 @@
 package orchestrator
 
+import "strings"
+
 // Las reglas de clasificación de movimientos que comparten, verbatim, los dos
 // caminos de CREATE: createSystemPromptTemplate (el camino pre-loop, que sigue
 // vivo detrás de routeCreateToLoop) y agentSystemPromptTemplate (el loop).
@@ -23,7 +25,11 @@ const taxonomyAndAmountRules = `
 REGLAS DE TAXONOMÍA:
 1. Usá ÚNICAMENTE las categorías y subcategorías listadas abajo. Prohibido inventar nombres nuevos.
 2. Si tenés menos del 90%% de certeza sobre la categoría o subcategoría, asigná EXACTAMENTE "PENDING_REVIEW" en ambos campos.
+` + amountRules
 
+// amountRules es lo que queda cuando la taxonomía se va del prompt: el loop
+// sigue necesitando cómo leer un monto, pero ya no clasifica.
+const amountRules = `
 REGLAS DE MONTO Y MONEDA:
 - Los montos abreviados ("200k", "1.5m") se expanden a su valor numérico completo.
 - Si el mensaje no aclara moneda, asumí ARS siempre.
@@ -50,3 +56,19 @@ REGLA DE GANANCIA:
 REGLA DE AGRUPACIÓN (campo group):
 - Las piernas/ítems de UNA operación atómica (compra/venta USD, transferencia entre cuentas propias, suscripción/rescate FCI) llevan el MISMO group. Compras u operaciones separadas — incluso ítems de una tarjeta ("pan, medicamentos, carne"; "ropa, super") — NO llevan group.
 `
+
+// agentPatternRules es movementPatternRules SIN los nombres literales de
+// subcategoría.
+//
+// Esos pares —"Sistema | Transferencia", "Inversiones | Dólares"— están en el
+// prompt para que el modelo los COPIE, y por lo tanto también para que los
+// copie mal. En el loop los pone la app: structuralPair los deduce de la forma
+// del movimiento, que es un dato, no una interpretación.
+//
+// El const compartido NO se toca: createSystemPromptTemplate sigue clasificando
+// hasta que la etapa 5 borre ese camino, y sacárselos ahí lo dejaría sin con
+// qué.
+var agentPatternRules = strings.NewReplacer(
+	`, subcategoría "Inversiones | Dólares"`, "",
+	`, subcategoría "Sistema | Transferencia"`, "",
+).Replace(movementPatternRules)

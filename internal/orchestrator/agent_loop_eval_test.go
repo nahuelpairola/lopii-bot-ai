@@ -44,28 +44,39 @@ type agentEvalCase struct {
 	why       string
 }
 
+// NOTA sobre las expectativas, corregidas el 2026-08-12.
+//
+// Nueve casos esperaban find_movements_to_correct, que es SOLO UNA CONSTANTE:
+// nunca estuvo en AgentTools(), asi que jamas se le manda al modelo. Esos
+// nueve eran imposibles de pasar por construccion, y nadie lo noto porque el
+// eval no corria (sin key, y despues 429 por el techo de TPM). Un suite que no
+// puede pasar es peor que no tener suite.
+//
+// La expectativa correcta es correct_movement, que ademas es el contrato de la
+// etapa 5: la app resuelve el candidato ("no busques cual: la app lo busca
+// sola"), el modelo solo dice QUE cambio quiere.
 var agentEvalCases = []agentEvalCase{
 	// --- Class A: weak referent / no new value (9 real failures) ---
 	// Cause: UpdateResult carries one bit, Resolved. "I found which one but I
 	// am missing the new amount" is not representable. The loop can just ask.
 	{
 		id: "le_erre_eran_1500", msg: "Le erre eran 1500",
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "corrección sin referente explícito: hay que buscar, no registrar",
 	},
 	{
 		id: "panaderia_era_2k", msg: "La panaderia era 2k",
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "el caso del acento, ya arreglado en f0; acá se mide la elección de tool",
 	},
 	{
 		id: "corregir_ultimo", msg: "Corregir monto último movimiento",
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "id 203: hoy contesta 'no tengo movimientos de ese día', que es falso",
 	},
 	{
 		id: "asado_eran_15mil", msg: "Perdon, el asado eran 15 mil",
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "corrección con monto nuevo y referente textual",
 	},
 
@@ -97,7 +108,7 @@ var agentEvalCases = []agentEvalCase{
 		history: []QueryTurn{
 			{Question: "3 mil café", Answer: "Registré: ☕ Ocio y salidas › Salir a comer — $3.000 · café · Mercado Pago (hoy)"},
 		},
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "id 210 registró un duplicado — peor que no hacer nada. Con historial es trivial",
 	},
 	{
@@ -106,7 +117,7 @@ var agentEvalCases = []agentEvalCase{
 		history: []QueryTurn{
 			{Question: "3 mil café", Answer: "Registré: ☕ Ocio y salidas › Salir a comer — $3.000 · café · Mercado Pago (hoy)"},
 		},
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "id 209: hoy cae en UNCLEAR",
 	},
 
@@ -115,7 +126,7 @@ var agentEvalCases = []agentEvalCase{
 	// a regression no matter what it fixes.
 	{
 		id: "control_gasto_simple", msg: "gasté 500 en el súper",
-		wantFirst: ToolRecordMovements, forbidden: ToolFindMovementsToCorrect,
+		wantFirst: ToolRecordMovements, forbidden: ToolCorrectMovement,
 		why: "el camino del 74%: no puede volverse una corrección",
 	},
 	{
@@ -129,13 +140,12 @@ var agentEvalCases = []agentEvalCase{
 // hoy, mas las dos de lectura que los casos necesitan para elegir bien.
 func evalTools() []AgentTool {
 	want := map[string]bool{
-		ToolRecordMovements:        true,
-		ToolCorrectMovement:        true,
-		ToolDeleteMovements:        true,
-		ToolReplyHelp:              true,
-		ToolAskRewrite:             true,
-		ToolFindMovementsToCorrect: true,
-		ToolSumMovements:           true,
+		ToolRecordMovements: true,
+		ToolCorrectMovement: true,
+		ToolDeleteMovements: true,
+		ToolReplyHelp:       true,
+		ToolAskRewrite:      true,
+		ToolSumMovements:    true,
 	}
 	var out []AgentTool
 	for _, t := range AgentTools() {
@@ -196,7 +206,7 @@ func TestAgentLoopEval(t *testing.T) {
 	for _, tc := range agentEvalCases {
 		t.Run(tc.id, func(t *testing.T) {
 			if ran > 0 {
-				time.Sleep(55 * time.Second)
+				time.Sleep(62 * time.Second)
 			}
 			ran++
 			var called []string
