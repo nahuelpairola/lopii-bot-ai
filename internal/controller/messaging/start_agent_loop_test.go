@@ -435,4 +435,8 @@ func TestLoop_ReplayDoesNotOpenANewIntentEvent(t *testing.T) {
 	if len(metrics.logged) != afterWebhook {
 		t.Errorf("el replay abrió %d eventos de más", len(metrics.logged)-afterWebhook)
 	}
+	// Pero SÍ completa el intent: el evento original se encoló sin saber qué era.
+	if len(metrics.queuedIntents) != 1 || metrics.queuedIntents[0] != string(orchestrator.IntentHelp) {
+		t.Errorf("el replay tenía que corregir el intent a HELP, corrigió %v", metrics.queuedIntents)
+	}
 }

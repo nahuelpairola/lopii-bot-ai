@@ -91,17 +91,17 @@ func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage st
 
 // initialOutcome elige con qué outcome NACE el evento.
 //
-// Un 429 se encola y se replaya, así que la historia NO terminó: el evento
-// nace `pending` y lo cierra el drenaje. Sin esto nacía `unclear`, que es
-// TERMINAL, y entonces el replay exitoso no encontraba ningún pendiente que
-// resolver — el movimiento entraba y la métrica lo contaba como falla.
+// CUALQUIER error lo deja `pending`, porque en los dos casos la historia sigue y
+// alguien lo va a cerrar: un 429 lo cierra el drenaje cuando replaya; los demás
+// los cierra el propio caller con `loop_errored`, dos líneas más abajo.
 //
-// Medido en vivo el 2026-08-12: "Cobré 500000 de sueldo" insertó $500.000 y
-// quedó registrado `unclear`. Es la peor dirección posible para la columna que
-// lee el portón: esconde los éxitos justo cuando el cupo aprieta.
+// Sin esto nacía `unclear`, que es TERMINAL, y entonces nadie encontraba un
+// pendiente que resolver. Medido en vivo el 2026-08-12: "Cobré 500000 de sueldo"
+// insertó $500.000 y quedó registrado como falla. Es la peor dirección posible
+// para la columna que lee el portón — esconde los éxitos justo cuando el cupo
+// aprieta.
 func initialOutcome(intent orchestrator.Intent, runErr error) string {
-	var rl *orchestrator.RateLimitedError
-	if errors.As(runErr, &rl) {
+	if runErr != nil {
 		return outcomePending
 	}
 	return routerOutcome(intent)
@@ -115,7 +115,14 @@ func initialOutcome(intent orchestrator.Intent, runErr error) string {
 // inventado forkea la serie en silencio, que es exactamente lo que esta función
 // existe para evitar.
 func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
+	var rateLimited *orchestrator.RateLimitedError
 	switch {
+	case errors.As(runErr, &rateLimited):
+		// El cupo cortó antes de que el modelo eligiera herramienta: el intent no
+		// se sabe todavía. UNCLEAR sería mentir —significa "no te entendí"— y con
+		// el cupo apretado etiquetaría así a buena parte del tráfico. Lo completa
+		// el drenaje cuando el replay funciona (SetIntentIfQueued).
+		return orchestrator.IntentQueued
 	case runErr != nil:
 		return orchestrator.IntentUnclear
 	case ex.answerQuery:
@@ -202,4 +209,16 @@ func collectMovementIDs(ms []movement.Movement) []uint {
 		ids[i] = m.ID
 	}
 	return ids
+}
+
+// setQueuedIntent completa el intent de un evento que se encoló sin saberlo.
+// Fire-and-forget, mismo criterio que logIntent: una métrica nunca rompe el
+// flujo del usuario.
+func (c *controller) setQueuedIntent(ctx context.Context, userID uint64, intent orchestrator.Intent) {
+	if c.metrics == nil {
+		return
+	}
+	if err := c.metrics.SetIntentIfQueued(userID, string(intent)); err != nil {
+		slog.ErrorContext(ctx, "metric set queued intent failed", "err", err)
+	}
 }

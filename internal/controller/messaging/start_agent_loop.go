@@ -52,7 +52,12 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	// cada uno, antes de siquiera procesarse. Es ruido puro en la única columna
 	// que lee el portón de la etapa, y hace que el bot se vea peor cuanto más
 	// apretado esté el cupo.
-	if !isReplaying(ctx) {
+	if isReplaying(ctx) {
+		// El replay NO abre un evento nuevo: el del mensaje ya existe y sigue
+		// pendiente. Lo que sí hace es completarle el intent, que al encolarse no
+		// se sabía — el cupo cortó antes de que el modelo eligiera herramienta.
+		c.setQueuedIntent(ctx, userID, intentForExecutor(executor, err))
+	} else {
 		c.logIntent(ctx, userID, text, intentForExecutor(executor, err), err)
 	}
 

@@ -102,6 +102,9 @@ type movementOrchestrator interface {
 type metricRepository interface {
 	Log(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error
 	Resolve(userID uint64, outcome string, movementIDs []uint) error
+	// SetIntentIfQueued corrige el intent que quedó en QUEUED cuando el turno
+	// original se topó con el cupo. Sólo lo llama el drenaje.
+	SetIntentIfQueued(userID uint64, intent string) error
 }
 
 type chatHistoryRepository interface {

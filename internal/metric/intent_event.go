@@ -80,6 +80,28 @@ func (r *repository) Log(userID uint64, traceID, rawMessage, intent string, need
 	}).Error
 }
 
+// SetIntentIfQueued corrige el intent del pendiente más reciente, y SÓLO si
+// quedó en QUEUED.
+//
+// Un turno que se topa con el cupo se registra antes de que el modelo elija
+// ninguna herramienta: ahí el intent no se sabe, y escribir UNCLEAR sería
+// mentir — eso significa "no te entendí". Se escribe QUEUED, y cuando el
+// drenaje replaya el mensaje con éxito, ESE turno sí sabe qué era.
+//
+// La guarda `intent = 'QUEUED'` es lo que evita pisar un turno que se resolvió
+// bien en su momento. Sin ella, un replay tardío podría reescribir el intent de
+// otra cosa.
+func (r *repository) SetIntentIfQueued(userID uint64, intent string) error {
+	sub := r.db.DB.Model(&IntentEvent{}).
+		Select("id").
+		Where("user_id = ? AND outcome = ? AND intent = ?", userID, "pending", "QUEUED").
+		Order("id DESC").
+		Limit(1)
+	return r.db.DB.Model(&IntentEvent{}).
+		Where("id = (?)", sub).
+		Update("intent", intent).Error
+}
+
 // Resolve mueve el pending más reciente del usuario a un outcome terminal.
 // "Más reciente" = mayor id (monotónico). Si no hay pending, es no-op sin
 // error (0 filas afectadas). La invariante WIP=1 del engine garantiza que
