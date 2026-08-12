@@ -466,7 +466,20 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows, userMessage)),
 	}
 
-	prompt, err := c.engine.StartWithData(userID, movementUpdateConfirmFlowName, seed)
+	// Con un gap de categoría el destino cambia: al flujo de gap-fill, que es el
+	// que sabe preguntar y ofrecer "crear una categoría nueva". El seed ya viene
+	// en modeUpdate, así que persistMovements hace ReplaceMovements y no un
+	// insert — la maquinaria estaba entera, sólo que nadie la alcanzaba desde
+	// acá.
+	//
+	// Se pierde el diff antes/después en ese caso, y es un intercambio a
+	// conciencia: antes el movimiento se PERDÍA con un error genérico.
+	flowName := movementUpdateConfirmFlowName
+	if len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 {
+		flowName = movementCreateFlowName
+	}
+
+	prompt, err := c.engine.StartWithData(userID, flowName, seed)
 	if err != nil {
 		return err
 	}

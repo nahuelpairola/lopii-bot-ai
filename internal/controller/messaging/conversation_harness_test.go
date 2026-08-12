@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -352,4 +353,47 @@ func TestConversation_DeleteCancelledKeepsTheMovement(t *testing.T) {
 	if len(h.Movements()) != 1 {
 		t.Errorf("cancelar borró igual: %+v", h.Movements())
 	}
+}
+
+// ScriptUpdateResult fija lo que devuelve la Call 2 de UPDATE (ResolveUpdate).
+func (h *convHarness) ScriptUpdateResult(r orchestrator.UpdateResult) { h.orc.updateResult = r }
+
+// El bug vivo, probado de punta a punta: una corrección que nombra una
+// categoría que NO existe en la taxonomía del usuario.
+//
+// Hasta el 2026-08-12, seedAndStartUpdateConfirm escribía los gaps en nil
+// hardcodeado, así que el par inventado no marcaba nada, el flujo insertaba
+// derecho, FindByCategoryAndSubcategory fallaba y EL MOVIMIENTO SE PERDÍA con
+// un error genérico. Lo que importa acá no es que aparezca el picker: es que el
+// movimiento SIGA EXISTIENDO.
+func TestConversation_CorrectionWithUnknownCategoryKeepsTheMovement(t *testing.T) {
+	h := newConversationHarness(t)
+	id := h.SeedMovement("Café", "-12700", 1)
+
+	h.ScriptIntent(orchestrator.IntentUpdate)
+	h.ScriptToolCalls(correctMovementCall(`{"change":"ponelo en proyecto hogar"}`))
+	h.ScriptUpdateResult(orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{{
+		Type: "expense", Amount: "12700", Currency: "ARS",
+		Category: "proyecto hogar", Subcategory: "agua", // par inventado, no existe
+		Description: "Café", Date: "2026-08-12",
+	}}})
+
+	h.SendText("el café ponelo en proyecto hogar")
+	h.TapButton(optionConfirm) // resuelve el picker de candidatos
+
+	if got := h.Movements(); len(got) != 1 || got[0].ID != id {
+		t.Fatalf("el movimiento %d se perdió — este es EL bug. Quedó: %+v. Copia: %v", id, got, h.Messages())
+	}
+	if !containsAny(h.Messages(), "categoría") {
+		t.Errorf("esperaba que pregunte por la categoría, salió: %v", h.Messages())
+	}
+}
+
+func containsAny(msgs []string, want string) bool {
+	for _, m := range msgs {
+		if strings.Contains(strings.ToLower(m), strings.ToLower(want)) {
+			return true
+		}
+	}
+	return false
 }
