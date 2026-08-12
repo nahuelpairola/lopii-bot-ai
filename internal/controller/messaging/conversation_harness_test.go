@@ -397,3 +397,46 @@ func containsAny(msgs []string, want string) bool {
 	}
 	return false
 }
+
+// EL caso guía del 2026-08-10, modelado como pasó de verdad: "Editá los
+// movimientos de lote de hoy" nombra el destino y NO el cambio, y el modelo
+// devolvió filas con el monto en CERO. correctionIsDeletion leyó eso como
+// "regalo/gratis total", armó un BORRADO, y el usuario lo confirmó — sólo no se
+// borró porque la escritura falló (dos de dos, intent_events 386 y 388).
+//
+// Ese accidente ya no está: SoftDeleteByIDs dejó de fallar. Así que la guarda
+// tiene que sostenerlo sola.
+func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t *testing.T) {
+	h := newConversationHarness(t)
+	id := h.SeedMovement("lote", "-80000", 1)
+
+	h.ScriptIntent(orchestrator.IntentUpdate)
+	h.ScriptToolCalls(correctMovementCall(`{"change":"editá los movimientos de lote de hoy"}`))
+	h.ScriptUpdateResult(orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{{
+		Type: "expense", Amount: "0", Currency: "ARS",
+		Category: "Alimentación", Subcategory: "Supermercado",
+		Description: "lote", Date: "2026-08-12",
+	}}})
+
+	h.SendText("Editá los movimientos de lote de hoy")
+
+	// Nada de "borrar" en la copia: el usuario pidió EDITAR.
+	for _, m := range h.Messages() {
+		low := strings.ToLower(m)
+		if strings.Contains(low, "borr") || strings.Contains(low, "elimin") {
+			t.Errorf("se ofreció un borrado ante un pedido de edición: %q", m)
+		}
+	}
+
+	// Y aunque confirme lo que sea que se le ofreció, el movimiento sigue.
+	h.TapButton(optionConfirm)
+	movs := h.Movements()
+	if len(movs) != 1 || movs[0].ID != id {
+		t.Fatalf("el movimiento se perdió: %+v. Copia: %v", movs, h.Messages())
+	}
+	if movs[0].Amount.IsZero() {
+		t.Error("quedó un movimiento en 0: el guard lo rechaza y no es un estado válido")
+	}
+}
+
+
