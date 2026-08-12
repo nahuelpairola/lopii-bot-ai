@@ -53,7 +53,7 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	// que lee el portón de la etapa, y hace que el bot se vea peor cuanto más
 	// apretado esté el cupo.
 	if !isReplaying(ctx) {
-		c.logIntent(ctx, userID, text, intentForExecutor(executor, err))
+		c.logIntent(ctx, userID, text, intentForExecutor(executor, err), err)
 	}
 
 	if err != nil {

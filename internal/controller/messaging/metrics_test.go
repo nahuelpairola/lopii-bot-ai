@@ -2,6 +2,8 @@ package messaging
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
 	"lopiibot.com/internal/conversation"
@@ -72,5 +74,32 @@ func TestWriteOutcomeFor(t *testing.T) {
 	}
 	if got := failureOutcomeFor(conversation.Data{}); got != outcomeCreateFailed {
 		t.Errorf("falla sin modo escribió %q, want %q", got, outcomeCreateFailed)
+	}
+}
+
+// Un 429 se encola y se replaya: el evento tiene que nacer PENDING, porque la
+// historia no terminó. Si nace `unclear` —que es terminal— el replay exitoso no
+// encuentra ningún pendiente que resolver, y el movimiento entra sin que la
+// métrica lo registre.
+//
+// Medido en vivo el 2026-08-12: "Cobré 500000 de sueldo" insertó $500.000 y
+// quedó contado como falla.
+func TestInitialOutcome(t *testing.T) {
+	rateLimited := &orchestrator.RateLimitedError{}
+
+	if got := initialOutcome(orchestrator.IntentUnclear, rateLimited); got != outcomePending {
+		t.Errorf("con 429 el evento nace %q, want %q", got, outcomePending)
+	}
+	// Envuelto, que es como llega de verdad desde el loop.
+	wrapped := fmt.Errorf("agent loop: %w", rateLimited)
+	if got := initialOutcome(orchestrator.IntentUnclear, wrapped); got != outcomePending {
+		t.Errorf("con 429 envuelto nace %q, want %q", got, outcomePending)
+	}
+	// Sin error, o con uno que no es de cupo, manda el intent.
+	if got := initialOutcome(orchestrator.IntentUnclear, nil); got != outcomeUnclear {
+		t.Errorf("sin error nace %q, want %q", got, outcomeUnclear)
+	}
+	if got := initialOutcome(orchestrator.IntentCreate, errors.New("boom")); got != outcomePending {
+		t.Errorf("un error que no es de cupo nace %q, want %q", got, outcomePending)
 	}
 }

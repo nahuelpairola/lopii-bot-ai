@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"lopiibot.com/internal/conversation"
@@ -78,14 +79,32 @@ func routerOutcome(intent orchestrator.Intent) string {
 // logIntent registra la clasificación del router. Fire-and-forget: una
 // escritura de métrica nunca rompe el flujo del usuario. El nil-guard
 // mantiene verdes los tests que construyen el controller sin metrics.
-func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage string, intent orchestrator.Intent) {
+func (c *controller) logIntent(ctx context.Context, userID uint64, rawMessage string, intent orchestrator.Intent, runErr error) {
 	if c.metrics == nil {
 		return
 	}
 	// needs_confirmation quedó vestigial (columna NOT NULL): se escribe false.
-	if err := c.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), false, routerOutcome(intent)); err != nil {
+	if err := c.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), false, initialOutcome(intent, runErr)); err != nil {
 		slog.ErrorContext(ctx, "metric log intent failed", "err", err)
 	}
+}
+
+// initialOutcome elige con qué outcome NACE el evento.
+//
+// Un 429 se encola y se replaya, así que la historia NO terminó: el evento
+// nace `pending` y lo cierra el drenaje. Sin esto nacía `unclear`, que es
+// TERMINAL, y entonces el replay exitoso no encontraba ningún pendiente que
+// resolver — el movimiento entraba y la métrica lo contaba como falla.
+//
+// Medido en vivo el 2026-08-12: "Cobré 500000 de sueldo" insertó $500.000 y
+// quedó registrado `unclear`. Es la peor dirección posible para la columna que
+// lee el portón: esconde los éxitos justo cuando el cupo aprieta.
+func initialOutcome(intent orchestrator.Intent, runErr error) string {
+	var rl *orchestrator.RateLimitedError
+	if errors.As(runErr, &rl) {
+		return outcomePending
+	}
+	return routerOutcome(intent)
 }
 
 // intentForExecutor traduce lo que hizo el loop al nombre de intent histórico,
