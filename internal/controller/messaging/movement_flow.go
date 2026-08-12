@@ -262,6 +262,51 @@ func categoryGapsFor(rows []movementRow, taxonomy []orchestrator.TaxonomyEntry) 
 	return gaps
 }
 
+// resolveTaxonomyPair busca el par (categoría, subcategoría) que nombra un
+// texto suelto del usuario: "proyecto hogar", "Vivienda | Proyecto hogar",
+// "vivienda/proyecto hogar".
+//
+// Existe porque el usuario nombra UNA cosa y la taxonomía guarda DOS. Cuando
+// dice "moveme esto a proyecto hogar" no está eligiendo una categoría, está
+// eligiendo un par — y sin resolverlo la fila queda con la categoría escrita a
+// mano y la subcategoría vacía, o sea un gap, o sea el picker: al usuario le
+// preguntan lo que acaba de decir.
+//
+// Sólo resuelve lo INEQUÍVOCO. Con cero o más de una coincidencia devuelve
+// false y el gap-fill se encarga, que es la degradación correcta: preguntar es
+// caro, adivinar mal es un dato corrupto.
+func resolveTaxonomyPair(text string, taxonomy []orchestrator.TaxonomyEntry) (category, subcategory string, ok bool) {
+	needle := normalizeForTaxonomy(text)
+	if needle == "" {
+		return "", "", false
+	}
+
+	var hits []orchestrator.TaxonomyEntry
+	for _, t := range taxonomy {
+		// Las tres formas de nombrar el mismo par. El separador se normaliza a un
+		// espacio antes, así que "Vivienda | Proyecto hogar" y "vivienda/proyecto
+		// hogar" llegan acá idénticos.
+		if normalizeForTaxonomy(t.Subcategory) == needle ||
+			normalizeForTaxonomy(t.Category+" "+t.Subcategory) == needle {
+			hits = append(hits, t)
+		}
+	}
+	if len(hits) != 1 {
+		return "", "", false
+	}
+	return hits[0].Category, hits[0].Subcategory, true
+}
+
+// normalizeForTaxonomy deja un nombre comparable: sin acentos, en minúsculas,
+// con los separadores y los espacios de más colapsados a uno.
+func normalizeForTaxonomy(s string) string {
+	s = strings.ToLower(foldAccents(s))
+	for _, sep := range []string{"|", "/", ">", "-", ":"} {
+		s = strings.ReplaceAll(s, sep, " ")
+	}
+	return strings.Join(strings.Fields(s), " ")
+}
+
 // parseUintSlice turns the string-encoded movement IDs carried through
 // conversation.Data back into real uint IDs, for repository calls that
 // take []uint (SoftDeleteByIDs, ReplaceMovements).

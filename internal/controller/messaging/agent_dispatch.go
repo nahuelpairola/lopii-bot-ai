@@ -227,8 +227,10 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 	// silencio, se deja en la cola y falla ruidoso. Un CREATE se saltea el
 	// chequeo porque no tiene candidatos — lo que viaja es el seed a medio
 	// resolver.
+	// Una corrección en lote no tiene candidato elegido —el cambio va sobre
+	// todos— así que Chosen se queda en -1 y chosenCandidate lo rechazaría.
 	var chosen candidateGroup
-	if action.Tool != orchestrator.ToolRecordMovements {
+	if action.Tool != orchestrator.ToolRecordMovements && !isBatchCorrection(payload) {
 		var err error
 		if chosen, err = chosenCandidate(payload); err != nil {
 			return err
@@ -259,6 +261,13 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		}
 		return c.startFlow(ctx, b, chatID, userID, flow, seed, "drain: start "+flow)
 	case orchestrator.ToolCorrectMovement:
+		if len(payload.Changes) > 0 {
+			groups := []candidateGroup{chosen}
+			if isBatchCorrection(payload) {
+				groups = payload.Candidates
+			}
+			return c.applyStructuredCorrection(ctx, b, chatID, userID, payload, groups)
+		}
 		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer})
 	case orchestrator.ToolDeleteMovements:
 		seed := conversation.Data{

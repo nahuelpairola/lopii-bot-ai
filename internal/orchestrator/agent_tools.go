@@ -188,7 +188,17 @@ func AgentTools() []AgentTool {
 			Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"change": {"type": "string", "description": "qué hay que cambiar, en palabras del usuario"}
+				"change": {"type": "string", "description": "qué hay que cambiar, en palabras del usuario"},
+				"scope": {"type": ["string", "null"], "enum": ["one", "all", null], "description": "'all' si el pedido abarca TODOS los movimientos que nombra (\"los movimientos del lote\", \"todos los de Carrefour\"); default 'one'"},
+				"changes": {"type": ["array", "null"], "description": "el cambio en campos, cuando se puede expresar así. NO repitas el movimiento entero: sólo lo que cambia. La cuenta la hace la app — para \"sumale 1070\" mandá op=add value=1070, no el total.", "items": {
+					"type": "object",
+					"properties": {
+						"field": {"type": "string", "enum": ["category", "account", "date", "amount", "currency", "description", "type"]},
+						"op": {"type": "string", "enum": ["set", "add", "subtract", "multiply"], "description": "aritmética SÓLO para amount; el resto siempre set"},
+						"value": {"type": "string"}
+					},
+					"required": ["field", "op", "value"]
+				}}
 			},
 			"required": ["change"]
 		}`),

@@ -70,6 +70,11 @@ type agentPayload struct {
 	// texto original pegado adelante ("el café estaba mal 2000") y así no
 	// parsea; el atajo del monto necesita el "2000" solo.
 	ChangeAnswer string `json:"change_answer,omitempty"`
+	// Scope y Changes son la corrección ESTRUCTURADA: el modelo emite un diff
+	// (campo, operación, valor) y la app lo aplica. Con Changes cargado el camino
+	// de corrección NO vuelve a llamar al modelo — no hay nada que interpretar.
+	Scope   string             `json:"scope,omitempty"`
+	Changes []correctionChange `json:"changes,omitempty"`
 }
 
 // agentExecutor es el closure `execute` que Run llama por cada tool call.
@@ -167,16 +172,21 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 	switch name {
 	case orchestrator.ToolCorrectMovement:
 		var a struct {
-			Change string `json:"change"`
+			Change  string             `json:"change"`
+			Scope   string             `json:"scope"`
+			Changes []correctionChange `json:"changes"`
 		}
 		// Un argumento ilegible no puede tumbar el turno: el pedido igual se
 		// entiende por el nombre de la tool, y el candidato sale del texto.
 		_ = json.Unmarshal(args, &a)
-		return e.park(orchestrator.ToolCorrectMovement, a.Change, msgPickUpdateCandidate(nil))
+		return e.park(parkRequest{
+			tool: orchestrator.ToolCorrectMovement, change: a.Change,
+			question: msgPickUpdateCandidate(nil), scope: a.Scope, changes: a.Changes,
+		})
 	case orchestrator.ToolRecordMovements:
 		return e.record(args)
 	case orchestrator.ToolDeleteMovements:
-		return e.park(orchestrator.ToolDeleteMovements, "", msgPickDeleteCandidate(nil))
+		return e.park(parkRequest{tool: orchestrator.ToolDeleteMovements, question: msgPickDeleteCandidate(nil)})
 	case orchestrator.ToolAnswerQuery:
 		// Sin argumentos: la app pasa el texto ORIGINAL. QUERY se queda en su
 		// propio loop y su propio modelo a propósito — el techo de Groq es por
@@ -320,7 +330,21 @@ func (e *agentExecutor) classify(movements []orchestrator.MovementDraft) {
 // pregunta de cuál; ninguno → no se parkea nada y sale la copy de "no encontré".
 // En los tres casos el texto que ve el usuario lo escribe la app, así que pedirle
 // al modelo que lo narre es una vuelta entera de prompt tirada.
-func (e *agentExecutor) park(tool, change, question string) (string, error) {
+// parkRequest son los datos de un parkeo. Es un struct y no seis parámetros
+// sueltos porque cuatro de los seis son strings: invertir dos en una llamada
+// compila igual y manda la copy del picker como el cambio pedido.
+type parkRequest struct {
+	tool     string
+	change   string
+	question string
+	// scope y changes sólo los usa correct_movement. scopeAll pide que el cambio
+	// caiga sobre TODOS los candidatos, no sobre uno elegido.
+	scope   string
+	changes []correctionChange
+}
+
+func (e *agentExecutor) park(req parkRequest) (string, error) {
+	tool, change, question := req.tool, req.change, req.question
 	groups, err := e.c.resolveCandidates(e.userID, e.userText, "", "")
 	if err != nil {
 		return "", fmt.Errorf("%s: resolve candidates: %w", tool, err)
@@ -339,17 +363,43 @@ func (e *agentExecutor) park(tool, change, question string) (string, error) {
 		options = append(options, candidateLabel(g))
 	}
 
-	action := parkedAction{Tool: tool, Payload: agentPayload{Change: change, Candidates: candidates, Chosen: -1}}
-	if len(candidates) == 1 {
+	action := parkedAction{Tool: tool, Payload: agentPayload{
+		Change: change, Candidates: candidates, Chosen: -1,
+		Scope: req.scope, Changes: req.changes,
+	}}
+	switch {
+	case len(candidates) == 1:
 		// Un solo candidato es el camino de hoy: se confirma, no se pregunta.
 		action.Payload.Chosen = 0
-	} else {
+	case isBatchCorrection(action.Payload):
+		// El cambio cae sobre TODOS los candidatos, así que no hay cuál
+		// preguntar y Chosen se queda en -1. Es el caso guía del 2026-08-10
+		// ("mové los movimientos del lote a proyecto hogar"): con el picker el
+		// usuario elegía uno y los otros dos se quedaban donde estaban.
+	default:
 		action.Questions = []pendingaction.OpenQuestion{{
 			Key: questionKeyCandidate, Prompt: question, Options: options,
 		}}
 	}
 	e.parked = append(e.parked, action)
 	return resultParked, orchestrator.ErrAgentTurnDone
+}
+
+// isBatchCorrection dice si el cambio cae sobre TODOS los candidatos en vez de
+// sobre uno elegido. Dos condiciones, y ninguna es de adorno:
+//
+//   - scope=all, o sea el modelo leyó un pedido en plural;
+//   - un cambio ESTRUCTURADO. Sin él la corrección la resuelve el modelo
+//     devolviendo las filas ya corregidas, y pedirle ocho filas enteras para
+//     tocar un campo es donde corrompe datos en silencio. Un pedido en plural
+//     sin `changes` vuelve al picker: corregir de a uno es peor que hoy, pero no
+//     rompe nada.
+//
+// Los grupos NO se fusionan: las guardas de conjunto (applyChangesToSet) miran
+// cuántos son, y un lote aplanado a un grupo se les escaparía — "poné todos en
+// 1500" dejaría de ser ambiguo justo cuando más lo es.
+func isBatchCorrection(p agentPayload) bool {
+	return p.Scope == scopeAll && len(p.Changes) > 0 && len(p.Candidates) > 1
 }
 
 // parkCreate deja el CREATE incompleto en la cola. No inserta NADA: la regla es

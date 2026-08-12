@@ -22,6 +22,7 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
+	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -100,6 +101,8 @@ func newConversationHarness(t *testing.T) *convHarness {
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&movement.Movement{})
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&account.Account{})
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&pendingaction.PendingAction{})
+		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&reminder.Reminder{})
+		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&subcategory.Subcategory{})
 		conn.DB.Unscoped().Exec("DELETE FROM conversation_states WHERE user_id = ?", uid)
 		conn.DB.Unscoped().Where("id = ?", uid).Delete(&user.User{})
 	})
@@ -160,6 +163,7 @@ func newConversationHarness(t *testing.T) *convHarness {
 		movements:     movRepo,
 		subcategories: cache,
 		actions:       pendingaction.NewRepository(conn),
+		reminders:     reminder.NewRepository(conn),
 		metrics:       &fakeMetricRepo{},
 		chatHistory:   stubChatHistory{},
 	}

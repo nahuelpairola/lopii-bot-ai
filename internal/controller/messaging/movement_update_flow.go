@@ -418,6 +418,97 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 // already-resolved UpdateResult (never calls the orchestrator itself)
 // and starts it. Called by proceedToUpdateConfirm once Call 2 UPDATE
 // resolves.
+// userTaxonomy carga los pares de la taxonomía del usuario. Un error devuelve
+// nil a propósito: sin con qué comparar no se inventan gaps.
+func (c *controller) userTaxonomy(userID uint64) []orchestrator.TaxonomyEntry {
+	subs, err := c.subcategories.FindAllForUser(userID)
+	if err != nil {
+		return nil
+	}
+	taxonomy := make([]orchestrator.TaxonomyEntry, 0, len(subs))
+	for _, s := range subs {
+		taxonomy = append(taxonomy, orchestrator.TaxonomyEntry{Category: s.Category, Subcategory: s.Subcategory})
+	}
+	return taxonomy
+}
+
+// applyStructuredCorrection aplica una corrección que ya viene en campos, SIN
+// volver a llamar al modelo.
+//
+// Es el camino corto y es el bueno: el modelo ya dijo qué cambiar cuando eligió
+// la tool, así que una segunda llamada sólo le daría la oportunidad de tocar de
+// paso algo que nadie le pidió — que es literalmente lo que pasó con "el café
+// estaba mal" (traza 317df846). El gate de confirmación NO se saltea: el usuario
+// ve el antes/después igual.
+func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, payload agentPayload, groups []candidateGroup) error {
+	before := make([][]movementRow, 0, len(groups))
+	var oldIDs []string
+	for _, g := range groups {
+		before = append(before, g.Rows)
+		oldIDs = append(oldIDs, g.OldIDs...)
+	}
+
+	// Las guardas de conjunto necesitan los grupos separados y lo que el mensaje
+	// nombró. NamedAccount sale de la app, no del modelo: es un dato, no una
+	// interpretación.
+	after, err := applyChangesToSet(before, payload.Changes, guardContext{
+		Scope:        payload.Scope,
+		NamedAccount: c.accountNamedIn(userID, payload.Change),
+	})
+	if err != nil {
+		// Un cambio imposible (un reintegro más grande que la compra, "poné todos
+		// en 1500", un valor ilegible) se le dice al usuario. Aplicarlo a medias
+		// sería peor: un lote donde algunos cambiaron y otros no, sin manera de
+		// saber cuáles.
+		slog.WarnContext(ctx, "structured correction rejected", "user_id", userID, "err", err)
+		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
+		c.sendText(ctx, b, chatID, msgStillCannotCorrect)
+		return nil
+	}
+
+	// El usuario nombra UNA cosa ("proyecto hogar") y la taxonomía guarda DOS.
+	// applyChange deja la subcategoría vacía justamente para que el par se
+	// resuelva acá, que es donde hay taxonomía. Lo que no se resuelve queda como
+	// gap y lo pregunta el gap-fill.
+	taxonomy := c.userTaxonomy(userID)
+	beforeRows := make([]movementRow, 0, len(oldIDs))
+	for _, g := range before {
+		beforeRows = append(beforeRows, g...)
+	}
+	drafts := make([]orchestrator.MovementDraft, 0, len(beforeRows))
+	for _, g := range after {
+		for _, r := range g {
+			if r.Subcategory == "" {
+				if cat, sub, ok := resolveTaxonomyPair(r.Category, taxonomy); ok {
+					r.Category, r.Subcategory = cat, sub
+				}
+			}
+			drafts = append(drafts, rowToDraft(r))
+		}
+	}
+
+	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, payload.Change, oldIDs, beforeRows,
+		orchestrator.UpdateResult{Resolved: true, Movements: drafts})
+}
+
+// accountNamedIn devuelve el nombre de la cuenta del usuario que aparece en el
+// mensaje, o "" si no nombró ninguna. Es lo que separa un reintegro a la misma
+// cuenta de uno que entró en otra — restar el segundo del gasto original deja
+// DOS saldos mal.
+func (c *controller) accountNamedIn(userID uint64, message string) string {
+	accs, err := c.accounts.FindByUserID(userID)
+	if err != nil {
+		return ""
+	}
+	folded := foldAccents(strings.ToLower(message))
+	for _, a := range accs {
+		if strings.Contains(folded, foldAccents(strings.ToLower(a.Name))) {
+			return a.Name
+		}
+	}
+	return ""
+}
+
 func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, userMessage string, oldIDs []string, beforeRows []movementRow, result orchestrator.UpdateResult) error {
 	accs, _ := c.accounts.FindByUserID(userID)
 	nameByID := make(map[string]string, len(accs))
@@ -440,13 +531,7 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	// La taxonomía del usuario, para validar el par igual que CREATE. Si no
 	// carga, taxonomy queda vacía y categoryGapsFor no inventa gaps — degradar a
 	// "no valido" es correcto; degradar a "borro el movimiento" no lo era.
-	var taxonomy []orchestrator.TaxonomyEntry
-	if subs, err := c.subcategories.FindAllForUser(userID); err == nil {
-		taxonomy = make([]orchestrator.TaxonomyEntry, 0, len(subs))
-		for _, s := range subs {
-			taxonomy = append(taxonomy, orchestrator.TaxonomyEntry{Category: s.Category, Subcategory: s.Subcategory})
-		}
-	}
+	taxonomy := c.userTaxonomy(userID)
 
 	// Paridad con CREATE, y era un bug VIVO: acá iba encodeStringSlice(nil)
 	// hardcodeado, así que una corrección que nombraba una categoría inexistente

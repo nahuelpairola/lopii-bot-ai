@@ -34,9 +34,9 @@ const (
 // correctionChange es un cambio a un campo. Value viaja SIEMPRE como string:
 // conversation.Data round-trippea por JSONB y un número vuelve float64.
 type correctionChange struct {
-	Field changeField
-	Op    changeOp
-	Value string
+	Field changeField `json:"field"`
+	Op    changeOp    `json:"op"`
+	Value string      `json:"value"`
 }
 
 var (

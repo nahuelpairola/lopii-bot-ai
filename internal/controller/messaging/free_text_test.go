@@ -38,6 +38,11 @@ type fakeFullOrchestrator struct {
 	classifyPairs       []orchestrator.Pair
 	runFn               func(execute func(string, json.RawMessage) (string, error)) (string, error)
 	runCalled           bool
+	// queryRunFn deja que el test maneje el loop de QUERY igual que runFn maneja
+	// el unificado: recibe el executor REAL, así que las tools de lectura corren
+	// contra la base. Sin esto, AnswerQuery devuelve una respuesta fija y el test
+	// no toca ni un dato.
+	queryRunFn func(execute func(string, json.RawMessage) (string, error)) (string, error)
 }
 
 func (o *fakeFullOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
@@ -53,6 +58,9 @@ func (o *fakeFullOrchestrator) ClassifyOnboarding(ctx context.Context, text stri
 	return o.onboardingResult, o.onboardingErr
 }
 func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
+	if o.queryRunFn != nil {
+		return o.queryRunFn(execute)
+	}
 	return o.queryAnswer, o.queryErr
 }
 
