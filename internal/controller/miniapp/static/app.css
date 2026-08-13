@@ -267,7 +267,15 @@ a, button, .tab-link {
 /* El título trunca en una línea: un comercio de nombre largo no puede empujar
    el monto fuera de la pantalla. */
 .mov-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mov-meta { font-size: 0.8rem; color: var(--pico-muted-color); }
+/* El meta lleva fecha + "Categoría › Subcategoría", que puede ser largo: trunca
+   igual que el título para no empujar el monto fuera de la pantalla. */
+.mov-meta {
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .mov-amount { flex: none; white-space: nowrap; }
 
 /* Apertura y cierre: el par que hace que la lista cierre contra el saldo. */

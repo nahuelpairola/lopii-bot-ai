@@ -220,17 +220,34 @@ func movementRows(movs []movement.Movement, cur currency.Currency) []templates.M
 		if m.Subcategory != nil {
 			subName, category = m.Subcategory.Subcategory, m.Subcategory.Category
 		}
-		note := ""
-		if category == constants.PendingReview {
-			note = msgUnclassified
-		}
+		title := templates.RowTitle(m.Description, subName)
 		rows = append(rows, templates.MovementRow{
 			Icon:   movement.IconForType(m.Type),
-			Title:  templates.RowTitle(m.Description, subName),
+			Title:  title,
 			Date:   templates.RowDate(m.Date),
-			Note:   note,
+			Note:   taxonomyNote(category, subName, title),
 			Amount: templates.FormatMoney(m.Amount, cur),
 		})
 	}
 	return rows
+}
+
+// taxonomyNote es el "de qué fue" que acompaña a la fecha. En la hoja de una
+// CUENTA cada fila cae en una categoría distinta, así que el par identifica el
+// gasto tanto como su descripción — al revés que en la hoja de una
+// subcategoría, donde el par sería el mismo en las 50 filas y no informa nada.
+//
+// Se omite cuando el título ya ES la subcategoría (un movimiento sin
+// descripción), porque repetirla al lado no agrega nada.
+func taxonomyNote(category, subcategory, title string) string {
+	if category == constants.PendingReview {
+		return msgUnclassified
+	}
+	if subcategory == "" || subcategory == title {
+		return category
+	}
+	if category == "" {
+		return subcategory
+	}
+	return category + " › " + subcategory
 }

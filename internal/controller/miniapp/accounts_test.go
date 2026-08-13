@@ -218,3 +218,26 @@ func TestHandleAccountLeaf_SurvivesNilSubcategory(t *testing.T) {
 		t.Error("esa fila tiene que rendir con el título genérico")
 	}
 }
+
+func TestTaxonomyNote(t *testing.T) {
+	cases := []struct {
+		name        string
+		category    string
+		subcategory string
+		title       string
+		want        string
+	}{
+		{"el par completo", "Alimentación", "Supermercado", "Coto", "Alimentación › Supermercado"},
+		{"sin clasificar gana sobre todo lo demás", constants.PendingReview, "algo", "Coto", msgUnclassified},
+		{"no repite la subcategoría cuando ya es el título", "Alimentación", "Supermercado", "Supermercado", "Alimentación"},
+		{"sin subcategoría queda la categoría", "Alimentación", "", "Coto", "Alimentación"},
+		{"sin taxonomía no inventa nada", "", "", "Coto", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := taxonomyNote(c.category, c.subcategory, c.title); got != c.want {
+				t.Errorf("taxonomyNote = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
