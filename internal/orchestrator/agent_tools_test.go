@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -126,6 +127,40 @@ func TestAgentTools_ReadToolsKeepTheirQuerySchemas(t *testing.T) {
 				t.Errorf("%s required = %v, want %v", tool.Name, schema.Required, want)
 				break
 			}
+		}
+	}
+}
+
+// El `When` de correct_movement tiene que anunciar TODO lo que la tool sabe
+// hacer. Su schema acepta siete campos, pero durante la etapa 5 la descripción
+// sólo hablaba de plata (reemplazo, reintegro, incremento) — así que ante "El
+// peaje ponelo en banco galicia" el modelo eligió ask_rewrite y pidió el monto,
+// leyendo una RE-UBICACIÓN como un movimiento nuevo. Medido en vivo el
+// 2026-08-12, y explica un unclear del 10/08 con el mismo verbo.
+//
+// Una tool que sabe hacer algo y no lo dice es una tool que no lo hace.
+func TestCorrectMovement_WhenAnnouncesEveryFieldItAccepts(t *testing.T) {
+	var when, params string
+	for _, tool := range AgentTools() {
+		if tool.Name == ToolCorrectMovement {
+			when, params = tool.When, string(tool.Parameters)
+		}
+	}
+	if when == "" {
+		t.Fatal("correct_movement no está en el toolbox")
+	}
+	// Los campos que el schema acepta y que NO son el monto: si el schema los
+	// toma, el When los tiene que nombrar de alguna forma.
+	for campo, palabra := range map[string]string{
+		"category": "categoría",
+		"account":  "cuenta",
+		"date":     "fecha",
+	} {
+		if !strings.Contains(params, `"`+campo+`"`) {
+			t.Errorf("el schema perdió el campo %q", campo)
+		}
+		if !strings.Contains(strings.ToLower(when), palabra) {
+			t.Errorf("el When no menciona %q: el modelo no va a mapearle ese pedido", palabra)
 		}
 	}
 }
