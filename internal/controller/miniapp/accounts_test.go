@@ -3,18 +3,28 @@ package miniapp
 import (
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
+	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 )
 
 type stubMovementsWithAccounts struct {
 	stubMovements
 	balances map[uint64]decimal.Decimal
 	deltas   map[uint64][]movement.MonthlyDelta
+	// movements es lo que devuelve ListForAccount: las filas de la hoja.
+	movements []movement.Movement
+}
+
+func (s stubMovementsWithAccounts) ListForAccount(accountID uint64, from, to time.Time, limit int) ([]movement.Movement, error) {
+	return s.movements, nil
 }
 
 func (s stubMovementsWithAccounts) SumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
@@ -88,5 +98,123 @@ func TestHandleAccounts_RendersBalances(t *testing.T) {
 	}
 	if !bodyContains(w.Body.String(), "$50.000") {
 		t.Fatal("expected the account balance to render, AR-formatted")
+	}
+}
+
+func TestHandleAccountLeaf_ReconcilesBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	desc := "Compra de dólares"
+	accountID := uint64(1)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{1: decimal.NewFromInt(50000)},
+		deltas: map[uint64][]movement.MonthlyDelta{
+			// Lo de julio es el saldo con el que abre agosto.
+			1: {{Month: "2026-07", Delta: decimal.NewFromInt(80000)}, {Month: "2026-08", Delta: decimal.NewFromInt(-30000)}},
+		},
+		// A propósito la lista NO suma lo mismo que el delta del mes (-30.000):
+		// simula el corte del tope. Si el cierre se calculara sumando las filas
+		// visibles daría $70.000, y este test lo caza.
+		movements: []movement.Movement{{
+			AccountID: &accountID, Date: time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC),
+			Type: movement.Transfer, Amount: decimal.NewFromInt(-10000), Currency: currency.ARS,
+			Description: &desc,
+		}},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&m=2026-08&c=ARS&account=1"))
+	body := w.Body.String()
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, body)
+	}
+	if !bodyContains(body, "$80.000") {
+		t.Errorf("el saldo de apertura es lo acumulado ANTES de la ventana:\n%s", body)
+	}
+	if !bodyContains(body, "$50.000") {
+		t.Errorf("el cierre es apertura + el acumulado del período (80.000-30.000), nunca la suma de las filas visibles:\n%s", body)
+	}
+	if bodyContains(body, "$70.000") {
+		t.Error("el cierre se calculó sumando las filas listadas: con el tope de filas eso da mal")
+	}
+	if !bodyContains(body, "Compra de dólares") {
+		t.Errorf("una compra de USD tiene que aparecer, es lo que apply escondía:\n%s", body)
+	}
+}
+
+func TestHandleAccountLeaf_RejectsAnotherUsersAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{},
+		deltas:   map[uint64][]movement.MonthlyDelta{},
+	}
+	// stubAccountsWithData sólo devuelve la cuenta 1.
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?account=99"))
+
+	if w.Code != 404 {
+		t.Fatalf("una cuenta que no es del usuario tiene que dar 404, dio %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleAccountLeaf_LabelsUnclassified(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	accountID := uint64(1)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{1: decimal.Zero},
+		deltas:   map[uint64][]movement.MonthlyDelta{1: {}},
+		movements: []movement.Movement{{
+			AccountID: &accountID, Date: time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1500), Currency: currency.ARS,
+			Subcategory: &subcategory.Subcategory{Category: constants.PendingReview, Subcategory: "algo"},
+		}},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&m=2026-08&c=ARS&account=1"))
+	body := w.Body.String()
+
+	if !bodyContains(body, "Sin clasificar") {
+		t.Errorf("un movimiento sin clasificar mueve el saldo: hay que mostrarlo como tal:\n%s", body)
+	}
+	if bodyContains(body, constants.PendingReview) {
+		t.Errorf("PENDING_REVIEW es jerga interna, no puede llegar a la pantalla:\n%s", body)
+	}
+}
+
+func TestHandleAccountLeaf_SurvivesNilSubcategory(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	accountID := uint64(1)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{1: decimal.Zero},
+		deltas:   map[uint64][]movement.MonthlyDelta{1: {}},
+		movements: []movement.Movement{{
+			AccountID: &accountID, Date: time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1500), Currency: currency.ARS,
+			// Sin Description y sin Subcategory: los dos son punteros.
+		}},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&m=2026-08&c=ARS&account=1"))
+
+	if w.Code != 200 {
+		t.Fatalf("una fila sin descripción ni subcategoría no puede tumbar la vista, dio %d", w.Code)
+	}
+	if !bodyContains(w.Body.String(), templates.RowFallbackTitle) {
+		t.Error("esa fila tiene que rendir con el título genérico")
 	}
 }
