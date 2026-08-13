@@ -103,6 +103,24 @@ type queryToolArgs struct {
 	Limit       int    `json:"limit"`
 }
 
+// msgQueryNoRows es lo que ve el MODELO cuando una consulta no devuelve filas —no el
+// usuario—, y por eso vive acá y no en messages.go.
+//
+// Decía "Sin movimientos en ese rango." y esa frase mezcla dos hechos que el modelo
+// necesita distinguir: que no hubo gastos, y que el filtro no matcheó nada. El
+// 2026-08-13 el modelo eligió la lectura equivocada — ante un list_movements con
+// category="lote" (que no es una categoría: "lote" está en la DESCRIPCIÓN de tres
+// gastos de Vivienda) contestó "No tenés registros de gastos en la categoría Lote. El
+// total gastado es $0 ARS", sobre $30.343,74 reales.
+//
+// La salida es avisar, no validar. Chequear el filtro contra la taxonomía antes de
+// consultar es más código, cambia el comportamiento y hay que elegir entre dos métodos
+// con semántica distinta — todo antes de saber si este aviso alcanza. El eval de
+// filtro inexistente es el que decide si hace falta.
+const msgQueryNoRows = "sin resultados para esos filtros. OJO: un filtro que no existe " +
+	"(una categoría o cuenta mal escrita) también da cero. Antes de afirmar que no hubo " +
+	"gastos, verificá los nombres con list_categories."
+
 // handleQuery answers a read-only question via the agent loop. Returns
 // (answered, err): answered=false significa que el loop no produjo respuesta.
 //
@@ -236,7 +254,7 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 		return "", err
 	}
 	if len(rows) == 0 {
-		return "Sin movimientos en ese rango.", nil
+		return msgQueryNoRows, nil
 	}
 	cur := q.Currency.String()
 	if groupBy == "" || groupBy == "none" {
@@ -276,7 +294,7 @@ func (c *controller) execListMovements(userID uint64, args queryToolArgs) (strin
 		return "", err
 	}
 	if len(ms) == 0 {
-		return "Sin movimientos en ese rango.", nil
+		return msgQueryNoRows, nil
 	}
 	var lines []string
 	for _, m := range ms {

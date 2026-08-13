@@ -359,6 +359,33 @@ func TestExec_SumMovements_DefaultsCurrencyARS(t *testing.T) {
 	}
 }
 
+// Regresión del 2026-08-13: ante `list_movements(category="lote")` —donde "lote" no es
+// una categoría sino una palabra en la descripción de tres gastos de Vivienda— el
+// ejecutor devolvía "Sin movimientos en ese rango." y el modelo narró "No tenés
+// registros de gastos en la categoría Lote. El total gastado es $0 ARS". Eran $30.343,74.
+//
+// Cero filas y cero gastos son hechos distintos, y el mensaje viejo no los distinguía.
+// El nuevo no valida el filtro: le avisa al modelo que un nombre mal escrito también da
+// cero y le nombra la tool con la que puede verificarlo.
+func TestExec_NoRows_DoesNotAssertThereWereNoExpenses(t *testing.T) {
+	m := &fakeQueryMovements{} // sin filas: ni sumRows ni listRows
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	for _, tool := range []string{"sum_movements", "list_movements"} {
+		out, err := exec(tool, json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","category":"lote"}`))
+		if err != nil {
+			t.Fatalf("%s: %v", tool, err)
+		}
+		if !strings.Contains(out, "list_categories") {
+			t.Errorf("%s: el vacío tiene que mandar al modelo a verificar los nombres, got: %s", tool, out)
+		}
+		// "Sin movimientos" afirma el hecho que justamente no se sabe.
+		if strings.Contains(out, "Sin movimientos") {
+			t.Errorf("%s: el vacío no puede afirmar que no hubo movimientos, got: %s", tool, out)
+		}
+	}
+}
+
 func TestExec_UnknownTool(t *testing.T) {
 	exec := newQueryController(&fakeQueryMovements{}, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 	if _, err := exec("nope", json.RawMessage(`{}`)); err == nil {
