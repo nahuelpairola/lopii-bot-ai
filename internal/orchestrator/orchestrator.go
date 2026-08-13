@@ -9,14 +9,13 @@ import "time"
 type Config struct {
 	APIKey      string
 	BaseURL     string
-	RouterModel string
 	CreateModel string
 	UpdateModel string
-	DeleteModel string
 	QueryModel  string
-	// AgentModel is the model behind Run — the unified agent loop. A sixth
-	// field, not a replacement: the five per-call-type models keep serving the
-	// old path until stage 5 deletes it.
+	// AgentModel is the model behind Run — the unified agent loop, and since
+	// stage 5 the only path a free-text message takes. CreateModel and
+	// UpdateModel outlived the router: they still serve the wizard-side calls
+	// (onboarding, category create, account manage), not a second router.
 	AgentModel string
 	// ClassifierModel es el modelo de la clasificación de categorías, que sale
 	// del loop en la etapa 5. Va aparte a propósito: el techo de TPM de Groq es
@@ -35,14 +34,14 @@ type Config struct {
 	Recorder            LLMRecorder // nil-safe
 }
 
-// Orchestrator wires the Groq client to the call types (router, create,
-// update-resolve, delete-resolve, query), each with its own model.
+// Orchestrator wires the Groq client to the call types that remain after stage
+// 5 deleted the router: the agent loop (Run), the read-only query loop, the
+// category classifier, and the wizard-side create/update calls — each with its
+// own model, because Groq's rate limits are per model.
 type Orchestrator struct {
 	client          *Client
-	routerModel     string
 	createModel     string
 	updateModel     string
-	deleteModel     string
 	queryModel      string
 	agentModel      string
 	classifierModel string
@@ -52,10 +51,8 @@ type Orchestrator struct {
 func New(cfg Config) *Orchestrator {
 	return &Orchestrator{
 		client:          NewClient(cfg.APIKey, cfg.BaseURL, time.Duration(cfg.TimeoutSeconds)*time.Second, cfg.Recorder),
-		routerModel:     cfg.RouterModel,
 		createModel:     cfg.CreateModel,
 		updateModel:     cfg.UpdateModel,
-		deleteModel:     cfg.DeleteModel,
 		queryModel:      cfg.QueryModel,
 		agentModel:      cfg.AgentModel,
 		classifierModel: cfg.ClassifierModel,

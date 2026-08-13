@@ -14,9 +14,9 @@ import (
 
 // startAgentLoop resuelve un mensaje con el loop unificado.
 //
-// En esta etapa lo alcanzan sólo UPDATE y DELETE. El router sigue vivo y sigue
-// decidiendo qué intents llegan hasta acá: ese es el truco de las etapas, y es
-// lo que hace que esto se pueda bisectar. Los otros ocho casos no se tocan.
+// Desde la etapa 5 lo alcanza TODO: handleFreeText no hace otra cosa que llamar
+// acá. No hay router que filtre antes, así que este es el único lugar donde se
+// decide qué se hace con un mensaje, y lo decide el loop eligiendo herramienta.
 func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	// El loop tarda más que una sola llamada, y el silencio se lee como colgado.
 	c.sendTyping(ctx, b, chatID)

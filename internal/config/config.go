@@ -37,10 +37,8 @@ type server struct {
 type groq struct {
 	APIKey      string `mapstructure:"apiKey"`
 	BaseURL     string `mapstructure:"baseUrl"`
-	RouterModel string `mapstructure:"routerModel"`
 	CreateModel string `mapstructure:"createModel"`
 	UpdateModel string `mapstructure:"updateModel"`
-	DeleteModel string `mapstructure:"deleteModel"`
 	QueryModel  string `mapstructure:"queryModel"`
 	// AgentModel es el modelo del loop unificado (orchestrator.Run). Es un
 	// sexto campo, no un reemplazo: los cinco por tipo de llamada siguen
@@ -56,11 +54,6 @@ type groq struct {
 	// por minuto y medio. Cuál conviene lo decide el eval, no este default.
 	ClassifierModel string `mapstructure:"classifierModel"`
 	TimeoutSeconds  int    `mapstructure:"timeoutSeconds"`
-}
-
-// agent son los interruptores del loop unificado. Hoy uno solo: el que decide
-// si CREATE va por el loop o por el camino viejo.
-type agent struct {
 }
 
 type query struct {
@@ -83,7 +76,6 @@ type Config struct {
 	Database  database  `mapstructure:"database"`
 	Telegram  telegram  `mapstructure:"telegram"`
 	Groq      groq      `mapstructure:"groq"`
-	Agent     agent     `mapstructure:"agent"`
 	Query     query     `mapstructure:"query"`
 	Reminders reminders `mapstructure:"reminders"`
 	Log       logConfig `mapstructure:"log"`
@@ -101,9 +93,9 @@ func Initialize() (*Config, error) {
 	viper.SetDefault("Query.HistoryLimit", 5)
 	viper.SetDefault("Reminders.SweepIntervalMinutes", 5)
 	// Sin default, un entorno que no declare agentModel deja o.agentModel en ""
-	// y Groq responde 400 en cada llamada del loop. Hoy es inofensivo porque
-	// nadie llama a Run, pero desde la etapa 2 seria una mina para cualquier
-	// entorno nuevo.
+	// y Groq responde 400 en cada llamada del loop. Ya no hay camino alternativo:
+	// desde la etapa 5, Run es el ÚNICO, así que un entorno nuevo sin este valor
+	// no degrada, no arranca.
 	viper.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
 	// La cadena por default. Los tres soportan `tools` (verificado contra
 	// /v1/models) y están ordenados por precio: gpt-oss-20b es el más barato de

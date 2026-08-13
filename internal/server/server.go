@@ -126,10 +126,8 @@ func InitServer(conf *config.Config) error {
 	llmOrchestrator := orchestrator.New(orchestrator.Config{
 		APIKey:              conf.Groq.APIKey,
 		BaseURL:             conf.Groq.BaseURL,
-		RouterModel:         conf.Groq.RouterModel,
 		CreateModel:         conf.Groq.CreateModel,
 		UpdateModel:         conf.Groq.UpdateModel,
-		DeleteModel:         conf.Groq.DeleteModel,
 		QueryModel:          conf.Groq.QueryModel,
 		AgentModel:          conf.Groq.AgentModel,
 		AgentFallbackModels: conf.Groq.AgentFallbackModels,

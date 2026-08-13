@@ -1,6 +1,6 @@
 # internal/controller/messaging
 
-The Telegram surface: 43 files, 15 registered flows, 69 `Data` keys. **Use `codegraph_explore`
+The Telegram surface: 52 non-test files, 15 registered flows, 68 `Data` keys. **Use `codegraph_explore`
 for structure** — where something is, what calls it. This file is only for what reading the
 code will not tell you: rules that compile fine and then behave wrong.
 
@@ -46,12 +46,17 @@ categories. There is no guard anywhere in the repo. `movement_delete_flow.go:38`
 
 ## One entry point, one reference resolver
 
-`handleFreeText` runs the router (Call 1) and dispatches per intent. Two exceptions that do not
-open a flow: **QUERY** goes to the read-only loop in `query.go`, and **UPDATE, DELETE and
-CREATE** go to the unified loop via `startAgentLoop` (stages 2 and 3 of the agent migration).
-The router is still the gate that decides what reaches the loop — that is what makes each stage
-bisectable. CREATE's leg is behind `controller.routeCreateToLoop`; off, it returns to
-`startMovementCreate`.
+**There is no router.** `handleFreeText` is one line: every message without an open flow goes to
+`startAgentLoop`, and the loop picks one of its 7 tools. The ten-branch switch that used to live
+here is gone, and so are `orchestrator.ClassifyIntent`, `ClassifyCreate` and `ResolveDelete`.
+
+That is the whole point of stage 5, not a refactor: routing *first* meant one intent had to be
+guessed before anything could be done, and on 2026-08-10 a user asked for one thing — move a
+batch of movements to another category — six ways, and each phrasing landed somewhere that had
+no way to do it.
+
+The wizards did not go away; they are still the app-side UI. What changed is how you reach them:
+the loop **parks** into a flow when it needs an answer, instead of a router deciding up front.
 
 `record_movements` is the only tool that writes. Two rules hang off that:
 

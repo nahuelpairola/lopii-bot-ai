@@ -12,6 +12,15 @@
 --
 -- Los acentos no se pliegan: unaccent no está instalado, y el peor caso es una
 -- palabra repetida en una description, no un número mal.
+--
+-- NO lleva `deleted_at IS NULL`, a propósito: son 18 de las 96 filas con
+-- merchant (medido el 2026-08-13), y el DROP COLUMN de la release siguiente les
+-- borraría el merchant sin haberlo guardado en ningún lado. Plegarlas es lo que
+-- lo preserva. Es la lectura al revés de lo que parece: el filtro no protege
+-- esas filas, las vacía.
+--
+-- Idempotente: en una segunda corrida las filas ya plegadas caen en la rama del
+-- medio (la description ya contiene el merchant) y no se tocan.
 UPDATE movements
 SET description = CASE
   WHEN description IS NULL OR btrim(description) = ''        THEN merchant

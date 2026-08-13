@@ -58,7 +58,7 @@ func queueEvalOrchestrator(t *testing.T) orchestrator.Config {
 		model = "openai/gpt-oss-20b"
 	}
 	return orchestrator.Config{
-		APIKey: key, BaseURL: baseURL, RouterModel: model, CreateModel: model, TimeoutSeconds: 30,
+		APIKey: key, BaseURL: baseURL, CreateModel: model, TimeoutSeconds: 30,
 	}
 }
 
