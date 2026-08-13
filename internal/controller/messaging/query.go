@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/currency"
@@ -371,11 +372,11 @@ func (c *controller) buildMovementQuery(userID uint64, args queryToolArgs) (move
 		t := args.Type
 		q.Type = &t
 	}
-	if args.Category != "" {
-		q.Category = &args.Category
+	if cat := stripLeadingIcon(args.Category); cat != "" {
+		q.Category = &cat
 	}
-	if args.Subcategory != "" {
-		q.Subcategory = &args.Subcategory
+	if sub := stripLeadingIcon(args.Subcategory); sub != "" {
+		q.Subcategory = &sub
 	}
 	if args.Description != "" {
 		q.Description = &args.Description
@@ -409,6 +410,29 @@ func (c *controller) buildMovementQuery(userID uint64, args queryToolArgs) (move
 		}
 	}
 	return q, nil
+}
+
+// stripLeadingIcon saca el ícono que le antepusimos NOSOTROS al nombre de una
+// categoría antes de usarlo como filtro.
+//
+// list_categories y sum_movements(group_by=category) devuelven "🍔 Alimentación",
+// porque el prompt le pide al modelo que arranque la línea con el emoji. El modelo
+// aprende el nombre de esa salida y lo copia entero al filtro de la llamada
+// siguiente: el SQL compara contra "Alimentación" a secas, no matchea nada, y la
+// respuesta sale "$0" sobre gastos que existen. Visto en el eval del 2026-08-13.
+//
+// Va acá y no en cada productor de íconos porque este es el embudo: los dos filtros
+// de taxonomía de las dos tools pasan por buildMovementQuery.
+//
+// Corta hasta la primera letra o dígito, así un nombre real llega intacto —incluidos
+// los que tienen espacios y barras, como "Deudas / préstamos"—.
+func stripLeadingIcon(s string) string {
+	for i, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return strings.TrimSpace(s[i:])
+		}
+	}
+	return ""
 }
 
 func parseQueryDate(s string) (time.Time, error) {

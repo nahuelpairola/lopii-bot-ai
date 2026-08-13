@@ -424,6 +424,52 @@ func TestExec_UnknownAccount_FailsInsteadOfQueryingAllAccounts(t *testing.T) {
 	}
 }
 
+// El emoji que ponemos nosotros volvía adentro del filtro. list_categories y
+// sum_movements(group_by=category) anteponen el ícono al nombre —"🍔 Alimentación"—
+// porque el prompt le pide al modelo que arranque la línea con él. El modelo, que
+// aprende el nombre de ahí, lo copia entero al filtro siguiente, el SQL no matchea
+// nada y la respuesta es "$0".
+//
+// Encontrado por el eval el 2026-08-13: preguntando por tres subcategorías con
+// 5.000, 3.000 y 8.000 cargados, contestó "$0 / sin registros / $0". Es el mismo
+// daño que una cuenta inexistente, pero con el agravante de que el dato corrupto lo
+// generamos nosotros.
+//
+// Se limpia en buildMovementQuery, que es por donde pasan los dos filtros de
+// taxonomía de las dos tools, en vez de en cada productor de íconos.
+func TestBuildMovementQuery_StripsTheIconWeAddedFromTheFilter(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	_, err := exec("sum_movements", json.RawMessage(
+		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","category":"🍔 Alimentación","subcategory":"🧘 Gimnasio"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.lastQuery.Category == nil || *m.lastQuery.Category != "Alimentación" {
+		t.Errorf("category llegó al repo con el ícono adentro: %v", m.lastQuery.Category)
+	}
+	if m.lastQuery.Subcategory == nil || *m.lastQuery.Subcategory != "Gimnasio" {
+		t.Errorf("subcategory llegó al repo con el ícono adentro: %v", m.lastQuery.Subcategory)
+	}
+}
+
+// Un nombre real no se toca: hay categorías con espacios y barras ("Deudas /
+// préstamos") y no puede recortarse nada de eso.
+func TestBuildMovementQuery_LeavesARealNameAlone(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("1")}}}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	_, err := exec("sum_movements", json.RawMessage(
+		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","category":"Deudas / préstamos"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.lastQuery.Category == nil || *m.lastQuery.Category != "Deudas / préstamos" {
+		t.Errorf("un nombre sin ícono tiene que llegar intacto: %v", m.lastQuery.Category)
+	}
+}
+
 func TestExec_UnknownTool(t *testing.T) {
 	exec := newQueryController(&fakeQueryMovements{}, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 	if _, err := exec("nope", json.RawMessage(`{}`)); err == nil {
