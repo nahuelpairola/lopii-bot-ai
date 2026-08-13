@@ -10,9 +10,12 @@ type BarChartData struct {
 type CategoryRow struct {
 	Category string
 	Icon     string
-	Href     string // "" on the drill view — a subcategory has nothing below it
-	Total    string
-	Share    string
+	// Href es el nivel de abajo: la categoría lleva a sus subcategorías, y la
+	// subcategoría a los movimientos que la componen. Queda "" sólo si el
+	// handler no lo pobló.
+	Href  string
+	Total string
+	Share string
 }
 
 // CategoriesData renders both the top-level Categorías view and the
@@ -47,6 +50,39 @@ templ SubcategoryDrill(data CategoriesData) {
 		<canvas id="subcat-bars" data-chart-type="bar-single" data-chart-data-id="subcat-bars-data"></canvas>
 		@templ.JSONScript("subcat-bars-data", data.Chart)
 		@categoryTable(data, "Subcategoría")
+	}
+}
+
+// SubcategoryLeafData es la hoja de una subcategoría: los movimientos que
+// forman su total. Total es el de SumForUser sobre TODAS las filas, no la suma
+// de las listadas — es el mismo número de la fila que trajo al usuario acá, y
+// con el tope de filas los dos podrían no coincidir.
+type SubcategoryLeafData struct {
+	Period      Period
+	Category    string
+	Subcategory string
+	BackQuery   string
+	Rows        []MovementRow
+	Total       string
+	Capped      bool
+	Empty       bool
+}
+
+templ SubcategoryLeaf(data SubcategoryLeafData) {
+	@PeriodHeader(data.Period)
+	<h2>{ data.Subcategory }</h2>
+	<a href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a { data.Category }</a>
+	if data.Empty {
+		@EmptyState("Sin gastos en esta subcategoría.")
+	} else {
+		@movementList(data.Rows)
+		if data.Capped {
+			<p class="muted">{ MsgLeafCapped }</p>
+		}
+		<p class="balance-line">
+			<span>Total</span>
+			<span class="money">{ data.Total }</span>
+		</p>
 	}
 }
 

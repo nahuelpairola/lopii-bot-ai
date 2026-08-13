@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -27,6 +28,14 @@ func (s stubMovements) SumAmountForAccount(accountID uint64) (decimal.Decimal, e
 }
 
 func (s stubMovements) MonthlyDeltasForAccount(accountID uint64) ([]movement.MonthlyDelta, error) {
+	return nil, nil
+}
+
+func (s stubMovements) ListForAccount(accountID uint64, from, to time.Time, limit int) ([]movement.Movement, error) {
+	return nil, nil
+}
+
+func (s stubMovements) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
 	return nil, nil
 }
 

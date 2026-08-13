@@ -459,9 +459,7 @@ func (r *repository) SumForUser(q MovementQuery, groupBy string) ([]CategorySum,
 // is preloaded so callers can render category/subcategory names. Amounts are
 // stored signed; callers must render Amount.Abs().
 func (r *repository) ListForUser(q MovementQuery, limit int) ([]Movement, error) {
-	if limit <= 0 || limit > 50 {
-		limit = 20
-	}
+	limit = clampListLimit(limit)
 	var ms []Movement
 	db := r.db.DB.Model(&Movement{}).
 		Select("movements.*").
@@ -469,6 +467,53 @@ func (r *repository) ListForUser(q MovementQuery, limit int) ([]Movement, error)
 		Joins("JOIN subcategories s ON s.id = movements.subcategory_id")
 	db = q.apply(db)
 	err := db.Order("movements.date DESC, movements.id DESC").Limit(limit).Find(&ms).Error
+	return ms, err
+}
+
+// maxListLimit / defaultListLimit acotan cuántas filas devuelve un listado. Un
+// pedido fuera de rango cae al default en vez de errorear: estos listados
+// alimentan vistas, y una vista sin filas es peor que una vista con 20.
+const (
+	maxListLimit     = 50
+	defaultListLimit = 20
+)
+
+func clampListLimit(limit int) int {
+	if limit <= 0 || limit > maxListLimit {
+		return defaultListLimit
+	}
+	return limit
+}
+
+// ListForAccount devuelve TODOS los movimientos de una cuenta en la ventana,
+// más nuevo primero. A diferencia de ListForUser, NO pasa por
+// MovementQuery.apply: la hoja de cuenta de la Mini App necesita justo lo que
+// apply saca —transferencias y categorías reservadas— porque si no, la lista no
+// cierra contra el saldo que esa vista muestra arriba. Meterle un tercer estado
+// a los filtros de apply para servir a una vista arriesgaría a los otros cuatro
+// consumidores; SumAmountForAccount y MonthlyDeltasForAccount ya lo esquivan por
+// el mismo motivo.
+//
+// La ventana se bindea como STRING (ver el comentario de FindSimilarForUser):
+// `date` es una columna DATE, y pasarle un time.Time hace que Postgres la
+// castee con la timezone de la sesión y pierda las filas del día en curso.
+func (r *repository) ListForAccount(accountID uint64, from, to time.Time, limit int) ([]Movement, error) {
+	limit = clampListLimit(limit)
+	var ms []Movement
+	err := r.db.DB.Model(&Movement{}).
+		// Unscoped a propósito, y sólo para MOSTRAR: una subcategoría borrada
+		// sigue siendo el nombre correcto del movimiento que la usó, y un
+		// Preload normal la devuelve nil (GORM respeta el soft delete), con lo
+		// que una fila perfectamente identificable saldría como "Movimiento".
+		// Esto NO contradice la regla de "sólo filas vivas": esa regla es para
+		// ELEGIR una subcategoría —pickers, resolución de taxonomía—, donde
+		// ofrecer una borrada sí es un bug.
+		Preload("Subcategory", func(db *gorm.DB) *gorm.DB { return db.Unscoped() }).
+		Where("account_id = ?", accountID).
+		Where("date >= ? AND date <= ?", from.Format("2006-01-02"), to.Format("2006-01-02")).
+		Order("date DESC, id DESC").
+		Limit(limit).
+		Find(&ms).Error
 	return ms, err
 }
 

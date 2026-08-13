@@ -40,6 +40,40 @@ The tab also arrives *only* with Resumen. That is fine because the Telegram menu
 opens `EntryPath` (`/app/overview`), so every app open renders it — but a view that needs its own
 always-present chrome cannot get it this way.
 
+## The movement leaves end each drill, and only one of them may show everything
+
+Two views end in a list of individual movements: `Cuentas → cuenta` (`AccountLeaf`) and
+`Categorías → categoría → subcategoría` (`SubcategoryLeaf`). Both hang off the *existing*
+handler via a query param — there is no third route.
+
+They look alike and are deliberately not symmetric:
+
+| | Account leaf | Subcategory leaf |
+|---|---|---|
+| Source | `ListForAccount` — **bypasses `apply`** | `ListForUser` — goes through `apply` |
+| Shows | everything, transfers and reserved rows included | expenses only |
+| Amount | **signed** (direction is the point) | `Abs()`, like the rest of the app |
+| Row note | `Categoría › Subcategoría` | none — it would repeat on all 50 rows |
+| Footer | opening + closing balance | the period total |
+
+**Neither footer is the sum of the visible rows**, and that is the whole point: the list is
+capped at 50, so summing what is on screen would contradict the figure the user tapped to
+get here. Both come from an aggregate over *all* rows (`MonthlyDeltasForAccount` /
+`SumForUser`). Deriving them from `Rows` looks simpler and is wrong.
+
+Consequences worth knowing before touching either:
+
+- The account leaf is the **only place in the app where a transfer or a USD purchase is
+  visible at all** — `apply` filters `type = transfer` everywhere else. Routing it back
+  through `apply` silently empties it of exactly what it exists to show.
+- It is also the only place `PENDING_REVIEW` rows surface, rendered as "Sin clasificar".
+  That string never reaches the screen raw.
+- The account leaf parses **its own `Period`** (`AllPresets`/`PresetMonth`). The accounts
+  index uses `TrendPresets`, which omits "Mes" on purpose; a statement is read by month.
+- Period chips inside a leaf drop the `?account=`/`?subcategory=` param and land back on the
+  index, because `p.Query()` carries no extra params. `SubcategoryDrill` has always behaved
+  this way. Fixing it means changing `Period`, which all four views share.
+
 ## Two smaller traps
 
 - `categoryParam` is a **query param, not a path segment**, because category names contain

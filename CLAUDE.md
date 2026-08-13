@@ -33,7 +33,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `invitation` | Model + repository: `Create` (generates random code), `FindByCode`, `MarkAsUsed`, `List` (newest 50, for the admin view) |
 | `account` | Model + full repository + messages for flows |
 | `subcategory` | Model + repository + messages for flows |
-| `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates) + **the guard** (`guard.go`: `Normalize`, `AssignTransactionIDs`, `CheckBalances`, the `Err*` sentinels) — the money invariants live next to the type they protect, and are pure: they never touch the DB |
+| `movement` | Model + repository (incl. `SumForUser`/`ListForUser` read-only QUERY aggregates, and `ListForAccount`, the one listing that deliberately bypasses `MovementQuery.apply`) + **the guard** (`guard.go`: `Normalize`, `AssignTransactionIDs`, `CheckBalances`, the `Err*` sentinels) — the money invariants live next to the type they protect, and are pure: they never touch the DB |
 | `metric` | Model + repository: `Log`, `Resolve` — LLM accuracy metrics (`intent_events` table) |
 | `middleware` | `RequireAdmin(adminID)` |
 | `conversation` | Engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, `repository` |
@@ -51,7 +51,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `controller/health` | HTTP: `/health/internal`, `/health/external` |
 | `controller/admin` | HTTP: `POST /admin/users/:telegramID/reset` (admin-only) |
 | `controller/messaging` | Telegram: `/start`, catch-all for free text and callbacks |
-| `controller/miniapp` | Telegram Mini App: templ-rendered HTML views (overview, accounts, categories, period, evolution, admin) + `auth.go` initData validation and the `requireAdmin` gate |
+| `controller/miniapp` | Telegram Mini App: templ-rendered HTML views (overview, accounts, categories, period, evolution, admin) + the two **movement leaves** that end each drill (`AccountLeaf`, `SubcategoryLeaf`) + `auth.go` initData validation and the `requireAdmin` gate |
 | `server` | Bootstrap: DB, migrations, bot, webhook, controllers, Gin |
 
 ## 2. Conventions

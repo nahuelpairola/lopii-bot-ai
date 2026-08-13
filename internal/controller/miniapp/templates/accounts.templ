@@ -9,6 +9,10 @@ type AccountSnapshot struct {
 	// none. Default is per currency and the view is already filtered to one,
 	// so at most one card wears the star.
 	IsDefault bool
+	// Href es la hoja de esta cuenta: la lista de movimientos que explican el
+	// saldo de arriba. La arma el handler, que es el que tiene el Period; el
+	// template no debería saber construir una query string.
+	Href string
 }
 
 type AccountsData struct {
@@ -28,18 +32,62 @@ templ Accounts(data AccountsData) {
 		<p class="muted">Saldo hoy</p>
 		<div class="grid">
 			for _, a := range data.Snapshots {
-				<article>
-					<p>
-						{ a.Name }
-						if a.IsDefault {
-							<span class="default-star" role="img" aria-label="Cuenta por defecto">★</span>
-						}
-					</p>
-					<p class="money">{ a.Balance }</p>
-				</article>
+				<a class="account-card" href={ templ.SafeURL(a.Href) } hx-get={ a.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">
+					<article>
+						<p>
+							{ a.Name }
+							if a.IsDefault {
+								<span class="default-star" role="img" aria-label="Cuenta por defecto">★</span>
+							}
+						</p>
+						<p class="money">{ a.Balance }</p>
+					</article>
+				</a>
 			}
 		</div>
 		<canvas id="cuentas-trend" data-chart-type="line-multi" data-chart-data-id="cuentas-trend-data"></canvas>
 		@templ.JSONScript("cuentas-trend-data", data.TrendChart)
+	}
+}
+
+// MsgLeafCapped avisa que la lista quedó cortada. Sin este cartel el saldo de
+// cierre no cuadra con lo que el usuario ve, y parece un error de la app.
+const MsgLeafCapped = "Mostrando los 50 más recientes del período."
+
+// AccountLeafData es la hoja de una cuenta: los movimientos que explican su
+// saldo. Opening y Closing NO se derivan de Rows —el tope de filas rompería la
+// cuenta—; salen del acumulado completo, que arma el handler.
+type AccountLeafData struct {
+	Period       Period
+	AccountName  string
+	OpeningLabel string
+	Opening      string
+	ClosingLabel string
+	Closing      string
+	BackQuery    string
+	Rows         []MovementRow
+	Capped       bool
+	Empty        bool
+}
+
+templ AccountLeaf(data AccountLeafData) {
+	@PeriodHeader(data.Period)
+	<a href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Cuentas</a>
+	<h2>{ data.AccountName }</h2>
+	<p class="balance-line">
+		<span>{ data.OpeningLabel }</span>
+		<span class="money">{ data.Opening }</span>
+	</p>
+	if data.Empty {
+		@EmptyState("Sin movimientos en esta cuenta en el período.")
+	} else {
+		@movementList(data.Rows)
+		if data.Capped {
+			<p class="muted">{ MsgLeafCapped }</p>
+		}
+		<p class="balance-line">
+			<span>{ data.ClosingLabel }</span>
+			<span class="money">{ data.Closing }</span>
+		</p>
 	}
 }
