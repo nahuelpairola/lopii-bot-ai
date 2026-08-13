@@ -168,7 +168,14 @@ Para alerta de caída: un monitor externo contra `/health/external`.
   inexistente. Es el modo de falla propio de V2 — un panel puede existir sin
   que nada lo ubique en pantalla, y eso no es un error de JSON, es un panel
   invisible;
-- que la geometría no se salga de las 24 columnas.
+- que la geometría no se salga de las 24 columnas;
+- **que todo `vizConfig` declare `version`**, y que **ningún escalón de
+  `thresholds` tenga `value` nulo o ausente** — el schema V2 lo quiere numérico.
+  Los dos salieron de errores reales del import del 2026-08-13
+  (`Missing property "version"` · `Incorrect type. Expected "number"`), los dos
+  del mismo panel: el único de 28 que había quedado fuera de convención. Es lo
+  que un linter tiene que atrapar — no la falla vistosa, la fila que quedó
+  distinta cuando el resto se migró.
 
 Después de editar el JSON, correr `go test ./docs/grafana/` y **volver a
 importar en Grafana**: el linter no puede ver si un panel renderiza. Ver la

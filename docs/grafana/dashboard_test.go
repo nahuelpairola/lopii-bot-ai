@@ -310,3 +310,91 @@ func TestGridGeometrySane(t *testing.T) {
 		}
 	}
 }
+
+// El importador de Grafana valida el JSON contra su schema y rechaza el archivo
+// ENTERO por un solo panel mal formado. Los dos chequeos de abajo salieron de
+// errores reales del import del 2026-08-13, con el linter en verde:
+//
+//	vizConfig linea 2029: Missing property "version".
+//	linea 2051: Incorrect type. Expected "number".
+//
+// Los dos eran del mismo panel (104), el único de 28 fuera de convención. Es
+// justo lo que un linter tiene que atrapar: no la falla vistosa, la fila que
+// quedó distinta cuando el resto se migró.
+
+// rawElements devuelve los paneles como mapas, para los chequeos que miran
+// adentro de fieldConfig — tipar todo ese árbol para leer dos campos sería
+// arrastrar medio schema de Grafana a este archivo.
+func rawElements(t *testing.T) map[string]any {
+	t.Helper()
+	b, err := os.ReadFile(dashboardPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", dashboardPath, err)
+	}
+	var r struct {
+		Spec struct {
+			Elements map[string]any `json:"elements"`
+		} `json:"spec"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		t.Fatalf("parse %s: %v", dashboardPath, err)
+	}
+	if len(r.Spec.Elements) == 0 {
+		t.Fatal("no elements under spec")
+	}
+	return r.Spec.Elements
+}
+
+// dig baja por un camino de claves; devuelve nil si alguna falta.
+func dig(v any, keys ...string) any {
+	for _, k := range keys {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil
+		}
+		v = m[k]
+	}
+	return v
+}
+
+func TestVizConfigDeclaresVersion(t *testing.T) {
+	for name, el := range rawElements(t) {
+		if dig(el, "spec", "vizConfig") == nil {
+			continue // no todo elemento es un panel
+		}
+		ver, _ := dig(el, "spec", "vizConfig", "version").(string)
+		if ver == "" {
+			t.Errorf("%s: vizConfig sin \"version\" — el importador rechaza el archivo entero por esto", name)
+		}
+	}
+}
+
+// Un `"value": null` es el escalón base del schema clásico. En V2 el campo es
+// numérico y null lo rechaza, así que el base va en 0 — que es lo que usan los
+// otros 27 paneles.
+func TestThresholdStepsAreNumeric(t *testing.T) {
+	var walk func(v any, name string)
+	walk = func(v any, name string) {
+		switch x := v.(type) {
+		case map[string]any:
+			if steps, ok := x["steps"].([]any); ok && x["mode"] != nil {
+				for i, s := range steps {
+					val := dig(s, "value")
+					if _, isNum := val.(float64); !isNum {
+						t.Errorf("%s: thresholds.steps[%d].value = %v, quiere un número (null rompe el import)", name, i, val)
+					}
+				}
+			}
+			for _, vv := range x {
+				walk(vv, name)
+			}
+		case []any:
+			for _, vv := range x {
+				walk(vv, name)
+			}
+		}
+	}
+	for name, el := range rawElements(t) {
+		walk(el, name)
+	}
+}

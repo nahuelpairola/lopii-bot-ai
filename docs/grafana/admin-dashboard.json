@@ -2048,7 +2048,7 @@
                     "steps": [
                       {
                         "color": "text",
-                        "value": null
+                        "value": 0
                       }
                     ]
                   }
@@ -2068,7 +2068,8 @@
                 "showHeader": true
               },
               "version": "v0"
-            }
+            },
+            "version": "13.2.0-29854286369"
           }
         }
       },
