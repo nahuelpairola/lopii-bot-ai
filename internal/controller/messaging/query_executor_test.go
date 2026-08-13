@@ -454,6 +454,34 @@ func TestBuildMovementQuery_StripsTheIconWeAddedFromTheFilter(t *testing.T) {
 	}
 }
 
+// Un filtro que queda VACÍO al sacarle el ícono no puede desaparecer: tiene que
+// seguir filtrando, aunque no matchee nada.
+//
+// Bug introducido el 2026-08-13 por el fix del emoji: stripLeadingIcon devuelve ""
+// cuando el string no tiene ninguna letra ni dígito, y el llamador trataba ese ""
+// como "no vino filtro" — o sea la consulta pasaba a correr SIN filtrar y contestaba
+// por todo. Es exactamente el defecto que este mismo commit venía a arreglar para
+// `account`, reintroducido un campo más allá.
+//
+// La regla es que un filtro nunca se ENSANCHA en silencio: si no se entiende, se
+// deja como vino y la consulta devuelve cero, que el modelo sí sabe explicar.
+func TestBuildMovementQuery_AnAllIconFilterStillFilters(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("999999")}}}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	_, err := exec("sum_movements", json.RawMessage(
+		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","category":"🍔"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.lastQuery.Category == nil {
+		t.Fatal("el filtro desapareció: la consulta corrió sin filtrar y contesta por TODO")
+	}
+	if *m.lastQuery.Category != "🍔" {
+		t.Errorf("un filtro que no se entiende se deja como vino, got %q", *m.lastQuery.Category)
+	}
+}
+
 // Un nombre real no se toca: hay categorías con espacios y barras ("Deudas /
 // préstamos") y no puede recortarse nada de eso.
 func TestBuildMovementQuery_LeavesARealNameAlone(t *testing.T) {

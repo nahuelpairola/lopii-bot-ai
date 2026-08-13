@@ -432,7 +432,14 @@ func stripLeadingIcon(s string) string {
 			return strings.TrimSpace(s[i:])
 		}
 	}
-	return ""
+	// Sin una sola letra ni dígito no hay nombre que rescatar, y devolver ""
+	// sería PEOR que no hacer nada: el llamador lee "" como "no vino filtro" y
+	// la consulta pasa a correr sin filtrar, contestando por todo. Es el mismo
+	// defecto que arregla la cuenta inexistente, un campo más allá.
+	//
+	// Un filtro nunca se ensancha en silencio: se deja como vino, la consulta
+	// devuelve cero, y eso el modelo sí lo sabe explicar.
+	return strings.TrimSpace(s)
 }
 
 func parseQueryDate(s string) (time.Time, error) {
