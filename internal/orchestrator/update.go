@@ -44,7 +44,6 @@ var updateTool = toolSchema{
 						"category": {"type": "string"},
 						"subcategory": {"type": "string"},
 						"payment_method": {"type": "string"},
-						"merchant": {"type": ["string", "null"]},
 						"description": {"type": "string"},
 						"date": {"type": "string"},
 						"group": {"type": ["string", "null"]}

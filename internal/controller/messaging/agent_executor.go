@@ -1,11 +1,13 @@
 package messaging
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -65,10 +67,18 @@ type agentPayload struct {
 	// sea que nombró el CAMPO y todavía falta el valor. Ahí no se corta: se
 	// pregunta el valor, que es la segunda mitad de la misma pregunta.
 	PickedChangeField bool `json:"picked_change_field,omitempty"`
+	// PickedField es CUÁL campo eligió, no sólo que eligió uno. Con el campo y
+	// el valor la app arma la corrección sola.
+	PickedField string `json:"picked_field,omitempty"`
 	// ChangeAnswer es lo ÚLTIMO que contestó, sin concatenar. Change lleva el
 	// texto original pegado adelante ("el café estaba mal 2000") y así no
 	// parsea; el atajo del monto necesita el "2000" solo.
 	ChangeAnswer string `json:"change_answer,omitempty"`
+	// Scope y Changes son la corrección ESTRUCTURADA: el modelo emite un diff
+	// (campo, operación, valor) y la app lo aplica. Con Changes cargado el camino
+	// de corrección NO vuelve a llamar al modelo — no hay nada que interpretar.
+	Scope   string             `json:"scope,omitempty"`
+	Changes []correctionChange `json:"changes,omitempty"`
 }
 
 // agentExecutor es el closure `execute` que Run llama por cada tool call.
@@ -82,6 +92,15 @@ type agentPayload struct {
 // tunearon el matcheo por tokens y el plegado de acentos. Ni un id sale del
 // modelo, así que no hay id inventado posible.
 type agentExecutor struct {
+	// ctx es el del turno. Va en el struct, y no como parámetro, porque la
+	// firma de execute la fija el loop del orchestrator y este ejecutor vive
+	// exactamente un turno — el caso donde guardar un ctx es aceptable.
+	//
+	// No es cosmético: orchestrator.Client.record estampa trace.ID(ctx) en cada
+	// fila de llm_calls. Con context.Background() —que es lo que había— las
+	// llamadas del clasificador entraban con trace_id vacío, y son UNA POR
+	// TURNO: la correlación de las tres capas se caía justo en la llamada nueva.
+	ctx    context.Context
 	c      *controller
 	userID uint64
 	// userText es el mensaje tal cual lo escribió el usuario. Es lo que se usa
@@ -99,6 +118,16 @@ type agentExecutor struct {
 	// reply es la respuesta que manda el controller (help / pedir reescritura),
 	// no el modelo: es copy nuestra y tiene que salir textual.
 	reply string
+	// answerQuery: el loop decidió que esto es una consulta. La atiende el
+	// controller después del turno, con el loop de query.
+	answerQuery bool
+	// settingsArea: cuenta | categoria | recordatorio. El loop ya leyó el
+	// mensaje, así que elegir el área no cuesta una llamada extra.
+	settingsArea string
+	// replyButtons cuelga del recibo cuando el gate de casi-duplicado marca.
+	// Van EN el recibo y no en un mensaje aparte: el gate no puede agregar un
+	// mensaje ni un paso bloqueante, o deja de ser gratis ignorarlo.
+	replyButtons []conversation.Button
 	// noCandidates recuerda que no había nada que tocar, para que la métrica
 	// diga no_candidates en vez de un fracaso genérico.
 	noCandidates bool
@@ -113,8 +142,8 @@ type agentExecutor struct {
 	inserted []movement.Movement
 }
 
-func newAgentExecutor(c *controller, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
-	return &agentExecutor{c: c, userID: userID, userText: userText, taxonomy: taxonomy}
+func newAgentExecutor(ctx context.Context, c *controller, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
+	return &agentExecutor{ctx: ctx, c: c, userID: userID, userText: userText, taxonomy: taxonomy}
 }
 
 // wiredAgentTools son las únicas tools que este ejecutor sabe correr hoy. Es la
@@ -137,6 +166,8 @@ func wiredAgentTools() []orchestrator.AgentTool {
 		orchestrator.ToolRecordMovements: true,
 		orchestrator.ToolCorrectMovement: true,
 		orchestrator.ToolDeleteMovements: true,
+		orchestrator.ToolAnswerQuery:     true,
+		orchestrator.ToolManageSettings:  true,
 		orchestrator.ToolReplyHelp:       true,
 		orchestrator.ToolAskRewrite:      true,
 	}
@@ -154,16 +185,35 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 	switch name {
 	case orchestrator.ToolCorrectMovement:
 		var a struct {
-			Change string `json:"change"`
+			Change  string             `json:"change"`
+			Scope   string             `json:"scope"`
+			Changes []correctionChange `json:"changes"`
 		}
 		// Un argumento ilegible no puede tumbar el turno: el pedido igual se
 		// entiende por el nombre de la tool, y el candidato sale del texto.
 		_ = json.Unmarshal(args, &a)
-		return e.park(orchestrator.ToolCorrectMovement, a.Change, msgPickUpdateCandidate(nil))
+		defaultChangeOps(a.Changes)
+		return e.park(parkRequest{
+			tool: orchestrator.ToolCorrectMovement, change: a.Change,
+			question: msgPickUpdateCandidate(nil), scope: a.Scope, changes: a.Changes,
+		})
 	case orchestrator.ToolRecordMovements:
 		return e.record(args)
 	case orchestrator.ToolDeleteMovements:
-		return e.park(orchestrator.ToolDeleteMovements, "", msgPickDeleteCandidate(nil))
+		return e.park(parkRequest{tool: orchestrator.ToolDeleteMovements, question: msgPickDeleteCandidate(nil)})
+	case orchestrator.ToolAnswerQuery:
+		// Sin argumentos: la app pasa el texto ORIGINAL. QUERY se queda en su
+		// propio loop y su propio modelo a propósito — el techo de Groq es por
+		// modelo, así que una consulta no le come TPM al loop unificado.
+		e.answerQuery = true
+		return "ya le contestaste la consulta al usuario", orchestrator.ErrAgentTurnDone
+	case orchestrator.ToolManageSettings:
+		var a struct {
+			Area string `json:"area"`
+		}
+		_ = json.Unmarshal(args, &a)
+		e.settingsArea = a.Area
+		return "ya abriste la configuración que pidió el usuario", orchestrator.ErrAgentTurnDone
 	case orchestrator.ToolReplyHelp:
 		e.reply = msgHelp
 		return "ya le mandaste al usuario la explicación de qué podés hacer", orchestrator.ErrAgentTurnDone
@@ -204,9 +254,25 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	// desarman a mano, así que hay que pedirlo. Sin esto el modelo devuelve
 	// "Vivienda | Luz" en el campo categoría, el par no matchea la taxonomía y
 	// el gap-fill le pregunta al usuario la categoría que ya había dicho.
+	// La categoría ya no viene del loop: el schema de record_movements no la
+	// pide. Se asigna acá, en dos pasos — primero por la FORMA del movimiento
+	// (gratis, sin modelo), y lo que quede va a una llamada dedicada en otro
+	// modelo, o sea en otro techo de TPM.
+	e.classify(result.Movements)
+
+	// Normalize va DESPUÉS de clasificar, no antes: el que puede devolver
+	// "Vivienda | Luz" metido en el campo categoría ahora es el clasificador,
+	// no el loop. Normalizar antes dejaría el par mal formado, el par no
+	// matchearía la taxonomía, y el gap-fill le preguntaría al usuario una
+	// categoría que el sistema ya sabía.
 	result.Normalize()
 
-	seed := buildCreateSeed(result, e.taxonomy)
+	// Las cuentas van al seed para resolver el nombre que dijo el usuario contra
+	// una cuenta real ANTES de decidir que hay que preguntar. Un error de lectura
+	// acá no puede inventar un gap: matchNamedAccount devuelve 0 y sigue el
+	// camino de hoy.
+	accounts, _ := e.c.accounts.FindByUserID(e.userID)
+	seed := buildCreateSeed(result, e.taxonomy, accounts)
 	seed[conversation.UserIDKey] = e.userID
 
 	hasGaps := len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 ||
@@ -231,7 +297,65 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	e.wrote = true
 	e.inserted = inserted
 	e.reply = msgConfirmMovements(inserted)
+	e.replyButtons = e.c.maybeNearDuplicate(e.userID, inserted)
 	return resultRecorded(len(inserted)), orchestrator.ErrAgentTurnDone
+}
+
+// classify completa el par (categoría, subcategoría) de cada fila.
+//
+// Paso 1, por regla y sin modelo: hay pares que son función de la FORMA del
+// movimiento, y la app conoce la forma. Es un DEFAULT, no una regla dura —una
+// suscripción de FCI tiene la misma forma que una transferencia—, así que el
+// clasificador puede pisarlo; lo que compra es que el caso abrumador no gaste
+// una decisión del modelo y que el par salga bien escrito.
+//
+// Paso 2, una llamada para TODAS las filas que quedaron: comparten el mensaje,
+// y separarlas les quitaría el contexto que se dan entre sí.
+//
+// Si algo falla, las filas quedan en PENDING_REVIEW y buildCreateSeed les abre
+// gap: degradar a una pregunta es correcto, degradar a un dato inventado no.
+func (e *agentExecutor) classify(movements []orchestrator.MovementDraft) {
+	if len(movements) == 0 {
+		return
+	}
+
+	// El par que se deduce de la FORMA es un DEFAULT, no una regla dura — y hasta
+	// el 2026-08-12 acá había un `return` que lo volvía dura, contradiciendo el
+	// comentario de StructuralPair, que dice textualmente que el clasificador
+	// puede pisarlo.
+	//
+	// Medido en vivo: "Suscribi 3100000 a FCI" quedó en `Sistema | Transferencia`.
+	// Una suscripción de FCI entre dos cuentas propias en la misma moneda es un
+	// grupo de 2 patas que suma cero —la forma EXACTA de una transferencia— y no
+	// es una transferencia: `Inversiones | FCI` existe como par propio. Sólo el
+	// mensaje distingue una de la otra, así que el que tiene que decidir es el
+	// que lee el mensaje.
+	//
+	// El default sigue sirviendo, y para dos cosas: cuando el clasificador falla
+	// (429, timeout) y cuando duda. Sin él, un transfer sin clasificar caería en
+	// PENDING_REVIEW y abriría el picker por algo que la forma ya contesta.
+	structCat, structSub, hasStructural := orchestrator.StructuralPair(movements)
+
+	rows := make([]orchestrator.ClassifyRow, 0, len(movements))
+	for _, m := range movements {
+		rows = append(rows, orchestrator.ClassifyRow{
+			Description: m.Description,
+			Type:        m.Type,
+			AccountName: m.AccountNameGuess,
+		})
+	}
+	pairs := e.c.orchestrator.ClassifyCategories(e.ctx, e.userText, rows, e.taxonomy)
+	for i := range movements {
+		cat, sub := "", ""
+		if i < len(pairs) {
+			cat, sub = pairs[i].Category, pairs[i].Subcategory
+		}
+		// El default entra sólo donde el clasificador no dijo nada útil.
+		if hasStructural && (cat == "" || cat == constants.PendingReview) {
+			cat, sub = structCat, structSub
+		}
+		movements[i].Category, movements[i].Subcategory = cat, sub
+	}
 }
 
 // park resuelve el candidato del lado de la app y deja la acción lista.
@@ -241,7 +365,21 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 // pregunta de cuál; ninguno → no se parkea nada y sale la copy de "no encontré".
 // En los tres casos el texto que ve el usuario lo escribe la app, así que pedirle
 // al modelo que lo narre es una vuelta entera de prompt tirada.
-func (e *agentExecutor) park(tool, change, question string) (string, error) {
+// parkRequest son los datos de un parkeo. Es un struct y no seis parámetros
+// sueltos porque cuatro de los seis son strings: invertir dos en una llamada
+// compila igual y manda la copy del picker como el cambio pedido.
+type parkRequest struct {
+	tool     string
+	change   string
+	question string
+	// scope y changes sólo los usa correct_movement. scopeAll pide que el cambio
+	// caiga sobre TODOS los candidatos, no sobre uno elegido.
+	scope   string
+	changes []correctionChange
+}
+
+func (e *agentExecutor) park(req parkRequest) (string, error) {
+	tool, change, question := req.tool, req.change, req.question
 	groups, err := e.c.resolveCandidates(e.userID, e.userText, "", "")
 	if err != nil {
 		return "", fmt.Errorf("%s: resolve candidates: %w", tool, err)
@@ -260,17 +398,43 @@ func (e *agentExecutor) park(tool, change, question string) (string, error) {
 		options = append(options, candidateLabel(g))
 	}
 
-	action := parkedAction{Tool: tool, Payload: agentPayload{Change: change, Candidates: candidates, Chosen: -1}}
-	if len(candidates) == 1 {
+	action := parkedAction{Tool: tool, Payload: agentPayload{
+		Change: change, Candidates: candidates, Chosen: -1,
+		Scope: req.scope, Changes: req.changes,
+	}}
+	switch {
+	case len(candidates) == 1:
 		// Un solo candidato es el camino de hoy: se confirma, no se pregunta.
 		action.Payload.Chosen = 0
-	} else {
+	case isBatchCorrection(action.Payload):
+		// El cambio cae sobre TODOS los candidatos, así que no hay cuál
+		// preguntar y Chosen se queda en -1. Es el caso guía del 2026-08-10
+		// ("mové los movimientos del lote a proyecto hogar"): con el picker el
+		// usuario elegía uno y los otros dos se quedaban donde estaban.
+	default:
 		action.Questions = []pendingaction.OpenQuestion{{
 			Key: questionKeyCandidate, Prompt: question, Options: options,
 		}}
 	}
 	e.parked = append(e.parked, action)
 	return resultParked, orchestrator.ErrAgentTurnDone
+}
+
+// isBatchCorrection dice si el cambio cae sobre TODOS los candidatos en vez de
+// sobre uno elegido. Dos condiciones, y ninguna es de adorno:
+//
+//   - scope=all, o sea el modelo leyó un pedido en plural;
+//   - un cambio ESTRUCTURADO. Sin él la corrección la resuelve el modelo
+//     devolviendo las filas ya corregidas, y pedirle ocho filas enteras para
+//     tocar un campo es donde corrompe datos en silencio. Un pedido en plural
+//     sin `changes` vuelve al picker: corregir de a uno es peor que hoy, pero no
+//     rompe nada.
+//
+// Los grupos NO se fusionan: las guardas de conjunto (applyChangesToSet) miran
+// cuántos son, y un lote aplanado a un grupo se les escaparía — "poné todos en
+// 1500" dejaría de ser ambiguo justo cuando más lo es.
+func isBatchCorrection(p agentPayload) bool {
+	return p.Scope == scopeAll && len(p.Changes) > 0 && len(p.Candidates) > 1
 }
 
 // parkCreate deja el CREATE incompleto en la cola. No inserta NADA: la regla es

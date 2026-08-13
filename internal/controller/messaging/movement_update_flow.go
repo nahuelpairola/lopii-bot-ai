@@ -3,9 +3,11 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
@@ -107,9 +109,6 @@ func movementToRow(m movement.Movement) movementRow {
 	if m.PaymentMethod != nil {
 		row.PaymentMethod = *m.PaymentMethod
 	}
-	if m.Merchant != nil {
-		row.Merchant = *m.Merchant
-	}
 	if m.Description != nil {
 		row.Description = *m.Description
 	}
@@ -125,7 +124,6 @@ func rowToDraft(r movementRow) orchestrator.MovementDraft {
 		Category:         r.Category,
 		Subcategory:      r.Subcategory,
 		PaymentMethod:    r.PaymentMethod,
-		Merchant:         r.Merchant,
 		Description:      r.Description,
 		Date:             r.Date,
 		Group:            r.Group,
@@ -147,7 +145,6 @@ func draftToRow(d orchestrator.MovementDraft) movementRow {
 		Category:         d.Category,
 		Subcategory:      d.Subcategory,
 		PaymentMethod:    d.PaymentMethod,
-		Merchant:         d.Merchant,
 		Description:      d.Description,
 		Date:             d.Date,
 		Group:            d.Group,
@@ -220,6 +217,10 @@ type changeAsk struct {
 	// answer es lo que contestó, SIN el texto original pegado adelante. Es lo
 	// único que se puede parsear.
 	answer string
+	// field es CUÁL campo eligió con el botón. Tiene que sobrevivir a la segunda
+	// vuelta de la pregunta: sin él, al llegar el valor la app sabe que eligió
+	// algo pero no qué, y la corrección se le vuelve a caer al modelo.
+	field string
 }
 
 // amountOnlyCorrection arma la corrección del lado de la app cuando lo único
@@ -268,7 +269,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	// El gate de confirmación NO se saltea: sigue pasando por
 	// seedAndStartUpdateConfirm, así que el usuario ve el antes/después igual.
 	if after, ok := amountOnlyCorrection(beforeRows, ask); ok {
-		return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows,
+		return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, message, oldIDs, beforeRows,
 			orchestrator.UpdateResult{Resolved: true, Movements: after})
 	}
 
@@ -308,7 +309,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		if ask.gaveValue {
 			// Ya nos dijo el valor por texto y seguimos sin entender: cortar es
 			// más honesto que volver a preguntar lo mismo.
-			c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+			c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
 			c.sendText(ctx, b, chatID, msgStillCannotCorrect)
 			return nil
 		}
@@ -320,7 +321,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 		return c.parkChangeQuestion(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
-	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, oldIDs, beforeRows, result)
+	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, message, oldIDs, beforeRows, result)
 }
 
 // correctionIsNoOp dice si la corrección "resuelta" deja el movimiento igual
@@ -354,7 +355,11 @@ func sameMovementForCorrection(before, after movementRow) bool {
 		unchanged(before.Subcategory, after.Subcategory) &&
 		unchanged(before.Date, after.Date) &&
 		unchanged(before.AccountID, after.AccountID) &&
-		unchanged(before.Merchant, after.Merchant) &&
+		// AccountNameGuess, no sólo AccountID: cambiar de cuenta pone el NOMBRE y
+		// VACÍA el id, y `unchanged` trata el vacío como "no lo tocó". Sin esta
+		// línea, "el peaje ponelo en banco galicia" se veía idéntico al original y
+		// la guarda de no-op se lo tragaba con un "eso ya estaba así".
+		unchanged(before.AccountNameGuess, after.AccountNameGuess) &&
 		unchanged(before.Description, after.Description)
 }
 
@@ -380,7 +385,7 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 	if c.actions == nil {
 		// Sin cola no hay a dónde parkear: el camino viejo sigue siendo mejor
 		// que quedarse mudo.
-		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.resolveMetric(ctx, userID, outcomeParkFailed)
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return nil
 	}
@@ -389,6 +394,7 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 		Candidates:        []candidateGroup{{TransactionID: transactionID, OldIDs: oldIDs, Rows: rows}},
 		Chosen:            0,
 		PickedChangeField: ask.pickedField,
+		PickedField:       ask.field,
 	})
 	if err != nil {
 		return fmt.Errorf("park change question: payload: %w", err)
@@ -422,7 +428,143 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 // already-resolved UpdateResult (never calls the orchestrator itself)
 // and starts it. Called by proceedToUpdateConfirm once Call 2 UPDATE
 // resolves.
-func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, oldIDs []string, beforeRows []movementRow, result orchestrator.UpdateResult) error {
+// userTaxonomy carga los pares de la taxonomía del usuario. Un error devuelve
+// nil a propósito: sin con qué comparar no se inventan gaps.
+func (c *controller) userTaxonomy(userID uint64) []orchestrator.TaxonomyEntry {
+	subs, err := c.subcategories.FindAllForUser(userID)
+	if err != nil {
+		return nil
+	}
+	taxonomy := make([]orchestrator.TaxonomyEntry, 0, len(subs))
+	for _, s := range subs {
+		taxonomy = append(taxonomy, orchestrator.TaxonomyEntry{Category: s.Category, Subcategory: s.Subcategory})
+	}
+	return taxonomy
+}
+
+// applyStructuredCorrection aplica una corrección que ya viene en campos, SIN
+// volver a llamar al modelo.
+//
+// Es el camino corto y es el bueno: el modelo ya dijo qué cambiar cuando eligió
+// la tool, así que una segunda llamada sólo le daría la oportunidad de tocar de
+// paso algo que nadie le pidió — que es literalmente lo que pasó con "el café
+// estaba mal" (traza 317df846). El gate de confirmación NO se saltea: el usuario
+// ve el antes/después igual.
+func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, payload agentPayload, groups []candidateGroup) error {
+	before := make([][]movementRow, 0, len(groups))
+	var oldIDs []string
+	for _, g := range groups {
+		before = append(before, g.Rows)
+		oldIDs = append(oldIDs, g.OldIDs...)
+	}
+
+	// Las guardas de conjunto necesitan los grupos separados y lo que el mensaje
+	// nombró. NamedAccount sale de la app, no del modelo: es un dato, no una
+	// interpretación.
+	after, err := applyChangesToSet(before, payload.Changes, guardContext{
+		Scope:        payload.Scope,
+		NamedAccount: c.accountNamedIn(userID, payload.Change),
+		Message:      payload.Change,
+	})
+	if err != nil {
+		// Un cambio imposible (un reintegro más grande que la compra, "poné todos
+		// en 1500", un valor ilegible) se le dice al usuario. Aplicarlo a medias
+		// sería peor: un lote donde algunos cambiaron y otros no, sin manera de
+		// saber cuáles.
+		slog.WarnContext(ctx, "structured correction rejected", "user_id", userID, "err", err)
+		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
+		// Una contradicción NO es un "no te entendí": el bot entendió y se niega.
+		// Decirle lo genérico lo manda a reformular algo que ya dijo bien.
+		// Cada guarda que significa algo distinto se dice distinto. Las que quedan
+		// en la genérica son fallas del MODELO (un op sobre un campo que no lo
+		// acepta, un valor ilegible), no cosas que el usuario pueda arreglar
+		// sabiendo cuál fue.
+		if errors.Is(err, errRefundThatGrows) {
+			c.sendText(ctx, b, chatID, msgRefundWouldGrow)
+			return nil
+		}
+		if errors.Is(err, errRefundExceedsAmount) {
+			c.sendText(ctx, b, chatID, msgRefundExceeds)
+			return nil
+		}
+		if errors.Is(err, errAmbiguousSetAll) {
+			c.sendText(ctx, b, chatID, msgAmbiguousSetAll)
+			return nil
+		}
+		c.sendText(ctx, b, chatID, msgStillCannotCorrect)
+		return nil
+	}
+
+	// El usuario nombra UNA cosa ("proyecto hogar") y la taxonomía guarda DOS.
+	// applyChange deja la subcategoría vacía justamente para que el par se
+	// resuelva acá, que es donde hay taxonomía. Lo que no se resuelve queda como
+	// gap y lo pregunta el gap-fill.
+	taxonomy := c.userTaxonomy(userID)
+	// Y las cuentas, para resolver la que el usuario nombró. Sin esto la fila sale
+	// con el NOMBRE y sin id, y la escritura la manda a la cuenta por default de
+	// su moneda: el movimiento termina en otra cuenta que la pedida, en silencio.
+	accounts, _ := c.accounts.FindByUserID(userID)
+	beforeRows := make([]movementRow, 0, len(oldIDs))
+	for _, g := range before {
+		beforeRows = append(beforeRows, g...)
+	}
+	drafts := make([]orchestrator.MovementDraft, 0, len(beforeRows))
+	for _, g := range after {
+		for _, r := range g {
+			if r.Subcategory == "" {
+				if cat, sub, ok := resolveTaxonomyPair(r.Category, taxonomy); ok {
+					r.Category, r.Subcategory = cat, sub
+				}
+			}
+			// Misma idea con la cuenta: el usuario dice "banco galicia" y la app
+			// lo resuelve a un id. Lo que no resuelve queda como gap y lo pregunta
+			// el gap-fill — nunca cae mudo en la cuenta por default.
+			if r.AccountID == "" && r.AccountNameGuess != "" {
+				if id := matchNamedAccount(r.AccountNameGuess, accounts, r.Currency); id != 0 {
+					r.AccountID = strconv.FormatUint(id, 10)
+				}
+			}
+			drafts = append(drafts, rowToDraft(r))
+		}
+	}
+
+	// Una corrección que deja todo igual NO es una corrección. Confirmarla haría
+	// un DELETE+INSERT para no cambiar nada: quema un id, cuenta como
+	// update_confirmed, y al usuario le muestra "$45.000 (antes: $45.000)".
+	//
+	// El camino viejo ya tenía esta guarda (correctionIsNoOp en
+	// proceedToUpdateConfirm) y el estructurado nació sin ella — paridad de
+	// migración otra vez. Se vio en vivo el 2026-08-12: contestar la categoría
+	// que el movimiento YA tenía reemplazó la fila igual.
+	if correctionIsNoOp(beforeRows, drafts) {
+		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
+		c.sendText(ctx, b, chatID, msgCorrectionChangesNothing)
+		return nil
+	}
+
+	return c.seedAndStartUpdateConfirm(ctx, b, chatID, userID, payload.Change, oldIDs, beforeRows,
+		orchestrator.UpdateResult{Resolved: true, Movements: drafts})
+}
+
+// accountNamedIn devuelve el nombre de la cuenta del usuario que aparece en el
+// mensaje, o "" si no nombró ninguna. Es lo que separa un reintegro a la misma
+// cuenta de uno que entró en otra — restar el segundo del gasto original deja
+// DOS saldos mal.
+func (c *controller) accountNamedIn(userID uint64, message string) string {
+	accs, err := c.accounts.FindByUserID(userID)
+	if err != nil {
+		return ""
+	}
+	folded := foldAccents(strings.ToLower(message))
+	for _, a := range accs {
+		if strings.Contains(folded, foldAccents(strings.ToLower(a.Name))) {
+			return a.Name
+		}
+	}
+	return ""
+}
+
+func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, userMessage string, oldIDs []string, beforeRows []movementRow, result orchestrator.UpdateResult) error {
 	accs, _ := c.accounts.FindByUserID(userID)
 	nameByID := make(map[string]string, len(accs))
 	for _, a := range accs {
@@ -441,17 +583,44 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 		afterRows = append(afterRows, row)
 	}
 
+	// La taxonomía del usuario, para validar el par igual que CREATE. Si no
+	// carga, taxonomy queda vacía y categoryGapsFor no inventa gaps — degradar a
+	// "no valido" es correcto; degradar a "borro el movimiento" no lo era.
+	taxonomy := c.userTaxonomy(userID)
+
+	// Paridad con CREATE, y era un bug VIVO: acá iba encodeStringSlice(nil)
+	// hardcodeado, así que una corrección que nombraba una categoría inexistente
+	// no marcaba gap, el flujo insertaba derecho y FindByCategoryAndSubcategory
+	// fallaba — el movimiento se perdía con un error genérico. Es exactamente lo
+	// que el comentario de buildCreateSeed documenta que pasaba en CREATE antes de
+	// tener el set `known`. Y updateSystemPromptTemplate no lleva taxonomía NI la
+	// regla de "no inventes nombres", así que el camino de corrección emite pares
+	// arbitrarios con total libertad.
 	seed := conversation.Data{
 		keyMode:                modeUpdate,
 		keyOldMovementIDs:      encodeStringSlice(oldIDs),
 		keyBeforeMovements:     encodeMovementRows(beforeRows),
 		keyMovements:           encodeMovementRows(afterRows),
-		keyPendingCategoryGaps: encodeStringSlice(nil),
-		keyPendingAccountGaps:  encodeStringSlice(nil),
-		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows)),
+		keyPendingCategoryGaps: encodeStringSlice(categoryGapsFor(afterRows, taxonomy)),
+		keyPendingAccountGaps:  encodeStringSlice(accountGapsFor(afterRows)),
+		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows, userMessage)),
 	}
 
-	prompt, err := c.engine.StartWithData(userID, movementUpdateConfirmFlowName, seed)
+	// Con un gap de categoría el destino cambia: al flujo de gap-fill, que es el
+	// que sabe preguntar y ofrecer "crear una categoría nueva". El seed ya viene
+	// en modeUpdate, así que persistMovements hace ReplaceMovements y no un
+	// insert — la maquinaria estaba entera, sólo que nadie la alcanzaba desde
+	// acá.
+	//
+	// Se pierde el diff antes/después en ese caso, y es un intercambio a
+	// conciencia: antes el movimiento se PERDÍA con un error genérico.
+	flowName := movementUpdateConfirmFlowName
+	if len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 ||
+		len(decodeStringSlice(seed, keyPendingAccountGaps)) > 0 {
+		flowName = movementCreateFlowName
+	}
+
+	prompt, err := c.engine.StartWithData(userID, flowName, seed)
 	if err != nil {
 		return err
 	}
@@ -502,7 +671,7 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 	// A correction that zeroes the movement (regalo/gratis total) deletes it
 	// instead of storing an illegal amount-0 row — see correctionIsDeletion.
 	if flag(data, keyDeleteInstead) {
-		oldIDs, err := parseUintSlice(decodeStringSlice(data, "old_movement_ids"))
+		oldIDs, err := parseUintSlice(decodeStringSlice(data, keyOldMovementIDs))
 		if err == nil {
 			err = c.movements.SoftDeleteByIDs(oldIDs)
 		}
@@ -511,11 +680,16 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 			// update_failed no dice nada: medido el 2026-08-10, dos de dos salieron
 			// de este gate (el usuario ya había confirmado) y no hubo con qué saber
 			// por qué falló la escritura.
-			slog.ErrorContext(ctx, "update delete failed", "user_id", data.UserID(), "err", err)
-			c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
-			if b != nil {
-				b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCouldNotSave("el cambio")})
+			slog.ErrorContext(ctx, "update delete failed", "user_id", data.UserID(), "old_ids", oldIDs, "err", err)
+			// El movimiento ya no está: el usuario pidió que desapareciera y no
+			// está. Decirle que falló sería mentirle, y lo mandaría a reintentar.
+			if errors.Is(err, movement.ErrMovementNotFound) {
+				c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, oldIDs...)
+				c.sendText(ctx, b, chatID, msgUpdateDeleted)
+				return
 			}
+			c.resolveMetric(ctx, data.UserID(), outcomeWriteFailed)
+			c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
 			return
 		}
 		c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, oldIDs...)
@@ -528,7 +702,7 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 	inserted, err := c.resolveAndInsertMovements(data)
 	if err != nil {
 		slog.ErrorContext(ctx, "update insert failed", "user_id", data.UserID(), "err", err)
-		c.resolveMetric(ctx, data.UserID(), outcomeUpdateFailed)
+		c.resolveMetric(ctx, data.UserID(), outcomeWriteFailed)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
 		}
@@ -540,14 +714,39 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 	}
 }
 
+// palabrasDeMontoCero: las formas de decir "no salió nada" que no traen ningún
+// dígito. Sin esto "me lo regalaron" no podría borrar nunca.
+var palabrasDeMontoCero = []string{"gratis", "regal", "nada", "cero", "invit"}
+
+// messageNamesAnAmount dice si el usuario habló de plata: un dígito, o una de
+// las palabras que significan que no salió nada.
+func messageNamesAnAmount(s string) bool {
+	low := foldAccents(strings.ToLower(s))
+	if strings.ContainsAny(low, "0123456789") {
+		return true
+	}
+	for _, w := range palabrasDeMontoCero {
+		if strings.Contains(low, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // correctionIsDeletion reports whether an UPDATE's corrected set nullifies the
 // movement entirely — every row's amount parses to zero. Per the chosen
 // "regalo/gratis total" semantics a correction to 0 deletes the movement
 // rather than storing an illegal amount-0 row (the guard rejects amount 0). A
 // mixed set (some 0, some not) or an unparseable amount returns false and
 // falls through to the guard.
-func correctionIsDeletion(rows []movementRow) bool {
-	if len(rows) == 0 {
+//
+// userMessage NO es decorativo. El 2026-08-10 "Editá los movimientos de lote
+// de hoy" —que no dice ningún cambio— llegó acá con los montos en 0 y armó un
+// BORRADO que el usuario confirmó; sólo no borró porque la escritura falló. Si
+// el usuario no habló de plata, unos montos en 0 son un fallo del modelo y no
+// una intención, y borrar seria destruir datos por una alucinación.
+func correctionIsDeletion(rows []movementRow, userMessage string) bool {
+	if len(rows) == 0 || !messageNamesAnAmount(userMessage) {
 		return false
 	}
 	for _, r := range rows {

@@ -16,6 +16,15 @@ const (
 	IntentReminderSet    Intent = "REMINDER_SET"
 	IntentHelp           Intent = "HELP"
 	IntentUnclear        Intent = "UNCLEAR"
+
+	// IntentQueued: el turno se topó con el cupo ANTES de que el modelo eligiera
+	// ninguna herramienta, así que el intent todavía no se sabe. No es UNCLEAR —
+	// eso significa "no te entendí", y acá no llegamos ni a intentarlo.
+	//
+	// Es transitorio: el drenaje lo pisa con el intent real cuando el replay
+	// funciona. Una fila que quede en QUEUED es un mensaje que nunca se pudo
+	// procesar, y ESO es justamente lo que hay que poder contar.
+	IntentQueued Intent = "QUEUED"
 )
 
 // IntentResult is Call 1 router's output: the classified intent.
@@ -58,7 +67,6 @@ type MovementDraft struct {
 	Category         string  `json:"category"`
 	Subcategory      string  `json:"subcategory"`
 	PaymentMethod    string  `json:"payment_method"`
-	Merchant         string  `json:"merchant"`
 	Description      string  `json:"description"`
 	Date             string  `json:"date"`
 	Group            string  `json:"group"`

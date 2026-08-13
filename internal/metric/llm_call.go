@@ -46,6 +46,9 @@ type LLMCall struct {
 	Error                      string    `gorm:"column:error"`
 	RateLimitRemainingRequests *int      `gorm:"column:ratelimit_remaining_requests"`
 	RateLimitRemainingTokens   *int      `gorm:"column:ratelimit_remaining_tokens"`
+	// ToolCalls: el array tool_calls crudo. NULL = el modelo no llamó nada, así
+	// que `WHERE tool_calls IS NOT NULL` significa "llamó algo".
+	ToolCalls *string `gorm:"column:tool_calls;type:jsonb"`
 }
 
 func (LLMCall) TableName() string { return "llm_calls" }

@@ -50,7 +50,7 @@ func (r *fakeQueryMovements) ReassignAccount(uint64, uint64) error              
 func (r *fakeQueryMovements) CountForUser(uint64) (int64, error)                         { return 0, nil }
 func (r *fakeQueryMovements) CountBySubcategory(uint64, uint64) (int64, error)           { return 0, nil }
 func (r *fakeQueryMovements) ReassignSubcategory(uint64, uint64, uint64) error           { return nil }
-func (r *fakeQueryMovements) TopMerchantsBySubcategory(uint64, uint64, int) ([]string, error) {
+func (r *fakeQueryMovements) TopDescriptionsBySubcategory(uint64, uint64, int) ([]string, error) {
 	return nil, nil
 }
 
@@ -256,8 +256,8 @@ func TestExec_SumMovements_BrokerIncome(t *testing.T) {
 	}
 }
 
-// Case: "mis compras en Carrefour" — merchant filter + abs rendering.
-func TestExec_ListMovements_MerchantAbs(t *testing.T) {
+// Case: "mis compras en Carrefour" — description filter + abs rendering.
+func TestExec_ListMovements_DescriptionFilterAbs(t *testing.T) {
 	desc := "compra semanal"
 	m := &fakeQueryMovements{listRows: []movement.Movement{{
 		Type:        movement.Expense,
@@ -269,12 +269,12 @@ func TestExec_ListMovements_MerchantAbs(t *testing.T) {
 	}}}
 	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 
-	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","merchant":"Carrefour","limit":5}`))
+	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","description":"Carrefour","limit":5}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.lastQuery.Merchant == nil || *m.lastQuery.Merchant != "Carrefour" {
-		t.Errorf("merchant filter not set")
+	if m.lastQuery.Description == nil || *m.lastQuery.Description != "Carrefour" {
+		t.Errorf("description filter not set")
 	}
 	if m.lastLimit != 5 {
 		t.Errorf("limit = %d", m.lastLimit)

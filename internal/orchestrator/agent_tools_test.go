@@ -2,13 +2,18 @@ package orchestrator
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
 func TestAgentTools_AllWellFormed(t *testing.T) {
 	tools := AgentTools()
-	if len(tools) != 14 {
-		t.Fatalf("%d tools, want 14 — las 15 de la §4.10 menos find_movements_to_correct, que costaba una vuelta entera del loop y no compraba nada (ver AgentTools)", len(tools))
+	// 12 desde la etapa 5: las cinco de configuración colapsaron en
+	// manage_settings, y answer_query se sumó. Cinco tools casi iguales que
+	// hacían lo mismo —parkear a un wizard— eran justo donde este modelo elige
+	// mal.
+	if len(tools) != 12 {
+		t.Fatalf("%d tools, want 12", len(tools))
 	}
 
 	seen := make(map[string]bool, len(tools))
@@ -53,26 +58,41 @@ func TestAgentTools_AllWellFormed(t *testing.T) {
 	}
 }
 
-// TestAgentTools_RecordMovementsKeepsCreateToolSchema is the guard that this
-// stage changed no behaviour: record_movements must carry createTool's schema
-// byte for byte. A "tidied" schema is a behaviour change on the money path.
-func TestAgentTools_RecordMovementsKeepsCreateToolSchema(t *testing.T) {
-	var fromAgent, fromCreate any
+// TestAgentTools_RecordMovementsNeverAsksForTheCategoryPair
+//
+// Este test comparaba `record_movements` contra `createTool` campo por campo,
+// para atajar la deriva accidental entre los dos caminos de CREATE. Ya no hay
+// dos: la etapa 5 borró create.go, que era lo que el comentario anterior
+// anunciaba ("el camino viejo SÍ, hasta que la etapa 5 lo borre").
+//
+// Lo que sobrevive es la mitad que sigue teniendo sujeto: el loop NO puede
+// pedir la categoría. Si volviera a aparecer en el schema, el modelo la
+// llenaría —tiene con qué— y estaríamos pagando dos veces por clasificar, una
+// de ellas con el modelo equivocado y sin la taxonomía delante.
+func TestAgentTools_RecordMovementsNeverAsksForTheCategoryPair(t *testing.T) {
+	var agentParams json.RawMessage
 	for _, tool := range AgentTools() {
 		if tool.Name == ToolRecordMovements {
-			if err := json.Unmarshal(tool.Parameters, &fromAgent); err != nil {
-				t.Fatalf("record_movements schema: %v", err)
-			}
+			agentParams = tool.Parameters
 		}
 	}
-	if err := json.Unmarshal(createTool.Parameters, &fromCreate); err != nil {
-		t.Fatalf("createTool schema: %v", err)
+	var parsed map[string]any
+	if err := json.Unmarshal(agentParams, &parsed); err != nil {
+		t.Fatalf("record_movements schema: %v", err)
 	}
+	movements := parsed["properties"].(map[string]any)["movements"].(map[string]any)
+	props := movements["items"].(map[string]any)["properties"].(map[string]any)
 
-	a, _ := json.Marshal(fromAgent)
-	c, _ := json.Marshal(fromCreate)
-	if string(a) != string(c) {
-		t.Errorf("record_movements schema drifted from createTool:\n agent  = %s\n create = %s", a, c)
+	for _, gone := range []string{"category", "subcategory"} {
+		if _, still := props[gone]; still {
+			t.Errorf("record_movements todavia pide %q: eso lo decide el clasificador", gone)
+		}
+	}
+	// Y lo que SÍ tiene que seguir pidiendo, que es el hecho económico.
+	for _, want := range []string{"type", "amount", "currency", "date", "description"} {
+		if _, ok := props[want]; !ok {
+			t.Errorf("record_movements perdio %q, que es parte del hecho economico", want)
+		}
 	}
 }
 
@@ -107,6 +127,40 @@ func TestAgentTools_ReadToolsKeepTheirQuerySchemas(t *testing.T) {
 				t.Errorf("%s required = %v, want %v", tool.Name, schema.Required, want)
 				break
 			}
+		}
+	}
+}
+
+// El `When` de correct_movement tiene que anunciar TODO lo que la tool sabe
+// hacer. Su schema acepta siete campos, pero durante la etapa 5 la descripción
+// sólo hablaba de plata (reemplazo, reintegro, incremento) — así que ante "El
+// peaje ponelo en banco galicia" el modelo eligió ask_rewrite y pidió el monto,
+// leyendo una RE-UBICACIÓN como un movimiento nuevo. Medido en vivo el
+// 2026-08-12, y explica un unclear del 10/08 con el mismo verbo.
+//
+// Una tool que sabe hacer algo y no lo dice es una tool que no lo hace.
+func TestCorrectMovement_WhenAnnouncesEveryFieldItAccepts(t *testing.T) {
+	var when, params string
+	for _, tool := range AgentTools() {
+		if tool.Name == ToolCorrectMovement {
+			when, params = tool.When, string(tool.Parameters)
+		}
+	}
+	if when == "" {
+		t.Fatal("correct_movement no está en el toolbox")
+	}
+	// Los campos que el schema acepta y que NO son el monto: si el schema los
+	// toma, el When los tiene que nombrar de alguna forma.
+	for campo, palabra := range map[string]string{
+		"category": "categoría",
+		"account":  "cuenta",
+		"date":     "fecha",
+	} {
+		if !strings.Contains(params, `"`+campo+`"`) {
+			t.Errorf("el schema perdió el campo %q", campo)
+		}
+		if !strings.Contains(strings.ToLower(when), palabra) {
+			t.Errorf("el When no menciona %q: el modelo no va a mapearle ese pedido", palabra)
 		}
 	}
 }

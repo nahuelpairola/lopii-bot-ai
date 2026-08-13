@@ -1,7 +1,7 @@
 # Dashboard de Grafana — admin
 
 `admin-dashboard.json` es el dashboard de estado de la app. **Schema V2**
-(`elements` + `layout`), 25 paneles: 9 visibles y 4 filas colapsadas de
+(`elements` + `layout`), 28 paneles: 9 visibles y 4 filas colapsadas de
 drill-down.
 
 > **Por qué V2 y no el schema clásico.** La instancia corre Grafana 13.2, que
@@ -10,6 +10,34 @@ drill-down.
 > datasource se referencia por `name`, no por `uid`. Si alguna vez hay que
 > volver a v1 para una instancia vieja, la ruta `POST /api/dashboards/db` de la
 > API clásica todavía lo acepta — pero el import por UI de esta instancia, no.
+
+> **El cuerpo va adentro de `spec`, no en la raíz.** Grafana envuelve el
+> dashboard en un recurso estilo Kubernetes, y el importador valida ESA capa
+> antes de mirar nada de adentro:
+>
+> ```json
+> { "apiVersion": "dashboard.grafana.app/v2",
+>   "kind": "Dashboard",
+>   "metadata": { "name": "lopii-app-state" },
+>   "spec": { "title": ..., "elements": {...}, "layout": {...} } }
+> ```
+>
+> `metadata.name` **es el uid**: si cambia, un re-import crea un dashboard
+> nuevo en vez de actualizar el que ya está. Mantenerlo estable.
+>
+> Del 2026-07-22 al 2026-08-13 este archivo tuvo el cuerpo en la raíz, sin
+> envoltura. Parseaba perfecto, el linter estaba verde, y Grafana lo rechazaba
+> con **"Missing property metadata. Missing property spec."** — que es el mismo
+> modo de falla que el de los 8 paneles rotos: un JSON válido no es un
+> dashboard que importa. Ahora `dashboard_test.go` chequea la envoltura antes
+> que nada, y `TestEnvelopeDetectsTheShippedBug` pinea el detector a la forma
+> que de verdad se rompió.
+>
+> **El `apiVersion` es lo único de la envoltura que depende de la instancia.**
+> Acá es `dashboard.grafana.app/v2`, confirmado importando contra la Grafana
+> 13.2 real el 2026-08-13 — la doc no lo publica, manda a la Swagger de cada
+> instancia. Si alguna vez lo rechaza: abrí cualquier dashboard existente →
+> *JSON Model* y copiá el que muestre.
 
 Diseño y justificación de cada panel:
 [`docs/superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md`](../superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md).
@@ -39,6 +67,51 @@ separados, porque juntarlos exigiría un segundo eje Y.
 
 **Filas colapsadas.** Producto (embudo intent × outcome, y la tasa de tap de
 los tips), LLM y tokens, Higiene, Cotizaciones e IPC.
+
+## La cadena de modelos — por qué sale de `llm_calls` sin columna nueva
+
+Cuando el modelo principal rebota por cupo, el loop prueba el siguiente
+(`orchestrator.agentRound`). No hizo falta agregar nada para verlo: **cada
+intento escribe su propia fila** en `llm_calls` —`c.record` corre también en el
+camino de error— con su `model`, su `http_status` y el `trace_id` del turno. La
+cadena se reconstruye ordenando las filas de un `trace_id` por fecha.
+
+Tres paneles en "LLM y tokens":
+
+- **Turnos perdidos por cupo** (stat) — el número titular: turnos que rebotaron y
+  que ningún escalón salvó. Es el trabajo del fallback en un solo número, y va a
+  cero. Conteo absoluto y no tasa, por la misma razón que los semáforos de arriba.
+- **Cadena del agente** (tabla) — un escalón por fila. La columna **"entró de
+  respaldo"** cuenta las veces que ese modelo atendió justo después de que otro
+  rebotara: **reconstruye el orden de la cadena desde los datos, sin leer la
+  config**. Verificado contra la base local el 2026-08-13, que sí tiene la cadena
+  corrida: `gpt-oss-20b` 0 (es el principal), `gpt-oss-120b` 19, `llama-3.3-70b` 4
+  sobre 4 intentos — y el último escalón nunca rebota.
+- **Turnos del agente: quién los atendió** (barras apiladas) — un turno por
+  `trace_id`, en tres bandas.
+
+**Una columna mal rotulada acá es peor que una faltante.** El primer intento de la
+columna de escalón usaba `row_number()` sobre el `trace_id`, y daba 1.2 para un
+modelo que es SIEMPRE el principal: el contador cruzaba las rondas del loop, que
+son varias por turno. Se descartó por eso, no por costo.
+
+En el de las barras, "salvados por el respaldo" exige que el 200 venga **justo después
+de un 429 y con OTRO modelo**. Sin esa condición el panel miente, y no de forma
+sutil: un replay de la cola reusa el `trace_id`, así que un turno que rebotó y
+se resolvió 40 minutos después contaba como rescate. Medido el 2026-08-13, la
+versión ingenua marcaba 14 rescates sobre datos donde el fallback **ni siquiera
+estaba deployado**. El rescate es instantáneo; el replay hizo esperar al
+usuario. Son cosas distintas y la banda naranja ("a la cola") es la que el
+fallback tiene que achicar.
+
+**Línea de base antes del fallback** (prod, 30 días al 2026-08-13, para comparar
+después de deployarlo): 137 turnos del agente, 63 con rebote, y **49 muertos —
+el 35,8%**. El día peor, 23 turnos a la cola.
+
+Y el después, ya medido en la base **local**, que es la única con la cadena
+corrida: en el último bucket, **17 turnos salvados por el respaldo contra 1 a la
+cola**; el día anterior, 0 y 14. Eso es lo que estos paneles tienen que mostrar en
+prod una vez deployado.
 
 ## Cotizaciones e IPC — por qué acá sí hay semáforos de frescura
 
@@ -81,6 +154,9 @@ Para alerta de caída: un monitor externo contra `/health/external`.
 
 `dashboard_test.go` corre dentro de `go test ./...` y valida:
 
+- **que el archivo traiga la envoltura de recurso** (`apiVersion`, `kind`,
+  `metadata.name`, y el cuerpo bajo `spec`) — sin eso el importador lo rechaza
+  sin llegar a mirar un solo panel;
 - que el JSON parsee, tenga elementos y use `RowsLayout`;
 - que ningún query combine `$__timeGroupAlias(...)` con un ` AS time` extra
   (**el macro ya emite su propio `AS "time"`** — esa doble alias rompió los 8
@@ -94,7 +170,14 @@ Para alerta de caída: un monitor externo contra `/health/external`.
   inexistente. Es el modo de falla propio de V2 — un panel puede existir sin
   que nada lo ubique en pantalla, y eso no es un error de JSON, es un panel
   invisible;
-- que la geometría no se salga de las 24 columnas.
+- que la geometría no se salga de las 24 columnas;
+- **que todo `vizConfig` declare `version`**, y que **ningún escalón de
+  `thresholds` tenga `value` nulo o ausente** — el schema V2 lo quiere numérico.
+  Los dos salieron de errores reales del import del 2026-08-13
+  (`Missing property "version"` · `Incorrect type. Expected "number"`), los dos
+  del mismo panel: el único de 28 que había quedado fuera de convención. Es lo
+  que un linter tiene que atrapar — no la falla vistosa, la fila que quedó
+  distinta cuando el resto se migró.
 
 Después de editar el JSON, correr `go test ./docs/grafana/` y **volver a
 importar en Grafana**: el linter no puede ver si un panel renderiza. Ver la
@@ -110,7 +193,13 @@ que funciona: el archivo anterior parseaba perfecto y tenía 8 paneles rotos.
       filas en el rango); un error rojo de query no lo es.
 - [ ] Los dos paneles de serie temporal dibujan línea con el rango `now-24h`.
       Esta es la regresión concreta que motivó la reescritura.
-- [ ] Expandir las cuatro filas colapsadas: sus 15 paneles también renderizan.
+- [ ] Expandir las cuatro filas colapsadas: sus 18 paneles también renderizan.
+- [ ] En "LLM y tokens", los TRES paneles de la cadena. Ojo con
+      **"Turnos del agente"**: es el único query del dashboard que le pasa a
+      `$__timeGroupAlias` una columna de una subconsulta (`inicio`) en vez de
+      una columna de tabla. El linter no puede ver si la macro expande bien ahí.
+      "No data" es aceptable —hasta deployar el fallback la banda azul es cero
+      por definición—; un error rojo de query no lo es.
 - [ ] En "Cotizaciones e IPC": los tres semáforos en verde (días ≤ 4, meses ≤ 2,
       hueco ≤ 4) y el MEP dibujando línea continua. Confirmar que el primer y el
       último punto del MEP caen en el día correcto — es el bug de huso, y con

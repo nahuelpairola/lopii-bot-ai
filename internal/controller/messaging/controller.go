@@ -64,7 +64,7 @@ type movementRepository interface {
 	CountForUser(userID uint64) (int64, error)
 	CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error)
 	ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error
-	TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
+	TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
 	CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error)
 }
 
@@ -82,14 +82,15 @@ type subcategoryRepository interface {
 // movementOrchestrator is the local interface for orchestrator.Orchestrator
 // — only the methods this package's flows need.
 type movementOrchestrator interface {
-	ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error)
-	ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error)
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error)
-	ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error)
 	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
 	ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error)
 	ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error)
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
+	// ClassifyCategories asigna el par (categoría, subcategoría). Sale del loop
+	// en la etapa 5: el techo de TPM de Groq es POR MODELO, así que esta llamada
+	// en otro modelo no le come nada al loop.
+	ClassifyCategories(ctx context.Context, message string, rows []orchestrator.ClassifyRow, taxonomy []orchestrator.TaxonomyEntry) []orchestrator.Pair
 	// Run is the unified agent loop. Added in stage 1 and called by nothing
 	// yet: stage 2 routes UPDATE/DELETE through it. The interface deliberately
 	// grows before it shrinks (9 → 3 in stage 5) — that is what lets each
@@ -100,6 +101,9 @@ type movementOrchestrator interface {
 type metricRepository interface {
 	Log(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error
 	Resolve(userID uint64, outcome string, movementIDs []uint) error
+	// SetIntentIfQueued corrige el intent que quedó en QUEUED cuando el turno
+	// original se topó con el cupo. Sólo lo llama el drenaje.
+	SetIntentIfQueued(userID uint64, intent string) error
 }
 
 type chatHistoryRepository interface {
@@ -162,13 +166,10 @@ type controller struct {
 	nudges        nudgeRepository
 	jobs          jobsRepository
 	actions       actionsRepository
-	// routeCreateToLoop manda CREATE por el loop unificado. Es config y no una
-	// constante porque las etapas 2 y 3 despliegan juntas: si create_inserted
-	// cae, apagarlo devuelve CREATE al camino viejo dejando la etapa 2 viva, que
-	// es el único bisect que queda.
-	routeCreateToLoop bool
-	nextDrainAt       time.Time
-	drainMu           sync.Mutex
+	nextDrainAt   time.Time
+	drainMu       sync.Mutex
+	// locks serializa los updates de un mismo usuario. Ver user_lock.go.
+	locks userLocks
 }
 
 func NewController(
@@ -186,7 +187,6 @@ func NewController(
 	nudges nudgeRepository,
 	jobs jobsRepository,
 	actions actionsRepository,
-	routeCreateToLoop bool,
 ) *controller {
 	return &controller{
 		users:         users,
@@ -203,8 +203,6 @@ func NewController(
 		nudges:        nudges,
 		jobs:          jobs,
 		actions:       actions,
-
-		routeCreateToLoop: routeCreateToLoop,
 	}
 }
 
@@ -239,6 +237,15 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		uid := u.ID
 
+		// De acá para abajo, un update por vez POR USUARIO. Todo el estado está
+		// cuñado por user_id y asume un mensaje en vuelo: la fila única de
+		// conversation_states, el drenaje de pending_actions, y el "pendiente más
+		// reciente" que cierra intent_events. Ver user_lock.go.
+		//
+		// Se espera lo que tarde el turno de adelante (~1-3 s), no lo que tardaba
+		// la cola: para eso está la cadena de modelos de respaldo.
+		defer c.locks.lock(uid)()
+
 		if cb := update.CallbackQuery; cb != nil {
 			b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: cb.ID})
 		}
@@ -250,6 +257,11 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		// Va acá arriba para que un flow abierto no se coma el callback como si
 		// fuera una opción suya; la consulta es read-only y lo deja intacto.
 		if c.handleNudgeQuery(ctx, b, chatID, u.ID, input.CallbackData) {
+			return &uid, nil
+		}
+		// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
+		// una opción de ningún flow, y un flow abierto no puede comérselo.
+		if c.handleNearDuplicateChoice(ctx, b, chatID, u.ID, input.CallbackData) {
 			return &uid, nil
 		}
 

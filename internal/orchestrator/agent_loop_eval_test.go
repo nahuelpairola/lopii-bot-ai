@@ -5,10 +5,10 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // This is the cheapest honest answer to "does the unified loop actually fix
@@ -43,28 +43,39 @@ type agentEvalCase struct {
 	why       string
 }
 
+// NOTA sobre las expectativas, corregidas el 2026-08-12.
+//
+// Nueve casos esperaban find_movements_to_correct, que es SOLO UNA CONSTANTE:
+// nunca estuvo en AgentTools(), asi que jamas se le manda al modelo. Esos
+// nueve eran imposibles de pasar por construccion, y nadie lo noto porque el
+// eval no corria (sin key, y despues 429 por el techo de TPM). Un suite que no
+// puede pasar es peor que no tener suite.
+//
+// La expectativa correcta es correct_movement, que ademas es el contrato de la
+// etapa 5: la app resuelve el candidato ("no busques cual: la app lo busca
+// sola"), el modelo solo dice QUE cambio quiere.
 var agentEvalCases = []agentEvalCase{
 	// --- Class A: weak referent / no new value (9 real failures) ---
 	// Cause: UpdateResult carries one bit, Resolved. "I found which one but I
 	// am missing the new amount" is not representable. The loop can just ask.
 	{
 		id: "le_erre_eran_1500", msg: "Le erre eran 1500",
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "corrección sin referente explícito: hay que buscar, no registrar",
 	},
 	{
 		id: "panaderia_era_2k", msg: "La panaderia era 2k",
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "el caso del acento, ya arreglado en f0; acá se mide la elección de tool",
 	},
 	{
 		id: "corregir_ultimo", msg: "Corregir monto último movimiento",
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "id 203: hoy contesta 'no tengo movimientos de ese día', que es falso",
 	},
 	{
 		id: "asado_eran_15mil", msg: "Perdon, el asado eran 15 mil",
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "corrección con monto nuevo y referente textual",
 	},
 
@@ -96,7 +107,7 @@ var agentEvalCases = []agentEvalCase{
 		history: []QueryTurn{
 			{Question: "3 mil café", Answer: "Registré: ☕ Ocio y salidas › Salir a comer — $3.000 · café · Mercado Pago (hoy)"},
 		},
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "id 210 registró un duplicado — peor que no hacer nada. Con historial es trivial",
 	},
 	{
@@ -105,7 +116,7 @@ var agentEvalCases = []agentEvalCase{
 		history: []QueryTurn{
 			{Question: "3 mil café", Answer: "Registré: ☕ Ocio y salidas › Salir a comer — $3.000 · café · Mercado Pago (hoy)"},
 		},
-		wantFirst: ToolFindMovementsToCorrect, forbidden: ToolRecordMovements,
+		wantFirst: ToolCorrectMovement, forbidden: ToolRecordMovements,
 		why: "id 209: hoy cae en UNCLEAR",
 	},
 
@@ -114,7 +125,7 @@ var agentEvalCases = []agentEvalCase{
 	// a regression no matter what it fixes.
 	{
 		id: "control_gasto_simple", msg: "gasté 500 en el súper",
-		wantFirst: ToolRecordMovements, forbidden: ToolFindMovementsToCorrect,
+		wantFirst: ToolRecordMovements, forbidden: ToolCorrectMovement,
 		why: "el camino del 74%: no puede volverse una corrección",
 	},
 	{
@@ -122,6 +133,26 @@ var agentEvalCases = []agentEvalCase{
 		wantFirst: ToolSumMovements, forbidden: ToolRecordMovements,
 		why: "una consulta no puede registrar nada",
 	},
+}
+
+// evalTools es el subconjunto que el eval manda: las que el ejecutor cablea
+// hoy, mas las dos de lectura que los casos necesitan para elegir bien.
+func evalTools() []AgentTool {
+	want := map[string]bool{
+		ToolRecordMovements: true,
+		ToolCorrectMovement: true,
+		ToolDeleteMovements: true,
+		ToolReplyHelp:       true,
+		ToolAskRewrite:      true,
+		ToolSumMovements:    true,
+	}
+	var out []AgentTool
+	for _, t := range AgentTools() {
+		if want[t.Name] {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // fakeCandidates is what find_movements_to_correct returns in this eval: one
@@ -141,9 +172,19 @@ func TestAgentLoopEval(t *testing.T) {
 		{ID: 2, Name: "Wallet ARS", Currency: "ARS"},
 		{ID: 3, Name: "Fondo común de inversión Balanz", Currency: "ARS"},
 	}
-	prompt := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "", AgentTools())
-	t.Logf("prompt unificado: %d runas (~%d tokens estimados) · %d tools",
-		len([]rune(prompt)), len([]rune(prompt))/4, len(AgentTools()))
+	// El toolbox de las 14 NO ENTRA en el techo de Groq, y esto lo mide en vez de
+	// discutirlo: medido el 2026-08-12, un turno con las 14 pide 8.040 tokens
+	// contra un limite de 8.000 y Groq lo rechaza con 413 antes de razonar nada.
+	// (prompt + schemas ~5.040, mas los 3.000 de maxAgentCompletionTokens, que
+	// Groq RESERVA aunque no se usen.)
+	//
+	// Asi que el eval corre con el toolbox que la etapa 5 va a shippear, que es
+	// el unico que se puede medir. Es tambien la validacion mas dura de la tesis
+	// de la etapa: sin recortar, el loop unificado no existe.
+	tools := evalTools()
+	prompt := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "", tools, "")
+	t.Logf("prompt del eval: %d runas (~%d tokens estimados) · %d tools (de %d definidas)",
+		len([]rune(prompt)), len([]rune(prompt))/4, len(tools), len(AgentTools()))
 
 	model := os.Getenv("GROQ_AGENT_MODEL")
 	if model == "" {
@@ -156,8 +197,17 @@ func TestAgentLoopEval(t *testing.T) {
 		TimeoutSeconds: 60,
 	})
 
+	// Pacing obligatorio, medido el 2026-08-12: cada turno pide ~6.949 tokens
+	// contra un techo de 8.000 TPM, asi que el loop entra UNA VEZ POR MINUTO.
+	// Sin esto el eval se auto-estrangula y todos los casos menos el primero
+	// fallan por 429 en vez de por la eleccion de tool -- que es lo que mide.
+	ran := 0
 	for _, tc := range agentEvalCases {
 		t.Run(tc.id, func(t *testing.T) {
+			if ran > 0 {
+				time.Sleep(62 * time.Second)
+			}
+			ran++
 			var called []string
 			execute := func(name string, _ json.RawMessage) (string, error) {
 				called = append(called, name)
@@ -177,7 +227,7 @@ func TestAgentLoopEval(t *testing.T) {
 				}
 			}
 
-			narration, err := o.Run(context.Background(), prompt, tc.msg, tc.history, AgentTools(), execute)
+			narration, err := o.Run(context.Background(), prompt, tc.msg, tc.history, tools, execute)
 			if err != nil {
 				t.Fatalf("Run: %v", err)
 			}
@@ -199,25 +249,57 @@ func TestAgentLoopEval(t *testing.T) {
 	}
 }
 
-// TestAgentPromptSize is free — no API call — and answers the cost question the
-// spec's §7 estimates: what the unified prompt actually weighs against the
-// per-intent prompts it replaces.
+// TestAgentPromptSize es gratis —no llama a la API— y contesta la pregunta de
+// costo con el desglose, que es lo único accionable: sin saber qué bloque pesa,
+// "achicar el prompt" es adivinar.
+//
+// Antes comparaba contra el prompt de CREATE. Ese camino lo borró la etapa 5, y
+// con él la comparación: hoy el loop no reemplaza a nadie, es el único que hay.
 func TestAgentPromptSize(t *testing.T) {
-	_, taxonomy := seededTaxonomy(t)
 	accounts := []AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}}
+	tools := AgentTools()
+	unified := BuildAgentPrompt("2026-07-31", accounts, nil, "", tools, "")
 
-	unified := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "", AgentTools())
-	create := fmt.Sprintf(createSystemPromptTemplate, "2026-07-31", buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
-
-	var tools int
-	for _, tool := range AgentTools() {
-		tools += len([]rune(tool.Description)) + len(tool.Parameters)
+	bloques := []struct {
+		nombre string
+		texto  string
+	}{
+		{"tools (cuándo usar)", buildToolsBlock(tools)},
+		{"desempates", agentTieBreakers(tools)},
+		{"reglas de monto", amountRules},
+		{"patrones de movimiento", agentPatternRules},
+		{"cuentas", buildAccountsBlock(accounts)},
 	}
 
-	t.Logf("prompt unificado : %5d runas", len([]rune(unified)))
-	t.Logf("prompt CREATE hoy: %5d runas", len([]rune(create)))
-	t.Logf("router hoy       : %5d runas", len([]rune(routerSystemPrompt)))
-	t.Logf("schemas de tools : %5d runas (van en CADA request del loop)", tools)
-	t.Logf("loop por request : %5d runas vs %d de router+CREATE hoy",
-		len([]rune(unified))+tools, len([]rune(routerSystemPrompt))+len([]rune(create)))
+	total := len([]rune(unified))
+	var sumado int
+	t.Logf("prompt del agente: %d runas", total)
+	for _, b := range bloques {
+		n := len([]rune(b.texto))
+		sumado += n
+		t.Logf("  %-24s %5d runas (%4.1f%%)", b.nombre, n, 100*float64(n)/float64(total))
+	}
+	t.Logf("  %-24s %5d runas (%4.1f%%) <- prosa fija de la plantilla",
+		"resto", total-sumado, 100*float64(total-sumado)/float64(total))
+
+	var schemas int
+	for _, tool := range tools {
+		n := len([]rune(tool.Description)) + len(tool.Parameters)
+		schemas += n
+		t.Logf("  schema %-17s %5d runas", tool.Name, n)
+	}
+	// Los schemas van en CADA request, igual que el prompt: el loop reenvía la
+	// lista entera en cada ronda.
+	t.Logf("TOTAL por request: %d runas (~%d tokens a 4 runas/token)",
+		total+schemas, (total+schemas)/4)
+}
+
+// truncate acorta una narración para el log del eval. Vivía en el eval del
+// router; se muda acá porque ese archivo murió con el router.
+func truncate(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len([]rune(s)) > 60 {
+		return string([]rune(s)[:57]) + "..."
+	}
+	return s
 }

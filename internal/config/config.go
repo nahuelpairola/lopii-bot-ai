@@ -37,22 +37,23 @@ type server struct {
 type groq struct {
 	APIKey      string `mapstructure:"apiKey"`
 	BaseURL     string `mapstructure:"baseUrl"`
-	RouterModel string `mapstructure:"routerModel"`
 	CreateModel string `mapstructure:"createModel"`
 	UpdateModel string `mapstructure:"updateModel"`
-	DeleteModel string `mapstructure:"deleteModel"`
 	QueryModel  string `mapstructure:"queryModel"`
 	// AgentModel es el modelo del loop unificado (orchestrator.Run). Es un
 	// sexto campo, no un reemplazo: los cinco por tipo de llamada siguen
 	// sirviendo el camino viejo hasta la etapa 5.
-	AgentModel     string `mapstructure:"agentModel"`
-	TimeoutSeconds int    `mapstructure:"timeoutSeconds"`
-}
-
-// agent son los interruptores del loop unificado. Hoy uno solo: el que decide
-// si CREATE va por el loop o por el camino viejo.
-type agent struct {
-	RouteCreateToLoop bool `mapstructure:"routeCreateToLoop"`
+	AgentModel string `mapstructure:"agentModel"`
+	// AgentFallbackModels son los modelos a los que se corre el loop cuando el
+	// principal rebota por CUPO, en orden. Los techos de Groq son por modelo, así
+	// que un 429 en uno no dice nada del otro. Vacío = el 429 encola, como antes.
+	AgentFallbackModels []string `mapstructure:"agentFallbackModels"`
+	// ClassifierModel es el modelo de la clasificación de categorías, que en la
+	// etapa 5 sale del loop. Va en OTRO modelo a propósito: el techo de TPM de
+	// Groq es por modelo, y medido el 2026-08-12 el loop ya entra al suyo una vez
+	// por minuto y medio. Cuál conviene lo decide el eval, no este default.
+	ClassifierModel string `mapstructure:"classifierModel"`
+	TimeoutSeconds  int    `mapstructure:"timeoutSeconds"`
 }
 
 type query struct {
@@ -75,7 +76,6 @@ type Config struct {
 	Database  database  `mapstructure:"database"`
 	Telegram  telegram  `mapstructure:"telegram"`
 	Groq      groq      `mapstructure:"groq"`
-	Agent     agent     `mapstructure:"agent"`
 	Query     query     `mapstructure:"query"`
 	Reminders reminders `mapstructure:"reminders"`
 	Log       logConfig `mapstructure:"log"`
@@ -93,10 +93,19 @@ func Initialize() (*Config, error) {
 	viper.SetDefault("Query.HistoryLimit", 5)
 	viper.SetDefault("Reminders.SweepIntervalMinutes", 5)
 	// Sin default, un entorno que no declare agentModel deja o.agentModel en ""
-	// y Groq responde 400 en cada llamada del loop. Hoy es inofensivo porque
-	// nadie llama a Run, pero desde la etapa 2 seria una mina para cualquier
-	// entorno nuevo.
+	// y Groq responde 400 en cada llamada del loop. Ya no hay camino alternativo:
+	// desde la etapa 5, Run es el ÚNICO, así que un entorno nuevo sin este valor
+	// no degrada, no arranca.
 	viper.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
+	// La cadena por default. Los tres soportan `tools` (verificado contra
+	// /v1/models) y están ordenados por precio: gpt-oss-20b es el más barato de
+	// los capaces, y llama-3.3-70b —el de mayor techo, 12.000 TPM— va último
+	// porque su prompt cuesta 8 veces más. qwen queda AFUERA a propósito: su
+	// completion sale $3 por millón, diez veces el 20b.
+	viper.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "llama-3.3-70b-versatile"})
+	// llama-3.3-70b-versatile: el techo medido más alto (12.000 TPM), bucket
+	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
+	viper.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")
 	viper.SetDefault("Log.Level", "info")
 	viper.SetDefault("Log.Format", "json")
 

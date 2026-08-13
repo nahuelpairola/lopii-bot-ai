@@ -32,14 +32,15 @@ func newLoopController(t *testing.T, orch *fakeFullOrchestrator, repo *fakeActio
 	}
 }
 
-// TestRouting_UpdateAndDeleteGoThroughTheLoop es el cambio de la etapa: esos dos
-// intents dejan de abrir el picker y pasan por Run. Los otros ocho no se tocan.
-func TestRouting_UpdateAndDeleteGoThroughTheLoop(t *testing.T) {
-	for _, intent := range []orchestrator.Intent{orchestrator.IntentUpdate, orchestrator.IntentDelete} {
-		t.Run(string(intent), func(t *testing.T) {
+// TestRouting_EverythingGoesThroughTheLoop: desde la etapa 5 no hay router, así
+// que CUALQUIER mensaje sin flow abierto va al loop. Antes esto valía sólo para
+// UPDATE y DELETE, y el resto se repartía en un switch de diez ramas — que es
+// donde el mismo pedido moría de seis formas distintas.
+func TestRouting_EverythingGoesThroughTheLoop(t *testing.T) {
+	for _, msg := range []string{"Cafe 12700", "¿cuánto gasté en julio?", "editá los del lote", "renombrá Galicia", "hola", "asdkjhasd"} {
+		t.Run(msg, func(t *testing.T) {
 			called := false
 			orch := &fakeFullOrchestrator{
-				intent: intent,
 				runFn: func(func(string, json.RawMessage) (string, error)) (string, error) {
 					called = true
 					return "listo", nil
@@ -47,46 +48,62 @@ func TestRouting_UpdateAndDeleteGoThroughTheLoop(t *testing.T) {
 			}
 			c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
 
-			if err := c.handleFreeText(context.Background(), nil, 0, 1, "el café en realidad fue 3500"); err != nil {
+			if err := c.handleFreeText(context.Background(), nil, 0, 1, msg); err != nil {
 				t.Fatal(err)
 			}
 			if !called {
-				t.Fatalf("%s tiene que ir por el agent loop", intent)
+				t.Fatalf("%q tiene que ir por el agent loop", msg)
 			}
 		})
 	}
 }
 
-// TestFreeText_CreateRoutingRespectsTheFlag: el interruptor es la única forma de
-// bisectar, porque las etapas 2 y 3 despliegan juntas. Apagado, CREATE tiene que
-// volver al camino de siempre sin tocar nada más.
-func TestFreeText_CreateRoutingRespectsTheFlag(t *testing.T) {
-	for _, tc := range []struct{ flag, wantLoop bool }{{true, true}, {false, false}} {
-		orch := &fakeFullOrchestrator{
-			intent: orchestrator.IntentCreate,
-			runFn:  func(func(string, json.RawMessage) (string, error)) (string, error) { return "ok", nil },
-		}
-		c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
-		c.routeCreateToLoop = tc.flag
-
-		_ = c.handleFreeText(context.Background(), nil, 0, 1, "gasté 5000 en el super")
-
-		if orch.runCalled != tc.wantLoop {
-			t.Errorf("flag=%v: loop usado = %v, want %v", tc.flag, orch.runCalled, tc.wantLoop)
-		}
-	}
-}
-
 // correctInTheLoop programa un loop que pide corregir sin nombrar cuál.
+// correctInTheLoop emite la corrección tal como la pide el schema desde el
+// 2026-08-12: `changes` es REQUERIDO. Antes iba sólo el texto libre y la app
+// hacía una segunda llamada al modelo para interpretarlo; esa llamada ya no
+// existe (ver applyStructuredCorrection).
 func correctInTheLoop(intent orchestrator.Intent) *fakeFullOrchestrator {
 	return &fakeFullOrchestrator{
 		intent: intent,
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			// El texto nombra la panadería: sin eso resolveCandidates cae al atajo
 			// de "lo último que cargaste" y devuelve uno solo, nunca dos.
-			_, err := execute(orchestrator.ToolCorrectMovement, json.RawMessage(`{"change":"la panaderia era 2000"}`))
+			_, err := execute(orchestrator.ToolCorrectMovement, json.RawMessage(
+				`{"change":"la panaderia era 2000","changes":[{"field":"amount","op":"set","value":"2000"}]}`))
 			return "", err
 		},
+	}
+}
+
+// Con `changes` VACÍO el usuario dijo qué movimiento pero no qué cambiarle
+// ("editá los movimientos de hoy"). No se llama al modelo: se pregunta.
+//
+// Antes de esto la app llamaba a ResolveUpdate, que le pedía re-emitir la fila
+// entera — y el 2026-08-12 devolvió las once columnas menos `date`, Groq la
+// rechazó con un 400, y la corrección se perdió completa.
+func TestLoop_EmptyChangesAsksWhatToChange(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	movements := &fakeMovementRepoFull{similar: []movement.Movement{
+		candidateMovement(10, nil, "compra en panadería", 3000),
+	}}
+	orch := &fakeFullOrchestrator{
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, err := execute(orchestrator.ToolCorrectMovement, json.RawMessage(
+				`{"change":"editá la panaderia","changes":[]}`))
+			return "", err
+		},
+	}
+	c := newLoopController(t, orch, repo, movements)
+
+	if err := c.startAgentLoop(context.Background(), nil, 0, 1, "editá la panaderia"); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.rows) != 1 {
+		t.Fatalf("tenía que quedar parkeada la pregunta de qué cambiar, quedan %d", len(repo.rows))
+	}
+	if orch.updateCalled {
+		t.Error("se llamó a ResolveUpdate: con changes vacío se PREGUNTA, no se interpreta")
 	}
 }
 
@@ -179,10 +196,10 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 	if !strings.Contains(orch.gotRunPrompt, "CUENTAS DEL USUARIO") {
 		t.Errorf("el prompt no lleva las cuentas:\n%s", orch.gotRunPrompt)
 	}
-	// Sólo las tools que el ejecutor sabe correr. En la etapa 3 son 5:
-	// record_movements se suma porque CREATE ya pasa por acá.
-	if len(orch.gotRunTools) != 5 {
-		t.Errorf("want las 5 tools cableadas, got %d", len(orch.gotRunTools))
+	// Sólo las tools que el ejecutor sabe correr. En la etapa 5 son 7: se suman
+	// answer_query y manage_settings, que reemplaza a las cinco de configuración.
+	if len(orch.gotRunTools) != 7 {
+		t.Errorf("want las 7 tools cableadas, got %d", len(orch.gotRunTools))
 	}
 	// Y el prompt tiene que hablar de ESAS, no de las 14: si nombra una que no
 	// se manda, el modelo la pide igual y el turno se cae.
@@ -209,13 +226,13 @@ func TestWiredTools_CorrectionStillPicksCorrectMovement(t *testing.T) {
 		names = append(names, tool.Name)
 	}
 	if !slices.Contains(names, orchestrator.ToolRecordMovements) {
-		t.Fatal("record_movements tiene que estar cableada en la etapa 3")
+		t.Fatal("record_movements tiene que estar cableada")
 	}
-	if len(names) != 5 {
-		t.Errorf("toolbox = %v, want las 5 de la etapa 3", names)
+	if len(names) != 7 {
+		t.Errorf("toolbox = %v, want las 7 de la etapa 5", names)
 	}
 
-	prompt := orchestrator.BuildAgentPrompt("2026-08-01", nil, nil, "", wiredAgentTools())
+	prompt := orchestrator.BuildAgentPrompt("2026-08-01", nil, nil, "", wiredAgentTools(), "")
 	if !strings.Contains(prompt, "era, eran, fue") {
 		t.Error("falta el copulativo en pasado: es lo único que separa corregir de registrar")
 	}
@@ -251,7 +268,7 @@ func TestLoop_AlwaysResolvesTheMetric(t *testing.T) {
 		{"ayuda", orchestrator.ToolReplyHelp, outcomeHelpShown},
 		{"pedir reescritura", orchestrator.ToolAskRewrite, outcomeUnclear},
 		{"sin candidatos", orchestrator.ToolCorrectMovement, outcomeNoCandidates},
-		{"narró sin hacer nada", orchestrator.ToolSumMovements, outcomeUpdateFailed},
+		{"narró sin hacer nada", orchestrator.ToolSumMovements, outcomeLoopDidNothing},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			metrics := &fakeMetricRepo{}
@@ -305,6 +322,9 @@ func TestLoop_InsertedResolvesCreateInserted(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	orch := &fakeFullOrchestrator{
 		intent: orchestrator.IntentCreate,
+		// Sin el par scripteado la fila sale en PENDING_REVIEW, abre gap y el
+		// turno parkea en vez de insertar: mediria el gap-fill, no esto.
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			_, err := execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
 				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
@@ -339,6 +359,9 @@ func TestLoop_NoQueueAfterAWrite(t *testing.T) {
 	// en vez de setear el flag a mano.
 	orch := &fakeFullOrchestrator{
 		intent: orchestrator.IntentCreate,
+		// Sin el par scripteado la fila sale en PENDING_REVIEW, abre gap y el
+		// turno parkea en vez de insertar: mediria el gap-fill, no esto.
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			_, _ = execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
 				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
@@ -381,5 +404,39 @@ func TestDrainAfterLoop_OpensTheQuestion(t *testing.T) {
 	}
 	if inProgress, _ := c.engine.InProgress(1); !inProgress {
 		t.Error("el drenaje tenía que dejar la pregunta abierta")
+	}
+}
+
+// Un replay del drenaje NO abre un intent_event nuevo: el del mensaje original
+// sigue pendiente, esperando que este mismo replay lo resuelva.
+//
+// Medido en vivo el 2026-08-12: "10k panaderia" acumuló TRES eventos `unclear`
+// de 0 tokens cada uno —los reintentos del 429— antes de siquiera procesarse.
+// Es ruido en la única columna que lee el portón de la etapa.
+func TestLoop_ReplayDoesNotOpenANewIntentEvent(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeFullOrchestrator{runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+		_, err := execute(orchestrator.ToolReplyHelp, json.RawMessage(`{}`))
+		return "", err
+	}}
+	c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
+	c.metrics = metrics
+
+	// Turno normal del webhook: abre el evento.
+	if err := c.startAgentLoop(context.Background(), nil, 0, 1, "que podés hacer"); err != nil {
+		t.Fatal(err)
+	}
+	afterWebhook := len(metrics.logged)
+
+	// El mismo mensaje, ahora drenado: no puede abrir otro.
+	if err := c.startAgentLoop(withReplaying(context.Background()), nil, 0, 1, "que podés hacer"); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.logged) != afterWebhook {
+		t.Errorf("el replay abrió %d eventos de más", len(metrics.logged)-afterWebhook)
+	}
+	// Pero SÍ completa el intent: el evento original se encoló sin saber qué era.
+	if len(metrics.queuedIntents) != 1 || metrics.queuedIntents[0] != string(orchestrator.IntentHelp) {
+		t.Errorf("el replay tenía que corregir el intent a HELP, corrigió %v", metrics.queuedIntents)
 	}
 }

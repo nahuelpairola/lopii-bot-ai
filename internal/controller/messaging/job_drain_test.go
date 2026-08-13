@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -39,7 +40,9 @@ func TestDrain_GiveUp_OldJob(t *testing.T) {
 		{ID: 42, UserID: 7, Kind: kindFreeText, Payload: payload, CreatedAt: time.Now().Add(-3 * time.Hour)},
 	}}
 	// orchestrator nil: si el drain lo invocara, panichearía → prueba que NO lo invoca.
-	c := &controller{jobs: jobs, users: fakeUsers{}}
+	c := &controller{jobs: jobs, users: fakeUsers{},
+		accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{},
+		movements: &fakeMovementRepoFull{}, chatHistory: stubChatHistory{}}
 
 	c.drainTick(context.Background(), nil, time.Now())
 
@@ -54,19 +57,27 @@ func TestDrain_Success_Deletes(t *testing.T) {
 	jobs := &drainJobs{jobs: []pendingjob.PendingJob{
 		{ID: 9, UserID: 7, Kind: kindFreeText, Payload: payload, CreatedAt: time.Now()},
 	}}
-	c := &controller{jobs: jobs, users: fakeUsers{}, orchestrator: unclearOrch{}}
+	c := &controller{jobs: jobs, users: fakeUsers{}, orchestrator: unclearOrch{},
+		accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{},
+		movements: &fakeMovementRepoFull{}, chatHistory: stubChatHistory{}}
 	c.drainTick(context.Background(), nil, time.Now())
 	if len(jobs.deleted) != 1 || jobs.deleted[0] != 9 {
 		t.Fatalf("want job 9 deleted, got %v", jobs.deleted)
 	}
 }
 
-// unclearOrch clasifica todo como UNCLEAR (handleFreeText responde msgAskRewrite,
-// no toca Call 2). Embeds movementOrchestrator para satisfacer la interfaz.
+// unclearOrch responde a todo pidiendo una reescritura. Desde que la etapa 5
+// borró el router, eso ya no se decide clasificando un intent: el loop llama
+// ask_rewrite, que es la tool equivalente. Embeds movementOrchestrator para
+// satisfacer el resto de la interfaz.
 type unclearOrch struct{ movementOrchestrator }
 
-func (unclearOrch) ClassifyIntent(context.Context, string) (orchestrator.IntentResult, error) {
-	return orchestrator.IntentResult{Intent: orchestrator.IntentUnclear}, nil
+func (unclearOrch) Run(_ context.Context, _, _ string, _ []orchestrator.QueryTurn, _ []orchestrator.AgentTool, execute func(string, json.RawMessage) (string, error)) (string, error) {
+	_, err := execute(orchestrator.ToolAskRewrite, json.RawMessage(`{}`))
+	if errors.Is(err, orchestrator.ErrAgentTurnDone) {
+		return "", nil
+	}
+	return "", err
 }
 
 // traceSpyOrch anota el trace_id que ve el replay. Es la aserción que importa:
@@ -78,9 +89,13 @@ type traceSpyOrch struct {
 	seen string
 }
 
-func (o *traceSpyOrch) ClassifyIntent(ctx context.Context, _ string) (orchestrator.IntentResult, error) {
+func (o *traceSpyOrch) Run(ctx context.Context, _, _ string, _ []orchestrator.QueryTurn, _ []orchestrator.AgentTool, execute func(string, json.RawMessage) (string, error)) (string, error) {
 	o.seen = trace.ID(ctx)
-	return orchestrator.IntentResult{Intent: orchestrator.IntentUnclear}, nil
+	_, err := execute(orchestrator.ToolAskRewrite, json.RawMessage(`{}`))
+	if errors.Is(err, orchestrator.ErrAgentTurnDone) {
+		return "", nil
+	}
+	return "", err
 }
 
 func TestDrain_ReplayCarriesItsOwnTrace(t *testing.T) {
@@ -90,7 +105,9 @@ func TestDrain_ReplayCarriesItsOwnTrace(t *testing.T) {
 	}}
 	orch := &traceSpyOrch{}
 	tr := &fakeTraceRepo{}
-	c := &controller{jobs: jobs, users: fakeUsers{}, orchestrator: orch, traces: tr}
+	c := &controller{jobs: jobs, users: fakeUsers{}, orchestrator: orch, traces: tr,
+		accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{},
+		movements: &fakeMovementRepoFull{}, chatHistory: stubChatHistory{}}
 
 	// ctx pelado, como el del ticker: no trae trace.
 	c.drainTick(context.Background(), nil, time.Now())

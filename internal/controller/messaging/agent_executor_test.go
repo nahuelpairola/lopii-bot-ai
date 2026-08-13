@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -35,7 +36,7 @@ func candidateMovement(id uint, txID *uuid.UUID, description string, amount int6
 
 func newExecutorWith(t *testing.T, userText string, movements ...movement.Movement) *agentExecutor {
 	t.Helper()
-	return newAgentExecutor(&controller{movements: &fakeMovementRepoFull{similar: movements}}, 1, userText, nil)
+	return newAgentExecutor(context.Background(), &controller{movements: &fakeMovementRepoFull{similar: movements}}, 1, userText, nil)
 }
 
 // taxonomyForTest es la taxonomía mínima que buildCreateSeed necesita para NO
@@ -75,14 +76,23 @@ func subcategoriesForTest() *fakeSubcategoryRepoFull {
 
 // newCreateExecutor arma el ejecutor con lo mínimo que necesita un CREATE:
 // cuentas, saldo y taxonomía.
-func newCreateExecutor(t *testing.T, balance, userText string) *agentExecutor {
+// newCreateExecutor arma el executor con el clasificador scripteado.
+//
+// Desde que la clasificación salió del loop, record_movements NO trae el par:
+// lo pone ClassifyCategories. Un test que no lo programe recibe PENDING_REVIEW
+// en todas las filas y termina midiendo el gap-fill en vez de lo suyo.
+func newCreateExecutor(t *testing.T, balance, userText string, pairs ...orchestrator.Pair) *agentExecutor {
 	t.Helper()
+	if pairs == nil {
+		pairs = []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}}
+	}
 	c := &controller{
 		movements:     movementsWithBalance(balance),
 		accounts:      accountsWithDefault(),
 		subcategories: subcategoriesForTest(),
+		orchestrator:  &fakeFullOrchestrator{classifyPairs: pairs},
 	}
-	return newAgentExecutor(c, 1, userText, taxonomyForTest())
+	return newAgentExecutor(context.Background(), c, 1, userText, taxonomyForTest())
 }
 
 // TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn: el camino sin fricción.
@@ -94,7 +104,7 @@ func TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn(t *testing.T) {
 
 	args := `{"movements":[{"type":"expense","amount":"5000","currency":"ARS",
 		"category":"Alimentación","subcategory":"Supermercado","date":"2026-08-01",
-		"description":"super","merchant":"Coto","payment_method":"transfer"}]}`
+		"description":"super en Coto","payment_method":"transfer"}]}`
 	out := executeDone(t, e, orchestrator.ToolRecordMovements, args)
 
 	if !e.wrote {
@@ -296,4 +306,64 @@ func TestAgentExecutor_UnwiredToolsSayNotAvailable(t *testing.T) {
 			t.Errorf("%s: want %q, got %q", tool, resultNotWiredYet, out)
 		}
 	}
+}
+
+// El par estructural es un DEFAULT: si el clasificador dice algo útil, gana el
+// clasificador.
+//
+// Medido en vivo el 2026-08-12: "Suscribi 3100000 a FCI" quedó en
+// `Sistema | Transferencia` porque había un `return` que le impedía al
+// clasificador ver el movimiento. Una suscripción de FCI entre dos cuentas
+// propias en la misma moneda tiene la forma EXACTA de una transferencia —2 patas
+// que suman cero— y no es una transferencia: sólo el mensaje las distingue.
+func TestClassify_TheClassifierBeatsTheStructuralDefault(t *testing.T) {
+	movs := []orchestrator.MovementDraft{
+		{Type: "transfer", Amount: "-3100000", Currency: "ARS"},
+		{Type: "transfer", Amount: "3100000", Currency: "ARS"},
+	}
+	ex := executorWithPairs(t, "Suscribi 3100000 a FCI", []orchestrator.Pair{
+		{Category: "Inversiones", Subcategory: "FCI"},
+		{Category: "Inversiones", Subcategory: "FCI"},
+	})
+	ex.classify(movs)
+
+	for i, m := range movs {
+		if m.Category != "Inversiones" || m.Subcategory != "FCI" {
+			t.Errorf("fila %d = %s | %s, want Inversiones | FCI", i, m.Category, m.Subcategory)
+		}
+	}
+}
+
+// Y cuando el clasificador NO dice nada útil, el default entra: sin él un
+// transfer sin clasificar caería en PENDING_REVIEW y abriría el picker por algo
+// que la forma ya contesta.
+func TestClassify_StructuralDefaultFillsWhatTheClassifierLeavesEmpty(t *testing.T) {
+	movs := []orchestrator.MovementDraft{
+		{Type: "transfer", Amount: "-50000", Currency: "ARS"},
+		{Type: "transfer", Amount: "50000", Currency: "ARS"},
+	}
+	// El clasificador falló (429, timeout): devuelve PENDING_REVIEW.
+	ex := executorWithPairs(t, "pasé 50 mil al banco", []orchestrator.Pair{
+		{Category: constants.PendingReview, Subcategory: constants.PendingReview},
+		{Category: constants.PendingReview, Subcategory: constants.PendingReview},
+	})
+	ex.classify(movs)
+
+	for i, m := range movs {
+		if m.Category != "Sistema" || m.Subcategory != "Transferencia" {
+			t.Errorf("fila %d = %s | %s, want el default estructural", i, m.Category, m.Subcategory)
+		}
+	}
+}
+
+// executorWithPairs arma un ejecutor cuyo clasificador devuelve los pares dados.
+func executorWithPairs(t *testing.T, userText string, pairs []orchestrator.Pair) *agentExecutor {
+	t.Helper()
+	c := &controller{
+		movements:     movementsWithBalance("1000000"),
+		accounts:      accountsWithDefault(),
+		subcategories: subcategoriesForTest(),
+		orchestrator:  &fakeFullOrchestrator{classifyPairs: pairs},
+	}
+	return newAgentExecutor(context.Background(), c, 1, userText, taxonomyForTest())
 }

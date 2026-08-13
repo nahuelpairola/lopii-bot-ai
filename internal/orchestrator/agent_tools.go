@@ -11,16 +11,26 @@ const (
 	ToolCorrectMovement        = "correct_movement"
 	ToolDeleteMovements        = "delete_movements"
 	ToolManageAccount          = "manage_account"
-	ToolCreateCategory         = "create_category"
-	ToolManageCategories       = "manage_categories"
-	ToolSetReminder            = "set_reminder"
-	ToolReplyHelp              = "reply_help"
-	ToolAskRewrite             = "ask_rewrite"
-	ToolListCategories         = "list_categories"
-	ToolSumMovements           = "sum_movements"
-	ToolListMovements          = "list_movements"
-	ToolAccountBalance         = "account_balance"
-	ToolGetReminder            = "get_reminder"
+	// ToolAnswerQuery y ToolManageSettings son de la etapa 5.
+	//
+	// answer_query NO lleva argumentos: la app le pasa el texto original del
+	// usuario. Un campo "pregunta" invita al modelo a parafrasear, y entonces el
+	// loop de query contesta algo que el usuario nunca preguntó.
+	ToolAnswerQuery = "answer_query"
+	// manage_settings reemplaza a las cinco de configuración. Son de bajo volumen
+	// y todas hacen lo mismo: parkear a un wizard. Cinco tools casi iguales son
+	// justo donde este modelo elige mal.
+	ToolManageSettings   = "manage_settings"
+	ToolCreateCategory   = "create_category"
+	ToolManageCategories = "manage_categories"
+	ToolSetReminder      = "set_reminder"
+	ToolReplyHelp        = "reply_help"
+	ToolAskRewrite       = "ask_rewrite"
+	ToolListCategories   = "list_categories"
+	ToolSumMovements     = "sum_movements"
+	ToolListMovements    = "list_movements"
+	ToolAccountBalance   = "account_balance"
+	ToolGetReminder      = "get_reminder"
 )
 
 // schemaNoArgs is the parameter schema for a tool that needs nothing from the
@@ -47,22 +57,54 @@ const schemaNoArgs = `{"type": "object", "properties": {}}`
 // Tool-calling models routinely emit an explicit null for an argument they do
 // not want to set, and Groq validates arguments against the schema server-side,
 // so a plain "string" type 400s on that null before the executor ever runs.
+// recordMovementsParams es el schema del loop, y NO es el de createTool: acá
+// category y subcategory NO existen.
+//
+// El trabajo del loop pasa a ser extraer el HECHO económico; clasificarlo es
+// una llamada aparte, en otro modelo y por lo tanto en otro techo de TPM (ver
+// ClassifyCategories). createTool conserva los dos campos porque el camino
+// viejo sigue vivo hasta que la etapa 5 lo borre.
+var recordMovementsParams = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"movements": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"type": {"type": "string", "enum": ["expense", "income", "transfer"]},
+					"amount": {"type": "string", "description": "positivo, EXCEPTO la pierna de un transfer que sale de una cuenta: esa va negativa. Las 2 piernas de un transfer suman 0"},
+					"currency": {"type": "string", "enum": ["ARS", "USD"]},
+					"account_id": {"type": ["integer", "null"]},
+					"account_name_guess": {"type": ["string", "null"]},
+					"payment_method": {"type": "string"},
+					"description": {"type": "string"},
+					"date": {"type": "string"},
+					"group": {"type": ["string", "null"]}
+				},
+				"required": ["type", "amount", "currency", "payment_method", "description", "date"]
+			}
+		}
+	},
+	"required": ["movements"]
+}`)
+
 func AgentTools() []AgentTool {
 	return []AgentTool{
 		// ---- write (exactly one) ----
 		{
 			Name:        ToolRecordMovements,
-			When:        "cuenta un gasto, un ingreso o un movimiento de plata. Incluye montos sueltos (\"20k\", \"nafta\"). Un rendimiento de inversión también se registra acá.",
+			When:        "cuenta un gasto, un ingreso o un movimiento de plata NUEVO. Un rendimiento de inversión también se registra acá. NO la uses si el mensaje se refiere a algo que ya cargó (\"al café de hoy\", \"eso que puse\", \"el del lote\"): eso es correct_movement.",
 			Kind:        KindWrite,
 			Description: "Registra uno o más movimientos financieros a partir del mensaje del usuario. Usala siempre que cuente un gasto, un ingreso o un movimiento de plata entre sus cuentas.",
-			Parameters:  createTool.Parameters,
+			Parameters:  recordMovementsParams,
 		},
 
 		// ---- read ----
 		{
-			Name:        ToolListCategories,
-			When:        "preguntas por qué categorías existen.",
-			Kind:        KindRead,
+			Name: ToolListCategories,
+			When: "preguntas por qué categorías existen.",
+			Kind: KindRead,
 			// El contrato tiene que seguir al de messaging/query.go: sin filtro NO
 			// viajan las descripciones (~825 tokens de más por ronda, ver el modelo
 			// de costo en client_loop.go). Cuando la etapa 4 cablee esta tool, su
@@ -91,7 +133,7 @@ func AgentTools() []AgentTool {
 				"category": {"type": ["string", "null"]},
 				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
-				"merchant": {"type": ["string", "null"], "description": "opcional: nombre de comercio (coincidencia parcial, ej. Carrefour)"}
+				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial, ej. Carrefour)"}
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -111,7 +153,7 @@ func AgentTools() []AgentTool {
 				"category": {"type": ["string", "null"]},
 				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"]},
-				"merchant": {"type": ["string", "null"], "description": "opcional: nombre de comercio (coincidencia parcial)"},
+				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial)"},
 				"limit": {"type": ["integer", "null"], "description": "máximo de filas (default 20, tope 50)"}
 			},
 			"required": ["from", "to", "currency"]
@@ -140,79 +182,57 @@ func AgentTools() []AgentTool {
 		// ---- action: each one parks the request; the app takes it from there ----
 		{
 			Name:        ToolCorrectMovement,
-			When:        "corrección, reintegro, devolución o regalo sobre un movimiento previo (\"en realidad\", \"me devolvieron\", \"al final me regalaron\", \"eran 2000\", \"estaba mal\"). No busques cuál: la app lo busca sola y le pide confirmación al usuario.",
+			When:        "el mensaje toca un MOVIMIENTO ya registrado. Cuatro familias: reemplazo (\"en realidad eran 2000\", \"estaba mal\"), reintegro (\"me devolvieron 100\", \"me lo regalaron\", \"me reintegraron la mitad\"), INCREMENTO (\"sumale 1070\", \"agregale\", \"restale\", \"son X más\", \"al … de hoy\") y RE-UBICACIÓN, que no toca la plata: cambiarle la categoría, la cuenta o la fecha. El vocabulario que la marca es PONELO, MOVELO, VA, ERA, SALIÓ (\"ponelo en Vivienda\", \"movelo al banco X\", \"eso va en otra categoría\", \"era de la otra cuenta\", \"salió de la caja\", \"fue ayer\"). Un mensaje que nombra algo ya cargado y dice dónde va NO es un movimiento nuevo, aunque no traiga monto: no pidas el monto, ya lo tiene. No busques cuál: la app lo busca sola. Si el pedido es BORRARLO entero, usá delete_movements. FRONTERA: el monto de una CUENTA es un saldo, no un movimiento — \"modificá el monto de la cuenta X\", \"ajustá el saldo\", \"dejá la cuenta en 5000\" son manage_settings.",
 			Kind:        KindAction,
 			Description: "Corrige un movimiento ya registrado (monto, fecha, categoría, cuenta o descripción). La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
 			Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"change": {"type": "string", "description": "qué hay que cambiar, en palabras del usuario"}
+				"change": {"type": "string", "description": "qué hay que cambiar, en palabras del usuario"},
+				"scope": {"type": ["string", "null"], "enum": ["one", "all", null], "description": "'all' si el pedido abarca TODOS los movimientos que nombra (\"los movimientos del lote\", \"todos los de Carrefour\"); default 'one'"},
+				"changes": {"type": "array", "description": "Qué cambia, en campos. Sólo lo que cambia, nunca el movimiento entero. \"Era pollo\" → [{field:description,value:pollo}] · \"eran 2000\" → [{field:amount,value:2000}] · \"sumale 1070\" → [{field:amount,op:add,value:1070}]. NUNCA hagas la cuenta vos: si te devolvieron LA MITAD mandá op=multiply value=0.5, no el resultado. Un reintegro RESTA: \"me devolvieron 500\" → op=subtract value=500; \"me devolvieron la mitad\" → op=multiply value=0.5; \"me lo regalaron\" → op=multiply value=0. Array VACÍO si el usuario pide editar sin decir qué (\"editá los movimientos de hoy\"): ahí la app le pregunta.", "items": {
+					"type": "object",
+					"properties": {
+						"field": {"type": "string", "enum": ["category", "account", "date", "amount", "currency", "description", "type"]},
+						"op": {"type": ["string", "null"], "enum": ["set", "add", "subtract", "multiply", null], "description": "SÓLO para amount (add/subtract/multiply). Omitilo en todo lo demás: se asume set"},
+						"value": {"type": "string"}
+					},
+					"required": ["field", "value"]
+				}}
 			},
-			"required": ["change"]
+			"required": ["change", "changes"]
 		}`),
 		},
 		{
 			Name:        ToolDeleteMovements,
-			When:        "pedido explícito de borrar (\"borrá\", \"eliminá\"). Tampoco busques cuál.",
+			When:        "pedido explícito de borrar (\"borrá\", \"eliminá\"). Tampoco busques cuál. Si en cambio hay que CAMBIARLE algo —incluso dejarlo en cero porque se lo regalaron— es correct_movement.",
 			Kind:        KindAction,
 			Description: "Borra uno o más movimientos ya registrados. La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
 			Parameters:  json.RawMessage(schemaNoArgs),
 		},
 		{
-			Name:        ToolManageAccount,
-			When:        "crear, renombrar, ajustar el saldo o configurar una CUENTA.",
+			Name:        ToolManageSettings,
+			When:        "configurar sus CUENTAS, sus CATEGORÍAS o su RECORDATORIO. Incluye preguntar cómo los tiene configurados. Y todo lo que le pase al SALDO de una cuenta: crearla, renombrarla, ajustarle el monto, ponerla en cero, hacerla default (\"modificá el monto de la cuenta X\", \"corregí lo que tengo en X\"). Que aparezca un monto NO la vuelve una corrección de movimiento: lo que decide es si el monto es de una CUENTA o de un GASTO.",
 			Kind:        KindAction,
-			Description: "Crear, renombrar, ajustar el saldo o dar de baja una cuenta del usuario.",
+			Description: "Abre la configuración de cuentas, categorías o recordatorio. Cubre crear, renombrar, ajustar saldo, fusionar, borrar, y también consultar cómo está configurado hoy.",
 			Parameters: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"request": {"type": "string", "description": "qué quiere hacer con la cuenta, en palabras del usuario"}
+				"area": {"type": "string", "enum": ["cuenta", "categoria", "categoria_administrar", "recordatorio"], "description": "qué está configurando. 'categoria' = quiere UNA NUEVA; 'categoria_administrar' = sacar, borrar o fusionar una que ya tiene (\"eliminá subcategorías\", \"unificá estas dos\")"}
 			},
-			"required": ["request"]
+			"required": ["area"]
 		}`),
 		},
 		{
-			Name:        ToolCreateCategory,
-			When:        "crear una categoría nueva.",
+			Name:        ToolAnswerQuery,
+			When:        "una PREGUNTA sobre plata ya registrada: cuánto gastó, en qué, saldos, comparaciones entre períodos.",
 			Kind:        KindAction,
-			Description: "Cuando el usuario quiere crear una categoría o subcategoría nueva.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"request": {"type": "string", "description": "la categoría o subcategoría que quiere crear, en palabras del usuario"}
-			},
-			"required": ["request"]
-		}`),
-		},
-		{
-			Name:        ToolManageCategories,
-			When:        "fusionar, renombrar o borrar una categoría propia que ya existe.",
-			Kind:        KindAction,
-			Description: "Cuando el usuario quiere fusionar, renombrar o borrar una subcategoría propia que ya existe.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"request": {"type": "string", "description": "qué quiere hacer con sus categorías, en palabras del usuario"}
-			},
-			"required": ["request"]
-		}`),
-		},
-		{
-			Name:        ToolSetReminder,
-			When:        "activar, cambiar o apagar el recordatorio diario.",
-			Kind:        KindAction,
-			Description: "Cuando el usuario quiere activar, cambiar o apagar su recordatorio diario de carga de gastos. Para SABER cómo lo tiene configurado usá get_reminder.",
-			Parameters: json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"request": {"type": "string", "description": "qué quiere hacer con el recordatorio, en palabras del usuario"}
-			},
-			"required": ["request"]
-		}`),
+			Description: "Contesta una pregunta sobre los movimientos y saldos ya registrados. No lleva argumentos: la app le pasa la pregunta tal cual la escribió el usuario.",
+			Parameters:  json.RawMessage(schemaNoArgs),
 		},
 		{
 			Name:        ToolReplyHelp,
-			When:        "\"¿qué podés hacer?\", \"¿cómo funcionás?\", o un saludo sin pedido concreto.",
+			When:        "\"¿qué podés hacer?\", \"¿cómo funcionás?\", o un saludo sin pedido concreto. Si el mensaje SÍ pide algo pero no se entiende, usá ask_rewrite.",
 			Kind:        KindAction,
 			Description: "Cuando el usuario pregunta qué podés hacer, cómo se usa el bot, o saluda sin pedir nada concreto.",
 			Parameters:  json.RawMessage(schemaNoArgs),

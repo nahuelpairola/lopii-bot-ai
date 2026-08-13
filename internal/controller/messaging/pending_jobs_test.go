@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -24,16 +25,20 @@ func (f *fakeJobs) ListPendingUserIDs() ([]uint64, error)                     { 
 func (f *fakeJobs) Delete(uint64) error                                       { return nil }
 func (f *fakeJobs) CountByUser(uint64) (int64, error)                         { return f.count, nil }
 
-// orchestrator stub que siempre devuelve RateLimitedError en ClassifyIntent.
+// orchestrator stub que siempre devuelve RateLimitedError en el loop.
 type rateLimitedOrch struct{ movementOrchestrator }
 
-func (rateLimitedOrch) ClassifyIntent(context.Context, string) (orchestrator.IntentResult, error) {
-	return orchestrator.IntentResult{}, &orchestrator.RateLimitedError{RetryAfter: 8 * time.Second}
+// El 429 ahora aparece en el loop, no en el router: es la PRIMERA llamada del
+// turno desde que handleFreeText no clasifica nada.
+func (rateLimitedOrch) Run(context.Context, string, string, []orchestrator.QueryTurn, []orchestrator.AgentTool, func(string, json.RawMessage) (string, error)) (string, error) {
+	return "", &orchestrator.RateLimitedError{RetryAfter: 8 * time.Second}
 }
 
 func TestHandleFreeText_RateLimited_Enqueues(t *testing.T) {
 	jobs := &fakeJobs{}
-	c := &controller{orchestrator: rateLimitedOrch{}, jobs: jobs}
+	c := &controller{orchestrator: rateLimitedOrch{}, jobs: jobs,
+		accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{},
+		movements: &fakeMovementRepoFull{}, chatHistory: stubChatHistory{}}
 
 	err := c.handleFreeText(context.Background(), nil, 100, 7, "gasté 5000 en el super")
 	if err != nil {
@@ -63,13 +68,22 @@ func jobText(t *testing.T, j pendingjob.PendingJob) string {
 // observar; lo que se afirma acá es lo que sí se puede ver, que es lo que importa:
 // el mensaje quedó guardado y la métrica no se cerró como fracaso.
 func TestHandleFreeText_QueryRateLimited_EnqueuesInsteadOfLosingIt(t *testing.T) {
+	// Sin router, la consulta llega al loop y el loop llama answer_query; el 429
+	// aparece adentro del loop de query, que es donde sigue viviendo QUERY.
 	orch := &fakeFullOrchestrator{
-		intent:   orchestrator.IntentQuery,
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, err := execute(orchestrator.ToolAnswerQuery, json.RawMessage(`{}`))
+			if errors.Is(err, orchestrator.ErrAgentTurnDone) {
+				return "", nil
+			}
+			return "", err
+		},
 		queryErr: &orchestrator.RateLimitedError{RetryAfter: 15 * time.Second},
 	}
 	jobs := &fakeJobs{}
 	metrics := &fakeMetricRepo{}
-	c := &controller{orchestrator: orch, metrics: metrics, chatHistory: stubChatHistory{}, jobs: jobs}
+	c := &controller{orchestrator: orch, metrics: metrics, chatHistory: stubChatHistory{}, jobs: jobs,
+		accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{}, movements: &fakeMovementRepoFull{}}
 
 	const msg = "Cuanto gaste en lote, hbo y disney este mes?"
 	if err := c.handleFreeText(context.Background(), nil, 123, 7, msg); err != nil {
@@ -92,10 +106,20 @@ func TestHandleFreeText_QueryRateLimited_EnqueuesInsteadOfLosingIt(t *testing.T)
 // La contracara: un error que NO es 429 sigue siendo un fracaso de verdad. Sin
 // esta guarda, el fix de arriba podría tragarse todos los errores.
 func TestHandleFreeText_QueryNonRateLimitError_FailsAndDoesNotEnqueue(t *testing.T) {
-	orch := &fakeFullOrchestrator{intent: orchestrator.IntentQuery, queryErr: context.Canceled}
+	orch := &fakeFullOrchestrator{
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, err := execute(orchestrator.ToolAnswerQuery, json.RawMessage(`{}`))
+			if errors.Is(err, orchestrator.ErrAgentTurnDone) {
+				return "", nil
+			}
+			return "", err
+		},
+		queryErr: context.Canceled,
+	}
 	jobs := &fakeJobs{}
 	metrics := &fakeMetricRepo{}
-	c := &controller{orchestrator: orch, metrics: metrics, chatHistory: stubChatHistory{}, jobs: jobs}
+	c := &controller{orchestrator: orch, metrics: metrics, chatHistory: stubChatHistory{}, jobs: jobs,
+		accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{}, movements: &fakeMovementRepoFull{}}
 
 	c.handleFreeText(context.Background(), nil, 123, 7, "consulta que falla")
 
@@ -119,7 +143,7 @@ func TestHandleFreeText_QueryNonRateLimitError_FailsAndDoesNotEnqueue(t *testing
 func TestCreateCategory_RateLimited_EnqueuesAndSkipsWizard(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{}
 	orch := &fakeFullOrchestrator{
-		intent:      orchestrator.IntentCreateCategory,
+		runFn:       manageSettingsRun(settingsAreaCategory),
 		categoryErr: &orchestrator.RateLimitedError{RetryAfter: 15 * time.Second},
 	}
 	jobs := &fakeJobs{}

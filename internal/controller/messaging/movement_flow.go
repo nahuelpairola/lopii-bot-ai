@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/orchestrator"
@@ -15,16 +16,30 @@ import (
 //
 //   - "pagué el curso con Brubank" → Brubank es una cuenta del usuario que
 //     todavía no existe. Hay que preguntar y, si él lo pide, crearla.
-//   - "pizza con Pablo" → Pablo es la contraparte, no una cuenta. El prompt
-//     manda esos nombres a merchant ("ese nombre externo va en merchant, nunca
-//     como cuenta") y además los repite acá; crear una cuenta "Pablo" sería un
-//     error, y hasta preguntar sería interrumpir un gasto que hoy se guarda solo.
+//   - "pizza con Pablo" → Pablo es la contraparte, no una cuenta. Crear una
+//     cuenta "Pablo" sería un error, y hasta preguntar sería interrumpir un
+//     gasto que hoy se guarda solo.
 //
-// La señal que los separa es que en el segundo caso el nombre adivinado y el
-// merchant son el mismo. Es la fila exacta que fija
-// TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount.
-func guessNamesOwnAccount(guess, merchant string) bool {
-	return guess != "" && !strings.EqualFold(guess, merchant)
+// La señal es DÓNDE cae el nombre. Si es parte de lo que pasó, queda en la
+// description ("pizza con Pablo") y no es una cuenta. Si la description es la
+// cosa comprada y el nombre quedó afuera ("pagué el curso con Brubank"), es una
+// cuenta.
+//
+// Antes esto se decidía comparando el guess contra merchant, que ya no existe.
+// Sin reemplazo la condición colapsaba a `guess != ""` y CADA contraparte
+// abriría un gap ofreciendo crear una cuenta con el nombre de una persona.
+//
+// Limitación heredada, no introducida: tokenAppearsInString exige tokens de
+// minMatchTokenLen (4), así que un nombre de 3 letras ("Ana") no matchea y abre
+// un gap de más. Es estrictamente más raro que la falla que reemplaza.
+//
+// Las dos direcciones las fijan TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount
+// y TestResolveAndInsert_NonTransferCreatesNamedOwnAccount.
+func guessNamesOwnAccount(guess, description string) bool {
+	if guess == "" {
+		return false
+	}
+	return !tokenAppearsInString(guess, foldAccents(strings.ToLower(description)))
 }
 
 // accountPendingCreate is the sentinel movementRow.AccountID value
@@ -55,7 +70,6 @@ type movementRow struct {
 	Category         string
 	Subcategory      string
 	PaymentMethod    string
-	Merchant         string
 	Description      string
 	Date             string
 	Icon             string
@@ -69,15 +83,11 @@ func stringOrEmpty(v any) string {
 
 // movementGapDescriptor names a movementRow for the gap-fill ask-prompts, so
 // a compound message with several pending rows never asks two identical
-// questions in a row — merchant is preferred (concrete: "en Coto"),
-// description is the fallback (description is a required Call 2 CREATE
-// field — always populated, see orchestrator.MovementDraft).
+// questions in a row. La description es un campo requerido del Call 2 CREATE
+// —siempre viene poblada, ver orchestrator.MovementDraft—, así que desde el
+// fold de merchant es la única fuente y no hace falta fallback.
 func movementGapDescriptor(row movementRow) string {
-	detail := row.Merchant
-	if detail == "" {
-		detail = row.Description
-	}
-	return "$" + row.Amount + " · " + detail
+	return "$" + row.Amount + " · " + row.Description
 }
 
 // copyData es maps.Clone con una garantía extra: el resultado nunca es nil.
@@ -106,7 +116,6 @@ func decodeMovementRows(data conversation.Data) []movementRow {
 			Category:         stringOrEmpty(m[keyCategory]),
 			Subcategory:      stringOrEmpty(m[keySubcategory]),
 			PaymentMethod:    stringOrEmpty(m[keyPaymentMethod]),
-			Merchant:         stringOrEmpty(m[keyMerchant]),
 			Description:      stringOrEmpty(m[keyDescription]),
 			Date:             stringOrEmpty(m[keyDate]),
 			Icon:             stringOrEmpty(m[keyIcon]),
@@ -129,7 +138,6 @@ func encodeMovementRows(rows []movementRow) []interface{} {
 			keyCategory:         r.Category,
 			keySubcategory:      r.Subcategory,
 			keyPaymentMethod:    r.PaymentMethod,
-			keyMerchant:         r.Merchant,
 			keyDescription:      r.Description,
 			keyDate:             r.Date,
 			keyIcon:             r.Icon,
@@ -168,7 +176,43 @@ func encodeStringSlice(items []string) []interface{} {
 // movement_update_flow.go builds its own seed (buildUpdateSeed) since an
 // UPDATE's shape differs — before/after movements, no gap-filling in
 // this feature's scope — rather than reusing this function.
-func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry) conversation.Data {
+// matchNamedAccount resuelve el nombre de cuenta que dijo el usuario contra sus
+// cuentas reales. Devuelve 0 si no hay UNA sola coincidencia exacta.
+//
+// La comparación es exacta (plegando acentos y mayúsculas), nunca parcial: acá
+// una coincidencia errada escribe el movimiento en la cuenta EQUIVOCADA, que es
+// el único lugar del código donde un error chico es un bug contable. "Galicia"
+// contra "banco galicia" NO matchea a propósito — cae al gap y pregunta, que es
+// el comportamiento de hoy.
+//
+// Sin esto, nombrar una cuenta que existe abría el picker igual: medido en vivo
+// el 2026-08-12 con "Lote cemento 45000", donde el modelo mandó
+// account_name_guess="Mercado Pago" —la cuenta default del usuario, que existe—
+// y el bot preguntó a cuál iba.
+func matchNamedAccount(guess string, accounts []account.Account, cur string) uint64 {
+	needle := foldAccents(strings.ToLower(strings.TrimSpace(guess)))
+	if needle == "" {
+		return 0
+	}
+	var found uint64
+	for _, a := range accounts {
+		// La moneda tiene que coincidir: dos cuentas pueden llamarse igual en ARS
+		// y USD, y meter el gasto en la otra rompe los dos saldos.
+		if cur != "" && a.Currency.String() != cur {
+			continue
+		}
+		if foldAccents(strings.ToLower(a.Name)) != needle {
+			continue
+		}
+		if found != 0 {
+			return 0 // ambiguo: que pregunte
+		}
+		found = uint64(a.ID)
+	}
+	return found
+}
+
+func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry, accounts []account.Account) conversation.Data {
 	rows := make([]movementRow, 0, len(result.Movements))
 	var categoryGaps, accountGaps []string
 
@@ -192,7 +236,6 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 			Category:         draft.Category,
 			Subcategory:      draft.Subcategory,
 			PaymentMethod:    draft.PaymentMethod,
-			Merchant:         draft.Merchant,
 			Description:      draft.Description,
 			Date:             draft.Date,
 			Group:            draft.Group,
@@ -214,9 +257,16 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 		//
 		// Una fila sin AccountNameGuess y sin AccountID NO es un gap: es el camino
 		// normal "usá mi default" y tiene que seguir siendo mudo. Tampoco lo es una
-		// que solo repite el merchant — ver guessNamesOwnAccount.
-		if draft.AccountID == nil && (draft.Type == constants.Transfer || guessNamesOwnAccount(draft.AccountNameGuess, draft.Merchant)) {
-			accountGaps = append(accountGaps, idx)
+		// que solo repite algo que ya está en la description — ver guessNamesOwnAccount.
+		if draft.AccountID == nil && (draft.Type == constants.Transfer || guessNamesOwnAccount(draft.AccountNameGuess, draft.Description)) {
+			// Antes de preguntar: si el nombre que dijo el usuario ES una de sus
+			// cuentas, ya está resuelto. Preguntarle a cuál va después de que la
+			// nombró es hacerle repetir lo que acaba de decir.
+			if id := matchNamedAccount(draft.AccountNameGuess, accounts, draft.Currency); id != 0 {
+				row.AccountID = strconv.FormatUint(id, 10)
+			} else {
+				accountGaps = append(accountGaps, idx)
+			}
 		}
 
 		rows = append(rows, row)
@@ -229,6 +279,76 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 		keyPendingCategoryGaps: encodeStringSlice(categoryGaps),
 		keyPendingAccountGaps:  encodeStringSlice(accountGaps),
 	}
+}
+
+// categoryGapsFor devuelve los índices de las filas cuyo par
+// (categoría, subcategoría) no existe en la taxonomía del usuario, o quedó en
+// PENDING_REVIEW. Es la misma prueba que hace buildCreateSeed, extraída para que
+// UPDATE la use también: tenerla sólo en CREATE fue un bug vivo en el que una
+// corrección que nombraba una categoría inexistente perdía el movimiento.
+//
+// Taxonomía vacía = no validar: sin con qué comparar, no se inventan gaps.
+func categoryGapsFor(rows []movementRow, taxonomy []orchestrator.TaxonomyEntry) []string {
+	if len(taxonomy) == 0 {
+		return nil
+	}
+	known := make(map[string]bool, len(taxonomy))
+	for _, t := range taxonomy {
+		known[t.Category+"\x00"+t.Subcategory] = true
+	}
+
+	var gaps []string
+	for i, r := range rows {
+		if r.Category == constants.PendingReview || !known[r.Category+"\x00"+r.Subcategory] {
+			gaps = append(gaps, strconv.Itoa(i))
+		}
+	}
+	return gaps
+}
+
+// resolveTaxonomyPair busca el par (categoría, subcategoría) que nombra un
+// texto suelto del usuario: "proyecto hogar", "Vivienda | Proyecto hogar",
+// "vivienda/proyecto hogar".
+//
+// Existe porque el usuario nombra UNA cosa y la taxonomía guarda DOS. Cuando
+// dice "moveme esto a proyecto hogar" no está eligiendo una categoría, está
+// eligiendo un par — y sin resolverlo la fila queda con la categoría escrita a
+// mano y la subcategoría vacía, o sea un gap, o sea el picker: al usuario le
+// preguntan lo que acaba de decir.
+//
+// Sólo resuelve lo INEQUÍVOCO. Con cero o más de una coincidencia devuelve
+// false y el gap-fill se encarga, que es la degradación correcta: preguntar es
+// caro, adivinar mal es un dato corrupto.
+func resolveTaxonomyPair(text string, taxonomy []orchestrator.TaxonomyEntry) (category, subcategory string, ok bool) {
+	needle := normalizeForTaxonomy(text)
+	if needle == "" {
+		return "", "", false
+	}
+
+	var hits []orchestrator.TaxonomyEntry
+	for _, t := range taxonomy {
+		// Las tres formas de nombrar el mismo par. El separador se normaliza a un
+		// espacio antes, así que "Vivienda | Proyecto hogar" y "vivienda/proyecto
+		// hogar" llegan acá idénticos.
+		if normalizeForTaxonomy(t.Subcategory) == needle ||
+			normalizeForTaxonomy(t.Category+" "+t.Subcategory) == needle {
+			hits = append(hits, t)
+		}
+	}
+	if len(hits) != 1 {
+		return "", "", false
+	}
+	return hits[0].Category, hits[0].Subcategory, true
+}
+
+// normalizeForTaxonomy deja un nombre comparable: sin acentos, en minúsculas,
+// con los separadores y los espacios de más colapsados a uno.
+func normalizeForTaxonomy(s string) string {
+	s = strings.ToLower(foldAccents(s))
+	for _, sep := range []string{"|", "/", ">", "-", ":"} {
+		s = strings.ReplaceAll(s, sep, " ")
+	}
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // parseUintSlice turns the string-encoded movement IDs carried through
@@ -244,4 +364,25 @@ func parseUintSlice(ids []string) ([]uint, error) {
 		out = append(out, uint(v))
 	}
 	return out, nil
+}
+
+// accountGapsFor devuelve los índices de las filas que NOMBRAN una cuenta que no
+// se pudo resolver a una real.
+//
+// Es el gemelo de categoryGapsFor, y faltaba: en el camino de corrección
+// `keyPendingAccountGaps` iba hardcodeado en nil — el mismo bug que tenía la
+// categoría. Sin gap, una fila con el nombre de la cuenta y sin id sale igual, y
+// la escritura la manda a la cuenta POR DEFAULT de su moneda: el movimiento
+// termina en otra cuenta que la que pidió el usuario, sin que nada avise.
+//
+// Una fila SIN nombre y sin id no es un gap: es el camino normal "usá mi
+// default", y tiene que seguir siendo mudo.
+func accountGapsFor(rows []movementRow) []string {
+	var gaps []string
+	for i, r := range rows {
+		if r.AccountID == "" && r.AccountNameGuess != "" {
+			gaps = append(gaps, strconv.Itoa(i))
+		}
+	}
+	return gaps
 }

@@ -52,6 +52,12 @@ type llmCallRecorder struct {
 
 func (r llmCallRecorder) Record(c orchestrator.LLMCall) {
 	go func() {
+		// Vacío → NULL, para que `WHERE tool_calls IS NOT NULL` signifique "el
+		// modelo llamó algo" y no "la columna trae un array vacío".
+		var toolCalls *string
+		if c.ToolCalls != "" {
+			toolCalls = &c.ToolCalls
+		}
 		if err := r.insert(&metric.LLMCall{
 			TraceID:                    c.TraceID,
 			CallType:                   c.CallType,
@@ -65,6 +71,7 @@ func (r llmCallRecorder) Record(c orchestrator.LLMCall) {
 			Error:                      c.Err,
 			RateLimitRemainingRequests: c.RateLimitRemainingRequests,
 			RateLimitRemainingTokens:   c.RateLimitRemainingTokens,
+			ToolCalls:                  toolCalls,
 		}); err != nil {
 			slog.Error("llm_call insert failed", "err", err)
 		}
@@ -117,16 +124,16 @@ func InitServer(conf *config.Config) error {
 	actionsRepo := pendingaction.NewRepository(conn)
 
 	llmOrchestrator := orchestrator.New(orchestrator.Config{
-		APIKey:         conf.Groq.APIKey,
-		BaseURL:        conf.Groq.BaseURL,
-		RouterModel:    conf.Groq.RouterModel,
-		CreateModel:    conf.Groq.CreateModel,
-		UpdateModel:    conf.Groq.UpdateModel,
-		DeleteModel:    conf.Groq.DeleteModel,
-		QueryModel:     conf.Groq.QueryModel,
-		AgentModel:     conf.Groq.AgentModel,
-		TimeoutSeconds: conf.Groq.TimeoutSeconds,
-		Recorder:       llmCallRecorder{insert: metricRepo.InsertLLMCall},
+		APIKey:              conf.Groq.APIKey,
+		BaseURL:             conf.Groq.BaseURL,
+		CreateModel:         conf.Groq.CreateModel,
+		UpdateModel:         conf.Groq.UpdateModel,
+		QueryModel:          conf.Groq.QueryModel,
+		AgentModel:          conf.Groq.AgentModel,
+		AgentFallbackModels: conf.Groq.AgentFallbackModels,
+		ClassifierModel:     conf.Groq.ClassifierModel,
+		TimeoutSeconds:      conf.Groq.TimeoutSeconds,
+		Recorder:            llmCallRecorder{insert: metricRepo.InsertLLMCall},
 	})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
@@ -150,7 +157,6 @@ func InitServer(conf *config.Config) error {
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
 		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo, actionsRepo,
-		conf.Agent.RouteCreateToLoop,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
 	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, invitationRepo, conf.Telegram.Token, conf.Telegram.Username)

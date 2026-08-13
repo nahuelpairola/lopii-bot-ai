@@ -161,7 +161,7 @@ type fakeMovementRepoFull struct {
 	reassignedUser     uint64
 	reassignSubCalls   int
 	reassignSubErr     error
-	topMerchants       []string
+	topDescriptions    []string
 	dayCounts          []movement.DayCount
 	sumRows            func(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
 }
@@ -229,8 +229,8 @@ func (r *fakeMovementRepoFull) ReassignSubcategory(userID uint64, fromID uint64,
 	r.reassignSubCalls++
 	return r.reassignSubErr
 }
-func (r *fakeMovementRepoFull) TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
-	return r.topMerchants, nil
+func (r *fakeMovementRepoFull) TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
+	return r.topDescriptions, nil
 }
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {
@@ -251,7 +251,7 @@ func TestResolveAndInsertMovements_SimpleSingleMovement_NilTransactionID(t *test
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
 	}}
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 	data[conversation.UserIDKey] = uint64(1)
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -281,7 +281,7 @@ func TestResolveAndInsertMovements_Compound_SharesTransactionID(t *testing.T) {
 		{Type: "transfer", Amount: "140000", Currency: "ARS", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(1), Group: "g1"},
 		{Type: "transfer", Amount: "100", Currency: "USD", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(7), Group: "g1"},
 	}}
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 	data[conversation.UserIDKey] = uint64(1)
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
@@ -637,7 +637,7 @@ func TestResolveAndInsertMovements_PopulatesSubcategoryAssociation(t *testing.T)
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
 	}}
-	data := buildCreateSeed(result, nil)
+	data := buildCreateSeed(result, nil, nil)
 	data[conversation.UserIDKey] = uint64(1)
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
@@ -797,9 +797,13 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 	movs := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subs, accounts: accts, movements: movs}
 
-	// expense carrying an account_name_guess ("Pablo") + no AccountID
+	// expense carrying an account_name_guess ("Pablo") + no AccountID.
+	// Desde el fold de merchant la contraparte vive DENTRO de la description
+	// ("pizza con Pablo"), que es la señal que lee guessNamesOwnAccount: el
+	// nombre es parte de qué pasó, así que no es una cuenta.
 	rows := []movementRow{{Type: "expense", Amount: "100000", Currency: "ARS",
-		Category: "Ocio y salidas", Subcategory: "Restaurante", Merchant: "Pablo",
+		Category: "Ocio y salidas", Subcategory: "Restaurante",
+		Description:      "pizza con Pablo",
 		AccountNameGuess: "Pablo", AccountID: accountPendingCreate, Date: "2026-07-07"}}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": encodeMovementRows(rows), "old_movement_ids": encodeStringSlice(nil)}
 
@@ -816,7 +820,7 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 
 // TestResolveAndInsert_NonTransferCreatesNamedOwnAccount es la otra punta de
 // TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount: cuando la cuenta
-// nombrada NO es el merchant ("me pagaron en Brubank"), el usuario tocó
+// nombrada NO aparece en la description ("me pagaron en Brubank"), el usuario tocó
 // "➕ Crear cuenta Brubank" en el gap-fill y hay que crearla. Sin esto el bot
 // pregunta, ofrece crearla y después tira la respuesta: el movimiento cae en la
 // default igual, que es peor que no haber preguntado.
@@ -824,7 +828,7 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 // Es un income y no un gasto a propósito: una cuenta recién creada arranca en 0,
 // así que un gasto contra ella chocaría contra el guard de saldos y el test
 // estaría midiendo eso en vez de la creación. El camino que se ejercita —no es
-// transferencia, el guess no es el merchant— es el mismo.
+// transferencia, el guess no está en la description— es el mismo.
 func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Ingresos|Sueldo": newSubForTest(7, "Ingresos", "Sueldo"),
@@ -835,6 +839,7 @@ func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 
 	rows := []movementRow{{Type: "income", Amount: "200000", Currency: "ARS",
 		Category: "Ingresos", Subcategory: "Sueldo",
+		Description:      "sueldo de julio", // Brubank NO aparece acá: es una cuenta
 		AccountNameGuess: "Brubank", AccountID: accountPendingCreate, Date: "2026-07-07"}}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": encodeMovementRows(rows), "old_movement_ids": encodeStringSlice(nil)}
 

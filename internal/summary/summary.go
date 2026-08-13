@@ -160,9 +160,12 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 	if top, err := b.movements.TopExpenseForUser(movement.MovementQuery{UserID: userID, From: from, To: to, Currency: cur}); err != nil {
 		return "", err
 	} else if top != nil {
+		// Desde el fold de merchant esto sale de description, que es un campo
+		// requerido del CREATE: "sin detalle" pasó de ser lo habitual a ser el
+		// último recurso.
 		desc := "sin detalle"
-		if top.Merchant != nil && *top.Merchant != "" {
-			desc = html.EscapeString(*top.Merchant)
+		if top.Description != nil && *top.Description != "" {
+			desc = html.EscapeString(*top.Description)
 		}
 		fmt.Fprintf(&sb, "Lo más caro: <b>$%s</b> · %s\n", top.Amount.Abs().StringFixed(2), desc)
 	}

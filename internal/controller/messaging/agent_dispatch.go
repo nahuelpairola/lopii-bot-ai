@@ -194,8 +194,20 @@ func applyAnswers(action *pendingaction.PendingAction, answers []pendingaction.O
 			// hicimos todo lo que podíamos.
 			if indexOf(q.Options, q.Answer) >= 0 {
 				payload.PickedChangeField = true
+				payload.PickedField = string(changeFieldForLabel(q.Answer))
 			} else {
 				payload.GaveChangeValue = true
+				// Con el campo elegido por botón y el valor recién escrito, la app
+				// tiene la corrección ENTERA. No hay nada que interpretar, así que
+				// no se llama al modelo: se arma el cambio acá.
+				//
+				// El monto no pasa por acá — se escribe derecho, sin botón, y lo
+				// resuelve amountOnlyCorrection.
+				if payload.PickedField != "" {
+					payload.Changes = []correctionChange{{
+						Field: changeField(payload.PickedField), Op: opSet, Value: q.Answer,
+					}}
+				}
 			}
 		}
 	}
@@ -227,8 +239,10 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 	// silencio, se deja en la cola y falla ruidoso. Un CREATE se saltea el
 	// chequeo porque no tiene candidatos — lo que viaja es el seed a medio
 	// resolver.
+	// Una corrección en lote no tiene candidato elegido —el cambio va sobre
+	// todos— así que Chosen se queda en -1 y chosenCandidate lo rechazaría.
 	var chosen candidateGroup
-	if action.Tool != orchestrator.ToolRecordMovements {
+	if action.Tool != orchestrator.ToolRecordMovements && !isBatchCorrection(payload) {
 		var err error
 		if chosen, err = chosenCandidate(payload); err != nil {
 			return err
@@ -259,7 +273,27 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		}
 		return c.startFlow(ctx, b, chatID, userID, flow, seed, "drain: start "+flow)
 	case orchestrator.ToolCorrectMovement:
-		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer})
+		if len(payload.Changes) > 0 {
+			groups := []candidateGroup{chosen}
+			if isBatchCorrection(payload) {
+				groups = payload.Candidates
+			}
+			return c.applyStructuredCorrection(ctx, b, chatID, userID, payload, groups)
+		}
+		// `changes` vacío = el usuario dijo QUÉ movimiento pero no QUÉ cambiarle
+		// ("editá los movimientos de hoy"). Se pregunta, que es la primitiva para
+		// la que se construyó el loop.
+		//
+		// Acá NO se llama al modelo. La segunda llamada le pedía re-emitir la fila
+		// ENTERA y eso falla solo: el 2026-08-12, ante "Era pollo", devolvió las
+		// once columnas menos `date` y Groq la rechazó con un 400 — la corrección
+		// se perdió entera por un campo que nadie había pedido tocar. Un diff no
+		// puede fallar así.
+		if len(payload.Changes) == 0 && !payload.GaveChangeValue {
+			return c.parkChangeQuestion(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows,
+				changeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
+		}
+		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
 	case orchestrator.ToolDeleteMovements:
 		seed := conversation.Data{
 			keyCandidateGroups: encodeCandidateGroupList([]candidateGroup{chosen}),

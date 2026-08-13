@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 )
 
@@ -39,45 +38,21 @@ var ErrAgentMaxIterations = errors.New("orchestrator: agent loop exceeded max it
 // mensaje del usuario terminaba en la cola en vez de en el gate.
 var ErrAgentTurnDone = errors.New("orchestrator: agent turn done")
 
-// kindRank orders a round's calls: every write, then every read, then every
-// parking. See orderCallsByKind.
-func kindRank(k AgentToolKind) int {
-	switch k {
-	case KindWrite:
-		return 0
-	case KindAction:
-		return 2
-	default:
-		// KindRead and anything undeclared. Read is the conservative slot: it
-		// neither jumps ahead of a write nor gets deferred past one.
-		return 1
-	}
-}
-
-// orderCallsByKind returns the round's calls sorted write → read → action,
-// preserving the model's relative order within each class.
+// El orden lectura-antes-de-escritura se BORRÓ con la etapa 5.
 //
-// This is load-bearing, not tidiness. Under batching a sum_movements and the
-// record_movements it must count arrive in the SAME round, and the order the
-// model happened to list them in is not something to rely on. Running the read
-// first reports a total that excludes the rows about to be inserted — wrong
-// money, and silently wrong.
+// Existía para que un total no se calculara sin las filas que estaban por
+// insertarse. Este toolbox no tiene NINGUNA tool de lectura —record_movements
+// es la única KindWrite y todo lo demás es una acción—, así que ordenaba un
+// conjunto cuyos elementos comparten rango: no hacía nada.
 //
-// Reordering is free at the protocol level because results map back by
-// tool_call_id, not position; and it is safe semantically because within one
-// round the model chose every call before seeing any result.
-func orderCallsByKind(calls []loopToolCall, tools []AgentTool) []loopToolCall {
-	kindOf := make(map[string]AgentToolKind, len(tools))
-	for _, t := range tools {
-		kindOf[t.Name] = t.Kind
-	}
-	ordered := make([]loopToolCall, len(calls))
-	copy(ordered, calls)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return kindRank(kindOf[ordered[i].Function.Name]) < kindRank(kindOf[ordered[j].Function.Name])
-	})
-	return ordered
-}
+// Y borrarlo saca una trampa en vez de volver a documentarla: kindRank metía un
+// Kind SIN SETEAR en el mismo bucket que un KindRead explícito, así que una tool
+// de escritura futura declarada sin Kind compilaba, corría, y se ejecutaba
+// DESPUÉS de las lecturas — exactamente el bug contra el que advertía el
+// comentario de la propia función. Ningún test lo cubría.
+//
+// Si una etapa futura vuelve a meter tools de lectura acá (por ejemplo plegando
+// QUERY), esto vuelve CON el valor cero hecho irrepresentable, no como estaba.
 
 // Run drives the unified agent loop: it sends the tools, executes every call a
 // round emits via the caller's execute closure (scoped to the user), feeds each
@@ -92,7 +67,6 @@ func orderCallsByKind(calls []loopToolCall, tools []AgentTool) []loopToolCall {
 //     means the model already said what it had to. The calls still run — their
 //     side effects are wanted — and then the turn ends without spending another
 //     round replaying the whole prefix.
-//   - Class order inside a round: orderCallsByKind, above.
 //   - A cap of 5 rounds instead of 3.
 //
 // A tool executor error is fed back to the model as text, not aborted, so it
@@ -124,7 +98,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 		if i == 0 {
 			choice = "required"
 		}
-		assistant, err := o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, toolDefs, choice, maxAgentCompletionTokens)
+		assistant, err := o.agentRound(ctx, messages, toolDefs, choice)
 		if errors.Is(err, ErrNothingToExtract) && choice == "required" {
 			// The model refused to call anything under tool_choice:"required",
 			// and Groq turns that into a hard 400. Observed on real correction
@@ -153,7 +127,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 			// declined to call a tool, so there was nothing to record; the risk
 			// it now claims to have recorded something is what the prompt's
 			// "no repitas el detalle" rule and an empty receipt guard against.
-			assistant, err = o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, toolDefs, "auto", maxAgentCompletionTokens)
+			assistant, err = o.agentRound(ctx, messages, toolDefs, "auto")
 		}
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: agent run: %w", err)
@@ -174,7 +148,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 
 		messages = append(messages, assistant)
 		turnDone := false
-		for _, call := range orderCallsByKind(assistant.ToolCalls, tools) {
+		for _, call := range assistant.ToolCalls {
 			result, execErr := execute(call.Function.Name, json.RawMessage(call.Function.Arguments))
 			switch {
 			case errors.Is(execErr, ErrAgentTurnDone):
@@ -214,7 +188,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 	// Cap reached while the model still wanted tools. Force one narration from
 	// the results already gathered. Tools are omitted (nil, not toolDefs):
 	// Groq 400s hard if the model attempts a call while tool_choice is "none".
-	final, err := o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, nil, "none", maxAgentCompletionTokens)
+	final, err := o.agentRound(ctx, messages, nil, "none")
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: agent run (final): %w", err)
 	}
@@ -222,4 +196,44 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 		return "", ErrAgentMaxIterations
 	}
 	return final.Content, nil
+}
+
+// agentRound corre UNA ronda del loop, corriéndose de modelo cuando el
+// principal rebota por cupo.
+//
+// Los techos de Groq son POR MODELO: leyendo los headers, gpt-oss-20b da 8.000
+// TPM y gpt-oss-120b otros 8.000, cada uno con su TPD. Un 429 en uno no dice
+// nada del otro, así que reintentar en el siguiente convierte una espera de ~40
+// segundos en una respuesta inmediata, y multiplica la capacidad diaria por la
+// cantidad de modelos de la cadena.
+//
+// SÓLO se corre ante un 429. Un 400 —un schema mal armado, un JSON cortado— es
+// nuestro y sale igual en cualquier modelo: reintentarlo sería gastar el cupo de
+// los suplentes para obtener el mismo error.
+//
+// El modelo suplente NO es equivalente y no se pretende que lo sea: es mejor una
+// respuesta de otro modelo ahora que la del preferido dentro de 40 segundos. La
+// vara está baja a propósito, porque la alternativa es esperar. Cada intento
+// queda en `llm_calls` con SU modelo, así que con qué frecuencia se dispara la
+// cadena —y si el suplente hace peor las cosas— se mide, no se supone.
+func (o *Orchestrator) agentRound(ctx context.Context, messages []loopMessage, tools []toolDef, toolChoice string) (loopMessage, error) {
+	chain := append([]string{o.agentModel}, o.agentFallbacks...)
+	var lastErr error
+	for _, model := range chain {
+		msg, err := o.client.chatCompletionLoop(ctx, callTypeAgent, model, messages, tools, toolChoice, maxAgentCompletionTokens)
+		if err == nil {
+			return msg, nil
+		}
+		var rateLimited *RateLimitedError
+		if !errors.As(err, &rateLimited) {
+			return msg, err
+		}
+		lastErr = err
+		slog.WarnContext(ctx, "agent: modelo sin cupo, probando el siguiente",
+			"model", model, "restantes", len(chain)-1)
+	}
+	// Todos rebotaron: se devuelve el ÚLTIMO 429 para que el caller lo encole.
+	// El RetryAfter del último es el más informativo — es el del modelo que se
+	// probó más tarde.
+	return loopMessage{}, lastErr
 }

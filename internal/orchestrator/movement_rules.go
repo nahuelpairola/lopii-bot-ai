@@ -1,8 +1,10 @@
 package orchestrator
 
+import "strings"
+
 // Las reglas de clasificación de movimientos que comparten, verbatim, los dos
 // caminos de CREATE: createSystemPromptTemplate (el camino pre-loop, que sigue
-// vivo detrás de routeCreateToLoop) y agentSystemPromptTemplate (el loop).
+// vivo mientras exista ese camino) y agentSystemPromptTemplate (el loop).
 //
 // Estaban duplicadas. El 2026-08-08 el fix de las piernas del transfer tuvo que
 // pegar el mismo párrafo en los dos archivos; tocar uno solo dejaba el camino
@@ -23,7 +25,11 @@ const taxonomyAndAmountRules = `
 REGLAS DE TAXONOMÍA:
 1. Usá ÚNICAMENTE las categorías y subcategorías listadas abajo. Prohibido inventar nombres nuevos.
 2. Si tenés menos del 90%% de certeza sobre la categoría o subcategoría, asigná EXACTAMENTE "PENDING_REVIEW" en ambos campos.
+` + amountRules
 
+// amountRules es lo que queda cuando la taxonomía se va del prompt: el loop
+// sigue necesitando cómo leer un monto, pero ya no clasifica.
+const amountRules = `
 REGLAS DE MONTO Y MONEDA:
 - Los montos abreviados ("200k", "1.5m") se expanden a su valor numérico completo.
 - Si el mensaje no aclara moneda, asumí ARS siempre.
@@ -39,7 +45,7 @@ PATRONES DE MOVIMIENTOS COMPUESTOS (varios movimientos, comparten una misma tran
 5. Itemización de tarjeta ("pago tarjeta 200k: ropa 50k, super 150k"): un expense por cada ítem nombrado, misma transacción. Si el mensaje aclara un total y dice que "el resto" es algo (ej. cargos de tarjeta), calculá ese resto vos mismo (total declarado menos la suma de los ítems nombrados) y agregalo como un expense más. Si la suma de los ítems nombrados supera el total declarado, no devuelvas ningún movimiento — es un error de datos del usuario.
 
 REGLA DE TIPO (el destino decide el tipo, el verbo NO):
-- Si el destino de la plata es una de las CUENTAS DEL USUARIO (abajo) → es una transferencia entre cuentas propias (2 transfers, mismo group). Si el destino NO está en esa lista (una persona, un comercio) → es un expense; ese nombre externo va en merchant, nunca como cuenta.
+- Si el destino de la plata es una de las CUENTAS DEL USUARIO (abajo) → es una transferencia entre cuentas propias (2 transfers, mismo group). Si el destino NO está en esa lista (una persona, un comercio) → es un expense; ese nombre externo es parte de QUÉ pasó y va en description, nunca como cuenta. account_name_guess es SOLO para cuentas, bancos y billeteras.
 - Si el origen de la plata NO es una cuenta tuya (alguien te mandó plata) → income.
 - El verbo (transferí, pasé, di, mandé, pagué) NO decide el tipo; solo sugiere payment_method.
 - Los montos de expense/income van en POSITIVO; la app les pone el signo. Solo las piernas de transfer/compra-venta USD llevan un monto negativo explícito.
@@ -49,4 +55,33 @@ REGLA DE GANANCIA:
 
 REGLA DE AGRUPACIÓN (campo group):
 - Las piernas/ítems de UNA operación atómica (compra/venta USD, transferencia entre cuentas propias, suscripción/rescate FCI) llevan el MISMO group. Compras u operaciones separadas — incluso ítems de una tarjeta ("pan, medicamentos, carne"; "ropa, super") — NO llevan group.
+`
+
+// agentPatternRules es movementPatternRules SIN los nombres literales de
+// subcategoría.
+//
+// Esos pares —"Sistema | Transferencia", "Inversiones | Dólares"— están en el
+// prompt para que el modelo los COPIE, y por lo tanto también para que los
+// copie mal. En el loop los pone la app: structuralPair los deduce de la forma
+// del movimiento, que es un dato, no una interpretación.
+//
+// El const compartido NO se toca: createSystemPromptTemplate sigue clasificando
+// hasta que la etapa 5 borre ese camino, y sacárselos ahí lo dejaría sin con
+// qué.
+var agentPatternRules = strings.NewReplacer(
+	`, subcategoría "Inversiones | Dólares"`, "",
+	`, subcategoría "Sistema | Transferencia"`, "",
+	// La REGLA DE GANANCIA entera se va del loop. Su contenido era "es un income
+	// con subcategoría X", y `record_movements` YA NO TIENE campo de categoría:
+	// le pedía al modelo llenar algo inexistente. Lo que queda —que un
+	// rendimiento es un income— sale solo de la regla de tipo.
+	//
+	// Medido antes de sacarla: 0 usos en 442 mensajes de 45 días. Cuesta ~85
+	// tokens en CADA llamada del loop.
+	rendimientoRule, "",
+).Replace(movementPatternRules)
+
+const rendimientoRule = `
+REGLA DE GANANCIA:
+- Una cuenta que rinde ("el plazo fijo rindió 5000", "el broker ganó 10 mil") es un income en esa cuenta, subcategoría "Sistema | Rendimiento inversión". Nunca un income genérico, nunca un transfer.
 `

@@ -22,6 +22,30 @@ func parseUsage(body []byte) (prompt, completion, total int) {
 	return u.Usage.PromptTokens, u.Usage.CompletionTokens, u.Usage.TotalTokens
 }
 
+// parseToolCalls devuelve el array tool_calls de la respuesta, tal cual, como
+// JSON. Sin esto llm_calls guarda QUÉ tool eligió el modelo pero nunca CON QUÉ
+// argumentos, y medir la selección sin los argumentos es medir media decisión.
+//
+// Vacío cuando el modelo no llamó nada, que server mapea a NULL: así
+// `WHERE tool_calls IS NOT NULL` significa "llamó algo".
+func parseToolCalls(body []byte) string {
+	var r struct {
+		Choices []struct {
+			Message struct {
+				ToolCalls json.RawMessage `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &r); err != nil || len(r.Choices) == 0 {
+		return ""
+	}
+	raw := r.Choices[0].Message.ToolCalls
+	if len(raw) == 0 || string(raw) == "null" || string(raw) == "[]" {
+		return ""
+	}
+	return string(raw)
+}
+
 // parseRateLimitRemaining lee los headers x-ratelimit-remaining-* de Groq.
 // Ausente / no numérico → nil (columna queda NULL).
 func parseRateLimitRemaining(h http.Header) (*int, *int) {
@@ -44,6 +68,8 @@ type LLMCall struct {
 	Err                        string
 	RateLimitRemainingRequests *int
 	RateLimitRemainingTokens   *int
+	// ToolCalls: el array tool_calls crudo. Vacío = el modelo no llamó nada.
+	ToolCalls string
 }
 
 // LLMRecorder recibe cada LLMCall. Implementado por un adapter en server que
@@ -61,7 +87,11 @@ const (
 	callTypeOnboarding     = "onboarding"
 	callTypeQuery          = "query"
 	callTypeCategoryCreate = "category_create"
-	callTypeAccountManage  = "account_manage"
+	// callTypeClassifier: la clasificación sale del loop y pasa a su propia
+	// llamada, en su propio bucket de Grafana y —lo que importa— en su propio
+	// techo de TPM, porque el ceiling de Groq es POR MODELO.
+	callTypeClassifier    = "classifier"
+	callTypeAccountManage = "account_manage"
 	// callTypeAgent es el loop unificado (Run). Va aparte de callTypeQuery a
 	// propósito: desde la etapa 2 el loop atiende UPDATE y DELETE, y si compartiera
 	// bucket con query los paneles de costo y latencia de QUERY empezarían a

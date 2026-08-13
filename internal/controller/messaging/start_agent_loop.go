@@ -8,14 +8,15 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/orchestrator"
 )
 
 // startAgentLoop resuelve un mensaje con el loop unificado.
 //
-// En esta etapa lo alcanzan sólo UPDATE y DELETE. El router sigue vivo y sigue
-// decidiendo qué intents llegan hasta acá: ese es el truco de las etapas, y es
-// lo que hace que esto se pueda bisectar. Los otros ocho casos no se tocan.
+// Desde la etapa 5 lo alcanza TODO: handleFreeText no hace otra cosa que llamar
+// acá. No hay router que filtre antes, así que este es el único lugar donde se
+// decide qué se hace con un mensaje, y lo decide el loop eligiendo herramienta.
 func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	// El loop tarda más que una sola llamada, y el silencio se lee como colgado.
 	c.sendTyping(ctx, b, chatID)
@@ -36,8 +37,30 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
 	}
 
-	executor := newAgentExecutor(c, userID, text, taxonomy)
+	executor := newAgentExecutor(ctx, c, userID, text, taxonomy)
 	answer, err := c.orchestrator.Run(ctx, prompt, text, history, tools, executor.execute)
+
+	// El intent_event se ABRE acá, después del loop, porque ya no hay router que
+	// diga el intent de antemano — lo dice la primera tool que el loop eligió.
+	// Log abre y Resolve cierra, y Resolve NO toca la columna intent: por eso el
+	// orden es al revés que antes.
+	//
+	// Pero un REPLAY no abre nada: el evento del mensaje ya existe y sigue
+	// pendiente, esperando justamente a que el drenaje lo resuelva. Sin esta
+	// guarda cada reintento del 429 escribía un `unclear` de más — medido en vivo
+	// el 2026-08-12: "10k panaderia" llevaba TRES eventos fallidos, de 0 tokens
+	// cada uno, antes de siquiera procesarse. Es ruido puro en la única columna
+	// que lee el portón de la etapa, y hace que el bot se vea peor cuanto más
+	// apretado esté el cupo.
+	if isReplaying(ctx) {
+		// El replay NO abre un evento nuevo: el del mensaje ya existe y sigue
+		// pendiente. Lo que sí hace es completarle el intent, que al encolarse no
+		// se sabía — el cupo cortó antes de que el modelo eligiera herramienta.
+		c.setQueuedIntent(ctx, userID, intentForExecutor(executor, err))
+	} else {
+		c.logIntent(ctx, userID, text, intentForExecutor(executor, err), err)
+	}
+
 	if err != nil {
 		// Un 429 DESPUÉS de escribir no se encola: el drenaje volvería a correr el
 		// mensaje y la plata quedaría registrada dos veces. Se informa el éxito
@@ -53,33 +76,70 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
 			return oerr
 		}
-		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.resolveMetric(ctx, userID, outcomeLoopErrored)
 		slog.ErrorContext(ctx, "agent loop failed", "user_id", userID, "err", err)
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return fmt.Errorf("agent loop: %w", err)
 	}
 
+	// Las dos tools que delegan a otro subsistema. Van antes de la narración: la
+	// respuesta se la da el que atiende, no el loop.
+	if executor.answerQuery {
+		return c.finishAnswerQuery(ctx, b, chatID, userID, text)
+	}
+	if executor.settingsArea != "" {
+		return c.finishManageSettings(ctx, b, chatID, userID, text, executor.settingsArea)
+	}
+
 	// La copia nuestra (ayuda, pedir reescritura) le gana a la narración del
 	// modelo: es texto tuneado y tiene que salir textual.
 	if executor.reply != "" {
-		c.sendText(ctx, b, chatID, executor.reply)
+		if len(executor.replyButtons) > 0 {
+			c.sendPrompt(ctx, b, chatID, conversation.Prompt{Text: executor.reply, Buttons: executor.replyButtons})
+		} else {
+			c.sendText(ctx, b, chatID, executor.reply)
+		}
 	} else if narration := strings.TrimSpace(answer); narration != "" {
 		c.sendText(ctx, b, chatID, narration)
 	}
 
 	if len(executor.parked) > 0 {
 		if err := c.parkAgentActions(ctx, userID, executor.parked); err != nil {
-			c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+			c.resolveMetric(ctx, userID, outcomeParkFailed)
 			slog.ErrorContext(ctx, "park agent actions failed", "user_id", userID, "err", err)
 			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return err
 		}
 	}
+	// El hilo compartido: hasta el 2026-08-12 este camino LEÍA chat_turns y no
+	// escribía nunca — sólo query.go llamaba a Append. El paquete chathistory
+	// dice que "desde la etapa 2 todos los intents comparten el mismo hilo", y no
+	// era cierto: cada CREATE, UPDATE y DELETE corría con el hilo vacío.
+	//
+	// La resolución de referencias NO depende de esto (para eso está el bloque de
+	// entidades recientes, que se reconstruye desde la base y no se desordena con
+	// un replay); el hilo es para el resto del contexto conversacional.
+	if reply := firstNonEmpty(executor.reply, strings.TrimSpace(answer)); reply != "" {
+		if err := c.chatHistory.Append(userID, text, reply); err != nil {
+			slog.WarnContext(ctx, "chat history append failed", "user_id", userID, "err", err)
+		}
+	}
+
 	c.resolveAgentLoopMetric(ctx, userID, executor)
 
 	// Destapa la cola acá mismo: este mensaje no abrió ningún flujo, así que no
 	// va a haber un terminal que dispare el drenaje más tarde.
 	return c.drainNextAgentAction(ctx, b, chatID, userID)
+}
+
+// firstNonEmpty devuelve el primero que no esté vacío.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // resolveAgentLoopMetric cierra el intent_event del turno.
@@ -108,7 +168,7 @@ func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, 
 	default:
 		// El loop narró sin hacer nada. Es un fracaso, y tiene que verse como
 		// tal: es justo el caso que hay que poder contar.
-		c.resolveMetric(ctx, userID, outcomeUpdateFailed)
+		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
 	}
 }
 
@@ -139,7 +199,8 @@ func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	return orchestrator.BuildAgentPrompt(todayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools), taxonomy, nil
+	return orchestrator.BuildAgentPrompt(todayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools,
+		c.buildRecentEntities(userID)), taxonomy, nil
 }
 
 // sendTyping avisa que el bot está pensando. Best-effort: que falle el aviso no

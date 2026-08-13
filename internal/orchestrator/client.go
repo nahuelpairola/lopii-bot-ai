@@ -218,6 +218,7 @@ func (c *Client) record(ctx context.Context, callType, model string, start time.
 	}
 	if body != nil {
 		rec.PromptTokens, rec.CompletionTokens, rec.TotalTokens = parseUsage(body)
+		rec.ToolCalls = parseToolCalls(body)
 	}
 	if header != nil {
 		rec.RateLimitRemainingRequests, rec.RateLimitRemainingTokens = parseRateLimitRemaining(header)
@@ -262,7 +263,7 @@ type toolSchema struct {
 // declared boolean in the schema; Groq validates arguments against the
 // schema server-side and 400s before this code ever sees the payload, so
 // the schema itself must declare the field as ["boolean","string"] for
-// this leniency to matter — see routerTool/updateTool/deleteTool.
+// this leniency to matter — see updateTool/deleteTool.
 type flexBool bool
 
 func (b *flexBool) UnmarshalJSON(data []byte) error {

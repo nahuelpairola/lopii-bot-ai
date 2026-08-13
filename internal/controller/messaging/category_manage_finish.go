@@ -93,12 +93,12 @@ func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID ui
 		})
 	}
 
-	merchants, _ := c.movements.TopMerchantsBySubcategory(userID, sourceID, topMerchantsForSuggestion)
+	descriptions, _ := c.movements.TopDescriptionsBySubcategory(userID, sourceID, topDescriptionsForSuggestion)
 	text := mergeSuggestionText(
 		stringOrEmpty(data[keySourceCategory]),
 		stringOrEmpty(data[keySourceSubcategory]),
 		sourceDescription,
-		merchants,
+		descriptions,
 	)
 
 	res, err := c.orchestrator.ClassifyCategoryCreate(ctx, text, taxonomy)
@@ -116,13 +116,13 @@ func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID ui
 // de la MISMA llamada, no como una clasificación aparte: clasificar movimientos
 // daría una respuesta por movimiento, y esta operación es por subcategoría,
 // todo o nada.
-func mergeSuggestionText(category, subcategoryName, description string, merchants []string) string {
+func mergeSuggestionText(category, subcategoryName, description string, samples []string) string {
 	text := category + " / " + subcategoryName
 	if description != "" {
 		text += " — " + description
 	}
-	if len(merchants) > 0 {
-		text += " — gastos en: " + strings.Join(merchants, ", ")
+	if len(samples) > 0 {
+		text += " — gastos en: " + strings.Join(samples, ", ")
 	}
 	return text
 }

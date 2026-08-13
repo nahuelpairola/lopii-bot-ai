@@ -140,32 +140,10 @@ func TestRun_TurnDoneEndsTheTurnWithoutANarrationRound(t *testing.T) {
 		t.Errorf("%d rounds, want 1 — la segunda vuelta es la que revienta el TPM", len(*reqs))
 	}
 }
+// El test que fijaba "escrituras antes que lecturas" se borro con
+// orderCallsByKind: este toolbox no tiene tools de lectura, asi que ordenaba un
+// conjunto cuyos elementos comparten rango. Ver el comentario en agent.go.
 
-func TestRun_RunsWritesBeforeReadsRegardlessOfModelOrder(t *testing.T) {
-	// §4.1.2: the model lists the read FIRST. If the loop honoured that, the
-	// sum would exclude the movements record_movements is about to insert —
-	// wrong money, silently.
-	srv, _ := loopServer(t, `{"choices":[{"message":{"content":"listo","tool_calls":[
-		{"id":"c1","type":"function","function":{"name":"sum_movements","arguments":"{}"}},
-		{"id":"c2","type":"function","function":{"name":"correct_movement","arguments":"{}"}},
-		{"id":"c3","type":"function","function":{"name":"record_movements","arguments":"{}"}}]}}]}`)
-	defer srv.Close()
-	o := New(Config{BaseURL: srv.URL, AgentModel: "m", TimeoutSeconds: 5})
-
-	var ran []string
-	if _, err := o.Run(context.Background(), "sys", "x", nil, agentToolsForTest(),
-		func(name string, _ json.RawMessage) (string, error) {
-			ran = append(ran, name)
-			return "ok", nil
-		}); err != nil {
-		t.Fatalf("Run: %v", err)
-	}
-
-	want := []string{"record_movements", "sum_movements", "correct_movement"}
-	if strings.Join(ran, ",") != strings.Join(want, ",") {
-		t.Errorf("ran %v, want %v (write, then read, then action)", ran, want)
-	}
-}
 
 func TestRun_ToolErrorIsFedBackNotFatal(t *testing.T) {
 	// A failing executor must reach the model as text so it can recover or
@@ -290,5 +268,67 @@ func TestRun_SendsItsOwnCompletionCap(t *testing.T) {
 	}
 	if got := (*reqs)[0].MaxCompletionTokens; got != maxAgentCompletionTokens {
 		t.Errorf("max_completion_tokens = %d, want %d", got, maxAgentCompletionTokens)
+	}
+}
+
+// La cadena de fallback: un 429 en el modelo principal se reintenta en el
+// siguiente, porque los techos de Groq son POR MODELO.
+func TestAgentRound_FallsBackToTheNextModelOnRateLimit(t *testing.T) {
+	var usados []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		usados = append(usados, req.Model)
+		if req.Model == "principal" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"error":{"message":"Rate limit reached","code":"rate_limit_exceeded"}}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo"}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{
+		BaseURL: server.URL, AgentModel: "principal",
+		AgentFallbackModels: []string{"suplente"}, TimeoutSeconds: 5,
+	})
+	msg, err := o.agentRound(context.Background(), []loopMessage{{Role: "user", Content: "hola"}}, nil, "auto")
+	if err != nil {
+		t.Fatalf("agentRound: %v", err)
+	}
+	if msg.Content != "listo" {
+		t.Errorf("content = %q, want la respuesta del suplente", msg.Content)
+	}
+	// El principal se prueba PRIMERO y el suplente sólo después: si se
+	// invirtiera, el tráfico normal se iría al modelo caro.
+	if len(usados) < 2 || usados[0] != "principal" || usados[len(usados)-1] != "suplente" {
+		t.Errorf("orden de modelos = %v, want principal y después suplente", usados)
+	}
+}
+
+// Un 400 NO se reintenta: es un error nuestro y sale igual en cualquier modelo.
+// Reintentarlo gastaría el cupo de los suplentes para obtener el mismo error.
+func TestAgentRound_DoesNotFallBackOnABadRequest(t *testing.T) {
+	var usados []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		usados = append(usados, req.Model)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"tool call validation failed","code":"tool_use_failed"}}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{
+		BaseURL: server.URL, AgentModel: "principal",
+		AgentFallbackModels: []string{"suplente"}, TimeoutSeconds: 5,
+	})
+	if _, err := o.agentRound(context.Background(), []loopMessage{{Role: "user", Content: "hola"}}, nil, "auto"); err == nil {
+		t.Fatal("un 400 tiene que propagarse")
+	}
+	for _, m := range usados {
+		if m == "suplente" {
+			t.Errorf("se probó el suplente ante un 400: %v", usados)
+		}
 	}
 }

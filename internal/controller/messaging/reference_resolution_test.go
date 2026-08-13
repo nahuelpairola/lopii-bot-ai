@@ -44,11 +44,12 @@ func TestMatchesMessage_Amount(t *testing.T) {
 	}
 }
 
-func TestMatchesMessage_Merchant(t *testing.T) {
-	// Verify merchant token matching works.
-	group := transactionGroup{Movements: []movement.Movement{{Merchant: strPtr("Carrefour")}}}
+func TestMatchesMessage_DescriptionToken(t *testing.T) {
+	// Desde el fold de merchant, el nombre del comercio vive en la description
+	// y este es el unico camino de match textual.
+	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("compra en Carrefour")}}}
 	if !matchesMessage(group, "el gasto en Carrefour fue mucho") {
-		t.Error("expected a match on merchant 'Carrefour'")
+		t.Error("expected a match on the description token 'Carrefour'")
 	}
 }
 
@@ -169,7 +170,7 @@ func (r *fakeMovementRepoForResolve) CountBySubcategory(userID uint64, subcatego
 func (r *fakeMovementRepoForResolve) ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error {
 	return nil
 }
-func (r *fakeMovementRepoForResolve) TopMerchantsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
+func (r *fakeMovementRepoForResolve) TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
 	return nil, nil
 }
 
@@ -306,7 +307,7 @@ func TestResolveCandidates_Fallback_SkipsSystemMovements(t *testing.T) {
 
 // TestCandidateLabel cubre los defectos visibles en la captura de Telegram:
 // monto crudo ("2000 ARS", "21528105 ARS"), fecha ISO, y el doble separador
-// "· ·" cuando el movimiento no tiene descripción ni merchant.
+// "· ·" cuando el movimiento no tiene descripción.
 func TestCandidateLabel(t *testing.T) {
 	// Fecha construida como en produccion: parse de "YYYY-MM-DD", o sea
 	// medianoche UTC. Construirla con startOfTodayArgentina() -el mismo valor

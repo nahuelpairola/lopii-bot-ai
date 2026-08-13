@@ -5,47 +5,12 @@ import (
 	"testing"
 )
 
-// routerTieBreakersBefore es el bloque EXACTO que routerSystemPrompt llevaba
-// escrito a mano antes de extraerlo. El router es un camino vivo y su prompt
-// está tuneado contra producción: este refactor no puede moverle una coma.
-//
-// Si este test falla después de tocar tieBreakerRules, la respuesta no es
-// actualizar la constante de abajo — es que el cambio altera el ruteo en
-// producción y necesita su propio eval.
-//
-// Ganó una regla el 2026-08-01: la queja sin valor nuevo ("el café estaba
-// mal"). Ruteaba UNCLEAR porque el único desempate de corrección exigía un
-// monto, y se reprodujo 4× en intent_events (115/116, 132/133). Se agrega ahora
-// —y no antes— porque recién ahora el loop sabe preguntar QUÉ cambiar: sin eso
-// el mensaje llegaba igual y moría en ResolveUpdate, o sea que la falla sólo se
-// movía más tarde.
-const routerTieBreakersBefore = `- Monto o ítem solo → CREATE.
-- Reintegro/regalo que alude a algo previo → UPDATE.
-- Rendimiento de inversión → CREATE.
-- No confundir CREATE con DELETE.
-- Copulativo en pasado sobre un monto (era, eran, fue) → UPDATE, aunque no diga "en realidad".
-- Queja sobre un movimiento previo sin decir el valor nuevo ("estaba mal", "no era así") → UPDATE: la app le pregunta qué cambiar.
-- Ajustar/corregir el saldo o monto de una CUENTA → ACCOUNT_MANAGE (UPDATE es solo sobre un movimiento).
-- "¿Qué puedo hacer?" / "¿cómo funcionás?" → HELP (no QUERY).`
-
-func TestRouterTieBreakers_TextIsUnchanged(t *testing.T) {
-	if got := routerTieBreakers(); got != routerTieBreakersBefore {
-		t.Errorf("el bloque de desempates del router cambió.\n--- ahora ---\n%s\n--- antes ---\n%s", got, routerTieBreakersBefore)
-	}
-}
-
-func TestRouterSystemPrompt_StillCarriesTheTieBreakers(t *testing.T) {
-	if !strings.Contains(routerSystemPrompt, routerTieBreakersBefore) {
-		t.Errorf("routerSystemPrompt perdió el bloque de desempates:\n%s", routerSystemPrompt)
-	}
-}
-
 // TestAgentTieBreakers_SpeakInTools es la mitad que justifica la extracción:
 // la misma regla, con los nombres de las tools en vez de los intents.
 func TestAgentTieBreakers_SpeakInTools(t *testing.T) {
 	got := agentTieBreakers(AgentTools())
 
-	for _, want := range []string{ToolRecordMovements, ToolCorrectMovement, ToolDeleteMovements, ToolManageAccount, ToolReplyHelp} {
+	for _, want := range []string{ToolRecordMovements, ToolCorrectMovement, ToolDeleteMovements, ToolManageSettings, ToolReplyHelp} {
 		if !strings.Contains(got, want) {
 			t.Errorf("los desempates del agente no nombran %s:\n%s", want, got)
 		}
@@ -72,7 +37,7 @@ func TestAgentTieBreakers_DropsRulesAboutToolsThatAreNotSent(t *testing.T) {
 	}
 	got := agentTieBreakers(stage2)
 
-	for _, absent := range []string{ToolRecordMovements, ToolManageAccount, ToolSumMovements} {
+	for _, absent := range []string{ToolRecordMovements, ToolManageSettings, ToolSumMovements} {
 		if strings.Contains(got, absent) {
 			t.Errorf("sobrevivió una regla sobre %s, que no se manda:\n%s", absent, got)
 		}
@@ -89,20 +54,15 @@ func TestAgentTieBreakers_DropsRulesAboutToolsThatAreNotSent(t *testing.T) {
 // estar en los DOS bloques: el router decide qué llega al loop, y el loop decide
 // qué tool corre.
 func TestTieBreakers_CorrectionWithNoNewValue(t *testing.T) {
-	for name, block := range map[string]string{
-		"router": routerTieBreakers(),
-		"agent":  agentTieBreakers(AgentTools()),
-	} {
-		if !strings.Contains(block, "sin decir el valor nuevo") {
-			t.Errorf("%s: falta la regla de corrección sin valor nuevo:\n%s", name, block)
-		}
+	if block := agentTieBreakers(AgentTools()); !strings.Contains(block, "sin decir el valor nuevo") {
+		t.Errorf("falta la regla de corrección sin valor nuevo: %s", block)
 	}
 }
 
 // TestTieBreakers_NoPlaceholderSurvives: un marcador sin reemplazar llegaría al
 // modelo como "{{record}}" y sería basura silenciosa en el prompt.
 func TestTieBreakers_NoPlaceholderSurvives(t *testing.T) {
-	for name, block := range map[string]string{"router": routerTieBreakers(), "agent": agentTieBreakers(AgentTools())} {
+	for name, block := range map[string]string{"agent": agentTieBreakers(AgentTools())} {
 		if strings.Contains(block, "{{") || strings.Contains(block, "}}") {
 			t.Errorf("quedó un marcador sin reemplazar en el bloque %s:\n%s", name, block)
 		}

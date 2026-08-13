@@ -27,8 +27,13 @@ func TestAgentRecord_NormalizesTheCategoryPair(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Vivienda|Luz": newSubForTest(99, "Vivienda", "Luz"),
 	}}
+	// El par mal formado lo devuelve ahora el CLASIFICADOR: desde que la
+	// clasificación salió del loop, es el único que puede meter "Vivienda | Luz"
+	// entero en el campo categoría.
 	c := &controller{accounts: accRepo, subcategories: subRepo, movements: &fakeMovementRepoFull{
 		balances: map[uint64]string{46: "500000"},
+	}, orchestrator: &fakeFullOrchestrator{
+		classifyPairs: []orchestrator.Pair{{Category: "Vivienda | Luz", Subcategory: "Luz"}},
 	}}
 
 	e := &agentExecutor{

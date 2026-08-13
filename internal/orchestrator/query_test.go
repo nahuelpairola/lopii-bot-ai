@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -115,14 +116,21 @@ func TestAnswerQuery_ForcedFinalNarrationOnCap(t *testing.T) {
 	}
 }
 
-// Regression: Groq hard-400s a request where tool_choice is "none" but the
-// model still attempts a tool call — observed for real against gpt-oss-120b
-// (not just the weak models), which broke the forced-narration guarantee the
-// max-iterations path depends on. Root cause was sending toolDefs alongside
-// tool_choice:"none"; the fix omits tools on that call so nothing exists for
-// the model to call. This test pins the final round to always send zero
-// tools, so a model attempting one is structurally impossible again.
-func TestAnswerQuery_FinalNarration_NeverOffersTools(t *testing.T) {
+// Regresión del 2026-08-10 (segunda vuelta, en producción): la narración forzada
+// volvía 400 "Tool choice is none, but model called a tool" contra gpt-oss-120b.
+//
+// La causa NO era mandar schemas en el request — eso ya se sacaba (tools: nil). Era
+// el HISTORIAL: la llamada final reenviaba toda la conversación con sus tool_calls y
+// sus mensajes de rol "tool", y el modelo IMITA ese patrón y emite una tool call
+// igual, aunque no tenga schema. Groq valida la salida contra tool_choice:"none" y
+// rechaza con 400. Sacar los schemas ataca el request; la causa está en lo que el
+// historial le sugiere al modelo.
+//
+// Este stub reproduce la condición REAL de Groq: 400 si el request final trae CUALQUIER
+// rastro de tools —un mensaje con tool_calls o de rol "tool"—, no si trae schemas. El
+// fix arma un request final limpio (system + pregunta + datos en texto plano), así el
+// modelo no tiene nada que imitar.
+func TestAnswerQuery_FinalNarration_HistoryHasNoToolTrace(t *testing.T) {
 	call := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		call++
@@ -135,25 +143,69 @@ func TestAnswerQuery_FinalNarration_NeverOffersTools(t *testing.T) {
 			]}}]}`))
 			return
 		}
-		if len(req.Tools) != 0 {
-			// Simulates the real Groq 400 this test guards against.
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":{"message":"Tool choice is none, but model called a tool"}}`))
-			return
+		// Llamada de narración forzada: si el historial trae rastro de tools, Groq
+		// 400ea igual que en producción (el modelo imita y llama una tool).
+		for _, m := range req.Messages {
+			if m.Role == "tool" || len(m.ToolCalls) > 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`{"error":{"message":"Tool choice is none, but model called a tool","code":"tool_use_failed"}}`))
+				return
+			}
 		}
 		w.Write([]byte(`{"choices":[{"message":{"content":"Resumen sin herramientas.","tool_calls":null}}]}`))
 	}))
 	defer server.Close()
 
-	execute := func(name string, args json.RawMessage) (string, error) { return "x", nil }
+	execute := func(name string, args json.RawMessage) (string, error) { return "total: 5000 ARS", nil }
 	o := newQueryOrchestrator(server.URL)
 	answer, err := o.AnswerQuery(context.Background(), "s", "u", nil,
 		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
 	if err != nil {
-		t.Fatalf("AnswerQuery: %v (final round must never offer tools, so the 400 must never happen)", err)
+		t.Fatalf("AnswerQuery: %v (la narración forzada no puede reenviar historial con tools)", err)
 	}
 	if answer != "Resumen sin herramientas." {
 		t.Errorf("answer = %q", answer)
+	}
+}
+
+// La narración forzada tiene que llevarle al modelo los DATOS que juntó, o narra en
+// el vacío. Van en el request final como texto plano (no como mensajes de rol "tool",
+// que son justo lo que gatilla el 400).
+func TestAnswerQuery_FinalNarration_CarriesToolResults(t *testing.T) {
+	call := 0
+	var finalMessages []loopMessage
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		if call <= maxQueryIterations {
+			w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{}"}}
+			]}}]}`))
+			return
+		}
+		finalMessages = req.Messages
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	execute := func(name string, args json.RawMessage) (string, error) { return "total: 5000 ARS", nil }
+	o := newQueryOrchestrator(server.URL)
+	if _, err := o.AnswerQuery(context.Background(), "s", "cuánto gasté", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute); err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+
+	var blob string
+	for _, m := range finalMessages {
+		blob += m.Content + "\n"
+	}
+	if !strings.Contains(blob, "total: 5000 ARS") {
+		t.Errorf("el request final tiene que llevar los resultados de las tools; mensajes = %+v", finalMessages)
+	}
+	if !strings.Contains(blob, "cuánto gasté") {
+		t.Errorf("el request final tiene que conservar la pregunta original; mensajes = %+v", finalMessages)
 	}
 }
 

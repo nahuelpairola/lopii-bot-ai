@@ -10,7 +10,7 @@ model per call type. It is not:
 
 | Call site | `callType` bucket | Model actually used |
 |---|---|---|
-| `create.go:109` | `create` | `o.createModel` |
+| `create.go:83` | `create` | `o.createModel` |
 | `account_manage.go:39` | `account_manage` | `o.createModel` |
 | `category_create.go:55` | `category_create` | `o.createModel` |
 | `onboarding.go:44` | `onboarding` | `o.createModel` |

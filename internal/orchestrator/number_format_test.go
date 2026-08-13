@@ -9,24 +9,23 @@ import (
 	"testing"
 )
 
-func TestCreatePrompt_ContainsNumberFormatRule(t *testing.T) {
-	var captured string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req chatCompletionRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		captured = req.Messages[0].Content
-		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"movements\":[{\"type\":\"expense\",\"amount\":\"500\",\"currency\":\"ARS\",\"category\":\"x\",\"subcategory\":\"y\",\"payment_method\":\"cash\",\"description\":\"z\",\"date\":\"2026-07-07\"}]}"}}]}}]}`))
-	}))
-	defer server.Close()
+// El guard de la regla de formato numérico, mudado del prompt de create (que la
+// etapa 5 borró) al del agente, que es donde vive ahora.
+//
+// Lo que ataja no es que la regla exista: es que no rompa el Sprintf. Se
+// concatena en plantillas con %-verbs, así que un '%' literal sin escapar sale
+// como "%!" en el prompt renderizado — sin panic, sin error, y el modelo recibe
+// una instrucción corrupta.
+func TestAgentPrompt_ContainsNumberFormatRule(t *testing.T) {
+	prompt := BuildAgentPrompt("2026-08-12",
+		[]AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}},
+		nil, "", AgentTools(), "")
 
-	o := New(Config{BaseURL: server.URL, CreateModel: "m", TimeoutSeconds: 5})
-	_, _ = o.ClassifyCreate(context.Background(), "gasté 500", nil, nil, "2026-07-07")
-
-	if !strings.Contains(captured, "REGLA DE FORMATO NUMÉRICO") {
-		t.Errorf("create prompt missing the number-format rule")
+	if !strings.Contains(prompt, "REGLA DE FORMATO NUMÉRICO") {
+		t.Error("el prompt del agente perdió la regla de formato numérico")
 	}
-	if strings.Contains(captured, "%!") {
-		t.Errorf("create prompt has a Sprintf format error: %q", captured)
+	if strings.Contains(prompt, "%!") {
+		t.Errorf("el prompt tiene un error de Sprintf: %q", prompt)
 	}
 }
 

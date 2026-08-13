@@ -108,7 +108,7 @@ floored silently.
 - Strictly two-level tree: `category > subcategory`. Never deeper.
 - `user_id = NULL` → global (visible to all). `user_id NOT NULL` → user-created.
 - Only admin can create global subcategories (`is_global = TRUE`).
-- ~60 global subcategories across 16 categories (+ `Sistema`/`PENDING_REVIEW` reserved), reseeded in migration `20260710130000` (coarse-nitid redesign; replaces `20260625234857`). Fine detail lives in `merchant`/`description` free text, not in extra buckets.
+- ~60 global subcategories across 16 categories (+ `Sistema`/`PENDING_REVIEW` reserved), reseeded in migration `20260710130000` (coarse-nitid redesign; replaces `20260625234857`). Fine detail lives in the `description` free text, not in extra buckets.
 - Reserved: `PENDING_REVIEW | PENDING_REVIEW` (low LLM confidence), `Sistema | Saldo inicial`, `Sistema | Rendimiento inversión`
 - Reserved category names (`PENDING_REVIEW`, `Sistema`, case-insensitive) apply to user-created categories too, not just the seeded taxonomy — checked at creation time in `subcategory_setup_flow.go`.
 

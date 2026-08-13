@@ -10,6 +10,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -28,9 +29,6 @@ type fakeOrchestrator struct {
 	gotRunTools  []orchestrator.AgentTool
 }
 
-func (o *fakeOrchestrator) ClassifyIntent(ctx context.Context, text string) (orchestrator.IntentResult, error) {
-	return orchestrator.IntentResult{}, nil
-}
 func (o *fakeOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
 	return orchestrator.CreateResult{}, nil
 }
@@ -435,7 +433,7 @@ func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
 	if len(actions.rows) != 0 {
 		t.Errorf("ya se preguntó una vez: no puede volver a parkear la misma pregunta")
 	}
-	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeUpdateFailed {
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeLoopDidNothing {
 		t.Errorf("el evento tiene que cerrar como fallo, got %v", metrics.resolved)
 	}
 }
@@ -495,7 +493,7 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	result := orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3500", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},
 	}}
-	if err := c.seedAndStartUpdateConfirm(context.Background(), nil, 0, 1, []string{"7"}, nil, result); err != nil {
+	if err := c.seedAndStartUpdateConfirm(context.Background(), nil, 0, 1, "eran 3500", []string{"7"}, nil, result); err != nil {
 		t.Fatalf("seedAndStartUpdateConfirm: %v", err)
 	}
 	if store.flowName != movementUpdateConfirmFlowName {
@@ -505,20 +503,103 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 
 func TestCorrectionIsDeletion(t *testing.T) {
 	cases := []struct {
-		name string
-		rows []movementRow
-		want bool
+		name    string
+		rows    []movementRow
+		message string
+		want    bool
 	}{
-		{"empty set is not a deletion", nil, false},
-		{"single zero row deletes", []movementRow{{Amount: "0"}}, true},
-		{"zero with decimals deletes", []movementRow{{Amount: "0.00"}}, true},
-		{"non-zero is a real correction", []movementRow{{Amount: "600"}}, false},
-		{"mixed zero and non-zero is not a deletion", []movementRow{{Amount: "0"}, {Amount: "500"}}, false},
-		{"unparseable amount is not a deletion", []movementRow{{Amount: ""}}, false},
+		{"empty set is not a deletion", nil, "salió 0", false},
+		{"single zero row deletes", []movementRow{{Amount: "0"}}, "en realidad fue 0", true},
+		{"zero with decimals deletes", []movementRow{{Amount: "0.00"}}, "0 pesos", true},
+		{"non-zero is a real correction", []movementRow{{Amount: "600"}}, "eran 600", false},
+		{"mixed zero and non-zero is not a deletion", []movementRow{{Amount: "0"}, {Amount: "500"}}, "poné 0 y 500", false},
+		{"unparseable amount is not a deletion", []movementRow{{Amount: ""}}, "gratis", false},
+
+		// El caso que casi borra datos: el 2026-08-10 "Editá los movimientos de
+		// lote de hoy" no dice ningún cambio, el modelo devolvió montos en 0, y
+		// esto armó un borrado que el usuario confirmó. Sólo no borró porque la
+		// escritura falló — y ese accidente ya no está.
+		{"todo cero SIN monto en el mensaje NO borra", []movementRow{{Amount: "0"}, {Amount: "0"}},
+			"Editá los movimientos de lote de hoy", false},
+		{"tampoco con un solo movimiento", []movementRow{{Amount: "0"}},
+			"editá el café", false},
+
+		// Las formas de decir "no salió nada" que no traen ningún dígito.
+		{"me lo regalaron", []movementRow{{Amount: "0"}}, "me regalaron el helado", true},
+		{"al final fue gratis", []movementRow{{Amount: "0"}}, "al final fue gratis", true},
+		{"no me cobraron nada", []movementRow{{Amount: "0"}}, "no me cobraron nada", true},
+		{"me invitaron, con acento de por medio", []movementRow{{Amount: "0"}}, "me invitó él", true},
 	}
 	for _, tc := range cases {
-		if got := correctionIsDeletion(tc.rows); got != tc.want {
-			t.Errorf("%s: correctionIsDeletion = %v, want %v", tc.name, got, tc.want)
+		if got := correctionIsDeletion(tc.rows, tc.message); got != tc.want {
+			t.Errorf("%s: correctionIsDeletion(%q) = %v, want %v", tc.name, tc.message, got, tc.want)
 		}
+	}
+}
+
+// Este fake no clasifica: los tests que lo usan van por el camino de UPDATE,
+// que trae el par de la fila vieja. Devolver PENDING_REVIEW en todo es lo mismo
+// que hace el real cuando falla.
+func (o *fakeOrchestrator) ClassifyCategories(_ context.Context, _ string, rows []orchestrator.ClassifyRow, _ []orchestrator.TaxonomyEntry) []orchestrator.Pair {
+	out := make([]orchestrator.Pair, len(rows))
+	for i := range out {
+		out[i] = orchestrator.Pair{Category: constants.PendingReview}
+	}
+	return out
+}
+
+// El botón dice el CAMPO y el texto dice el VALOR: con los dos, la app arma la
+// corrección sola y no llama al modelo.
+//
+// Antes esta combinación iba a ResolveUpdate, que pedía re-emitir la fila
+// entera. El 2026-08-12, ante "Era pollo", devolvió las once columnas menos
+// `date`: Groq la rechazó con un 400 y la corrección se perdió completa.
+func TestApplyAnswers_ButtonPlusValueBuildsTheChange(t *testing.T) {
+	// Primera vuelta: toca el botón, que nombra el campo y nada más.
+	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
+		Change: "editá la panadería", Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
+	})}
+	options := changeFieldOptions()
+	picked, _ := applyAnswers(action, []pendingaction.OpenQuestion{
+		{Key: questionKeyChange, Answer: labelChangeCategory, Options: options},
+	})
+	if picked.PickedField != string(fieldCategory) {
+		t.Fatalf("picked_field = %q, want %q", picked.PickedField, fieldCategory)
+	}
+	if len(picked.Changes) != 0 {
+		t.Errorf("el botón solo no alcanza: todavía falta el valor, y hay %d cambios", len(picked.Changes))
+	}
+
+	// Segunda vuelta: escribe el valor. Ahí sí se arma el cambio.
+	action.Payload = mustJSON(t, picked)
+	resolvedPayload, resolved := applyAnswers(action, []pendingaction.OpenQuestion{
+		{Key: questionKeyChange, Answer: "Vivienda", Options: nil},
+	})
+	if !resolved {
+		t.Fatal("contestar el valor tiene que resolver la acción")
+	}
+	if len(resolvedPayload.Changes) != 1 {
+		t.Fatalf("cambios = %d, want 1: el campo salió del botón y el valor del texto", len(resolvedPayload.Changes))
+	}
+	got := resolvedPayload.Changes[0]
+	if got.Field != fieldCategory || got.Op != opSet || got.Value != "Vivienda" {
+		t.Errorf("cambio = %+v, want {category set Vivienda}", got)
+	}
+}
+
+// Sin botón previo no se inventa ningún campo: un número suelto es el atajo del
+// monto (amountOnlyCorrection), no un cambio de categoría.
+func TestApplyAnswers_ValueWithoutAButtonBuildsNothing(t *testing.T) {
+	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
+		Change: "el café estaba mal", Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
+	})}
+	payload, _ := applyAnswers(action, []pendingaction.OpenQuestion{
+		{Key: questionKeyChange, Answer: "2000"},
+	})
+	if len(payload.Changes) != 0 {
+		t.Errorf("sin campo elegido no se arma un cambio, hay %d", len(payload.Changes))
+	}
+	if !payload.GaveChangeValue {
+		t.Error("tenía que quedar marcado que dio un valor")
 	}
 }

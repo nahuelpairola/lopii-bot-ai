@@ -321,6 +321,25 @@ const (
 	// respuesta tampoco sale una corrección. Volver a preguntar lo mismo sería
 	// hacerlo girar; se corta nombrando el formato que sí funciona.
 	msgStillCannotCorrect = "Sigo sin darme cuenta qué cambiarle. Probá diciéndomelo derecho — ej: «el café fueron 2000»."
+
+	// msgRefundWouldGrow: el mensaje dice que le devolvieron plata y el cambio
+	// haría crecer el gasto. Se nombra la contradicción y se pregunta el número,
+	// que es el dato que falta.
+	msgRefundWouldGrow = "Me dijiste que te devolvieron plata, pero el cambio que entendí lo dejaría más caro. ¿Cuánto te devolvieron?"
+
+	// msgRefundExceeds: te devolvieron MÁS de lo que salió. Sin la guarda, restar
+	// daría vuelta el signo y Normalize lo re-firmaría como INGRESO: un gasto
+	// convertido en entrada de plata por un número mal leído.
+	msgRefundExceeds = "Me decís que te devolvieron más de lo que salió ese movimiento 🤔 ¿Cuánto fue?"
+
+	// msgAmbiguousSetAll: "poné todos en 1500" sobre varios movimientos. Aplanar
+	// n montos distintos al mismo número no es algo que nadie quiera; preguntar
+	// cuál es más barato que deshacerlo después.
+	msgAmbiguousSetAll = "¿A cuál de todos le pongo ese monto? Decime cuál y lo cambio."
+
+	// msgCorrectionChangesNothing: el cambio pedido deja el movimiento igual.
+	// Decirlo es mejor que confirmar un reemplazo que no reemplaza nada.
+	msgCorrectionChangesNothing = "Eso ya estaba así, no cambié nada."
 )
 
 // msgAskWhatToChange se usa cuando el movimiento SÍ se encontró pero el mensaje
@@ -349,10 +368,36 @@ func msgAskWhatToChange(rows []movementRow) string {
 // monto— se resuelve en un paso. Los otros tres encadenan una segunda pregunta,
 // porque tocar "la categoría" dice el campo pero no el valor.
 //
-// Sin emojis: el texto del botón se concatena al pedido que va a ResolveUpdate,
-// y un emoji ahí es ruido para el modelo.
+// Sin emojis: el texto del botón se concatena al pedido, y un emoji ahí es
+// ruido.
 func changeFieldOptions() []string {
-	return []string{"La categoría", "La fecha", "La cuenta"}
+	return []string{labelChangeCategory, labelChangeDate, labelChangeAccount}
+}
+
+// Las etiquetas son consts porque se usan dos veces: para dibujar los botones y
+// para traducir la respuesta de vuelta a un campo.
+const (
+	labelChangeCategory = "La categoría"
+	labelChangeDate     = "La fecha"
+	labelChangeAccount  = "La cuenta"
+)
+
+// changeFieldForLabel traduce el botón tocado al campo que nombra.
+//
+// Vive PEGADO a changeFieldOptions a propósito: si las dos listas divergen, el
+// botón deja de construir la corrección, el pedido se cae al camino del modelo
+// y nada lo avisa.
+func changeFieldForLabel(label string) changeField {
+	switch label {
+	case labelChangeCategory:
+		return fieldCategory
+	case labelChangeDate:
+		return fieldDate
+	case labelChangeAccount:
+		return fieldAccount
+	default:
+		return ""
+	}
 }
 
 // msgAskChangeValue es la segunda vuelta: ya sabemos QUÉ campo, falta el valor.
@@ -558,3 +603,10 @@ func FlowResumeLabel(flowName string) string {
 		return "una conversación anterior"
 	}
 }
+
+// Copy del gate de casi-duplicado. "Va aparte" no confirma nada: el estado ya
+// era el correcto, así que decir "listo" sería anunciar un trabajo que nadie hizo.
+const (
+	msgNearDupSeparate = "Perfecto, los dejo separados."
+	msgNearDupMerged   = "Listo, quedó uno solo."
+)

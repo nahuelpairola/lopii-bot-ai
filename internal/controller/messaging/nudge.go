@@ -252,7 +252,7 @@ func (c *controller) hasMultipleAccountsNoTransfer(userID uint64) bool {
 // flow abierto, el flow no se come el tap como si fuera una opción suya. La
 // consulta es read-only, así que el flow queda intacto esperando su input.
 //
-// Se saltea el router (ClassifyIntent): ya sabemos que es QUERY, y evitarlo
+// Se saltea el loop: ya sabemos que es QUERY, y evitarlo
 // ahorra ~700 tokens por tap. Por eso tampoco escribe en intent_events: esa
 // tabla mide qué tan bien clasifica el router, y acá no hubo clasificación que
 // evaluar. El tap se mide en user_nudges.tapped_at.

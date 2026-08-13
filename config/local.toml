@@ -19,20 +19,20 @@ token=""
 [groq]
 apiKey = ""
 baseUrl = "https://api.groq.com/openai/v1"
-routerModel = "openai/gpt-oss-20b"
 createModel = "openai/gpt-oss-20b"
 updateModel = "openai/gpt-oss-20b"
-deleteModel = "llama-3.1-8b-instant"
 queryModel = "openai/gpt-oss-120b"
 agentModel = "openai/gpt-oss-20b"
+# Cuando el principal rebota por CUPO, el loop se corre a estos, en orden. Los
+# techos de Groq son POR MODELO —verificado leyendo los headers: 8.000 TPM para
+# cada gpt-oss, 12.000 para el llama-70b, y TPD independiente— así que un 429 en
+# uno no dice nada del otro. Van explícitos y no por default para que la prueba
+# del fallback no esté probando, de paso, el parseo de viper.
+agentFallbackModels = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]
+# El clasificador va en OTRO modelo a proposito: el techo de TPM de Groq es por
+# modelo, y el loop ya entra al suyo una vez por minuto y medio.
+classifierModel = "llama-3.3-70b-versatile"
 timeoutSeconds = 10
-
-[agent]
-# routeCreateToLoop manda CREATE por el loop unificado (etapa 3) en vez del
-# camino router+Call 2. Es el interruptor de emergencia: las etapas 2 y 3
-# despliegan juntas, asi que sin esto una caida de create_inserted no se puede
-# atribuir a una de las dos. Apagarlo deja la etapa 2 viva y CREATE como estaba.
-routeCreateToLoop = true
 
 [query]
 historyTtlMinutes = 10
