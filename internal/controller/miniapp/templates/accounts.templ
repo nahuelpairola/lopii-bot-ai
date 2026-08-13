@@ -49,3 +49,61 @@ templ Accounts(data AccountsData) {
 		@templ.JSONScript("cuentas-trend-data", data.TrendChart)
 	}
 }
+
+// MsgLeafCapped avisa que la lista quedó cortada. Sin este cartel el saldo de
+// cierre no cuadra con lo que el usuario ve, y parece un error de la app.
+const MsgLeafCapped = "Mostrando los 50 más recientes del período."
+
+// AccountLeafData es la hoja de una cuenta: los movimientos que explican su
+// saldo. Opening y Closing NO se derivan de Rows —el tope de filas rompería la
+// cuenta—; salen del acumulado completo, que arma el handler.
+type AccountLeafData struct {
+	Period       Period
+	AccountName  string
+	OpeningLabel string
+	Opening      string
+	ClosingLabel string
+	Closing      string
+	BackQuery    string
+	Rows         []MovementRow
+	Capped       bool
+	Empty        bool
+}
+
+templ AccountLeaf(data AccountLeafData) {
+	@PeriodHeader(data.Period)
+	<a href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Cuentas</a>
+	<h2>{ data.AccountName }</h2>
+	<p class="balance-line">
+		<span>{ data.OpeningLabel }</span>
+		<span class="money">{ data.Opening }</span>
+	</p>
+	if data.Empty {
+		@EmptyState("Sin movimientos en esta cuenta en el período.")
+	} else {
+		<ul class="mov-list">
+			for _, row := range data.Rows {
+				<li class="mov-row">
+					<span class="mov-icon" aria-hidden="true">{ row.Icon }</span>
+					<span class="mov-text">
+						<span class="mov-title">{ row.Title }</span>
+						<span class="mov-meta">
+							{ row.Date }
+							if row.Note != "" {
+								{ " · " + row.Note }
+							}
+						</span>
+					</span>
+					<span class="money mov-amount">{ row.Amount }</span>
+				</li>
+			}
+		</ul>
+		if data.Capped {
+			<p class="muted">{ MsgLeafCapped }</p>
+		}
+		<p class="balance-line">
+			<span>{ data.ClosingLabel }</span>
+			<span class="money">{ data.Closing }</span>
+		</p>
+	}
+}

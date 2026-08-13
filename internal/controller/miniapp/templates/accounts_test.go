@@ -51,3 +51,73 @@ func TestAccounts_CardsLinkToTheirLeaf(t *testing.T) {
 		t.Errorf("sin push-url el botón Atrás de Telegram no vuelve:\n%s", html)
 	}
 }
+
+func TestAccountLeaf_ReconcilesAndFlagsUnclassified(t *testing.T) {
+	data := AccountLeafData{
+		AccountName:  "Galicia",
+		OpeningLabel: "Saldo al 01/08",
+		Opening:      "$382.500",
+		ClosingLabel: "Saldo al 31/08",
+		Closing:      "$450.000",
+		BackQuery:    "/app/accounts?p=6m&m=2026-08&c=ARS",
+		Rows: []MovementRow{
+			{Icon: "🏦", Title: "Compra de dólares", Date: "10 ago", Amount: "-$100.000"},
+			{Icon: "🏦", Title: "Ajuste", Date: "1 ago", Note: "Sin clasificar", Amount: "$2.000"},
+		},
+	}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	for _, want := range []string{"Galicia", "Saldo al 01/08", "$382.500", "Saldo al 31/08", "$450.000", "Compra de dólares", "Sin clasificar", "10 ago"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("falta %q en la hoja:\n%s", want, html)
+		}
+	}
+	if strings.Contains(html, "<table") {
+		t.Error("la hoja es una lista, no una tabla: cuatro datos por fila en un webview angosto obligan a scrollear en horizontal")
+	}
+	if strings.Contains(html, MsgLeafCapped) {
+		t.Error("con 2 filas no se avisa de ningún tope")
+	}
+}
+
+func TestAccountLeaf_WarnsWhenCapped(t *testing.T) {
+	data := AccountLeafData{
+		AccountName: "Galicia",
+		Capped:      true,
+		Rows:        []MovementRow{{Title: "Coto", Date: "12 ago", Amount: "-$1"}},
+	}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(sb.String(), MsgLeafCapped) {
+		t.Error("si la lista quedó cortada hay que decirlo: si no, el saldo final no cuadra con lo que se ve y parece un error de la app")
+	}
+}
+
+func TestAccountLeaf_EmptyStillShowsBalances(t *testing.T) {
+	data := AccountLeafData{
+		AccountName:  "Galicia",
+		Empty:        true,
+		OpeningLabel: "Saldo al 01/08",
+		Opening:      "$382.500",
+	}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+	if !strings.Contains(html, "Sin movimientos en esta cuenta en el período.") {
+		t.Errorf("falta el estado vacío:\n%s", html)
+	}
+	if !strings.Contains(html, "$382.500") {
+		t.Errorf("un mes sin movimientos igual tiene saldo, y es la respuesta a la pregunta que trajo al usuario acá:\n%s", html)
+	}
+}
