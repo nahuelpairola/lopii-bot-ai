@@ -16,7 +16,7 @@ drill-down.
 > antes de mirar nada de adentro:
 >
 > ```json
-> { "apiVersion": "dashboard.grafana.app/v2beta1",
+> { "apiVersion": "dashboard.grafana.app/v2",
 >   "kind": "Dashboard",
 >   "metadata": { "name": "lopii-app-state" },
 >   "spec": { "title": ..., "elements": {...}, "layout": {...} } }
@@ -33,9 +33,11 @@ drill-down.
 > que nada, y `TestEnvelopeDetectsTheShippedBug` pinea el detector a la forma
 > que de verdad se rompió.
 >
-> **Si tu instancia rechaza el `apiVersion`**, es lo único de la envoltura que
-> depende de la versión: abrí cualquier dashboard existente → *JSON Model* y
-> copiá el que muestre.
+> **El `apiVersion` es lo único de la envoltura que depende de la instancia.**
+> Acá es `dashboard.grafana.app/v2`, confirmado importando contra la Grafana
+> 13.2 real el 2026-08-13 — la doc no lo publica, manda a la Swagger de cada
+> instancia. Si alguna vez lo rechaza: abrí cualquier dashboard existente →
+> *JSON Model* y copiá el que muestre.
 
 Diseño y justificación de cada panel:
 [`docs/superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md`](../superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md).
