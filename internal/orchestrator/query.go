@@ -165,9 +165,12 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	var toolResults []string
 
 	for i := 0; i < maxQueryIterations; i++ {
-		// Force a tool call on the first round: weak models (8b-instant)
-		// sometimes deflect ("no puedo darte una respuesta exacta") without
-		// ever calling a tool. "required" guarantees the loop gathers real
+		// Force a tool call on the first round: los modelos flojos a veces
+		// esquivan ("no puedo darte una respuesta exacta") sin llamar ninguna
+		// tool. Lo midió llama-3.1-8b-instant, que Groq da de baja el
+		// 2026-08-16 y este repo ya no usa en ninguna config; la regla queda
+		// porque aplica a cualquier suplente barato que entre por la cadena.
+		// "required" guarantees the loop gathers real
 		// data before it is allowed to narrate; later rounds go back to "auto".
 		choice := "auto"
 		if i == 0 {
