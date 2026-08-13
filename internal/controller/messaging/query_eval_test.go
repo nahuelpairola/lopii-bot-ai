@@ -188,31 +188,86 @@ func TestQueryEval(t *testing.T) {
 			t.Errorf("answer must be plain text (no markdown '*'/'**'). Got: %s", ans)
 		}
 	})
-	// Multi-entidad: replica el patrón que rompió en producción el 2026-08-10
-	// ("cuánto gasté en lote, hbo y disney este mes"). Pide tres totales distintos,
-	// que es lo que empuja al modelo a agotar el cap de rondas y caer en la
-	// narración forzada (puerta 2) — el camino que volvía 400 "Tool choice is none,
-	// but model called a tool" antes del fix del request limpio.
+	// Multi-entidad: replica el patrón que rompió en producción DOS veces. El
+	// 2026-08-10 volvía 400 "Tool choice is none, but model called a tool" (arreglado
+	// con el request final limpio). El 2026-08-13, ya sin el 400, contestó un número
+	// MAL: ante "cuánto gasté en disney, hbo y el lote" narró "Disney + HBO: $9.990 /
+	// Lote: $8.122,73", donde 8.122,73 es el total de HBO puesto bajo la etiqueta del
+	// lote — del lote real ($30.343,74) no se consultó nada.
 	//
-	// Lo que se asegura acá es lo que el fix garantiza: que la puerta 2 CONTESTE, y
-	// que lo haga con los datos que realmente juntó. NO se exige que estén los tres
-	// totales: con maxQueryIterations=3 y una tool por ronda, el modelo gasta el cap
-	// en las dos primeras y nunca llega a consultar ingresos, así que narra "sin
-	// registros" para eso — honesto respecto de lo que consultó.
+	// La causa era que toolResults juntaba sólo el texto del resultado, así que la
+	// narración forzada recibía dos "total: X ARS" anónimos y una pregunta que
+	// nombraba tres cosas. Ahora cada resultado viaja con su llamada.
 	//
-	// Medido el 2026-08-12: devuelve Alimentación 8.000 y Bienestar 8.000, y para
-	// ingresos dice "sin registros" aunque aislado sí contesta 100.000 (ver el
-	// subtest ingresos_julio). Esa tercera pata necesita arreglar el defecto "una
-	// tool por ronda", que la spec de la etapa 5 (§3.3) deja fuera de alcance a
-	// propósito. Un test permanentemente rojo sería peor que ninguno.
-	t.Run("multi_entidad_fuerza_narracion", func(t *testing.T) {
-		ans := ask("¿cuánto gasté en Alimentación, cuánto en Bienestar y cuánto ingresé en julio de 2026? Dame cada total por separado.")
-		n := normDigits(ans)
+	// Las tres subcategorías del seed tienen montos DISTINTOS a propósito
+	// (Supermercado 5.000, Panadería 3.000, Gimnasio 8.000). La versión anterior de
+	// este caso preguntaba por Alimentación (8.000) y Bienestar (8.000): con dos
+	// totales iguales, un intercambio de etiquetas es indetectable y el test no podía
+	// fallar aunque el bug estuviera presente.
+	//
+	// NO se exige que estén los tres: con maxQueryIterations=2 y una tool por ronda,
+	// el modelo gasta el cap en dos y del tercero narra "sin registros" — honesto
+	// respecto de lo que consultó. El defecto "una tool por ronda" está fuera de
+	// alcance a propósito. Lo que sí se exige es que los que estén estén BIEN
+	// ATRIBUIDOS: eso es lo que fallaba.
+	t.Run("multi_entidad_atribuye_cada_total_a_lo_suyo", func(t *testing.T) {
+		ans := ask("¿cuánto gasté en Supermercado, cuánto en Panadería y cuánto en Gimnasio en julio de 2026? Dame cada total por separado.")
 		if strings.TrimSpace(ans) == "" {
 			t.Fatal("la puerta 2 no contestó nada: el 400 de la narración forzada volvió")
 		}
-		if !strings.Contains(n, "8000") {
-			t.Errorf("la narración forzada tiene que salir de los datos que juntó, got: %s", ans)
+		// Por línea: la que nombra una subcategoría no puede traer el monto de otra.
+		esperado := map[string]string{"Supermercado": "5000", "Panadería": "3000", "Gimnasio": "8000"}
+		for etiqueta, propio := range esperado {
+			for _, linea := range strings.Split(ans, "\n") {
+				if !strings.Contains(strings.ToLower(linea), strings.ToLower(etiqueta)) {
+					continue
+				}
+				n := normDigits(linea)
+				for otra, ajeno := range esperado {
+					if otra == etiqueta || !strings.Contains(n, ajeno) {
+						continue
+					}
+					// Una línea que trae el monto ajeno Y NO el propio es el bug.
+					if !strings.Contains(n, propio) {
+						t.Errorf("%q salió con el monto de %q (%s) en vez del suyo (%s): %q",
+							etiqueta, otra, ajeno, propio, linea)
+					}
+				}
+			}
+		}
+	})
+
+	// Caso 1.2 del 2026-08-13: list_movements con category="lote", donde "lote" no es
+	// una categoría sino una palabra en la descripción. Cero filas, y el modelo narró
+	// "No tenés registros de gastos en la categoría Lote. El total gastado es $0 ARS"
+	// sobre $30.343,74 reales.
+	//
+	// ESTE SUBTEST ES EL PORTÓN de una decisión de diseño: el arreglo elegido avisa
+	// (el resultado vacío le dice al modelo que un filtro inexistente también da cero
+	// y le nombra list_categories) en vez de validar contra la taxonomía antes de
+	// consultar. Si acá el modelo sigue afirmando que no hay gastos, la validación hay
+	// que agregarla — el cómo está escrito en la spec, sección "fuera de alcance".
+	t.Run("filtro_inexistente_no_afirma_que_no_hay_gastos", func(t *testing.T) {
+		ans := ask("¿cuánto gasté en la categoría Cochinchina en julio de 2026?")
+		low := strings.ToLower(ans)
+		// La respuesta honesta dice que esa categoría no existe / no la encuentra.
+		// La deshonesta afirma que no hubo gastos, que es un hecho que no se verificó.
+		for _, afirmacion := range []string{"no tenés gastos", "no tuviste gastos", "no hubo gastos", "no registraste gastos"} {
+			if strings.Contains(low, afirmacion) {
+				t.Errorf("un filtro que no existe no puede volverse la afirmación %q: %s", afirmacion, ans)
+			}
+		}
+	})
+
+	// Caso 1.3: una cuenta que no existe hacía que la consulta corriera SIN filtrar
+	// por cuenta, o sea contestaba por todas. El saldo/gasto de todas las cuentas es
+	// un número grande y plausible — el modo de falla más caro de los tres.
+	t.Run("cuenta_inexistente_no_contesta_por_todas", func(t *testing.T) {
+		ans := ask("¿cuánto gasté con la cuenta Galicia en julio de 2026?")
+		// El total de TODAS las cuentas ARS en julio es 16.000 (5.000+3.000+8.000).
+		// Si aparece, el filtro se cayó y contestó otra pregunta.
+		if strings.Contains(normDigits(ans), "16000") {
+			t.Errorf("contestó por todas las cuentas ante una cuenta inexistente: %s", ans)
 		}
 	})
 }
