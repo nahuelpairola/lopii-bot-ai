@@ -3,28 +3,45 @@
 Groq tool-calling over plain `net/http`. Heavily tested — the traps below are the ones no test
 covers, because they only bite on *future* edits.
 
-## Four call types share `createModel`
+## Three call types share `createModel`
 
-`Config` has six model fields (router/create/update/delete/query/agent), which reads as one
-model per call type. It is not:
+Since stage 5 deleted the router, `Config` carries five model fields
+(create/update/query/agent/classifier), which reads as one model per call type. It is not:
 
 | Call site | `callType` bucket | Model actually used |
 |---|---|---|
-| `create.go:83` | `create` | `o.createModel` |
 | `account_manage.go:39` | `account_manage` | `o.createModel` |
 | `category_create.go:55` | `category_create` | `o.createModel` |
 | `onboarding.go:44` | `onboarding` | `o.createModel` |
 
-**Retuning `createModel` retunes four unrelated paths.** The separate Grafana buckets hide it —
-they suggest four independent call types. No test covers this.
+**Retuning `createModel` retunes three unrelated wizard paths.** The separate Grafana buckets
+hide it — they suggest three independent call types. No test covers this.
 
-## `AgentTool.Kind` has a dangerous zero value
+## Groq's ceilings are PER MODEL, and that is the whole design
 
-`kindRank` (`agent.go:32-43`) sorts an unset `Kind` into the same bucket as an explicit
-`KindRead`. A future write tool added to `AgentTools()` without `Kind: KindWrite` compiles and
-runs **after** the reads in its round — precisely the "the total excludes the rows I am about to
-insert" bug that `orderCallsByKind`'s own comment warns about. The existing test pins today's
-single write tool, not a future mis-declared one.
+TPM, requests/day and TPD are counted per model, so a 429 on one says nothing about another.
+Everything below follows from that, and none of it is arbitrary:
+
+- **`agentRound` (`agent.go`) walks a chain** — `agentModel`, then `agentFallbacks` in order —
+  **only on 429**. A 400 returns immediately: retrying a schema error on another model burns a
+  second call to get the same rejection. Each attempt writes its own `llm_calls` row, which is
+  what makes the chain visible in Grafana without a new column.
+- **`classifierModel` is deliberately a different model** from `agentModel`, to land in a
+  different bucket. `ClassifyCategories` returns no error: on 429 or timeout it degrades to
+  `PENDING_REVIEW` and the picker opens. **A classifier without quota therefore looks like a
+  model classifying badly**, not like a failure — `llm_calls` is the only place it shows.
+- **Groq reserves `prompt + max_completion_tokens`** against the quota whether the completion
+  uses it or not. That is why `maxAgentCompletionTokens` (1500) is a measured ceiling and not a
+  round number: a 7-movement batch really used 1183.
+
+## `AgentTool.Kind` is vestigial — and that is a loaded gun
+
+`orderCallsByKind` and `kindRank` were deleted in stage 5 (see the comment at `agent.go:44`):
+the loop's toolbox has no read tools, so ordering sorted a set whose elements shared a rank.
+**`Kind` survives as a field that nothing reads.** If a future stage puts read tools back into
+`Run`, ordering has to come back with them — and the old trap has to be avoided rather than
+reintroduced: an unset `Kind` sorted into the same bucket as an explicit `KindRead`, so a write
+tool declared without `Kind` ran *after* the reads. Make the zero value unrepresentable.
 
 ## Shared prompt fragments must contain no `%` and no backtick
 
@@ -33,20 +50,18 @@ concatenated into `fmt.Sprintf` templates. A literal `%` corrupts the rendered s
 runtime — no panic, no error, the model just receives a garbled instruction block. Escape it as
 `%%`, as the "90%%" in `taxonomyAndAmountRules` does.
 
-`movement_rules.go` holds what `createSystemPromptTemplate` and `agentSystemPromptTemplate` say
-**verbatim**, deduplicated after a 2026-08-08 fix had to be pasted into both by hand. It is two
-consts, not one, because `REGLA DE FECHA` sits between them and genuinely differs — the loop
-adds the timezone and a date-range rule for its query tools. **That block stays duplicated on
-purpose**; unifying it would push a query instruction into `create`, which has no query tool.
+`movement_rules.go` holds what the prompt templates say **verbatim**, deduplicated after a
+2026-08-08 fix had to be pasted into both by hand. It is two consts, not one, because
+`REGLA DE FECHA` sits between them and genuinely differs.
 
 ## `Run` and `AnswerQuery` are two near-identical loops, kept apart on purpose
 
-`Run` (`agent.go`) is the unified agent loop; `AnswerQuery` is the read-only QUERY loop, frozen
-until stage 4 of the migration. They differ in iteration cap (5 vs 3), in whether content
-alongside `tool_calls` ends the turn (`Run` only), in class-ordered execution (`Run` only) and
-in completion-token ceiling. **Fixing a bug in one and porting it to the other by habit is a
-live risk** — they are separate so each stage can be bisected. Same shape, two types too:
-`toolSchema` for single-shot calls, `AgentTool` for loop calls.
+`Run` (`agent.go`) is the unified agent loop and, since stage 5, the **only** path a free-text
+message takes. `AnswerQuery` is the read-only QUERY loop, reached through the `answer_query`
+tool. They differ in completion ceiling (1500 vs 1024), in whether content alongside
+`tool_calls` ends the turn (`Run` only), and in the model fallback chain (`Run` only).
+**Fixing a bug in one and porting it to the other by habit is a live risk.** Same shape, two
+types too: `toolSchema` for single-shot calls, `AgentTool` for loop calls.
 
 ## Copies that nothing keeps in sync
 
@@ -54,3 +69,11 @@ The read-tool schemas in `agent_tools.go` are hand-copied **verbatim** from `mes
 `queryTools`, because messaging's executor parses those exact argument names (`queryToolArgs`).
 Only a comment enforces it. `recorder.go`'s `LLMCall` is deliberately *not* the `metric`
 package's GORM model — `server` maps between them by hand, so a new field needs both.
+
+## The restriction goes in the SCHEMA, not the prompt
+
+Stage 5 relearned this twice at a cost. Groq validates arguments server-side and 400s before any
+Go code sees the payload, so a rule the prompt states but the schema does not declare is a rule
+the model breaks for free. `correct_movement`'s `op` is nullable in the schema for exactly this
+reason: it was required, the model omitted it, and every such turn died as a hard 400 with the
+user's correction lost.

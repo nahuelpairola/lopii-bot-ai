@@ -38,7 +38,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `middleware` | `RequireAdmin(adminID)` |
 | `conversation` | Engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, `repository` |
 | `pendingjob` | Model + repository: durable queue (`pending_llm_jobs`) for a message cached after a terminal Groq 429 — `Insert`, `ListByUserOrdered`, `ListPendingUserIDs`, `Delete`, `CountByUser` |
-| `orchestrator` | Groq tool-calling HTTP client (plain `net/http`, no SDK). One chokepoint `Client.send` with retry/backoff + `RateLimitedError`. `ClassifyIntent` (router), `ClassifyCreate`, `ResolveUpdate`, `ResolveDelete`, `ClassifyOnboarding`, `ClassifyCategoryCreate`, `ResolveAccountManage`, `AnswerQuery` (read-only agent loop) |
+| `orchestrator` | Groq tool-calling HTTP client (plain `net/http`, no SDK). One chokepoint `Client.send` with retry/backoff + `RateLimitedError`. **`Run` is the unified agent loop and the only path a free-text message takes** — it walks a model fallback chain on 429 (never on 400). Around it: `ClassifyCategories` (taxonomy, own model + own TPM bucket), `AnswerQuery` (read-only loop, reached via the `answer_query` tool), and the wizard-side single-shot calls `ClassifyOnboarding` / `ClassifyCategoryCreate` / `ResolveAccountManage` / `ResolveUpdate`. The router (`ClassifyIntent`), `ClassifyCreate` and `ResolveDelete` were deleted in stage 5 |
 | `chathistory` | Model + repository: ephemeral conversation thread shared by every intent (`Append`, `Recent`), hard-pruned by TTL, no `deleted_at`. Renamed from `queryhistory` — it was never QUERY-only |
 | `pendingaction` | Model + repository: durable queue (`pending_actions`) of agent-loop actions waiting on an answer from the user — `Insert`, `NextForUser`, `Delete`, `CountForUser`. Drained one at a time (WIP=1) |
 | `reminder` | Model + repository: one row per user, minutes-since-ART-midnight window + weekly-summary flags. `Upsert`, `Disable`, `ListDue`, `ListWeeklyDue`, `SetWeeklySummary` |
@@ -126,6 +126,13 @@ small mistake is a financial bug, not cosmetic.
 | `transfer` | both legs (required) | negative out / positive in | money moves between two own accounts |
 
 - **The app owns the sign, never the LLM.** The guard normalizes `expense`→negative, `income`→positive on write.
+- **The app owns the arithmetic too.** A correction arrives as a structured diff
+  (`field` / `op` / `value`) and the app computes the result — the model never sends a
+  number it worked out itself. "They refunded me half" is `op: multiply, value: 0.5`, not
+  a recomputed amount. Before stage 5 the model echoed back the whole row, which cost a
+  second call and could corrupt fields nobody asked to touch. `guardRefundDirection`
+  checks the *result* against the stored row, not the `op`: a refund that ends up growing
+  the expense is rejected regardless of how it was expressed.
 - **The sign never escapes storage.** User and LLM both see `amount.Abs()`; direction comes from the movement type, never a `-`.
 - **Account resolution is app-side, deterministic:** LLM-matched account → currency default (`FindDefaultByCurrency`) → gap-fill asks.
 - **Never `float64`** — always `shopspring/decimal`.
@@ -154,9 +161,22 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
   amount. They take the whole `*account.Account` instead, which makes a currency mismatch
   unrepresentable. This is a decision, not debt; it is documented in the anti-pattern in
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#anti-patterns--what-not-to-do).
-- `internal/controller/messaging` is ~7.5k non-test lines across 43 files, 3.7× the next
-  package. Splitting it is the real fix (see `docs/decisions.md`); the per-package `CLAUDE.md`
-  is the stopgap until the agent-loop migration settles the seams.
+- `internal/controller/messaging` is ~10k non-test lines across 52 files, **4.1× the next
+  package** (`orchestrator`, 2.4k). Splitting it is the real fix (see `docs/decisions.md`); the
+  per-package `CLAUDE.md` is the stopgap. Stage 5 was supposed to settle the seams and instead
+  grew the package by 2.5k lines, so this is now the largest open piece of debt in the repo.
+- `orchestrator.AgentTool.Kind` is **vestigial**: `orderCallsByKind`/`kindRank` were deleted in
+  stage 5 and nothing reads the field. It matters only as a warning — if read tools ever return
+  to `Run`, ordering must come back with them, and the zero value must be made unrepresentable
+  (an unset `Kind` used to sort as `KindRead`, so a write tool declared without one ran *after*
+  the reads). See `internal/orchestrator/CLAUDE.md`.
+- `messaging.userLocks` serialises a user's writes with an in-memory mutex, so it holds for
+  **one process only**. With a second instance the upgrade is `pg_advisory_xact_lock(user_id)`.
+  Documented at the mutex itself.
+- The near-duplicate gate (`near_duplicate_offer.go`) writes **without** going through
+  `movement.Normalize`. It is safe because `nearDuplicateCandidate` requires the two rows to
+  share type, currency and account — hence sign — but that is an invariant held one file away
+  from the write. Loosening the same-type rule requires adding the guard back.
 
 ## 7. Claude Code Session Rules
 
