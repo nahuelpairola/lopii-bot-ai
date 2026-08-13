@@ -386,6 +386,44 @@ func TestExec_NoRows_DoesNotAssertThereWereNoExpenses(t *testing.T) {
 	}
 }
 
+// buildMovementQuery resolvía el nombre de cuenta a un id y, si no matcheaba ninguna,
+// dejaba AccountID en nil y corría la consulta SIN filtrar por cuenta: preguntás por
+// una cuenta y te contestan por todas, sin ninguna señal.
+//
+// Es el peor de los tres defectos del 2026-08-13 porque devuelve un número GRANDE y
+// plausible, mientras los otros dos devuelven cero o un total chico que llaman la
+// atención. Y no tenía cobertura: los dos tests que pasan `account`
+// (BrokerIncome, AccountAndDefaultLimit) usan nombres que sí existen en su fixture.
+//
+// No es una convención nueva: execAccountBalance, dos funciones más abajo, ya devuelve
+// "No encontré esa cuenta." ante lo mismo. De las tres tools que aceptan `account`,
+// una avisaba y dos se lo tragaban.
+func TestExec_UnknownAccount_FailsInsteadOfQueryingAllAccounts(t *testing.T) {
+	a := &fakeQueryAccounts{accts: []account.Account{
+		{Model: gorm.Model{ID: 1}, Name: "Banco", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 2}, Name: "Wallet", Currency: currency.USD},
+	}}
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("999999")}}}
+	exec := newQueryController(m, a, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","account":"Galicia"}`))
+	if err == nil {
+		t.Fatalf("una cuenta inexistente tiene que fallar, no contestar por TODAS las cuentas; devolvió: %s", out)
+	}
+	// El error vuelve al modelo como texto (el loop no aborta), así que tiene que
+	// alcanzar para corregir el nombre solo.
+	if !strings.Contains(err.Error(), "Galicia") {
+		t.Errorf("el error tiene que nombrar la cuenta que no encontró: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Banco") || !strings.Contains(err.Error(), "Wallet") {
+		t.Errorf("el error tiene que listar las cuentas reales para que el modelo se corrija: %v", err)
+	}
+	// Lo que de verdad importa: no llegó a consultar.
+	if m.lastQuery.UserID != 0 {
+		t.Errorf("no puede haber consultado la base con el filtro caído: %+v", m.lastQuery)
+	}
+}
+
 func TestExec_UnknownTool(t *testing.T) {
 	exec := newQueryController(&fakeQueryMovements{}, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 	if _, err := exec("nope", json.RawMessage(`{}`)); err == nil {

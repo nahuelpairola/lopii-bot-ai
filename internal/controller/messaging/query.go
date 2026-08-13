@@ -385,12 +385,27 @@ func (c *controller) buildMovementQuery(userID uint64, args queryToolArgs) (move
 		if err != nil {
 			return movement.MovementQuery{}, err
 		}
+		var names []string
 		for _, a := range accts {
 			if strings.EqualFold(a.Name, args.Account) {
 				id := uint64(a.ID)
 				q.AccountID = &id
 				break
 			}
+			names = append(names, a.Name)
+		}
+		// Un nombre que no matchea NO puede seguir de largo. Antes dejaba AccountID
+		// en nil y la consulta corría sin filtrar: el usuario preguntaba por una
+		// cuenta y le contestaban por todas, sin ninguna señal. Es el modo de falla
+		// más caro de los tres del 2026-08-13, porque devuelve un número grande y
+		// plausible en vez de un cero que llama la atención.
+		//
+		// El error vuelve al modelo como texto (AnswerQuery no aborta, lo reinyecta),
+		// así que lleva las cuentas reales: con eso se corrige solo en la ronda
+		// siguiente. Es lo mismo que ya hacía execAccountBalance más abajo.
+		if q.AccountID == nil {
+			return movement.MovementQuery{}, fmt.Errorf("no encontré la cuenta %q. Tus cuentas: %s",
+				args.Account, strings.Join(names, ", "))
 		}
 	}
 	return q, nil
