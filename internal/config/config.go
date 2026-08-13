@@ -48,6 +48,11 @@ type groq struct {
 	// principal rebota por CUPO, en orden. Los techos de Groq son por modelo, así
 	// que un 429 en uno no dice nada del otro. Vacío = el 429 encola, como antes.
 	AgentFallbackModels []string `mapstructure:"agentFallbackModels"`
+	// QueryFallbackModels es lo mismo para el loop de consultas. Va aparte de la
+	// del agente y NO reusa esa lista: el primario de query (120b) es justamente
+	// el primer suplente del agente, así que reusarla haría que el primer
+	// reintento cayera en el modelo que acaba de rebotar.
+	QueryFallbackModels []string `mapstructure:"queryFallbackModels"`
 	// ClassifierModel es el modelo de la clasificación de categorías, que en la
 	// etapa 5 sale del loop. Va en OTRO modelo a propósito: el techo de TPM de
 	// Groq es por modelo, y medido el 2026-08-12 el loop ya entra al suyo una vez
@@ -103,6 +108,15 @@ func Initialize() (*Config, error) {
 	// porque su prompt cuesta 8 veces más. qwen queda AFUERA a propósito: su
 	// completion sale $3 por millón, diez veces el 20b.
 	viper.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "llama-3.3-70b-versatile"})
+	// La cadena de query. llama-3.3-70b primero por el techo medido más alto
+	// (12.000 TPM) y bucket propio; gpt-oss-20b último porque es el más barato pero
+	// el más flojo narrando, y a esa altura la alternativa es no contestar.
+	//
+	// El orden de la cadena del AGENTE no se toca a propósito, aunque su primer
+	// suplente (120b) sea el primario de query: ahora query tiene con qué correrse
+	// de ese choque, e invertir el del agente mandaría todo el tráfico de rescate a
+	// llama-3.3-70b, cuyo prompt cuesta ~8 veces más. Está último por precio.
+	viper.SetDefault("Groq.QueryFallbackModels", []string{"llama-3.3-70b-versatile", "openai/gpt-oss-20b"})
 	// llama-3.3-70b-versatile: el techo medido más alto (12.000 TPM), bucket
 	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
 	viper.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")

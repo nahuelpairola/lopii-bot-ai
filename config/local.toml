@@ -29,6 +29,7 @@ agentModel = "openai/gpt-oss-20b"
 # uno no dice nada del otro. Van explícitos y no por default para que la prueba
 # del fallback no esté probando, de paso, el parseo de viper.
 agentFallbackModels = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]
+queryFallbackModels = ["llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
 # El clasificador va en OTRO modelo a proposito: el techo de TPM de Groq es por
 # modelo, y el loop ya entra al suyo una vez por minuto y medio.
 classifierModel = "llama-3.3-70b-versatile"

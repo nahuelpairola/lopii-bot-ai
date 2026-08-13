@@ -131,6 +131,7 @@ func InitServer(conf *config.Config) error {
 		QueryModel:          conf.Groq.QueryModel,
 		AgentModel:          conf.Groq.AgentModel,
 		AgentFallbackModels: conf.Groq.AgentFallbackModels,
+		QueryFallbackModels: conf.Groq.QueryFallbackModels,
 		ClassifierModel:     conf.Groq.ClassifierModel,
 		TimeoutSeconds:      conf.Groq.TimeoutSeconds,
 		Recorder:            llmCallRecorder{insert: metricRepo.InsertLLMCall},
