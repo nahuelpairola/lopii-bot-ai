@@ -2620,7 +2620,7 @@
                       "editorMode": "code",
                       "format": "table",
                       "rawQuery": true,
-                      "rawSql": "SELECT model AS \"modelo\", count(*) AS \"intentos\", count(*) FILTER (WHERE http_status = 200) AS \"atendio\", count(*) FILTER (WHERE http_status = 429) AS \"sin cupo\", count(*) FILTER (WHERE http_status NOT IN (200,429)) AS \"otro error\", round(avg(latency_ms)) AS \"ms prom\" FROM llm_calls WHERE $__timeFilter(created_at) AND call_type = 'agent' GROUP BY model ORDER BY \"intentos\" DESC"
+                      "rawSql": "SELECT model AS \"modelo\", count(*) AS \"intentos\", count(*) FILTER (WHERE previo = 429 AND modelo_previo <> model) AS \"entro de respaldo\", count(*) FILTER (WHERE http_status = 200) AS \"atendio\", count(*) FILTER (WHERE http_status = 429) AS \"sin cupo\", round(count(*) FILTER (WHERE http_status = 429)::numeric / count(*), 3) AS \"% sin cupo\", count(*) FILTER (WHERE http_status NOT IN (200,429)) AS \"otro error\", round(avg(latency_ms)) AS \"ms prom\" FROM (SELECT trace_id, model, http_status, latency_ms, lag(http_status) OVER w AS previo, lag(model) OVER w AS modelo_previo FROM llm_calls WHERE call_type = 'agent' AND $__timeFilter(created_at) WINDOW w AS (PARTITION BY trace_id ORDER BY created_at, id)) c GROUP BY model ORDER BY \"entro de respaldo\", \"intentos\" DESC"
                     },
                     "version": "v0"
                   },
@@ -2632,7 +2632,7 @@
             "transformations": []
           }
         },
-        "description": "Un escalon por fila, solo call_type=agent. Cada intento de modelo escribe su propia fila en llm_calls, asi que \"sin cupo\" de un escalon es lo que empujo al siguiente. Si el segundo y el tercero estan en cero, el principal alcanza y la cadena no se esta usando; si el ultimo tiene \"sin cupo\", ese turno no lo salvo nadie y se fue a la cola.",
+        "description": "Un escalon por fila, solo call_type=agent. Cada intento de modelo escribe su propia fila en llm_calls, asi que \"sin cupo\" de un escalon es lo que empujo al siguiente.\n\n\"Entro de respaldo\" cuenta las veces que ESE modelo atendio justo despues de que otro rebotara: en el principal es 0 por definicion, y en los de respaldo dice cuanto se los esta usando. Es la posicion en la cadena medida, no declarada — el dashboard no lee la config.",
         "id": 204,
         "links": [],
         "title": "Cadena del agente",
@@ -2669,27 +2669,18 @@
               "overrides": [
                 {
                   "matcher": {
-                    "id": "byRegexp",
-                    "options": "ms prom|ms máx"
+                    "id": "byName",
+                    "options": "% sin cupo"
                   },
                   "properties": [
                     {
                       "id": "unit",
-                      "value": "ms"
-                    }
-                  ]
-                },
-                {
-                  "matcher": {
-                    "id": "byName",
-                    "options": "reintentos"
-                  },
-                  "properties": [
+                      "value": "percentunit"
+                    },
                     {
                       "id": "custom.cellOptions",
                       "value": {
-                        "mode": "basic",
-                        "type": "color-background"
+                        "type": "color-text"
                       }
                     },
                     {
@@ -2698,16 +2689,16 @@
                         "mode": "absolute",
                         "steps": [
                           {
-                            "color": "text",
+                            "color": "green",
                             "value": 0
                           },
                           {
                             "color": "orange",
-                            "value": 1
+                            "value": 0.1
                           },
                           {
                             "color": "red",
-                            "value": 10
+                            "value": 0.3
                           }
                         ]
                       }
@@ -2882,6 +2873,95 @@
                 "mode": "multi",
                 "sort": "none"
               }
+            }
+          },
+          "version": "13.2.0-29854286369"
+        }
+      }
+    },
+    "panel-206": {
+      "kind": "Panel",
+      "spec": {
+        "data": {
+          "kind": "QueryGroup",
+          "spec": {
+            "queries": [
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "name": "${DS_POSTGRES}"
+                    },
+                    "group": "grafana-postgresql-datasource",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "editorMode": "code",
+                      "format": "table",
+                      "rawQuery": true,
+                      "rawSql": "SELECT count(*) FILTER (WHERE reboto AND NOT rescatado) AS \"turnos perdidos\" FROM (SELECT trace_id, bool_or(http_status = 429) AS reboto, bool_or(http_status = 200 AND previo = 429 AND model <> modelo_previo) AS rescatado FROM (SELECT trace_id, model, http_status, latency_ms, lag(http_status) OVER w AS previo, lag(model) OVER w AS modelo_previo FROM llm_calls WHERE call_type = 'agent' AND $__timeFilter(created_at) WINDOW w AS (PARTITION BY trace_id ORDER BY created_at, id)) c GROUP BY trace_id) t"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "A"
+                }
+              }
+            ],
+            "queryOptions": {},
+            "transformations": []
+          }
+        },
+        "description": "Turnos del agente que rebotaron por cupo y que NINGUN escalon de la cadena salvo: se fueron a la cola y el usuario espero. Es el trabajo del fallback, en un solo numero, y tiene que ir a cero.\n\nVa como conteo absoluto y no como tasa a proposito: a menos de 10 usuarios un porcentaje sobre doce requests dice mas del denominador que del sistema.\n\nLinea de base ANTES del fallback (30d al 2026-08-13): 63 rebotes, 0 salvados.",
+        "id": 206,
+        "links": [],
+        "title": "Turnos perdidos por cupo",
+        "vizConfig": {
+          "group": "stat",
+          "kind": "VizConfig",
+          "spec": {
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "orange",
+                      "value": 1
+                    },
+                    {
+                      "color": "red",
+                      "value": 10
+                    }
+                  ]
+                },
+                "unit": "short"
+              },
+              "overrides": []
+            },
+            "options": {
+              "colorMode": "value",
+              "graphMode": "none",
+              "justifyMode": "auto",
+              "orientation": "auto",
+              "percentChangeColorMode": "standard",
+              "reduceOptions": {
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": "",
+                "values": false
+              },
+              "showPercentChange": false,
+              "textMode": "auto",
+              "wideLayout": true
             }
           },
           "version": "13.2.0-29854286369"
@@ -3159,7 +3239,20 @@
                         "name": "panel-205"
                       },
                       "height": 8,
-                      "width": 24,
+                      "width": 20,
+                      "x": 4,
+                      "y": 8
+                    }
+                  },
+                  {
+                    "kind": "GridLayoutItem",
+                    "spec": {
+                      "element": {
+                        "kind": "ElementReference",
+                        "name": "panel-206"
+                      },
+                      "height": 8,
+                      "width": 4,
                       "x": 0,
                       "y": 8
                     }

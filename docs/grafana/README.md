@@ -1,7 +1,7 @@
 # Dashboard de Grafana — admin
 
 `admin-dashboard.json` es el dashboard de estado de la app. **Schema V2**
-(`elements` + `layout`), 27 paneles: 9 visibles y 4 filas colapsadas de
+(`elements` + `layout`), 28 paneles: 9 visibles y 4 filas colapsadas de
 drill-down.
 
 > **Por qué V2 y no el schema clásico.** La instancia corre Grafana 13.2, que
@@ -48,14 +48,26 @@ intento escribe su propia fila** en `llm_calls` —`c.record` corre también en 
 camino de error— con su `model`, su `http_status` y el `trace_id` del turno. La
 cadena se reconstruye ordenando las filas de un `trace_id` por fecha.
 
-Dos paneles en "LLM y tokens", y la diferencia entre ellos importa:
+Tres paneles en "LLM y tokens":
 
-- **Cadena del agente** (tabla) — un escalón por fila. Dice hasta dónde llega la
-  cadena: si el segundo y el tercero están en cero, el principal alcanza.
+- **Turnos perdidos por cupo** (stat) — el número titular: turnos que rebotaron y
+  que ningún escalón salvó. Es el trabajo del fallback en un solo número, y va a
+  cero. Conteo absoluto y no tasa, por la misma razón que los semáforos de arriba.
+- **Cadena del agente** (tabla) — un escalón por fila. La columna **"entró de
+  respaldo"** cuenta las veces que ese modelo atendió justo después de que otro
+  rebotara: **reconstruye el orden de la cadena desde los datos, sin leer la
+  config**. Verificado contra la base local el 2026-08-13, que sí tiene la cadena
+  corrida: `gpt-oss-20b` 0 (es el principal), `gpt-oss-120b` 19, `llama-3.3-70b` 4
+  sobre 4 intentos — y el último escalón nunca rebota.
 - **Turnos del agente: quién los atendió** (barras apiladas) — un turno por
   `trace_id`, en tres bandas.
 
-En el segundo, "salvados por el respaldo" exige que el 200 venga **justo después
+**Una columna mal rotulada acá es peor que una faltante.** El primer intento de la
+columna de escalón usaba `row_number()` sobre el `trace_id`, y daba 1.2 para un
+modelo que es SIEMPRE el principal: el contador cruzaba las rondas del loop, que
+son varias por turno. Se descartó por eso, no por costo.
+
+En el de las barras, "salvados por el respaldo" exige que el 200 venga **justo después
 de un 429 y con OTRO modelo**. Sin esa condición el panel miente, y no de forma
 sutil: un replay de la cola reusa el `trace_id`, así que un turno que rebotó y
 se resolvió 40 minutos después contaba como rescate. Medido el 2026-08-13, la
@@ -64,9 +76,14 @@ estaba deployado**. El rescate es instantáneo; el replay hizo esperar al
 usuario. Son cosas distintas y la banda naranja ("a la cola") es la que el
 fallback tiene que achicar.
 
-**Línea de base antes del fallback** (30 días al 2026-08-13, para comparar
+**Línea de base antes del fallback** (prod, 30 días al 2026-08-13, para comparar
 después de deployarlo): 137 turnos del agente, 63 con rebote, y **49 muertos —
 el 35,8%**. El día peor, 23 turnos a la cola.
+
+Y el después, ya medido en la base **local**, que es la única con la cadena
+corrida: en el último bucket, **17 turnos salvados por el respaldo contra 1 a la
+cola**; el día anterior, 0 y 14. Eso es lo que estos paneles tienen que mostrar en
+prod una vez deployado.
 
 ## Cotizaciones e IPC — por qué acá sí hay semáforos de frescura
 
@@ -138,8 +155,8 @@ que funciona: el archivo anterior parseaba perfecto y tenía 8 paneles rotos.
       filas en el rango); un error rojo de query no lo es.
 - [ ] Los dos paneles de serie temporal dibujan línea con el rango `now-24h`.
       Esta es la regresión concreta que motivó la reescritura.
-- [ ] Expandir las cuatro filas colapsadas: sus 17 paneles también renderizan.
-- [ ] En "LLM y tokens", los dos paneles de la cadena. Ojo con
+- [ ] Expandir las cuatro filas colapsadas: sus 18 paneles también renderizan.
+- [ ] En "LLM y tokens", los TRES paneles de la cadena. Ojo con
       **"Turnos del agente"**: es el único query del dashboard que le pasa a
       `$__timeGroupAlias` una columna de una subconsulta (`inicio`) en vez de
       una columna de tabla. El linter no puede ver si la macro expande bien ahí.
