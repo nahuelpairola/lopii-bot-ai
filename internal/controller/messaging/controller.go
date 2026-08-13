@@ -168,6 +168,8 @@ type controller struct {
 	actions       actionsRepository
 	nextDrainAt   time.Time
 	drainMu       sync.Mutex
+	// locks serializa los updates de un mismo usuario. Ver user_lock.go.
+	locks userLocks
 }
 
 func NewController(
@@ -234,6 +236,15 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 			return nil, err
 		}
 		uid := u.ID
+
+		// De acá para abajo, un update por vez POR USUARIO. Todo el estado está
+		// cuñado por user_id y asume un mensaje en vuelo: la fila única de
+		// conversation_states, el drenaje de pending_actions, y el "pendiente más
+		// reciente" que cierra intent_events. Ver user_lock.go.
+		//
+		// Se espera lo que tarde el turno de adelante (~1-3 s), no lo que tardaba
+		// la cola: para eso está la cadena de modelos de respaldo.
+		defer c.locks.lock(uid)()
 
 		if cb := update.CallbackQuery; cb != nil {
 			b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: cb.ID})
