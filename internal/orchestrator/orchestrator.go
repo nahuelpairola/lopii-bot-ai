@@ -23,8 +23,16 @@ type Config struct {
 	// POR MODELO, así que una llamada en otro modelo no le come nada al loop.
 	// Cuál conviene lo decide el eval, no esta config.
 	ClassifierModel string
-	TimeoutSeconds  int
-	Recorder        LLMRecorder // nil-safe
+	// AgentFallbackModels son los modelos a los que el loop se corre cuando el
+	// principal rebota por CUPO, en orden. Los techos de Groq son POR MODELO —
+	// verificado leyendo los headers: 8.000 TPM para gpt-oss-20b y otros 8.000
+	// para gpt-oss-120b, con TPD independiente cada uno. Un 429 en uno no dice
+	// nada del otro.
+	//
+	// Vacío = comportamiento de antes: el 429 encola y el usuario espera.
+	AgentFallbackModels []string
+	TimeoutSeconds      int
+	Recorder            LLMRecorder // nil-safe
 }
 
 // Orchestrator wires the Groq client to the call types (router, create,
@@ -38,6 +46,7 @@ type Orchestrator struct {
 	queryModel      string
 	agentModel      string
 	classifierModel string
+	agentFallbacks  []string
 }
 
 func New(cfg Config) *Orchestrator {
@@ -50,5 +59,6 @@ func New(cfg Config) *Orchestrator {
 		queryModel:      cfg.QueryModel,
 		agentModel:      cfg.AgentModel,
 		classifierModel: cfg.ClassifierModel,
+		agentFallbacks:  cfg.AgentFallbackModels,
 	}
 }

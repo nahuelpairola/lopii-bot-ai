@@ -98,7 +98,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 		if i == 0 {
 			choice = "required"
 		}
-		assistant, err := o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, toolDefs, choice, maxAgentCompletionTokens)
+		assistant, err := o.agentRound(ctx, messages, toolDefs, choice)
 		if errors.Is(err, ErrNothingToExtract) && choice == "required" {
 			// The model refused to call anything under tool_choice:"required",
 			// and Groq turns that into a hard 400. Observed on real correction
@@ -127,7 +127,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 			// declined to call a tool, so there was nothing to record; the risk
 			// it now claims to have recorded something is what the prompt's
 			// "no repitas el detalle" rule and an empty receipt guard against.
-			assistant, err = o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, toolDefs, "auto", maxAgentCompletionTokens)
+			assistant, err = o.agentRound(ctx, messages, toolDefs, "auto")
 		}
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: agent run: %w", err)
@@ -188,7 +188,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 	// Cap reached while the model still wanted tools. Force one narration from
 	// the results already gathered. Tools are omitted (nil, not toolDefs):
 	// Groq 400s hard if the model attempts a call while tool_choice is "none".
-	final, err := o.client.chatCompletionLoop(ctx, callTypeAgent, o.agentModel, messages, nil, "none", maxAgentCompletionTokens)
+	final, err := o.agentRound(ctx, messages, nil, "none")
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: agent run (final): %w", err)
 	}
@@ -196,4 +196,44 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 		return "", ErrAgentMaxIterations
 	}
 	return final.Content, nil
+}
+
+// agentRound corre UNA ronda del loop, corriéndose de modelo cuando el
+// principal rebota por cupo.
+//
+// Los techos de Groq son POR MODELO: leyendo los headers, gpt-oss-20b da 8.000
+// TPM y gpt-oss-120b otros 8.000, cada uno con su TPD. Un 429 en uno no dice
+// nada del otro, así que reintentar en el siguiente convierte una espera de ~40
+// segundos en una respuesta inmediata, y multiplica la capacidad diaria por la
+// cantidad de modelos de la cadena.
+//
+// SÓLO se corre ante un 429. Un 400 —un schema mal armado, un JSON cortado— es
+// nuestro y sale igual en cualquier modelo: reintentarlo sería gastar el cupo de
+// los suplentes para obtener el mismo error.
+//
+// El modelo suplente NO es equivalente y no se pretende que lo sea: es mejor una
+// respuesta de otro modelo ahora que la del preferido dentro de 40 segundos. La
+// vara está baja a propósito, porque la alternativa es esperar. Cada intento
+// queda en `llm_calls` con SU modelo, así que con qué frecuencia se dispara la
+// cadena —y si el suplente hace peor las cosas— se mide, no se supone.
+func (o *Orchestrator) agentRound(ctx context.Context, messages []loopMessage, tools []toolDef, toolChoice string) (loopMessage, error) {
+	chain := append([]string{o.agentModel}, o.agentFallbacks...)
+	var lastErr error
+	for _, model := range chain {
+		msg, err := o.client.chatCompletionLoop(ctx, callTypeAgent, model, messages, tools, toolChoice, maxAgentCompletionTokens)
+		if err == nil {
+			return msg, nil
+		}
+		var rateLimited *RateLimitedError
+		if !errors.As(err, &rateLimited) {
+			return msg, err
+		}
+		lastErr = err
+		slog.WarnContext(ctx, "agent: modelo sin cupo, probando el siguiente",
+			"model", model, "restantes", len(chain)-1)
+	}
+	// Todos rebotaron: se devuelve el ÚLTIMO 429 para que el caller lo encole.
+	// El RetryAfter del último es el más informativo — es el del modelo que se
+	// probó más tarde.
+	return loopMessage{}, lastErr
 }

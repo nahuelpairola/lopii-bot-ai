@@ -270,3 +270,65 @@ func TestRun_SendsItsOwnCompletionCap(t *testing.T) {
 		t.Errorf("max_completion_tokens = %d, want %d", got, maxAgentCompletionTokens)
 	}
 }
+
+// La cadena de fallback: un 429 en el modelo principal se reintenta en el
+// siguiente, porque los techos de Groq son POR MODELO.
+func TestAgentRound_FallsBackToTheNextModelOnRateLimit(t *testing.T) {
+	var usados []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		usados = append(usados, req.Model)
+		if req.Model == "principal" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"error":{"message":"Rate limit reached","code":"rate_limit_exceeded"}}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo"}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{
+		BaseURL: server.URL, AgentModel: "principal",
+		AgentFallbackModels: []string{"suplente"}, TimeoutSeconds: 5,
+	})
+	msg, err := o.agentRound(context.Background(), []loopMessage{{Role: "user", Content: "hola"}}, nil, "auto")
+	if err != nil {
+		t.Fatalf("agentRound: %v", err)
+	}
+	if msg.Content != "listo" {
+		t.Errorf("content = %q, want la respuesta del suplente", msg.Content)
+	}
+	// El principal se prueba PRIMERO y el suplente sólo después: si se
+	// invirtiera, el tráfico normal se iría al modelo caro.
+	if len(usados) < 2 || usados[0] != "principal" || usados[len(usados)-1] != "suplente" {
+		t.Errorf("orden de modelos = %v, want principal y después suplente", usados)
+	}
+}
+
+// Un 400 NO se reintenta: es un error nuestro y sale igual en cualquier modelo.
+// Reintentarlo gastaría el cupo de los suplentes para obtener el mismo error.
+func TestAgentRound_DoesNotFallBackOnABadRequest(t *testing.T) {
+	var usados []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		usados = append(usados, req.Model)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"tool call validation failed","code":"tool_use_failed"}}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{
+		BaseURL: server.URL, AgentModel: "principal",
+		AgentFallbackModels: []string{"suplente"}, TimeoutSeconds: 5,
+	})
+	if _, err := o.agentRound(context.Background(), []loopMessage{{Role: "user", Content: "hola"}}, nil, "auto"); err == nil {
+		t.Fatal("un 400 tiene que propagarse")
+	}
+	for _, m := range usados {
+		if m == "suplente" {
+			t.Errorf("se probó el suplente ante un 400: %v", usados)
+		}
+	}
+}
