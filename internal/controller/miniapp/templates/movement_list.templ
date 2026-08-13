@@ -1,0 +1,29 @@
+package templates
+
+// movementList es la lista de movimientos que comparten las dos hojas: la de
+// una cuenta y la de una subcategoría. Se extrajo al aparecer el segundo
+// consumidor, no antes.
+//
+// Filas y no <table>: cuatro datos por movimiento en un webview angosto obligan
+// a scrollear en horizontal si esto fuera una tabla.
+templ movementList(rows []MovementRow) {
+	<ul class="mov-list">
+		for _, row := range rows {
+			<li class="mov-row">
+				if row.Icon != "" {
+					<span class="mov-icon" aria-hidden="true">{ row.Icon }</span>
+				}
+				<span class="mov-text">
+					<span class="mov-title">{ row.Title }</span>
+					<span class="mov-meta">
+						{ row.Date }
+						if row.Note != "" {
+							{ " · " + row.Note }
+						}
+					</span>
+				</span>
+				<span class="money mov-amount">{ row.Amount }</span>
+			</li>
+		}
+	</ul>
+}

@@ -81,23 +81,7 @@ templ AccountLeaf(data AccountLeafData) {
 	if data.Empty {
 		@EmptyState("Sin movimientos en esta cuenta en el período.")
 	} else {
-		<ul class="mov-list">
-			for _, row := range data.Rows {
-				<li class="mov-row">
-					<span class="mov-icon" aria-hidden="true">{ row.Icon }</span>
-					<span class="mov-text">
-						<span class="mov-title">{ row.Title }</span>
-						<span class="mov-meta">
-							{ row.Date }
-							if row.Note != "" {
-								{ " · " + row.Note }
-							}
-						</span>
-					</span>
-					<span class="money mov-amount">{ row.Amount }</span>
-				</li>
-			}
-		</ul>
+		@movementList(data.Rows)
 		if data.Capped {
 			<p class="muted">{ MsgLeafCapped }</p>
 		}

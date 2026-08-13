@@ -3,9 +3,11 @@ package miniapp
 import (
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 )
 
@@ -139,4 +141,61 @@ func bodyContains(body, substr string) bool {
 		}
 		return false
 	})()
+}
+
+// stubMovementsWithRows devuelve filas concretas para la hoja de subcategoría.
+type stubMovementsWithRows struct {
+	stubMovements
+	movements []movement.Movement
+	// lastQuery guarda con qué se pidió la lista, para verificar el filtro.
+	lastQuery *movement.MovementQuery
+}
+
+func (s stubMovementsWithRows) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+	*s.lastQuery = q
+	return s.movements, nil
+}
+
+func TestHandleSubcategoryLeaf_ListsMovementsOfThatSubcategory(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	desc := "Coto"
+	var got movement.MovementQuery
+	movements := stubMovementsWithRows{
+		stubMovements: stubMovements{rows: map[string][]movement.CategorySum{
+			// El total del pie sale de un SumForUser sin agrupar.
+			"": {{Label: "", Total: decimal.NewFromInt(80000)}},
+		}},
+		movements: []movement.Movement{{
+			Date: time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-34500), Currency: currency.ARS,
+			Description: &desc,
+		}},
+		lastQuery: &got,
+	}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categories?category=Alimentaci%C3%B3n&subcategory=Supermercado"))
+	body := w.Body.String()
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, body)
+	}
+	if !bodyContains(body, "Coto") {
+		t.Errorf("la hoja tiene que listar los movimientos de la subcategoría:\n%s", body)
+	}
+	if !bodyContains(body, "$34.500") {
+		t.Errorf("el monto va en positivo, son todos gastos:\n%s", body)
+	}
+	if !bodyContains(body, "$80.000") {
+		t.Errorf("el total del pie es el mismo número de la fila que abrió la hoja:\n%s", body)
+	}
+	if got.Subcategory == nil || *got.Subcategory != "Supermercado" {
+		t.Errorf("la lista se tiene que pedir filtrada por subcategoría, got %v", got.Subcategory)
+	}
+	if got.Category == nil || *got.Category != "Alimentación" {
+		t.Errorf("y también por categoría: dos categorías pueden tener la misma subcategoría, got %v", got.Category)
+	}
 }

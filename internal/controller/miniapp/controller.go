@@ -31,6 +31,7 @@ type movementReader interface {
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
 	MonthlyDeltasForAccount(accountID uint64) ([]movement.MonthlyDelta, error)
 	ListForAccount(accountID uint64, from, to time.Time, limit int) ([]movement.Movement, error)
+	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
 }
 
 // accountReader is the account-repo surface this package needs.

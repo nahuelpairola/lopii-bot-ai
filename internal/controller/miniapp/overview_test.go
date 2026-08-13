@@ -35,6 +35,10 @@ func (s stubMovements) ListForAccount(accountID uint64, from, to time.Time, limi
 	return nil, nil
 }
 
+func (s stubMovements) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+	return nil, nil
+}
+
 type stubAccounts struct{}
 
 func (stubAccounts) FindByUserID(userID uint64) ([]account.Account, error) { return nil, nil }
