@@ -306,3 +306,63 @@ func TestAgentExecutor_UnwiredToolsSayNotAvailable(t *testing.T) {
 		}
 	}
 }
+
+// El par estructural es un DEFAULT: si el clasificador dice algo útil, gana el
+// clasificador.
+//
+// Medido en vivo el 2026-08-12: "Suscribi 3100000 a FCI" quedó en
+// `Sistema | Transferencia` porque había un `return` que le impedía al
+// clasificador ver el movimiento. Una suscripción de FCI entre dos cuentas
+// propias en la misma moneda tiene la forma EXACTA de una transferencia —2 patas
+// que suman cero— y no es una transferencia: sólo el mensaje las distingue.
+func TestClassify_TheClassifierBeatsTheStructuralDefault(t *testing.T) {
+	movs := []orchestrator.MovementDraft{
+		{Type: "transfer", Amount: "-3100000", Currency: "ARS"},
+		{Type: "transfer", Amount: "3100000", Currency: "ARS"},
+	}
+	ex := executorWithPairs(t, "Suscribi 3100000 a FCI", []orchestrator.Pair{
+		{Category: "Inversiones", Subcategory: "FCI"},
+		{Category: "Inversiones", Subcategory: "FCI"},
+	})
+	ex.classify(movs)
+
+	for i, m := range movs {
+		if m.Category != "Inversiones" || m.Subcategory != "FCI" {
+			t.Errorf("fila %d = %s | %s, want Inversiones | FCI", i, m.Category, m.Subcategory)
+		}
+	}
+}
+
+// Y cuando el clasificador NO dice nada útil, el default entra: sin él un
+// transfer sin clasificar caería en PENDING_REVIEW y abriría el picker por algo
+// que la forma ya contesta.
+func TestClassify_StructuralDefaultFillsWhatTheClassifierLeavesEmpty(t *testing.T) {
+	movs := []orchestrator.MovementDraft{
+		{Type: "transfer", Amount: "-50000", Currency: "ARS"},
+		{Type: "transfer", Amount: "50000", Currency: "ARS"},
+	}
+	// El clasificador falló (429, timeout): devuelve PENDING_REVIEW.
+	ex := executorWithPairs(t, "pasé 50 mil al banco", []orchestrator.Pair{
+		{Category: constants.PendingReview, Subcategory: constants.PendingReview},
+		{Category: constants.PendingReview, Subcategory: constants.PendingReview},
+	})
+	ex.classify(movs)
+
+	for i, m := range movs {
+		if m.Category != "Sistema" || m.Subcategory != "Transferencia" {
+			t.Errorf("fila %d = %s | %s, want el default estructural", i, m.Category, m.Subcategory)
+		}
+	}
+}
+
+// executorWithPairs arma un ejecutor cuyo clasificador devuelve los pares dados.
+func executorWithPairs(t *testing.T, userText string, pairs []orchestrator.Pair) *agentExecutor {
+	t.Helper()
+	c := &controller{
+		movements:     movementsWithBalance("1000000"),
+		accounts:      accountsWithDefault(),
+		subcategories: subcategoriesForTest(),
+		orchestrator:  &fakeFullOrchestrator{classifyPairs: pairs},
+	}
+	return newAgentExecutor(c, 1, userText, taxonomyForTest())
+}

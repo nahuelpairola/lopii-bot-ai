@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -309,12 +310,22 @@ func (e *agentExecutor) classify(movements []orchestrator.MovementDraft) {
 		return
 	}
 
-	if cat, sub, ok := orchestrator.StructuralPair(movements); ok {
-		for i := range movements {
-			movements[i].Category, movements[i].Subcategory = cat, sub
-		}
-		return
-	}
+	// El par que se deduce de la FORMA es un DEFAULT, no una regla dura — y hasta
+	// el 2026-08-12 acá había un `return` que lo volvía dura, contradiciendo el
+	// comentario de StructuralPair, que dice textualmente que el clasificador
+	// puede pisarlo.
+	//
+	// Medido en vivo: "Suscribi 3100000 a FCI" quedó en `Sistema | Transferencia`.
+	// Una suscripción de FCI entre dos cuentas propias en la misma moneda es un
+	// grupo de 2 patas que suma cero —la forma EXACTA de una transferencia— y no
+	// es una transferencia: `Inversiones | FCI` existe como par propio. Sólo el
+	// mensaje distingue una de la otra, así que el que tiene que decidir es el
+	// que lee el mensaje.
+	//
+	// El default sigue sirviendo, y para dos cosas: cuando el clasificador falla
+	// (429, timeout) y cuando duda. Sin él, un transfer sin clasificar caería en
+	// PENDING_REVIEW y abriría el picker por algo que la forma ya contesta.
+	structCat, structSub, hasStructural := orchestrator.StructuralPair(movements)
 
 	rows := make([]orchestrator.ClassifyRow, 0, len(movements))
 	for _, m := range movements {
@@ -326,9 +337,15 @@ func (e *agentExecutor) classify(movements []orchestrator.MovementDraft) {
 	}
 	pairs := e.c.orchestrator.ClassifyCategories(context.Background(), e.userText, rows, e.taxonomy)
 	for i := range movements {
+		cat, sub := "", ""
 		if i < len(pairs) {
-			movements[i].Category, movements[i].Subcategory = pairs[i].Category, pairs[i].Subcategory
+			cat, sub = pairs[i].Category, pairs[i].Subcategory
 		}
+		// El default entra sólo donde el clasificador no dijo nada útil.
+		if hasStructural && (cat == "" || cat == constants.PendingReview) {
+			cat, sub = structCat, structSub
+		}
+		movements[i].Category, movements[i].Subcategory = cat, sub
 	}
 }
 
