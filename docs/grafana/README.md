@@ -1,7 +1,7 @@
 # Dashboard de Grafana — admin
 
 `admin-dashboard.json` es el dashboard de estado de la app. **Schema V2**
-(`elements` + `layout`), 25 paneles: 9 visibles y 4 filas colapsadas de
+(`elements` + `layout`), 27 paneles: 9 visibles y 4 filas colapsadas de
 drill-down.
 
 > **Por qué V2 y no el schema clásico.** La instancia corre Grafana 13.2, que
@@ -39,6 +39,34 @@ separados, porque juntarlos exigiría un segundo eje Y.
 
 **Filas colapsadas.** Producto (embudo intent × outcome, y la tasa de tap de
 los tips), LLM y tokens, Higiene, Cotizaciones e IPC.
+
+## La cadena de modelos — por qué sale de `llm_calls` sin columna nueva
+
+Cuando el modelo principal rebota por cupo, el loop prueba el siguiente
+(`orchestrator.agentRound`). No hizo falta agregar nada para verlo: **cada
+intento escribe su propia fila** en `llm_calls` —`c.record` corre también en el
+camino de error— con su `model`, su `http_status` y el `trace_id` del turno. La
+cadena se reconstruye ordenando las filas de un `trace_id` por fecha.
+
+Dos paneles en "LLM y tokens", y la diferencia entre ellos importa:
+
+- **Cadena del agente** (tabla) — un escalón por fila. Dice hasta dónde llega la
+  cadena: si el segundo y el tercero están en cero, el principal alcanza.
+- **Turnos del agente: quién los atendió** (barras apiladas) — un turno por
+  `trace_id`, en tres bandas.
+
+En el segundo, "salvados por el respaldo" exige que el 200 venga **justo después
+de un 429 y con OTRO modelo**. Sin esa condición el panel miente, y no de forma
+sutil: un replay de la cola reusa el `trace_id`, así que un turno que rebotó y
+se resolvió 40 minutos después contaba como rescate. Medido el 2026-08-13, la
+versión ingenua marcaba 14 rescates sobre datos donde el fallback **ni siquiera
+estaba deployado**. El rescate es instantáneo; el replay hizo esperar al
+usuario. Son cosas distintas y la banda naranja ("a la cola") es la que el
+fallback tiene que achicar.
+
+**Línea de base antes del fallback** (30 días al 2026-08-13, para comparar
+después de deployarlo): 137 turnos del agente, 63 con rebote, y **49 muertos —
+el 35,8%**. El día peor, 23 turnos a la cola.
 
 ## Cotizaciones e IPC — por qué acá sí hay semáforos de frescura
 
@@ -110,7 +138,13 @@ que funciona: el archivo anterior parseaba perfecto y tenía 8 paneles rotos.
       filas en el rango); un error rojo de query no lo es.
 - [ ] Los dos paneles de serie temporal dibujan línea con el rango `now-24h`.
       Esta es la regresión concreta que motivó la reescritura.
-- [ ] Expandir las cuatro filas colapsadas: sus 15 paneles también renderizan.
+- [ ] Expandir las cuatro filas colapsadas: sus 17 paneles también renderizan.
+- [ ] En "LLM y tokens", los dos paneles de la cadena. Ojo con
+      **"Turnos del agente"**: es el único query del dashboard que le pasa a
+      `$__timeGroupAlias` una columna de una subconsulta (`inicio`) en vez de
+      una columna de tabla. El linter no puede ver si la macro expande bien ahí.
+      "No data" es aceptable —hasta deployar el fallback la banda azul es cero
+      por definición—; un error rojo de query no lo es.
 - [ ] En "Cotizaciones e IPC": los tres semáforos en verde (días ≤ 4, meses ≤ 2,
       hueco ≤ 4) y el MEP dibujando línea continua. Confirmar que el primer y el
       último punto del MEP caen en el día correcto — es el bug de huso, y con
