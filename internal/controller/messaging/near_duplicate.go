@@ -69,9 +69,21 @@ func nearDuplicateCandidate(m, p movement.Movement, excluded map[uint]bool) bool
 	if !sameAccount(m.AccountID, p.AccountID) {
 		return false
 	}
-	// Las dos patas de una transferencia comparten transaction_id y no son
-	// duplicados de nada.
-	if m.TransactionID != nil && p.TransactionID != nil && *m.TransactionID == *p.TransactionID {
+	// Una pata de transferencia NUNCA entra al gate, ni como recién insertada ni
+	// como candidata. Da igual si comparten transaction_id o no.
+	//
+	// Antes la condición era `mismo transaction_id`, o sea que sólo se excluía a
+	// las dos patas de UNA transferencia entre sí. Las patas de transferencias
+	// DISTINTAS pasaban, y fusionarlas rompe los dos grupos: medido en vivo el
+	// 2026-08-12 con dos suscripciones a FCI, quedó un grupo de UNA sola pata
+	// (+500.000) y otro que no balanceaba (−810.000 + 310.000). Los saldos por
+	// cuenta seguían bien —netean— pero la estructura quedó corrupta, y sobre eso
+	// después opera cualquier corrección.
+	//
+	// Fusionar UNA pata es siempre incorrecto: una transferencia son dos patas que
+	// se sostienen entre sí y se corrigen como grupo (ver applyChangesToSet, que
+	// aplica el monto a las DOS preservando signos).
+	if m.TransactionID != nil || p.TransactionID != nil {
 		return false
 	}
 	if m.CreatedAt.Sub(p.CreatedAt) > justCreatedWindow || p.CreatedAt.After(m.CreatedAt) {

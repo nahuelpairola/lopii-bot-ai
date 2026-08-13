@@ -151,3 +151,39 @@ func TestFindNearDuplicate_PrefersTheMostRecentOfTheSameKind(t *testing.T) {
 		t.Errorf("eligió %v, want el más reciente (802)", got)
 	}
 }
+
+// Una pata de transferencia nunca entra al gate, ni siquiera contra la pata de
+// OTRA transferencia.
+//
+// Medido en vivo el 2026-08-12: dos suscripciones a FCI seguidas. El gate marcó
+// las patas de Mercado Pago como casi-duplicadas (mismo monto no, pero mismo
+// token de descripción sí), el usuario tocó "Sumalo a ese", y quedó un grupo de
+// UNA sola pata (+500.000) y otro que no balanceaba. Fusionar una pata es
+// siempre incorrecto: una transferencia son dos que se sostienen entre sí.
+func TestFindNearDuplicate_NeverTouchesATransferLeg(t *testing.T) {
+	tx1, tx2 := uuid.New(), uuid.New()
+	acc := uint64(46)
+	desc := "Suscripción a FCI"
+
+	pata1 := movement.Movement{
+		Model:  gorm.Model{ID: 1, CreatedAt: time.Now().Add(-2 * time.Minute)},
+		UserID: 2, AccountID: &acc, Currency: currency.ARS, TransactionID: &tx1,
+		Amount: decimal.NewFromInt(-310000), Description: &desc, Type: movement.Transfer,
+	}
+	pata2 := movement.Movement{
+		Model:  gorm.Model{ID: 2, CreatedAt: time.Now()},
+		UserID: 2, AccountID: &acc, Currency: currency.ARS, TransactionID: &tx2,
+		Amount: decimal.NewFromInt(-500000), Description: &desc, Type: movement.Transfer,
+	}
+
+	if got := findNearDuplicate(pata2, nil, []movement.Movement{pata1}); got != nil {
+		t.Errorf("marcó la pata #%d: fusionar una pata rompe los dos grupos", got.ID)
+	}
+	// Y en la otra dirección: un gasto suelto tampoco puede marcar a una pata.
+	gasto := pata2
+	gasto.TransactionID = nil
+	gasto.Type = movement.Expense
+	if got := findNearDuplicate(gasto, nil, []movement.Movement{pata1}); got != nil {
+		t.Errorf("un gasto marcó la pata #%d como duplicado", got.ID)
+	}
+}
