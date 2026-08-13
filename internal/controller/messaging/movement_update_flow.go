@@ -355,6 +355,11 @@ func sameMovementForCorrection(before, after movementRow) bool {
 		unchanged(before.Subcategory, after.Subcategory) &&
 		unchanged(before.Date, after.Date) &&
 		unchanged(before.AccountID, after.AccountID) &&
+		// AccountNameGuess, no sólo AccountID: cambiar de cuenta pone el NOMBRE y
+		// VACÍA el id, y `unchanged` trata el vacío como "no lo tocó". Sin esta
+		// línea, "el peaje ponelo en banco galicia" se veía idéntico al original y
+		// la guarda de no-op se lo tragaba con un "eso ya estaba así".
+		unchanged(before.AccountNameGuess, after.AccountNameGuess) &&
 		unchanged(before.Description, after.Description)
 }
 
@@ -495,6 +500,10 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 	// resuelva acá, que es donde hay taxonomía. Lo que no se resuelve queda como
 	// gap y lo pregunta el gap-fill.
 	taxonomy := c.userTaxonomy(userID)
+	// Y las cuentas, para resolver la que el usuario nombró. Sin esto la fila sale
+	// con el NOMBRE y sin id, y la escritura la manda a la cuenta por default de
+	// su moneda: el movimiento termina en otra cuenta que la pedida, en silencio.
+	accounts, _ := c.accounts.FindByUserID(userID)
 	beforeRows := make([]movementRow, 0, len(oldIDs))
 	for _, g := range before {
 		beforeRows = append(beforeRows, g...)
@@ -505,6 +514,14 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 			if r.Subcategory == "" {
 				if cat, sub, ok := resolveTaxonomyPair(r.Category, taxonomy); ok {
 					r.Category, r.Subcategory = cat, sub
+				}
+			}
+			// Misma idea con la cuenta: el usuario dice "banco galicia" y la app
+			// lo resuelve a un id. Lo que no resuelve queda como gap y lo pregunta
+			// el gap-fill — nunca cae mudo en la cuenta por default.
+			if r.AccountID == "" && r.AccountNameGuess != "" {
+				if id := matchNamedAccount(r.AccountNameGuess, accounts, r.Currency); id != 0 {
+					r.AccountID = strconv.FormatUint(id, 10)
 				}
 			}
 			drafts = append(drafts, rowToDraft(r))
@@ -585,7 +602,7 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 		keyBeforeMovements:     encodeMovementRows(beforeRows),
 		keyMovements:           encodeMovementRows(afterRows),
 		keyPendingCategoryGaps: encodeStringSlice(categoryGapsFor(afterRows, taxonomy)),
-		keyPendingAccountGaps:  encodeStringSlice(nil),
+		keyPendingAccountGaps:  encodeStringSlice(accountGapsFor(afterRows)),
 		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows, userMessage)),
 	}
 
@@ -598,7 +615,8 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	// Se pierde el diff antes/después en ese caso, y es un intercambio a
 	// conciencia: antes el movimiento se PERDÍA con un error genérico.
 	flowName := movementUpdateConfirmFlowName
-	if len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 {
+	if len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 ||
+		len(decodeStringSlice(seed, keyPendingAccountGaps)) > 0 {
 		flowName = movementCreateFlowName
 	}
 

@@ -365,3 +365,24 @@ func parseUintSlice(ids []string) ([]uint, error) {
 	}
 	return out, nil
 }
+
+// accountGapsFor devuelve los índices de las filas que NOMBRAN una cuenta que no
+// se pudo resolver a una real.
+//
+// Es el gemelo de categoryGapsFor, y faltaba: en el camino de corrección
+// `keyPendingAccountGaps` iba hardcodeado en nil — el mismo bug que tenía la
+// categoría. Sin gap, una fila con el nombre de la cuenta y sin id sale igual, y
+// la escritura la manda a la cuenta POR DEFAULT de su moneda: el movimiento
+// termina en otra cuenta que la que pidió el usuario, sin que nada avise.
+//
+// Una fila SIN nombre y sin id no es un gap: es el camino normal "usá mi
+// default", y tiene que seguir siendo mudo.
+func accountGapsFor(rows []movementRow) []string {
+	var gaps []string
+	for i, r := range rows {
+		if r.AccountID == "" && r.AccountNameGuess != "" {
+			gaps = append(gaps, strconv.Itoa(i))
+		}
+	}
+	return gaps
+}

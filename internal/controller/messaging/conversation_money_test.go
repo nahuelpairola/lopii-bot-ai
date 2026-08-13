@@ -142,3 +142,42 @@ func TestMoney_CancelledCorrectionWritesNothing(t *testing.T) {
 
 // itoa: los account_id viajan en el JSON de la tool call, que es un string.
 func itoa(id uint64) string { return strconv.FormatUint(id, 10) }
+
+// Cambiar un movimiento de cuenta mueve DOS saldos: el de origen sube, el de
+// destino baja. No hay columna de saldo — es la suma de los movimientos — así
+// que si sólo se moviera uno, aparecería plata de la nada.
+//
+// Medido en vivo el 2026-08-12, donde falló por DOS bugs encadenados: la guarda
+// de no-op no comparaba AccountNameGuess (cambiar de cuenta pone el nombre y
+// VACÍA el id, y el vacío se leía como "no lo tocó"), y keyPendingAccountGaps
+// iba hardcodeado en nil — el mismo bug que ya había tenido la categoría.
+func TestMoney_ChangingTheAccountMovesBothBalances(t *testing.T) {
+	h := newConversationHarness(t)
+	h.SeedAccount("Galicia Test", currency.ARS, "0")
+	h.SeedMovementOn("Peaje", "-2500", h.subID("Transporte", "Peaje"), startOfTodayArgentina())
+
+	origenAntes := h.Balance("Banco Test")
+	destinoAntes := h.Balance("Galicia Test")
+
+	h.ScriptToolCalls(correctMovementCall(`{
+		"change":"el peaje ponelo en Galicia Test",
+		"changes":[{"field":"account","value":"Galicia Test"}]}`))
+	h.SendText("el peaje ponelo en Galicia Test")
+	h.TapButton(optionConfirm)
+
+	movs := h.Movements()
+	if len(movs) != 1 {
+		t.Fatalf("movimientos = %d, want 1: %s", len(movs), describeRows(movs))
+	}
+	if movs[0].AccountID == nil || *movs[0].AccountID != h.accounts["Galicia Test"] {
+		t.Fatalf("el movimiento no se mudó de cuenta: %s", describeRows(movs))
+	}
+	// Y los dos saldos, que es lo que de verdad importa.
+	if got := h.Balance("Banco Test").Sub(origenAntes); !got.Equal(mustDec(t, "2500")) {
+		t.Errorf("el origen se movió %s, want +2500 (el gasto se fue)", got)
+	}
+	if got := h.Balance("Galicia Test").Sub(destinoAntes); !got.Equal(mustDec(t, "-2500")) {
+		t.Errorf("el destino se movió %s, want -2500", got)
+	}
+
+}
