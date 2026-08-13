@@ -16,7 +16,7 @@ import (
 // misma y esto caza la forma.
 //
 // Reglas, todas necesarias:
-//   - mismo usuario, misma moneda, misma cuenta
+//   - mismo usuario, misma moneda, misma cuenta y MISMO TIPO
 //   - el previo se creó dentro de justCreatedWindow
 //   - NO son dos patas del mismo transfer (mismo transaction_id)
 //   - NO los insertó el mismo mensaje: "dos cafés de 1070" es un mensaje con dos
@@ -64,6 +64,19 @@ func nearDuplicateCandidate(m, p movement.Movement, excluded map[uint]bool) bool
 		return false
 	}
 	if p.UserID != m.UserID || p.Currency != m.Currency {
+		return false
+	}
+	// Distinto tipo, distinto hecho. Un reintegro tiene TODO en común con el gasto
+	// que reintegra —cuenta, moneda, |monto|, token— salvo el signo, así que sin
+	// esto el gate los marca, y las tres opciones del recibo escriben: fusionar
+	// −5.000 con +5.000 guarda una fila de monto CERO, y reemplazar le copia el
+	// +5.000 a una fila typada `expense`, o sea un gasto que suma plata. El guard
+	// rechaza las dos, pero el gate no pasa por el guard.
+	//
+	// Con esta línea el par que llega a applyNearDuplicateChoice comparte tipo, y
+	// por lo tanto signo: la suma no puede dar cero y el reemplazo no puede
+	// invertir el signo. Es lo que hace segura la escritura de allá.
+	if p.Type != m.Type {
 		return false
 	}
 	if !sameAccount(m.AccountID, p.AccountID) {

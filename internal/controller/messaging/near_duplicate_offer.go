@@ -112,6 +112,14 @@ func (c *controller) handleNearDuplicateChoice(ctx context.Context, b *bot.Bot, 
 // Se releen las dos filas de la base en vez de confiar en el callback: el tap
 // puede llegar tarde, y sumarle un monto a una fila que ya cambió sería
 // corromper un saldo por una pantalla vieja.
+//
+// ponytail: escribe sin pasar por movement.Normalize, y puede. Las dos filas ya
+// están normalizadas —salieron del guard al insertarse— y nearDuplicateCandidate
+// exige que compartan tipo, moneda y cuenta, así que comparten signo: la suma no
+// puede dar cero ni invertirse, y ni la moneda ni la cuenta cambian acá. Llamar
+// a Normalize obligaría a traer el mapa de cuentas para re-derivar lo que el
+// candidato ya garantiza. El techo: si alguna vez se afloja la regla de mismo
+// tipo en near_duplicate.go, esto SÍ necesita el guard.
 func (c *controller) applyNearDuplicateChoice(userID uint64, action string, insertedID, priorID uint) error {
 	recent, err := c.movements.FindRecentlyCreatedForUser(userID, nearDuplicateWindowStart(time.Now()), nearDupRecentLimit)
 	if err != nil {

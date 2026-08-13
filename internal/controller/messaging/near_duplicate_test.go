@@ -187,3 +187,35 @@ func TestFindNearDuplicate_NeverTouchesATransferLeg(t *testing.T) {
 		t.Errorf("un gasto marcó la pata #%d como duplicado", got.ID)
 	}
 }
+
+// Un reintegro NO es un duplicado del gasto que reintegra: son dos hechos
+// distintos, y el neto entre los dos es justamente el dato que el usuario quiere
+// ver. Tienen todo en común salvo el tipo —misma cuenta, misma moneda, mismo
+// |monto|, mismo token— así que sin comparar Type el gate los marca.
+//
+// Y marcarlos no termina en una pregunta de más: las tres opciones del recibo
+// escriben. "Sumalo a ese" fusiona −5.000 con +5.000 y guarda una fila de monto
+// CERO; "Reemplazalo" le copia el +5.000 a una fila typada `expense`, o sea un
+// gasto que SUMA plata. Las dos saltean el guard, que rechaza las dos cosas.
+func TestFindNearDuplicate_ARefundIsNotADuplicateOfItsExpense(t *testing.T) {
+	now := time.Now()
+	gasto := ndMov(500, 1, 43, currency.ARS, "-5000", "Super", now.Add(-2*time.Minute))
+	gasto.Type = movement.Expense
+	reintegro := ndMov(501, 1, 43, currency.ARS, "5000", "Super, me lo devolvieron", now)
+	reintegro.Type = movement.Income
+
+	if got := findNearDuplicate(reintegro, nil, []movement.Movement{gasto}); got != nil {
+		t.Errorf("el reintegro marcó al gasto #%d: fusionarlos da una fila de monto 0", got.ID)
+	}
+	// Y en la otra dirección. Los timestamps se invierten a propósito: el gate
+	// sólo mira previos, así que con el reintegro segundo esta rama pasaría por el
+	// orden temporal y no por el tipo, que es lo que se quiere probar.
+	reintegroPrimero := ndMov(502, 1, 43, currency.ARS, "5000", "Super, me lo devolvieron", now.Add(-2*time.Minute))
+	reintegroPrimero.Type = movement.Income
+	gastoSegundo := ndMov(503, 1, 43, currency.ARS, "-5000", "Super", now)
+	gastoSegundo.Type = movement.Expense
+
+	if got := findNearDuplicate(gastoSegundo, nil, []movement.Movement{reintegroPrimero}); got != nil {
+		t.Errorf("el gasto marcó al reintegro #%d", got.ID)
+	}
+}
