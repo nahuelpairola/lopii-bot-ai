@@ -238,3 +238,42 @@ a, button, .tab-link {
 .cell-high { background-color: rgba(42, 120, 214, 0.45); }
 
 .evolution-legend { font-size: 0.8rem; }
+
+/* --- Hoja de cuenta --- */
+
+/* La tarjeta de una cuenta es tocable: abre la lista de movimientos que
+   explican su saldo. 44px es el mínimo táctil, el mismo que ya usan .tab-link
+   y las flechas del período. */
+.account-card {
+  display: block;
+  min-height: 44px;
+  text-decoration: none;
+  color: inherit;
+}
+.account-card:active article { opacity: 0.7; }
+
+/* Filas, no <table>: cuatro datos por movimiento en un webview angosto obligan
+   a scrollear en horizontal si esto fuera una tabla. */
+.mov-list { list-style: none; padding: 0; margin: 0; }
+.mov-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+.mov-icon { flex: none; }
+.mov-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+/* El título trunca en una línea: un comercio de nombre largo no puede empujar
+   el monto fuera de la pantalla. */
+.mov-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mov-meta { font-size: 0.8rem; color: var(--pico-muted-color); }
+.mov-amount { flex: none; white-space: nowrap; }
+
+/* Apertura y cierre: el par que hace que la lista cierre contra el saldo. */
+.balance-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 600;
+}
