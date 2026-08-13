@@ -30,6 +30,12 @@ type Config struct {
 	//
 	// Vacío = comportamiento de antes: el 429 encola y el usuario espera.
 	AgentFallbackModels []string
+	// QueryFallbackModels es lo mismo para el loop de consultas, que hasta el
+	// 2026-08-13 no tenía ninguna: el primer 429 mataba el turno. Va aparte de la
+	// del agente y no reusa esa lista porque el primario de query (120b) es
+	// justamente el primer suplente del agente — reusarla haría que el primer
+	// reintento cayera en el modelo que acaba de rebotar.
+	QueryFallbackModels []string
 	TimeoutSeconds      int
 	Recorder            LLMRecorder // nil-safe
 }
@@ -46,6 +52,7 @@ type Orchestrator struct {
 	agentModel      string
 	classifierModel string
 	agentFallbacks  []string
+	queryFallbacks  []string
 }
 
 func New(cfg Config) *Orchestrator {
@@ -57,5 +64,6 @@ func New(cfg Config) *Orchestrator {
 		agentModel:      cfg.AgentModel,
 		classifierModel: cfg.ClassifierModel,
 		agentFallbacks:  cfg.AgentFallbackModels,
+		queryFallbacks:  cfg.QueryFallbackModels,
 	}
 }

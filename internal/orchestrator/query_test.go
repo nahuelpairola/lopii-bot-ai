@@ -375,4 +375,74 @@ func TestAnswerQuery_FinalNarration_PairsEachResultWithItsCall(t *testing.T) {
 	}
 }
 
+// El loop de consultas no tenía cadena de fallback: iba directo contra queryModel y
+// el primer 429 mataba el turno. El 2026-08-13 quedó en las trazas el caso que lo
+// vuelve absurdo — un turno cuyo AGENTE fue rescatado (20b 429 → 120b 429 →
+// llama-3.3-70b 200) murió un paso después, en la query, por no tener lo mismo que
+// lo acababa de salvar.
+func TestAnswerQuery_FallsBackToTheNextModelOnRateLimit(t *testing.T) {
+	var usados []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		usados = append(usados, req.Model)
+		if req.Model == "principal" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"error":{"message":"Rate limit reached","code":"rate_limit_exceeded"}}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"contestado","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{
+		APIKey: "k", BaseURL: server.URL, QueryModel: "principal",
+		QueryFallbackModels: []string{"suplente"}, TimeoutSeconds: 5,
+	})
+	answer, err := o.AnswerQuery(context.Background(), "s", "u", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}},
+		func(string, json.RawMessage) (string, error) { return "ok", nil })
+	if err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+	if answer != "contestado" {
+		t.Errorf("answer = %q, want la respuesta del suplente", answer)
+	}
+	// El principal va PRIMERO: si se invirtiera, el tráfico normal se iría al
+	// suplente y la cadena dejaría de ser una red para pasar a ser el camino.
+	if len(usados) < 2 || usados[0] != "principal" || usados[len(usados)-1] != "suplente" {
+		t.Errorf("orden de modelos = %v, want principal y después suplente", usados)
+	}
+}
+
+// Un 400 no se reintenta: es un error nuestro y sale igual en cualquier modelo.
+// Reintentarlo gastaría el cupo de los suplentes para obtener el mismo error — y el
+// cupo de los suplentes es justo lo que hay que tener guardado para el próximo 429.
+func TestAnswerQuery_DoesNotFallBackOnABadRequest(t *testing.T) {
+	var usados []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		usados = append(usados, req.Model)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"message":"tool call validation failed","code":"tool_use_failed"}}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{
+		APIKey: "k", BaseURL: server.URL, QueryModel: "principal",
+		QueryFallbackModels: []string{"suplente"}, TimeoutSeconds: 5,
+	})
+	if _, err := o.AnswerQuery(context.Background(), "s", "u", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}},
+		func(string, json.RawMessage) (string, error) { return "ok", nil }); err == nil {
+		t.Fatal("un 400 tiene que propagarse")
+	}
+	for _, m := range usados {
+		if m == "suplente" {
+			t.Errorf("se probó el suplente ante un 400: %v", usados)
+		}
+	}
+}
+
 var _ = time.Second

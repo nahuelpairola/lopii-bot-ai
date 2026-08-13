@@ -68,6 +68,17 @@ const maxQueryIterations = 2
 
 var ErrQueryMaxIterations = errors.New("orchestrator: query loop exceeded max iterations")
 
+// queryChain es el modelo de consultas seguido de sus suplentes. Las DOS llamadas de
+// AnswerQuery la usan —las rondas y la narración forzada—: hasta el 2026-08-13 las dos
+// iban directo contra queryModel y el primer 429 mataba el turno.
+//
+// Ese día quedó en las trazas el caso que lo justifica: un turno cuyo agente FUE
+// rescatado (20b 429 → 120b 429 → llama-3.3-70b 200) murió un paso después, en la
+// query, por no tener lo mismo que lo acababa de salvar.
+func (o *Orchestrator) queryChain() []string {
+	return append([]string{o.queryModel}, o.queryFallbacks...)
+}
+
 // AnswerQuery runs the read-only agent loop: it sends the tools with
 // tool_choice:"auto", executes every tool call the model emits in a round
 // (via the caller's execute closure, scoped to the user), feeds each result
@@ -118,7 +129,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		if i == 0 {
 			choice = "required"
 		}
-		assistant, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, toolDefs, choice, maxQueryCompletionTokens)
+		assistant, err := o.roundWithFallback(ctx, callTypeQuery, o.queryChain(), messages, toolDefs, choice, maxQueryCompletionTokens)
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: answer query: %w", err)
 		}
@@ -170,7 +181,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		{Role: "user", Content: userText},
 		{Role: "user", Content: "Datos obtenidos de las herramientas:\n" + strings.Join(toolResults, "\n") + "\n\nRedactá la respuesta final para el usuario con estos datos."},
 	}
-	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, finalMessages, nil, "none", maxQueryCompletionTokens)
+	final, err := o.roundWithFallback(ctx, callTypeQuery, o.queryChain(), finalMessages, nil, "none", maxQueryCompletionTokens)
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: answer query (final): %w", err)
 	}
