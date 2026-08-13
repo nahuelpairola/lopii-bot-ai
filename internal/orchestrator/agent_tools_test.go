@@ -57,60 +57,41 @@ func TestAgentTools_AllWellFormed(t *testing.T) {
 	}
 }
 
-// TestAgentTools_RecordMovementsDiffersFromCreateToolOnlyByTheCategoryPair es
-// la version de la etapa 5 del guard anterior.
+// TestAgentTools_RecordMovementsNeverAsksForTheCategoryPair
 //
-// Antes se exigia que los dos schemas fueran identicos byte a byte, porque la
-// etapa 3 no cambiaba comportamiento. Ahora la divergencia es EL punto: el loop
-// extrae el hecho economico y clasificar es otra llamada, en otro modelo y por
-// lo tanto en otro techo de TPM.
+// Este test comparaba `record_movements` contra `createTool` campo por campo,
+// para atajar la deriva accidental entre los dos caminos de CREATE. Ya no hay
+// dos: la etapa 5 borró create.go, que era lo que el comentario anterior
+// anunciaba ("el camino viejo SÍ, hasta que la etapa 5 lo borre").
 //
-// Pero la divergencia tiene que ser EXACTAMENTE esa. Cualquier otra diferencia
-// sigue siendo deriva accidental en un camino de plata, y este test la ataja
-// igual que antes.
-func TestAgentTools_RecordMovementsDiffersFromCreateToolOnlyByTheCategoryPair(t *testing.T) {
-	itemsOf := func(raw json.RawMessage, label string) map[string]any {
-		t.Helper()
-		var parsed map[string]any
-		if err := json.Unmarshal(raw, &parsed); err != nil {
-			t.Fatalf("%s schema: %v", label, err)
-		}
-		movements := parsed["properties"].(map[string]any)["movements"].(map[string]any)
-		return movements["items"].(map[string]any)
-	}
-
+// Lo que sobrevive es la mitad que sigue teniendo sujeto: el loop NO puede
+// pedir la categoría. Si volviera a aparecer en el schema, el modelo la
+// llenaría —tiene con qué— y estaríamos pagando dos veces por clasificar, una
+// de ellas con el modelo equivocado y sin la taxonomía delante.
+func TestAgentTools_RecordMovementsNeverAsksForTheCategoryPair(t *testing.T) {
 	var agentParams json.RawMessage
 	for _, tool := range AgentTools() {
 		if tool.Name == ToolRecordMovements {
 			agentParams = tool.Parameters
 		}
 	}
-	agent := itemsOf(agentParams, "record_movements")
-	create := itemsOf(createTool.Parameters, "createTool")
+	var parsed map[string]any
+	if err := json.Unmarshal(agentParams, &parsed); err != nil {
+		t.Fatalf("record_movements schema: %v", err)
+	}
+	movements := parsed["properties"].(map[string]any)["movements"].(map[string]any)
+	props := movements["items"].(map[string]any)["properties"].(map[string]any)
 
-	// El loop NO puede pedir la categoria: para eso esta el clasificador.
-	agentProps := agent["properties"].(map[string]any)
 	for _, gone := range []string{"category", "subcategory"} {
-		if _, still := agentProps[gone]; still {
+		if _, still := props[gone]; still {
 			t.Errorf("record_movements todavia pide %q: eso lo decide el clasificador", gone)
 		}
 	}
-
-	// Y el camino viejo SI, hasta que la etapa 5 lo borre.
-	createProps := create["properties"].(map[string]any)
-	for _, want := range []string{"category", "subcategory"} {
-		if _, ok := createProps[want]; !ok {
-			t.Errorf("createTool perdio %q y todavia lo necesita", want)
+	// Y lo que SÍ tiene que seguir pidiendo, que es el hecho económico.
+	for _, want := range []string{"type", "amount", "currency", "date", "description"} {
+		if _, ok := props[want]; !ok {
+			t.Errorf("record_movements perdio %q, que es parte del hecho economico", want)
 		}
-	}
-
-	// Todo lo demas tiene que seguir igual: esa es la deriva que importa.
-	delete(createProps, "category")
-	delete(createProps, "subcategory")
-	a, _ := json.Marshal(agentProps)
-	c, _ := json.Marshal(createProps)
-	if string(a) != string(c) {
-		t.Errorf("los schemas divergen en algo mas que el par de categoria: agent=%s create=%s", a, c)
 	}
 }
 

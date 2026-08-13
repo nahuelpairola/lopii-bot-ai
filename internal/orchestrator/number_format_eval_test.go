@@ -4,6 +4,8 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 )
@@ -11,6 +13,14 @@ import (
 // Run with real Groq creds:
 //   GROQ_API_KEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestNumberFormatEval -v
 // Excluded from default `go test ./...` (build tag) so CI needs no API key.
+
+// Las cuentas del eval. Vivían en create_eval_test.go, que se fue con
+// ClassifyCreate; este es el único eval que las seguía usando.
+var numberFormatEvalAccounts = []AccountOption{
+	{ID: 1, Name: "Banco", Currency: "ARS"},
+	{ID: 2, Name: "Mercado Pago", Currency: "ARS"},
+	{ID: 3, Name: "Broker", Currency: "USD"},
+}
 
 var numberFormatCreateCases = []struct {
 	msg        string
@@ -22,7 +32,11 @@ var numberFormatCreateCases = []struct {
 	{"compré algo de 1.5m", "1500000"},
 }
 
-func TestNumberFormatEval_Create(t *testing.T) {
+// El formato numérico ahora se prueba contra EL LOOP, que es quien extrae el
+// monto desde que la etapa 5 borró ClassifyCreate. El sujeto no cambió y sigue
+// siendo plata: leer "1.041.265" como 1041.265 cambia el monto MIL veces, y
+// nada río abajo lo puede notar — es un número perfectamente válido.
+func TestNumberFormatEval_Loop(t *testing.T) {
 	key := os.Getenv("GROQ_API_KEY")
 	if key == "" {
 		t.Skip("GROQ_API_KEY unset — real-LLM eval skipped")
@@ -30,19 +44,35 @@ func TestNumberFormatEval_Create(t *testing.T) {
 	o := New(Config{
 		APIKey:         key,
 		BaseURL:        os.Getenv("GROQ_BASE_URL"),
-		CreateModel:    os.Getenv("GROQ_CREATE_MODEL"),
+		AgentModel:     os.Getenv("GROQ_AGENT_MODEL"),
 		TimeoutSeconds: 30,
 	})
+	tools := AgentTools()
+	prompt := BuildAgentPrompt("2026-07-07", numberFormatEvalAccounts, nil, "", tools, "")
+
 	for _, tc := range numberFormatCreateCases {
 		t.Run(tc.msg, func(t *testing.T) {
-			res, err := o.ClassifyCreate(context.Background(), tc.msg, evalTaxonomy(), evalAccounts(), "2026-07-07")
+			var got string
+			_, err := o.Run(context.Background(), prompt, tc.msg, nil, tools,
+				func(name string, args json.RawMessage) (string, error) {
+					if name != ToolRecordMovements {
+						return "", fmt.Errorf("el loop llamó %s en vez de registrar", name)
+					}
+					var parsed struct {
+						Movements []MovementDraft `json:"movements"`
+					}
+					if err := json.Unmarshal(args, &parsed); err != nil {
+						return "", err
+					}
+					if len(parsed.Movements) > 0 {
+						got = parsed.Movements[0].Amount
+					}
+					return "registrado", ErrAgentTurnDone
+				})
 			if err != nil {
-				t.Fatalf("ClassifyCreate: %v", err)
+				t.Fatalf("Run: %v", err)
 			}
-			if len(res.Movements) < 1 {
-				t.Fatalf("%q → no movements", tc.msg)
-			}
-			if got := res.Movements[0].Amount; got != tc.wantAmount {
+			if got != tc.wantAmount {
 				t.Errorf("%q → amount %q, want %q", tc.msg, got, tc.wantAmount)
 			}
 		})

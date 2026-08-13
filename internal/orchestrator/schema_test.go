@@ -12,15 +12,24 @@ import (
 // emits null for it (as gpt-oss-20b does for an absent merchant). This test
 // fails on any schema — present or future — that forgets the null-union.
 func TestToolSchemas_OptionalFieldsAllowNull(t *testing.T) {
-	tools := map[string]toolSchema{
-		"createTool":     createTool,
-		"deleteTool":     deleteTool,
-		"updateTool":     updateTool,
-		"onboardingTool": onboardingTool,
+	// Las de un solo tiro. createTool y deleteTool salieron con la etapa 5.
+	params := map[string]json.RawMessage{
+		"updateTool":         updateTool.Parameters,
+		"onboardingTool":     onboardingTool.Parameters,
+		"accountManageTool":  accountManageTool.Parameters,
+		"categoryCreateTool": categoryCreateTool.Parameters,
+		"classifierTool":     classifierTool.Parameters,
 	}
-	for name, tool := range tools {
+	// Y TODAS las del loop, que antes no se revisaban. Es donde más duele: el
+	// 2026-08-12 un campo mal declarado en correct_movement devolvió un 400 duro
+	// y se comió el turno entero, sin que la app llegara a ver nada.
+	for _, tool := range AgentTools() {
+		params["agent:"+tool.Name] = tool.Parameters
+	}
+
+	for name, raw := range params {
 		var schema map[string]any
-		if err := json.Unmarshal(tool.Parameters, &schema); err != nil {
+		if err := json.Unmarshal(raw, &schema); err != nil {
 			t.Fatalf("%s: parameters not valid JSON: %v", name, err)
 		}
 		for _, v := range walkOptionalScalars(schema, name) {

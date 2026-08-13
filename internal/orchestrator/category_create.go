@@ -28,17 +28,17 @@ var categoryCreateTool = toolSchema{
 			"match": {
 				"type": ["object", "null"],
 				"properties": {
-					"category": {"type": "string"},
-					"subcategory": {"type": "string"}
+					"category": {"type": ["string", "null"]},
+					"subcategory": {"type": ["string", "null"]}
 				}
 			},
 			"proposal": {
 				"type": ["object", "null"],
 				"properties": {
-					"category": {"type": "string"},
-					"subcategory": {"type": "string"},
-					"emoji": {"type": "string"},
-					"description": {"type": "string"}
+					"category": {"type": ["string", "null"]},
+					"subcategory": {"type": ["string", "null"]},
+					"emoji": {"type": ["string", "null"]},
+					"description": {"type": ["string", "null"]}
 				}
 			}
 		}

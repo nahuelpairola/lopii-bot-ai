@@ -5,7 +5,6 @@ package orchestrator
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -250,27 +249,49 @@ func TestAgentLoopEval(t *testing.T) {
 	}
 }
 
-// TestAgentPromptSize is free — no API call — and answers the cost question the
-// spec's §7 estimates: what the unified prompt actually weighs against the
-// per-intent prompts it replaces.
+// TestAgentPromptSize es gratis —no llama a la API— y contesta la pregunta de
+// costo con el desglose, que es lo único accionable: sin saber qué bloque pesa,
+// "achicar el prompt" es adivinar.
+//
+// Antes comparaba contra el prompt de CREATE. Ese camino lo borró la etapa 5, y
+// con él la comparación: hoy el loop no reemplaza a nadie, es el único que hay.
 func TestAgentPromptSize(t *testing.T) {
-	_, taxonomy := seededTaxonomy(t)
 	accounts := []AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}}
+	tools := AgentTools()
+	unified := BuildAgentPrompt("2026-07-31", accounts, nil, "", tools, "")
 
-	unified := BuildAgentPrompt("2026-07-31", accounts, taxonomy, "", AgentTools(), "")
-	create := fmt.Sprintf(createSystemPromptTemplate, "2026-07-31", buildAccountsBlock(accounts), buildTaxonomyBlock(taxonomy))
-
-	var tools int
-	for _, tool := range AgentTools() {
-		tools += len([]rune(tool.Description)) + len(tool.Parameters)
+	bloques := []struct {
+		nombre string
+		texto  string
+	}{
+		{"tools (cuándo usar)", buildToolsBlock(tools)},
+		{"desempates", agentTieBreakers(tools)},
+		{"reglas de monto", amountRules},
+		{"patrones de movimiento", agentPatternRules},
+		{"cuentas", buildAccountsBlock(accounts)},
 	}
 
-	// El router ya no existe, así que la comparación es contra lo único que
-	// queda del camino viejo: el prompt de CREATE.
-	t.Logf("prompt unificado : %5d runas", len([]rune(unified)))
-	t.Logf("prompt CREATE    : %5d runas", len([]rune(create)))
-	t.Logf("schemas de tools : %5d runas (van en CADA request del loop)", tools)
-	t.Logf("loop por request : %5d runas", len([]rune(unified))+tools)
+	total := len([]rune(unified))
+	var sumado int
+	t.Logf("prompt del agente: %d runas", total)
+	for _, b := range bloques {
+		n := len([]rune(b.texto))
+		sumado += n
+		t.Logf("  %-24s %5d runas (%4.1f%%)", b.nombre, n, 100*float64(n)/float64(total))
+	}
+	t.Logf("  %-24s %5d runas (%4.1f%%) <- prosa fija de la plantilla",
+		"resto", total-sumado, 100*float64(total-sumado)/float64(total))
+
+	var schemas int
+	for _, tool := range tools {
+		n := len([]rune(tool.Description)) + len(tool.Parameters)
+		schemas += n
+		t.Logf("  schema %-17s %5d runas", tool.Name, n)
+	}
+	// Los schemas van en CADA request, igual que el prompt: el loop reenvía la
+	// lista entera en cada ronda.
+	t.Logf("TOTAL por request: %d runas (~%d tokens a 4 runas/token)",
+		total+schemas, (total+schemas)/4)
 }
 
 // truncate acorta una narración para el log del eval. Vivía en el eval del
