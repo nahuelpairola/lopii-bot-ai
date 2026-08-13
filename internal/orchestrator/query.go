@@ -136,7 +136,20 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 				ToolCallID: call.ID,
 				Content:    result,
 			})
-			toolResults = append(toolResults, result)
+			// El resultado viaja CON su llamada, no suelto. En el camino normal la
+			// asociación la da el ToolCallID del mensaje de arriba; acá no hay nada
+			// que la sostenga, y toolResults es lo único que ve la narración forzada.
+			//
+			// El 2026-08-13, en producción, sin esto: el usuario preguntó por tres
+			// cosas, el modelo alcanzó a consultar dos, y la puerta 2 recibió
+			// "total: 9990.00 ARS" y "total: 8122.73 ARS" — dos números anónimos y
+			// una pregunta que nombraba tres. Contestó con el total de HBO puesto
+			// bajo la etiqueta del lote. No era alucinación: con esa entrada,
+			// acertar la atribución es imposible.
+			//
+			// Los argumentos van CRUDOS, tal cual los mandó el modelo: es lo que ya
+			// había, no puede desincronizarse del schema, y ahorra decidir formato.
+			toolResults = append(toolResults, call.Function.Name+" "+call.Function.Arguments+" → "+result)
 		}
 	}
 

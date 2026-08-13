@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -280,6 +281,97 @@ func TestAnswerQuery_PrependsHistory(t *testing.T) {
 	}
 	if gotMessages[3].Role != "user" || gotMessages[3].Content != "y la semana anterior?" {
 		t.Errorf("msg[3] = %+v, want user current", gotMessages[3])
+	}
+}
+
+// Regresión del 2026-08-13, producción: el usuario preguntó por tres cosas
+// ("cuánto gasté en disney, hbo y el lote"), el modelo alcanzó a consultar dos, y la
+// narración forzada contestó "Disney + HBO: $9.990 / Lote: $8.122,73". El 8.122,73 es
+// el total de HBO, puesto bajo la etiqueta del lote; del lote real ($30.343,74) no se
+// consultó nada.
+//
+// No fue el modelo alucinando: `toolResults` juntaba SOLO el texto del resultado
+// ("total: 9990.00 ARS", "total: 8122.73 ARS"), así que el request final llevaba dos
+// números anónimos y una pregunta que nombraba tres cosas. Con eso, acertar la
+// atribución es imposible.
+//
+// El camino normal nunca tuvo el problema: ahí cada resultado va como mensaje de rol
+// "tool" con su ToolCallID, que sí lo asocia. Se perdía únicamente en toolResults, que
+// es lo que alimenta la puerta 2 — por eso el fix es una línea ahí y no un eco en el
+// ejecutor, que le cobraría tokens al 80% de las consultas que no lo necesitan.
+func TestAnswerQuery_FinalNarration_PairsEachResultWithItsCall(t *testing.T) {
+	call := 0
+	var finalMessages []loopMessage
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		// Una tool por ronda, con un filtro DISTINTO cada una: es el patrón real que
+		// agota el cap y cae en la narración forzada.
+		if call <= maxQueryIterations {
+			filtro := "disney"
+			if call == 2 {
+				filtro = "hbo"
+			}
+			fmt.Fprintf(w, `{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"c%d","type":"function","function":{"name":"sum_movements","arguments":"{\"description\":\"%s\"}"}}
+			]}}]}`, call, filtro)
+			return
+		}
+		finalMessages = req.Messages
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	// Montos distintos a propósito: con dos totales iguales, un intercambio de
+	// etiquetas es indetectable y el test no probaría nada.
+	execute := func(name string, args json.RawMessage) (string, error) {
+		if strings.Contains(string(args), "hbo") {
+			return "total: 8122.73 ARS", nil
+		}
+		return "total: 9990.00 ARS", nil
+	}
+	o := newQueryOrchestrator(server.URL)
+	if _, err := o.AnswerQuery(context.Background(), "s", "cuánto gasté en disney, hbo y el lote", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute); err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+
+	var blob string
+	for _, m := range finalMessages {
+		blob += m.Content + "\n"
+	}
+	// Lo que importa no es que los números estén, sino que cada uno viaje pegado al
+	// filtro que lo produjo. Se chequea por línea: el dato y su origen tienen que
+	// llegar juntos, porque el modelo narra desde esto y nada más.
+	for _, c := range []struct{ filtro, monto, ajeno string }{
+		{"disney", "9990.00", "8122.73"},
+		{"hbo", "8122.73", "9990.00"},
+	} {
+		var linea string
+		for _, l := range strings.Split(blob, "\n") {
+			// La línea del DATO, no la de la pregunta —que también nombra los tres
+			// filtros—: la del dato es la que además lleva el nombre de la tool.
+			if strings.Contains(l, c.filtro) && strings.Contains(l, "sum_movements") {
+				linea = l
+				break
+			}
+		}
+		if linea == "" {
+			t.Fatalf("ningún dato del request final está atribuido al filtro %q; blob:\n%s", c.filtro, blob)
+		}
+		if !strings.Contains(linea, c.monto) {
+			t.Errorf("%q tiene que viajar con su total %s, y llegó como %q", c.filtro, c.monto, linea)
+		}
+		if strings.Contains(linea, c.ajeno) {
+			t.Errorf("%q llegó con el total de OTRA llamada (%s): %q", c.filtro, c.ajeno, linea)
+		}
+	}
+	// El nombre de la tool también: sin él, dos tools distintas con el mismo filtro
+	// (sum_movements y list_movements sobre "hbo") vuelven a ser indistinguibles.
+	if !strings.Contains(blob, "sum_movements") {
+		t.Errorf("el request final tiene que nombrar la tool que produjo cada dato; blob:\n%s", blob)
 	}
 }
 
