@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -35,7 +36,7 @@ func candidateMovement(id uint, txID *uuid.UUID, description string, amount int6
 
 func newExecutorWith(t *testing.T, userText string, movements ...movement.Movement) *agentExecutor {
 	t.Helper()
-	return newAgentExecutor(&controller{movements: &fakeMovementRepoFull{similar: movements}}, 1, userText, nil)
+	return newAgentExecutor(context.Background(), &controller{movements: &fakeMovementRepoFull{similar: movements}}, 1, userText, nil)
 }
 
 // taxonomyForTest es la taxonomía mínima que buildCreateSeed necesita para NO
@@ -91,7 +92,7 @@ func newCreateExecutor(t *testing.T, balance, userText string, pairs ...orchestr
 		subcategories: subcategoriesForTest(),
 		orchestrator:  &fakeFullOrchestrator{classifyPairs: pairs},
 	}
-	return newAgentExecutor(c, 1, userText, taxonomyForTest())
+	return newAgentExecutor(context.Background(), c, 1, userText, taxonomyForTest())
 }
 
 // TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn: el camino sin fricción.
@@ -364,5 +365,5 @@ func executorWithPairs(t *testing.T, userText string, pairs []orchestrator.Pair)
 		subcategories: subcategoriesForTest(),
 		orchestrator:  &fakeFullOrchestrator{classifyPairs: pairs},
 	}
-	return newAgentExecutor(c, 1, userText, taxonomyForTest())
+	return newAgentExecutor(context.Background(), c, 1, userText, taxonomyForTest())
 }

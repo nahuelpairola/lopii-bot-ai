@@ -37,7 +37,7 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
 	}
 
-	executor := newAgentExecutor(c, userID, text, taxonomy)
+	executor := newAgentExecutor(ctx, c, userID, text, taxonomy)
 	answer, err := c.orchestrator.Run(ctx, prompt, text, history, tools, executor.execute)
 
 	// El intent_event se ABRE acá, después del loop, porque ya no hay router que

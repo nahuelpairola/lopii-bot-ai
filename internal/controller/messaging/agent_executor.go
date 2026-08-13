@@ -92,6 +92,15 @@ type agentPayload struct {
 // tunearon el matcheo por tokens y el plegado de acentos. Ni un id sale del
 // modelo, así que no hay id inventado posible.
 type agentExecutor struct {
+	// ctx es el del turno. Va en el struct, y no como parámetro, porque la
+	// firma de execute la fija el loop del orchestrator y este ejecutor vive
+	// exactamente un turno — el caso donde guardar un ctx es aceptable.
+	//
+	// No es cosmético: orchestrator.Client.record estampa trace.ID(ctx) en cada
+	// fila de llm_calls. Con context.Background() —que es lo que había— las
+	// llamadas del clasificador entraban con trace_id vacío, y son UNA POR
+	// TURNO: la correlación de las tres capas se caía justo en la llamada nueva.
+	ctx    context.Context
 	c      *controller
 	userID uint64
 	// userText es el mensaje tal cual lo escribió el usuario. Es lo que se usa
@@ -133,8 +142,8 @@ type agentExecutor struct {
 	inserted []movement.Movement
 }
 
-func newAgentExecutor(c *controller, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
-	return &agentExecutor{c: c, userID: userID, userText: userText, taxonomy: taxonomy}
+func newAgentExecutor(ctx context.Context, c *controller, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
+	return &agentExecutor{ctx: ctx, c: c, userID: userID, userText: userText, taxonomy: taxonomy}
 }
 
 // wiredAgentTools son las únicas tools que este ejecutor sabe correr hoy. Es la
@@ -335,7 +344,7 @@ func (e *agentExecutor) classify(movements []orchestrator.MovementDraft) {
 			AccountName: m.AccountNameGuess,
 		})
 	}
-	pairs := e.c.orchestrator.ClassifyCategories(context.Background(), e.userText, rows, e.taxonomy)
+	pairs := e.c.orchestrator.ClassifyCategories(e.ctx, e.userText, rows, e.taxonomy)
 	for i := range movements {
 		cat, sub := "", ""
 		if i < len(pairs) {
