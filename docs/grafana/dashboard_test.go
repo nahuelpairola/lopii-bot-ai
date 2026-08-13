@@ -28,6 +28,22 @@ const dsVariable = "${DS_POSTGRES}"
 // gridWidth is Grafana's fixed column count.
 const gridWidth = 24
 
+// resource is the Kubernetes-style envelope Grafana wraps a dashboard in.
+// The UI importer validates it before it ever looks at the dashboard, and
+// rejects a bare spec body with "Missing property metadata / Missing property
+// spec" — which is exactly what this file shipped with from 2026-07-22 to
+// 2026-08-13, parsing perfectly the whole time. A linter that only reads the
+// spec cannot see that the file is unimportable, so it asserts the envelope
+// first now.
+type resource struct {
+	APIVersion string `json:"apiVersion"`
+	Kind       string `json:"kind"`
+	Metadata   struct {
+		Name string `json:"name"`
+	} `json:"metadata"`
+	Spec dashboard `json:"spec"`
+}
+
 // dashboard is the subset of schema V2 this linter asserts on. Unknown fields
 // are ignored by encoding/json, so the real file can carry far more.
 type dashboard struct {
@@ -108,11 +124,57 @@ func loadDashboard(t *testing.T) dashboard {
 	if err != nil {
 		t.Fatalf("read %s: %v", dashboardPath, err)
 	}
-	var d dashboard
-	if err := json.Unmarshal(raw, &d); err != nil {
+	var r resource
+	if err := json.Unmarshal(raw, &r); err != nil {
 		t.Fatalf("parse %s: %v", dashboardPath, err)
 	}
-	return d
+	for _, problem := range envelopeProblems(r) {
+		t.Error(problem)
+	}
+	return r.Spec
+}
+
+// envelopeProblems checks the resource envelope. Pure, so the test below can
+// feed it the broken shape that actually shipped.
+//
+// Without these four the UI importer refuses the file outright and never gets
+// as far as reporting a panel problem, so every other assertion in this file
+// would be checking a dashboard nobody can load.
+func envelopeProblems(r resource) []string {
+	var out []string
+	if r.APIVersion == "" {
+		out = append(out, `apiVersion is empty, want a "dashboard.grafana.app/..." version`)
+	}
+	if r.Kind != "Dashboard" {
+		out = append(out, "kind = "+r.Kind+", want Dashboard")
+	}
+	if r.Metadata.Name == "" {
+		out = append(out, "metadata.name is empty: it IS the dashboard uid, and a re-import without it forks a duplicate")
+	}
+	if len(r.Spec.Elements) == 0 {
+		out = append(out, "spec.elements is empty: the dashboard body has to live under spec, not at the root")
+	}
+	return out
+}
+
+// TestEnvelopeDetectsTheShippedBug is the same reassurance as
+// TestBadAliasDetectsTheShippedBug: it pins the detector to the shape that
+// really broke, so a future tidy-up of envelopeProblems cannot quietly make it
+// useless.
+//
+// From 2026-07-22 to 2026-08-13 the file held the V2 spec body at the ROOT,
+// with no envelope. It parsed perfectly, the linter was green, and Grafana
+// refused it with "Missing property metadata. Missing property spec." — a file
+// that is valid JSON is not a dashboard that imports.
+func TestEnvelopeDetectsTheShippedBug(t *testing.T) {
+	bare := []byte(`{"title":"x","elements":{"panel-1":{"kind":"Panel"}},"layout":{"kind":"RowsLayout"}}`)
+	var r resource
+	if err := json.Unmarshal(bare, &r); err != nil {
+		t.Fatalf("the broken shape has to still be valid JSON — that was the whole problem: %v", err)
+	}
+	if len(envelopeProblems(r)) == 0 {
+		t.Error("envelopeProblems accepted a bare spec body: the check that would have caught the 3-week bug is dead")
+	}
 }
 
 func TestDashboardParses(t *testing.T) {

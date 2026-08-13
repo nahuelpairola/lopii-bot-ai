@@ -11,6 +11,32 @@ drill-down.
 > volver a v1 para una instancia vieja, la ruta `POST /api/dashboards/db` de la
 > API clásica todavía lo acepta — pero el import por UI de esta instancia, no.
 
+> **El cuerpo va adentro de `spec`, no en la raíz.** Grafana envuelve el
+> dashboard en un recurso estilo Kubernetes, y el importador valida ESA capa
+> antes de mirar nada de adentro:
+>
+> ```json
+> { "apiVersion": "dashboard.grafana.app/v2beta1",
+>   "kind": "Dashboard",
+>   "metadata": { "name": "lopii-app-state" },
+>   "spec": { "title": ..., "elements": {...}, "layout": {...} } }
+> ```
+>
+> `metadata.name` **es el uid**: si cambia, un re-import crea un dashboard
+> nuevo en vez de actualizar el que ya está. Mantenerlo estable.
+>
+> Del 2026-07-22 al 2026-08-13 este archivo tuvo el cuerpo en la raíz, sin
+> envoltura. Parseaba perfecto, el linter estaba verde, y Grafana lo rechazaba
+> con **"Missing property metadata. Missing property spec."** — que es el mismo
+> modo de falla que el de los 8 paneles rotos: un JSON válido no es un
+> dashboard que importa. Ahora `dashboard_test.go` chequea la envoltura antes
+> que nada, y `TestEnvelopeDetectsTheShippedBug` pinea el detector a la forma
+> que de verdad se rompió.
+>
+> **Si tu instancia rechaza el `apiVersion`**, es lo único de la envoltura que
+> depende de la versión: abrí cualquier dashboard existente → *JSON Model* y
+> copiá el que muestre.
+
 Diseño y justificación de cada panel:
 [`docs/superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md`](../superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md).
 
@@ -126,6 +152,9 @@ Para alerta de caída: un monitor externo contra `/health/external`.
 
 `dashboard_test.go` corre dentro de `go test ./...` y valida:
 
+- **que el archivo traiga la envoltura de recurso** (`apiVersion`, `kind`,
+  `metadata.name`, y el cuerpo bajo `spec`) — sin eso el importador lo rechaza
+  sin llegar a mirar un solo panel;
 - que el JSON parsee, tenga elementos y use `RowsLayout`;
 - que ningún query combine `$__timeGroupAlias(...)` con un ` AS time` extra
   (**el macro ya emite su propio `AS "time"`** — esa doble alias rompió los 8
