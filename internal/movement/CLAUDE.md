@@ -34,3 +34,23 @@ it loses rows. Full reasoning at `repository.go:108-117`.
 `FindSimilarForUser`'s `query string` parameter is dead — it no longer filters anything
 (`repository.go:98-106`). It stays in the signature because removing it ripples through the
 interface and three test mocks.
+
+## `ListForAccount` breaks two house rules on purpose
+
+It is the one read that does **not** go through `MovementQuery.apply`, and the one preload
+that runs `Unscoped`. Both look like oversights and are load-bearing.
+
+**No `apply`.** Its caller is the Mini App's account leaf, which has to reconcile against the
+account's balance. `apply` drops `type = transfer` and every reserved category — precisely
+the rows that move a balance without being a user-facing expense. Routed through `apply`, the
+list silently stops adding up to the number printed above it. Adding a third state to
+`apply`'s filters would have served this one view at the risk of its four other consumers;
+`SumAmountForAccount` and `MonthlyDeltasForAccount` already sidestep it for the same reason.
+
+**`Unscoped` preload.** The taxonomy was reseeded, so live movements point at soft-deleted
+`subcategories` rows — a plain `Preload` returns `nil` for them and the row loses its name in
+the UI (it renders as the generic fallback). This is display of an already-assigned
+historical value, which is **not** the case the "live rows only" rule governs: that rule is
+about *choosing* a subcategory (pickers, taxonomy resolution), where offering a deleted one
+is a real bug. Callers must still nil-check `Subcategory`; `Unscoped` shrinks the case, it
+does not remove it.
