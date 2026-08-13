@@ -20,17 +20,17 @@ const (
 	// manage_settings reemplaza a las cinco de configuración. Son de bajo volumen
 	// y todas hacen lo mismo: parkear a un wizard. Cinco tools casi iguales son
 	// justo donde este modelo elige mal.
-	ToolManageSettings = "manage_settings"
-	ToolCreateCategory         = "create_category"
-	ToolManageCategories       = "manage_categories"
-	ToolSetReminder            = "set_reminder"
-	ToolReplyHelp              = "reply_help"
-	ToolAskRewrite             = "ask_rewrite"
-	ToolListCategories         = "list_categories"
-	ToolSumMovements           = "sum_movements"
-	ToolListMovements          = "list_movements"
-	ToolAccountBalance         = "account_balance"
-	ToolGetReminder            = "get_reminder"
+	ToolManageSettings   = "manage_settings"
+	ToolCreateCategory   = "create_category"
+	ToolManageCategories = "manage_categories"
+	ToolSetReminder      = "set_reminder"
+	ToolReplyHelp        = "reply_help"
+	ToolAskRewrite       = "ask_rewrite"
+	ToolListCategories   = "list_categories"
+	ToolSumMovements     = "sum_movements"
+	ToolListMovements    = "list_movements"
+	ToolAccountBalance   = "account_balance"
+	ToolGetReminder      = "get_reminder"
 )
 
 // schemaNoArgs is the parameter schema for a tool that needs nothing from the
@@ -102,9 +102,9 @@ func AgentTools() []AgentTool {
 
 		// ---- read ----
 		{
-			Name:        ToolListCategories,
-			When:        "preguntas por qué categorías existen.",
-			Kind:        KindRead,
+			Name: ToolListCategories,
+			When: "preguntas por qué categorías existen.",
+			Kind: KindRead,
 			// El contrato tiene que seguir al de messaging/query.go: sin filtro NO
 			// viajan las descripciones (~825 tokens de más por ronda, ver el modelo
 			// de costo en client_loop.go). Cuando la etapa 4 cablee esta tool, su
@@ -182,7 +182,7 @@ func AgentTools() []AgentTool {
 		// ---- action: each one parks the request; the app takes it from there ----
 		{
 			Name:        ToolCorrectMovement,
-			When:        "el mensaje toca un MOVIMIENTO ya registrado. Cuatro familias: reemplazo (\"en realidad eran 2000\", \"estaba mal\"), reintegro (\"me devolvieron 100\", \"me lo regalaron\", \"me reintegraron la mitad\"), INCREMENTO (\"sumale 1070\", \"agregale\", \"restale\", \"son X más\", \"al … de hoy\") y RE-UBICACIÓN, que no toca la plata: cambiarle la categoría, la cuenta o la fecha (\"ponelo en Vivienda\", \"ponelo en el banco X\", \"movelo a otra categoría\", \"fue ayer\", \"era de la otra cuenta\"). Un mensaje que nombra algo ya cargado y dice dónde va NO es un movimiento nuevo, aunque no traiga monto: no pidas el monto, ya lo tiene. No busques cuál: la app lo busca sola. Si el pedido es BORRARLO entero, usá delete_movements. FRONTERA: el monto de una CUENTA es un saldo, no un movimiento — \"modificá el monto de la cuenta X\", \"ajustá el saldo\", \"dejá la cuenta en 5000\" son manage_settings.",
+			When:        "el mensaje toca un MOVIMIENTO ya registrado. Cuatro familias: reemplazo (\"en realidad eran 2000\", \"estaba mal\"), reintegro (\"me devolvieron 100\", \"me lo regalaron\", \"me reintegraron la mitad\"), INCREMENTO (\"sumale 1070\", \"agregale\", \"restale\", \"son X más\", \"al … de hoy\") y RE-UBICACIÓN, que no toca la plata: cambiarle la categoría, la cuenta o la fecha. El vocabulario que la marca es PONELO, MOVELO, VA, ERA, SALIÓ (\"ponelo en Vivienda\", \"movelo al banco X\", \"eso va en otra categoría\", \"era de la otra cuenta\", \"salió de la caja\", \"fue ayer\"). Un mensaje que nombra algo ya cargado y dice dónde va NO es un movimiento nuevo, aunque no traiga monto: no pidas el monto, ya lo tiene. No busques cuál: la app lo busca sola. Si el pedido es BORRARLO entero, usá delete_movements. FRONTERA: el monto de una CUENTA es un saldo, no un movimiento — \"modificá el monto de la cuenta X\", \"ajustá el saldo\", \"dejá la cuenta en 5000\" son manage_settings.",
 			Kind:        KindAction,
 			Description: "Corrige un movimiento ya registrado (monto, fecha, categoría, cuenta o descripción). La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
 			Parameters: json.RawMessage(`{

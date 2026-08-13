@@ -404,3 +404,26 @@ func TestConversation_GuardsSayWhatHappened(t *testing.T) {
 		})
 	}
 }
+
+// El bloque de entidades recientes tiene que alcanzar TODO EL DÍA, no los
+// últimos diez minutos.
+//
+// Medido en vivo el 2026-08-12: "El peaje ponelo en banco galicia" 17 minutos
+// después de cargarlo. La ventana era justCreatedWindow (10 min, compartida con
+// el gate de casi-duplicado), así que el peaje no estaba en el prompt: el modelo
+// no tenía a qué referirse y pidió el monto para registrarlo de nuevo. La
+// inferencia era correcta — le faltaba el ancla.
+func TestRecentEntities_ReachTheWholeDayNotTenMinutes(t *testing.T) {
+	h := newConversationHarness(t)
+	// Cargado hace media hora: fuera de justCreatedWindow, dentro de hoy.
+	h.SeedMovementOn("Peaje", "-2500", h.subID("Transporte", "Peaje"), startOfTodayArgentina())
+	h.conn.DB.Exec(
+		"UPDATE movements SET created_at = now() - interval '30 minutes' WHERE user_id = ? AND description = 'Peaje'",
+		h.userID)
+
+	bloque := h.c.buildRecentEntities(h.userID)
+
+	if !strings.Contains(bloque, "Peaje") {
+		t.Errorf("el peaje de hace 30 min tiene que estar en el bloque:\n%q", bloque)
+	}
+}

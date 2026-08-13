@@ -9,8 +9,9 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// recentEntitiesCap acota cuántas filas entran al prompt. La ventana ya es
-// justCreatedWindow; esto es el techo de tokens.
+// recentEntitiesCap acota cuántas filas entran al prompt: las 8 más recientes.
+// Es el techo de tokens (~160), y es lo que hace que ensanchar la ventana no
+// cueste nada — cambia CUÁLES 8 filas entran, no cuántas.
 const recentEntitiesCap = 8
 
 // buildRecentEntities arma el bloque estructurado de movimientos recientes que
@@ -20,8 +21,20 @@ const recentEntitiesCap = 8
 // es una anáfora ("el café de hoy"), no memoria conversacional. Best-effort —
 // si la consulta falla, se corre sin bloque, igual que con el historial.
 func (c *controller) buildRecentEntities(userID uint64) string {
+	// La ventana es HOY, no justCreatedWindow.
+	//
+	// Compartían constante y son dos preguntas distintas: "¿acabás de cargar
+	// esto dos veces?" (10 minutos, el gate de casi-duplicado) y "¿a qué te
+	// podés estar refiriendo?" (hoy). Nadie dice "el café de los últimos diez
+	// minutos"; dice "el café de hoy".
+	//
+	// Medido en vivo el 2026-08-12: "El peaje ponelo en banco galicia" 17
+	// minutos después de cargarlo. El bloque traía sólo la nafta, así que el
+	// modelo no tenía NINGÚN peaje al que referirse y pidió el monto para
+	// registrarlo — que es la inferencia correcta con lo que podía ver. No fue
+	// un error del modelo: le faltaba el ancla.
 	movs, err := c.movements.FindRecentlyCreatedForUser(
-		userID, nearDuplicateWindowStart(time.Now()), recentEntitiesCap)
+		userID, startOfTodayArgentina(), recentEntitiesCap)
 	if err != nil {
 		return ""
 	}
