@@ -459,6 +459,7 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 	after, err := applyChangesToSet(before, payload.Changes, guardContext{
 		Scope:        payload.Scope,
 		NamedAccount: c.accountNamedIn(userID, payload.Change),
+		Message:      payload.Change,
 	})
 	if err != nil {
 		// Un cambio imposible (un reintegro más grande que la compra, "poné todos
@@ -467,6 +468,12 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 		// saber cuáles.
 		slog.WarnContext(ctx, "structured correction rejected", "user_id", userID, "err", err)
 		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
+		// Una contradicción NO es un "no te entendí": el bot entendió y se niega.
+		// Decirle lo genérico lo manda a reformular algo que ya dijo bien.
+		if errors.Is(err, errRefundThatGrows) {
+			c.sendText(ctx, b, chatID, msgRefundWouldGrow)
+			return nil
+		}
 		c.sendText(ctx, b, chatID, msgStillCannotCorrect)
 		return nil
 	}

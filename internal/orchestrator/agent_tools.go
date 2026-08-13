@@ -190,7 +190,7 @@ func AgentTools() []AgentTool {
 			"properties": {
 				"change": {"type": "string", "description": "qué hay que cambiar, en palabras del usuario"},
 				"scope": {"type": ["string", "null"], "enum": ["one", "all", null], "description": "'all' si el pedido abarca TODOS los movimientos que nombra (\"los movimientos del lote\", \"todos los de Carrefour\"); default 'one'"},
-				"changes": {"type": "array", "description": "Qué cambia, en campos. Sólo lo que cambia, nunca el movimiento entero. \"Era pollo\" → [{field:description,value:pollo}] · \"eran 2000\" → [{field:amount,value:2000}] · \"sumale 1070\" → [{field:amount,op:add,value:1070}], la cuenta la hace la app. Array VACÍO si el usuario pide editar sin decir qué (\"editá los movimientos de hoy\"): ahí la app le pregunta.", "items": {
+				"changes": {"type": "array", "description": "Qué cambia, en campos. Sólo lo que cambia, nunca el movimiento entero. \"Era pollo\" → [{field:description,value:pollo}] · \"eran 2000\" → [{field:amount,value:2000}] · \"sumale 1070\" → [{field:amount,op:add,value:1070}]. NUNCA hagas la cuenta vos: si te devolvieron LA MITAD mandá op=multiply value=0.5, no el resultado. Un reintegro RESTA: \"me devolvieron 500\" → op=subtract value=500; \"me devolvieron la mitad\" → op=multiply value=0.5; \"me lo regalaron\" → op=multiply value=0. Array VACÍO si el usuario pide editar sin decir qué (\"editá los movimientos de hoy\"): ahí la app le pregunta.", "items": {
 					"type": "object",
 					"properties": {
 						"field": {"type": "string", "enum": ["category", "account", "date", "amount", "currency", "description", "type"]},

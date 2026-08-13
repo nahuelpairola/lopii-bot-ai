@@ -322,6 +322,11 @@ const (
 	// hacerlo girar; se corta nombrando el formato que sí funciona.
 	msgStillCannotCorrect = "Sigo sin darme cuenta qué cambiarle. Probá diciéndomelo derecho — ej: «el café fueron 2000»."
 
+	// msgRefundWouldGrow: el mensaje dice que le devolvieron plata y el cambio
+	// haría crecer el gasto. Se nombra la contradicción y se pregunta el número,
+	// que es el dato que falta.
+	msgRefundWouldGrow = "Me dijiste que te devolvieron plata, pero el cambio que entendí lo dejaría más caro. ¿Cuánto te devolvieron?"
+
 	// msgCorrectionChangesNothing: el cambio pedido deja el movimiento igual.
 	// Decirlo es mejor que confirmar un reemplazo que no reemplaza nada.
 	msgCorrectionChangesNothing = "Eso ya estaba así, no cambié nada."

@@ -135,3 +135,57 @@ func TestApplyChangesToSet_RefundGuardOnlyAppliesToRefunds(t *testing.T) {
 		t.Errorf("un cambio de categoría no es un reintegro: %v", err)
 	}
 }
+
+// El caso medido en vivo el 2026-08-12: "De la nafta me devolvieron la mitad" y
+// el modelo emitió {amount, add, 7500}. Calculó la mitad él —que ya está mal— y
+// encima la SUMÓ: el gasto pasó de $15.000 a $22.500.
+//
+// La app lo escribió porque ninguna guarda miraba la DIRECCIÓN. El usuario
+// confirma un diff que se ve plausible y el error queda en la base.
+func TestGuardRefundDirection_RejectsAnAddOnARefund(t *testing.T) {
+	rows := []movementRow{{Type: "expense", Amount: "15000", Currency: "ARS", Description: "Nafta"}}
+	changes := []correctionChange{{fieldAmount, opAdd, "7500"}}
+
+	err := guardRefundDirection(rows, changes, "De la nafta me devolvieron la mitad")
+	if !errors.Is(err, errRefundThatGrows) {
+		t.Errorf("err = %v, want errRefundThatGrows", err)
+	}
+}
+
+// Un multiply por 1.5 también hace crecer el gasto, y la guarda no mira el `op`
+// sino el RESULTADO contra la fila real.
+func TestGuardRefundDirection_RejectsAnyChangeThatGrows(t *testing.T) {
+	rows := []movementRow{{Type: "expense", Amount: "15000", Currency: "ARS"}}
+	for _, ch := range []correctionChange{
+		{fieldAmount, opMultiply, "1.5"},
+		{fieldAmount, opSet, "99999"},
+	} {
+		if err := guardRefundDirection(rows, []correctionChange{ch}, "me reintegraron algo"); !errors.Is(err, errRefundThatGrows) {
+			t.Errorf("%+v: err = %v, want errRefundThatGrows", ch, err)
+		}
+	}
+}
+
+// Lo que SÍ tiene que pasar: un reintegro que reduce.
+func TestGuardRefundDirection_AllowsAChangeThatShrinks(t *testing.T) {
+	rows := []movementRow{{Type: "expense", Amount: "15000", Currency: "ARS"}}
+	for _, ch := range []correctionChange{
+		{fieldAmount, opMultiply, "0.5"},
+		{fieldAmount, opSubtract, "7500"},
+	} {
+		if err := guardRefundDirection(rows, []correctionChange{ch}, "me devolvieron la mitad"); err != nil {
+			t.Errorf("%+v: %v — un reintegro que reduce es lo correcto", ch, err)
+		}
+	}
+}
+
+// Y sin devolución de por medio, sumar es perfectamente válido: "sumale 1070"
+// es el caso más común de corrección que hay.
+func TestGuardRefundDirection_IgnoresMessagesWithoutARefund(t *testing.T) {
+	rows := []movementRow{{Type: "expense", Amount: "12700", Currency: "ARS"}}
+	changes := []correctionChange{{fieldAmount, opAdd, "1070"}}
+
+	if err := guardRefundDirection(rows, changes, "al café de hoy sumale 1070"); err != nil {
+		t.Errorf("err = %v: sin devolución, sumar es válido", err)
+	}
+}
