@@ -3,12 +3,19 @@ package miniapp
 import (
 	"net/http"
 	"slices"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/movement"
 )
+
+// accountParam carries the drilled-into account. Query param y no segmento de
+// path, por el mismo criterio que categoryParam en categories.go: el drill vive
+// en el mismo handler que el índice, así la pestaña sigue marcada y no hay una
+// segunda ruta que mantener en sincronía.
+const accountParam = "account"
 
 func (c *controller) handleAccounts(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
@@ -39,7 +46,10 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 			return
 		}
 		data.Snapshots = append(data.Snapshots, templates.AccountSnapshot{
-			Name: a.Name, Balance: templates.FormatMoney(bal, a.Currency), IsDefault: a.IsDefault,
+			Name:      a.Name,
+			Balance:   templates.FormatMoney(bal, a.Currency),
+			IsDefault: a.IsDefault,
+			Href:      p.Query() + "&" + accountParam + "=" + strconv.FormatUint(uint64(a.ID), 10),
 		})
 
 		deltas, err := c.movements.MonthlyDeltasForAccount(uint64(a.ID))

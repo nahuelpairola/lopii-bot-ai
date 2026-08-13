@@ -9,6 +9,10 @@ type AccountSnapshot struct {
 	// none. Default is per currency and the view is already filtered to one,
 	// so at most one card wears the star.
 	IsDefault bool
+	// Href es la hoja de esta cuenta: la lista de movimientos que explican el
+	// saldo de arriba. La arma el handler, que es el que tiene el Period; el
+	// template no debería saber construir una query string.
+	Href string
 }
 
 type AccountsData struct {
@@ -28,15 +32,17 @@ templ Accounts(data AccountsData) {
 		<p class="muted">Saldo hoy</p>
 		<div class="grid">
 			for _, a := range data.Snapshots {
-				<article>
-					<p>
-						{ a.Name }
-						if a.IsDefault {
-							<span class="default-star" role="img" aria-label="Cuenta por defecto">★</span>
-						}
-					</p>
-					<p class="money">{ a.Balance }</p>
-				</article>
+				<a class="account-card" href={ templ.SafeURL(a.Href) } hx-get={ a.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">
+					<article>
+						<p>
+							{ a.Name }
+							if a.IsDefault {
+								<span class="default-star" role="img" aria-label="Cuenta por defecto">★</span>
+							}
+						</p>
+						<p class="money">{ a.Balance }</p>
+					</article>
+				</a>
 			}
 		</div>
 		<canvas id="cuentas-trend" data-chart-type="line-multi" data-chart-data-id="cuentas-trend-data"></canvas>
