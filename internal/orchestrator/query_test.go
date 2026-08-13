@@ -373,6 +373,49 @@ func TestAnswerQuery_FinalNarration_PairsEachResultWithItsCall(t *testing.T) {
 	if !strings.Contains(blob, "sum_movements") {
 		t.Errorf("el request final tiene que nombrar la tool que produjo cada dato; blob:\n%s", blob)
 	}
+	// Y NADA de esto puede parecerse a una llamada a función. Ver el test de abajo.
+	if strings.Contains(blob, `{"`) {
+		t.Errorf("el request final no puede llevar JSON: el modelo lo imita y emite una tool call; blob:\n%s", blob)
+	}
+}
+
+// Regresión del 2026-08-13, encontrada en el bot real y no por los tests: al hacer
+// que cada resultado viajara con su llamada, la primera versión concatenaba el JSON
+// CRUDO de los argumentos —`sum_movements {"currency":"ARS","description":"hbo"}`— y
+// Groq devolvió 400 "Tool choice is none, but model called a tool". El
+// failed_generation mostró al modelo imitando lo que veía:
+//
+//	{"name": "repo_browser.run_code", "arguments": {"tool": "sum_movements", ...}}
+//
+// TestAnswerQuery_FinalNarration_HistoryHasNoToolTrace ya cuidaba este mecanismo,
+// pero por la puerta del HISTORIAL de mensajes. El patrón entró por el TEXTO, que
+// ese test no mira — y por eso pasó verde mientras producción se caía.
+//
+// La regla es sobre la FORMA, no sobre el contenido: sin llaves, comillas ni
+// paréntesis no hay sintaxis de llamada que imitar.
+func TestDescribeCall_LooksNothingLikeAFunctionCall(t *testing.T) {
+	got := describeCall("sum_movements", `{"currency":"ARS","description":"hbo","category":null,"from":"2026-08-01"}`)
+
+	for _, prohibido := range []string{"{", "}", `"`, "(", ")"} {
+		if strings.Contains(got, prohibido) {
+			t.Errorf("describeCall no puede emitir %q —es sintaxis de llamada y el modelo la imita—: %s", prohibido, got)
+		}
+	}
+	// Sigue identificando: nombre y filtros reales.
+	for _, esperado := range []string{"sum_movements", "description=hbo", "currency=ARS", "from=2026-08-01"} {
+		if !strings.Contains(got, esperado) {
+			t.Errorf("falta %q en la descripción de la llamada: %s", esperado, got)
+		}
+	}
+	// El null no viaja: el schema obliga al modelo a mandar los opcionales en null,
+	// y "category=null" es ruido que invita a razonar sobre un filtro que nadie puso.
+	if strings.Contains(got, "null") {
+		t.Errorf("un argumento nulo no es un filtro y no tiene que aparecer: %s", got)
+	}
+	// Orden estable: dos resultados de la misma consulta tienen que leerse comparables.
+	if got != describeCall("sum_movements", `{"from":"2026-08-01","description":"hbo","currency":"ARS","category":null}`) {
+		t.Errorf("el mismo llamado con las claves en otro orden tiene que rendir igual: %s", got)
+	}
 }
 
 // El loop de consultas no tenía cadena de fallback: iba directo contra queryModel y

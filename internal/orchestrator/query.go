@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -77,6 +78,49 @@ var ErrQueryMaxIterations = errors.New("orchestrator: query loop exceeded max it
 // query, por no tener lo mismo que lo acababa de salvar.
 func (o *Orchestrator) queryChain() []string {
 	return append([]string{o.queryModel}, o.queryFallbacks...)
+}
+
+// describeCall rinde una llamada a tool como texto PLANO, para que el dato que
+// produjo viaje identificado hasta la narración forzada.
+//
+// El formato NO es negociable y la restricción es una sola: no puede parecerse a
+// una llamada a función. La primera versión concatenaba el JSON crudo de los
+// argumentos —`sum_movements {"currency":"ARS",...}`— y costó un 400 en producción
+// el 2026-08-13: el modelo lo IMITÓ y emitió una tool call, que con
+// tool_choice:"none" Groq rechaza. El failed_generation lo mostró textual:
+//
+//	{"name": "repo_browser.run_code", "arguments": {"tool": "sum_movements", ...}}
+//
+// Es el mismo mecanismo que documenta TestAnswerQuery_FinalNarration_HistoryHasNoToolTrace
+// —el modelo imita lo que ve— pero por otra puerta: ese test cuida el HISTORIAL de
+// mensajes, y esto entra por el TEXTO. Sin llaves, sin comillas y sin paréntesis, no
+// hay nada que imitar.
+//
+// Las claves van ordenadas para que dos resultados de la misma consulta se lean
+// comparables, y los nulos se omiten: el schema obliga al modelo a mandar los
+// opcionales en null, y "category=null" es ruido que encima invita a razonar sobre
+// un filtro que nadie puso.
+func describeCall(name, args string) string {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(args), &m); err != nil || len(m) == 0 {
+		return name
+	}
+	keys := make([]string, 0, len(m))
+	for k, v := range m {
+		if v == nil || v == "" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return name
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, m[k]))
+	}
+	return name + " con " + strings.Join(parts, ", ")
 }
 
 // AnswerQuery runs the read-only agent loop: it sends the tools with
@@ -158,9 +202,10 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 			// bajo la etiqueta del lote. No era alucinación: con esa entrada,
 			// acertar la atribución es imposible.
 			//
-			// Los argumentos van CRUDOS, tal cual los mandó el modelo: es lo que ya
-			// había, no puede desincronizarse del schema, y ahorra decidir formato.
-			toolResults = append(toolResults, call.Function.Name+" "+call.Function.Arguments+" → "+result)
+			// El formato es texto plano y NO puede parecerse a una llamada a
+			// función. Ver describeCall: mandar los argumentos como JSON crudo
+			// costó un 400 en producción el 2026-08-13.
+			toolResults = append(toolResults, describeCall(call.Function.Name, call.Function.Arguments)+" → "+result)
 		}
 	}
 
