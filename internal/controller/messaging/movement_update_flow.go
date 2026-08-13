@@ -470,8 +470,20 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
 		// Una contradicción NO es un "no te entendí": el bot entendió y se niega.
 		// Decirle lo genérico lo manda a reformular algo que ya dijo bien.
+		// Cada guarda que significa algo distinto se dice distinto. Las que quedan
+		// en la genérica son fallas del MODELO (un op sobre un campo que no lo
+		// acepta, un valor ilegible), no cosas que el usuario pueda arreglar
+		// sabiendo cuál fue.
 		if errors.Is(err, errRefundThatGrows) {
 			c.sendText(ctx, b, chatID, msgRefundWouldGrow)
+			return nil
+		}
+		if errors.Is(err, errRefundExceedsAmount) {
+			c.sendText(ctx, b, chatID, msgRefundExceeds)
+			return nil
+		}
+		if errors.Is(err, errAmbiguousSetAll) {
+			c.sendText(ctx, b, chatID, msgAmbiguousSetAll)
 			return nil
 		}
 		c.sendText(ctx, b, chatID, msgStillCannotCorrect)

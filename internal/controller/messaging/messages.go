@@ -327,6 +327,16 @@ const (
 	// que es el dato que falta.
 	msgRefundWouldGrow = "Me dijiste que te devolvieron plata, pero el cambio que entendí lo dejaría más caro. ¿Cuánto te devolvieron?"
 
+	// msgRefundExceeds: te devolvieron MÁS de lo que salió. Sin la guarda, restar
+	// daría vuelta el signo y Normalize lo re-firmaría como INGRESO: un gasto
+	// convertido en entrada de plata por un número mal leído.
+	msgRefundExceeds = "Me decís que te devolvieron más de lo que salió ese movimiento 🤔 ¿Cuánto fue?"
+
+	// msgAmbiguousSetAll: "poné todos en 1500" sobre varios movimientos. Aplanar
+	// n montos distintos al mismo número no es algo que nadie quiera; preguntar
+	// cuál es más barato que deshacerlo después.
+	msgAmbiguousSetAll = "¿A cuál de todos le pongo ese monto? Decime cuál y lo cambio."
+
 	// msgCorrectionChangesNothing: el cambio pedido deja el movimiento igual.
 	// Decirlo es mejor que confirmar un reemplazo que no reemplaza nada.
 	msgCorrectionChangesNothing = "Eso ya estaba así, no cambié nada."

@@ -357,3 +357,50 @@ func TestConversation_ManageSettingsCategoryManage_OpensThePickFlow(t *testing.T
 		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, categoryManagePickFlowName, h.Messages())
 	}
 }
+
+// Las tres guardas que un usuario puede disparar hablando normal tienen que
+// decir QUÉ pasó, no la genérica de "no te entendí" — en los tres casos el bot
+// entendió y se niega, y mandarlo a reformular algo que dijo bien lo hace girar.
+//
+// Medido en vivo el 2026-08-12: "Del peaje me devolvieron 99999" sobre un gasto
+// de $2.500 cortaba con la copy genérica.
+func TestConversation_GuardsSayWhatHappened(t *testing.T) {
+	casos := []struct {
+		nombre  string
+		monto   string
+		cambio  string
+		mensaje string
+		espera  string
+	}{
+		{
+			nombre: "reintegro mayor que el gasto",
+			monto:  "-2500", mensaje: "del peaje me devolvieron 99999",
+			cambio: `{"field":"amount","op":"subtract","value":"99999"}`,
+			espera: "más de lo que salió",
+		},
+		{
+			nombre: "un reintegro que haría crecer el gasto",
+			monto:  "-2500", mensaje: "del peaje me devolvieron algo",
+			cambio: `{"field":"amount","op":"add","value":"500"}`,
+			espera: "lo dejaría más caro",
+		},
+	}
+	for _, tc := range casos {
+		t.Run(tc.nombre, func(t *testing.T) {
+			h := newConversationHarness(t)
+			id := h.SeedMovementOn("Peaje", tc.monto, h.subID("Transporte", "Peaje"), startOfTodayArgentina())
+
+			h.ScriptToolCalls(correctMovementCall(
+				`{"change":"` + tc.mensaje + `","changes":[` + tc.cambio + `]}`))
+			h.SendText(tc.mensaje)
+
+			movs := h.Movements()
+			if len(movs) != 1 || movs[0].ID != id || !movs[0].Amount.Equal(mustDec(t, tc.monto)) {
+				t.Fatalf("la guarda tenía que dejar la fila intacta: %s", describeRows(movs))
+			}
+			if !containsAny(h.Messages(), tc.espera) {
+				t.Errorf("la copy no dice qué pasó, salió: %v", h.Messages())
+			}
+		})
+	}
+}
