@@ -91,28 +91,24 @@ type Config struct {
 	Log       logConfig `mapstructure:"log"`
 }
 
-func Initialize() (*Config, error) {
-	env := os.Getenv(APP_ENV)
-	configFilePath := fmt.Sprintf("../../config/%s.toml", env)
-	viper.SetConfigFile(configFilePath)
-	viper.SetConfigType("toml")
-	viper.AutomaticEnv()
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.SetDefault("Server.Port", "80")
-	viper.SetDefault("Query.HistoryTtlMinutes", 10)
-	viper.SetDefault("Query.HistoryLimit", 5)
-	viper.SetDefault("Reminders.SweepIntervalMinutes", 5)
+// applyDefaults carga los defaults sobre un Viper cualquiera, no sobre el singleton,
+// para que un test pueda resolver un config file sin pisar el estado global.
+func applyDefaults(v *viper.Viper) {
+	v.SetDefault("Server.Port", "80")
+	v.SetDefault("Query.HistoryTtlMinutes", 10)
+	v.SetDefault("Query.HistoryLimit", 5)
+	v.SetDefault("Reminders.SweepIntervalMinutes", 5)
 	// Sin default, un entorno que no declare agentModel deja o.agentModel en ""
 	// y Groq responde 400 en cada llamada del loop. Ya no hay camino alternativo:
 	// desde la etapa 5, Run es el ÚNICO, así que un entorno nuevo sin este valor
 	// no degrada, no arranca.
-	viper.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
+	v.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
 	// La cadena por default. Los tres soportan `tools` (verificado contra
 	// /v1/models) y están ordenados por precio: gpt-oss-20b es el más barato de
 	// los capaces, y llama-3.3-70b —el de mayor techo, 12.000 TPM— va último
 	// porque su prompt cuesta 8 veces más. qwen queda AFUERA a propósito: su
 	// completion sale $3 por millón, diez veces el 20b.
-	viper.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "llama-3.3-70b-versatile"})
+	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "llama-3.3-70b-versatile"})
 	// La cadena de query. llama-3.3-70b primero por el techo medido más alto
 	// (12.000 TPM) y bucket propio; gpt-oss-20b último porque es el más barato pero
 	// el más flojo narrando, y a esa altura la alternativa es no contestar.
@@ -121,17 +117,66 @@ func Initialize() (*Config, error) {
 	// suplente (120b) sea el primario de query: ahora query tiene con qué correrse
 	// de ese choque, e invertir el del agente mandaría todo el tráfico de rescate a
 	// llama-3.3-70b, cuyo prompt cuesta ~8 veces más. Está último por precio.
-	viper.SetDefault("Groq.QueryFallbackModels", []string{"llama-3.3-70b-versatile", "openai/gpt-oss-20b"})
+	v.SetDefault("Groq.QueryFallbackModels", []string{"llama-3.3-70b-versatile", "openai/gpt-oss-20b"})
 	// llama-3.3-70b-versatile no razona: narra en 35-61 tokens de completion contra
 	// los 174-1.024 de gpt-oss, y por eso no puede quedarse sin presupuesto antes de
 	// escribir. qwen queda afuera: emite su razonamiento DENTRO del contenido.
 	// llama-3.1-8b-instant también: Groq lo da de baja el 2026-08-16.
-	viper.SetDefault("Groq.NarrationModel", "llama-3.3-70b-versatile")
+	v.SetDefault("Groq.NarrationModel", "llama-3.3-70b-versatile")
 	// llama-3.3-70b-versatile: el techo medido más alto (12.000 TPM), bucket
 	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
-	viper.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")
-	viper.SetDefault("Log.Level", "info")
-	viper.SetDefault("Log.Format", "json")
+	v.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")
+	v.SetDefault("Log.Level", "info")
+	v.SetDefault("Log.Format", "json")
+}
+
+// sameTurnCalls son los pares de llamadas a Groq que pueden ocurrir en UN MISMO turno.
+//
+// Los techos de Groq (TPM, TPD) son POR MODELO, así que dos llamadas del mismo turno
+// apuntando al mismo modelo compiten entre sí: la primera reserva y la segunda rebota.
+// El 2026-08-13 costó ~95 segundos y ~11.000 tokens quemados en reintentos que no
+// podían avanzar, porque `create` estaba en el mismo modelo que `agent`.
+//
+// Lo que NO entra, y es tan importante como lo que entra: `update` y `onboarding`
+// viven en pasos de flow que llegan en mensajes POSTERIORES, no en el turno del
+// agente. Competir entre turnos ya lo cubre la cadena de fallback.
+var sameTurnCalls = [][2]string{
+	{"agent", "classifier"}, // ClassifyCategories sale del propio ejecutor del agente
+	{"agent", "query"},      // el agente delega en answer_query dentro del mismo turno
+	{"agent", "create"},     // el agente parkea en un wizard y el wizard clasifica
+}
+
+// ModelBucketConflicts devuelve una línea por cada par de sameTurnCalls que quedó
+// apuntando al MISMO modelo. Vacío = config sana.
+//
+// Pura y sin I/O a propósito: se la puede correr sobre cualquier config resuelta, que
+// es lo que hace el test sobre config/*.toml.
+func ModelBucketConflicts(g groq) []string {
+	modelOf := map[string]string{
+		"agent":      g.AgentModel,
+		"classifier": g.ClassifierModel,
+		"query":      g.QueryModel,
+		"create":     g.CreateModel,
+	}
+	var out []string
+	for _, par := range sameTurnCalls {
+		a, b := modelOf[par[0]], modelOf[par[1]]
+		if a == "" || b == "" || a != b {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s y %s comparten el modelo %s, y pueden ocurrir en el mismo turno", par[0], par[1], a))
+	}
+	return out
+}
+
+func Initialize() (*Config, error) {
+	env := os.Getenv(APP_ENV)
+	configFilePath := fmt.Sprintf("../../config/%s.toml", env)
+	viper.SetConfigFile(configFilePath)
+	viper.SetConfigType("toml")
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	applyDefaults(viper.GetViper())
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err

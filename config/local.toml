@@ -19,7 +19,11 @@ token=""
 [groq]
 apiKey = ""
 baseUrl = "https://api.groq.com/openai/v1"
-createModel = "openai/gpt-oss-20b"
+# createModel NO puede ser el mismo que agentModel: el agente parkea en un wizard y el
+# wizard clasifica DENTRO del mismo turno, así que compartir modelo hace que la segunda
+# llamada rebote contra el cupo que reservó la primera. Lo defiende
+# TestEveryConfigFile_HasNoSameTurnModelCollision.
+createModel = "openai/gpt-oss-120b"
 updateModel = "openai/gpt-oss-20b"
 queryModel = "openai/gpt-oss-120b"
 agentModel = "openai/gpt-oss-20b"

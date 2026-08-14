@@ -138,6 +138,13 @@ func InitServer(conf *config.Config) error {
 		Recorder:            llmCallRecorder{insert: metricRepo.InsertLLMCall},
 	})
 
+	// Avisa, no aborta: un operador puede tener una razón que la tabla no contempla, y
+	// tumbar el server por eso es peor que el problema que evita. El corte de verdad es
+	// el test sobre config/*.toml, que corre antes del deploy.
+	for _, conflicto := range config.ModelBucketConflicts(conf.Groq) {
+		slog.Warn("config: llamadas del mismo turno comparten modelo", "detalle", conflicto)
+	}
+
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
 	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
 	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
