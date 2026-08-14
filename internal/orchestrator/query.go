@@ -85,7 +85,8 @@ func (o *Orchestrator) queryChain() []string {
 // compra nada.
 //
 // narrationModel vacío devuelve queryChain() tal cual, así que un entorno que no
-// declare el campo se comporta exactamente como antes.
+// declare el campo cae en el MODELO de query — pero el techo de completion de la
+// narración sigue siendo 400, no los 1024 de antes: eso no depende de la cadena.
 func (o *Orchestrator) narrationChain() []string {
 	if o.narrationModel == "" {
 		return o.queryChain()

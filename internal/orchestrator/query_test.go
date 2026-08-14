@@ -534,8 +534,9 @@ func TestAnswerQuery_ForcedNarrationUsesTheNarrationModel(t *testing.T) {
 	}
 }
 
-// Un entorno que no declare narrationModel no cambia de comportamiento: sigue
-// narrando con el modelo de query, como antes de esta spec.
+// Un entorno que no declare narrationModel no cambia de MODELO: sigue narrando
+// con el modelo de query, como antes de esta spec. El techo de completion de la
+// narración es 400 en cualquier caso, no los 1024 de antes.
 func TestAnswerQuery_NoNarrationModelKeepsUsingTheQueryModel(t *testing.T) {
 	var modelos []string
 	call := 0

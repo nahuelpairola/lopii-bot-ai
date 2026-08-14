@@ -140,10 +140,28 @@ func applyDefaults(v *viper.Viper) {
 // Lo que NO entra, y es tan importante como lo que entra: `update` y `onboarding`
 // viven en pasos de flow que llegan en mensajes POSTERIORES, no en el turno del
 // agente. Competir entre turnos ya lo cubre la cadena de fallback.
+//
+// Tampoco entran `query`+`create` (hoy los dos en openai/gpt-oss-120b) ni
+// `classifier`+`narration` (hoy los dos en llama-3.3-70b-versatile), aunque en
+// teoría podrían chocar: sólo aparecen si se lee la tabla como transitiva
+// (agent-query más agent-create implicando query-create, y análogo para el otro
+// par). No hay un trace que muestre a ninguno de los dos ocurriendo de verdad en
+// el mismo turno —cada par que SÍ está listado, lo tiene—. Y satisfacer la
+// lectura transitiva pediría cinco modelos distintos cuando sólo hay tres
+// usables: qwen emite su razonamiento adentro del contenido que le llega al
+// usuario, y Groq da de baja llama-3.1-8b-instant el 2026-08-16. El costo
+// residual de dejarlos afuera es acotado y mucho menor al que esta tabla existe
+// para evitar: la narración reserva ~850 tokens contra el techo de llama
+// (~12.000 TPM), y las cadenas de fallback cubren un rebote. Si algún día un
+// trace muestra a alguno de estos dos pares chocando en producción, se agrega
+// acá y se cambia de modelo.
 var sameTurnCalls = [][2]string{
 	{"agent", "classifier"}, // ClassifyCategories sale del propio ejecutor del agente
 	{"agent", "query"},      // el agente delega en answer_query dentro del mismo turno
 	{"agent", "create"},     // el agente parkea en un wizard y el wizard clasifica
+	// el agente delega en answer_query en el mismo turno, y query gasta cupo en
+	// DOS modelos, no uno: el de las rondas de herramientas y el de la narración.
+	{"agent", "narration"},
 }
 
 // ModelBucketConflicts devuelve una línea por cada par de sameTurnCalls que quedó
@@ -152,11 +170,16 @@ var sameTurnCalls = [][2]string{
 // Pura y sin I/O a propósito: se la puede correr sobre cualquier config resuelta, que
 // es lo que hace el test sobre config/*.toml.
 func ModelBucketConflicts(g groq) []string {
+	narrationModel := g.NarrationModel
+	if narrationModel == "" {
+		narrationModel = g.QueryModel
+	}
 	modelOf := map[string]string{
 		"agent":      g.AgentModel,
 		"classifier": g.ClassifierModel,
 		"query":      g.QueryModel,
 		"create":     g.CreateModel,
+		"narration":  narrationModel,
 	}
 	var out []string
 	for _, par := range sameTurnCalls {
