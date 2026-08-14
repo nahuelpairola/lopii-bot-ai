@@ -53,6 +53,11 @@ type groq struct {
 	// el primer suplente del agente, así que reusarla haría que el primer
 	// reintento cayera en el modelo que acaba de rebotar.
 	QueryFallbackModels []string `mapstructure:"queryFallbackModels"`
+	// NarrationModel es el modelo de la narración forzada de una consulta —la
+	// última llamada, donde ya no se eligen herramientas y sólo se redacta—.
+	// Redactar no es razonar: medido el 2026-08-13, un modelo razonador se come la
+	// completion pensando y devuelve vacío. Vacío = se usa queryModel.
+	NarrationModel string `mapstructure:"narrationModel"`
 	// ClassifierModel es el modelo de la clasificación de categorías, que en la
 	// etapa 5 sale del loop. Va en OTRO modelo a propósito: el techo de TPM de
 	// Groq es por modelo, y medido el 2026-08-12 el loop ya entra al suyo una vez
@@ -117,6 +122,11 @@ func Initialize() (*Config, error) {
 	// de ese choque, e invertir el del agente mandaría todo el tráfico de rescate a
 	// llama-3.3-70b, cuyo prompt cuesta ~8 veces más. Está último por precio.
 	viper.SetDefault("Groq.QueryFallbackModels", []string{"llama-3.3-70b-versatile", "openai/gpt-oss-20b"})
+	// llama-3.3-70b-versatile no razona: narra en 35-61 tokens de completion contra
+	// los 174-1.024 de gpt-oss, y por eso no puede quedarse sin presupuesto antes de
+	// escribir. qwen queda afuera: emite su razonamiento DENTRO del contenido.
+	// llama-3.1-8b-instant también: Groq lo da de baja el 2026-08-16.
+	viper.SetDefault("Groq.NarrationModel", "llama-3.3-70b-versatile")
 	// llama-3.3-70b-versatile: el techo medido más alto (12.000 TPM), bucket
 	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
 	viper.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")

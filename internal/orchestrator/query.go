@@ -80,6 +80,25 @@ func (o *Orchestrator) queryChain() []string {
 	return append([]string{o.queryModel}, o.queryFallbacks...)
 }
 
+// narrationChain es el modelo de redacción seguido de los suplentes de query, sin
+// repetir ninguno: reintentar el mismo modelo que acaba de rebotar por cupo no
+// compra nada.
+//
+// narrationModel vacío devuelve queryChain() tal cual, así que un entorno que no
+// declare el campo se comporta exactamente como antes.
+func (o *Orchestrator) narrationChain() []string {
+	if o.narrationModel == "" {
+		return o.queryChain()
+	}
+	chain := []string{o.narrationModel}
+	for _, m := range o.queryChain() {
+		if m != o.narrationModel {
+			chain = append(chain, m)
+		}
+	}
+	return chain
+}
+
 // describeCall rinde una llamada a tool como texto PLANO, para que el dato que
 // produjo viaje identificado hasta la narración forzada.
 //
@@ -229,7 +248,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		{Role: "user", Content: userText},
 		{Role: "user", Content: "Datos obtenidos de las herramientas:\n" + strings.Join(toolResults, "\n") + "\n\nRedactá la respuesta final para el usuario con estos datos."},
 	}
-	final, err := o.roundWithFallback(ctx, callTypeQuery, o.queryChain(), finalMessages, nil, "none", maxQueryCompletionTokens)
+	final, err := o.roundWithFallback(ctx, callTypeQuery, o.narrationChain(), finalMessages, nil, "none", maxQueryCompletionTokens)
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: answer query (final): %w", err)
 	}

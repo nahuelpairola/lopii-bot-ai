@@ -36,7 +36,19 @@ type Config struct {
 	// justamente el primer suplente del agente — reusarla haría que el primer
 	// reintento cayera en el modelo que acaba de rebotar.
 	QueryFallbackModels []string
-	TimeoutSeconds      int
+	// NarrationModel es el modelo de la NARRACIÓN FORZADA de una consulta: la
+	// última llamada, con tool_choice:"none", donde el modelo ya tiene los datos y
+	// sólo tiene que redactar.
+	//
+	// Va aparte de QueryModel porque redactar no es razonar. Medido el 2026-08-13:
+	// los modelos razonadores gastan la completion pensando y, cuando ese gasto
+	// llega al techo, la respuesta vuelve VACÍA y el turno muere con los datos ya
+	// pagos. Un modelo sin razonamiento no puede fallar así: narra en 35-61 tokens
+	// contra los 174-1.024 de un razonador.
+	//
+	// Vacío = se usa QueryModel, o sea el comportamiento anterior.
+	NarrationModel string
+	TimeoutSeconds int
 	Recorder            LLMRecorder // nil-safe
 }
 
@@ -53,6 +65,7 @@ type Orchestrator struct {
 	classifierModel string
 	agentFallbacks  []string
 	queryFallbacks  []string
+	narrationModel  string
 }
 
 func New(cfg Config) *Orchestrator {
@@ -65,5 +78,6 @@ func New(cfg Config) *Orchestrator {
 		classifierModel: cfg.ClassifierModel,
 		agentFallbacks:  cfg.AgentFallbackModels,
 		queryFallbacks:  cfg.QueryFallbackModels,
+		narrationModel:  cfg.NarrationModel,
 	}
 }

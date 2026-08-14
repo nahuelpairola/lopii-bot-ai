@@ -488,4 +488,104 @@ func TestAnswerQuery_DoesNotFallBackOnABadRequest(t *testing.T) {
 	}
 }
 
+// La narración forzada no decide nada: tiene los datos y sólo redacta. Corre en un
+// modelo que NO razona, porque el modo de falla medido el 2026-08-13 es que el
+// razonamiento se coma el presupuesto de completion y la respuesta vuelva vacía.
+// Las rondas de tools se quedan donde estaban: ahí razonar sirve.
+func TestAnswerQuery_ForcedNarrationUsesTheNarrationModel(t *testing.T) {
+	var modelos []string
+	call := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		modelos = append(modelos, req.Model)
+		w.Header().Set("Content-Type", "application/json")
+		if call <= maxQueryIterations {
+			w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{}"}}
+			]}}]}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{
+		APIKey: "k", BaseURL: server.URL,
+		QueryModel: "razonador", NarrationModel: "redactor", TimeoutSeconds: 5,
+	})
+	if _, err := o.AnswerQuery(context.Background(), "s", "u", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}},
+		func(string, json.RawMessage) (string, error) { return "total: 1 ARS", nil }); err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+
+	if len(modelos) != maxQueryIterations+1 {
+		t.Fatalf("llamadas = %v, want %d rondas + 1 narración", modelos, maxQueryIterations)
+	}
+	for i := 0; i < maxQueryIterations; i++ {
+		if modelos[i] != "razonador" {
+			t.Errorf("ronda %d fue a %q, want el modelo de query", i, modelos[i])
+		}
+	}
+	if got := modelos[len(modelos)-1]; got != "redactor" {
+		t.Errorf("la narración fue a %q, want el modelo de narración", got)
+	}
+}
+
+// Un entorno que no declare narrationModel no cambia de comportamiento: sigue
+// narrando con el modelo de query, como antes de esta spec.
+func TestAnswerQuery_NoNarrationModelKeepsUsingTheQueryModel(t *testing.T) {
+	var modelos []string
+	call := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		modelos = append(modelos, req.Model)
+		w.Header().Set("Content-Type", "application/json")
+		if call <= maxQueryIterations {
+			w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{}"}}
+			]}}]}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{APIKey: "k", BaseURL: server.URL, QueryModel: "razonador", TimeoutSeconds: 5})
+	if _, err := o.AnswerQuery(context.Background(), "s", "u", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}},
+		func(string, json.RawMessage) (string, error) { return "total: 1 ARS", nil }); err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+	for i, m := range modelos {
+		if m != "razonador" {
+			t.Errorf("llamada %d fue a %q, want el modelo de query en todas", i, m)
+		}
+	}
+}
+
+// La cadena de narración no reintenta el mismo modelo dos veces: si el de narración
+// ya está en la cadena de query, no se repite.
+func TestNarrationChain_DoesNotRepeatAModel(t *testing.T) {
+	o := New(Config{
+		QueryModel:          "q",
+		QueryFallbackModels: []string{"redactor", "z"},
+		NarrationModel:      "redactor",
+	})
+	got := o.narrationChain()
+	want := []string{"redactor", "q", "z"}
+	if len(got) != len(want) {
+		t.Fatalf("cadena = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("cadena = %v, want %v", got, want)
+		}
+	}
+}
+
 var _ = time.Second
