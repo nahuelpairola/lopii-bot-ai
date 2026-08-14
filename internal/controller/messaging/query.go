@@ -118,9 +118,16 @@ type queryToolArgs struct {
 // consultar es más código, cambia el comportamiento y hay que elegir entre dos métodos
 // con semántica distinta — todo antes de saber si este aviso alcanza. El eval de
 // filtro inexistente es el que decide si hace falta.
-const msgQueryNoRows = "sin resultados para esos filtros. OJO: un filtro que no existe " +
-	"(una categoría o cuenta mal escrita) también da cero. Antes de afirmar que no hubo " +
-	"gastos, verificá los nombres con list_categories."
+//
+// NO puede nombrar ninguna herramienta. La narración forzada corre con
+// tool_choice:"none" y sin schemas, y ahí el modelo imita todo lo que se parezca a una
+// tool: con la versión que decía "verificá los nombres con list_categories",
+// gpt-oss-20b devolvió 400 y gpt-oss-120b le imprimió al usuario
+// {"tool": "list_categories", "params": {}}. Medido el 2026-08-13, 6 llamadas, 3
+// modelos. Lo fija TestMsgQueryNoRows_NamesNoTool.
+const msgQueryNoRows = "sin resultados para esos filtros. OJO: cero resultados no prueba " +
+	"que no haya gastos: un nombre de categoría o de cuenta que no existe da cero igual. " +
+	"Si no podés confirmar que el nombre existe, decílo así en vez de afirmar que no hubo gastos."
 
 // handleQuery answers a read-only question via the agent loop. Returns
 // (answered, err): answered=false significa que el loop no produjo respuesta.

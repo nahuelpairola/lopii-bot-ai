@@ -376,8 +376,8 @@ func TestExec_NoRows_DoesNotAssertThereWereNoExpenses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tool, err)
 		}
-		if !strings.Contains(out, "list_categories") {
-			t.Errorf("%s: el vacío tiene que mandar al modelo a verificar los nombres, got: %s", tool, out)
+		if !strings.Contains(out, "no existe") {
+			t.Errorf("%s: el vacío tiene que avisar que un nombre inexistente también da cero, got: %s", tool, out)
 		}
 		// "Sin movimientos" afirma el hecho que justamente no se sabe.
 		if strings.Contains(out, "Sin movimientos") {
@@ -507,4 +507,30 @@ func TestExec_UnknownTool(t *testing.T) {
 
 func (r *fakeQueryMovements) CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error) {
 	return nil, nil
+}
+
+// El texto de un resultado vacío NO puede nombrar una herramienta.
+//
+// La narración forzada corre con tool_choice:"none" y sin schemas: ahí el modelo imita
+// cualquier cosa que se parezca a una tool. Medido el 2026-08-13 con el texto que
+// nombraba list_categories: gpt-oss-20b devolvió HTTP 400 "Tool choice is none, but
+// model called a tool", y gpt-oss-120b —que es el queryModel de producción— le imprimió
+// al usuario el texto {"tool": "list_categories", "params": {}}.
+//
+// Es la tercera vez en el día que el mismo mecanismo muerde por una puerta distinta, y
+// por eso el test se escribe contra la lista REAL de tools y no contra un string: así
+// también atrapa a quien mañana meta sum_movements en un mensaje.
+func TestMsgQueryNoRows_NamesNoTool(t *testing.T) {
+	for _, tool := range queryTools {
+		if strings.Contains(msgQueryNoRows, tool.Name) {
+			t.Errorf("msgQueryNoRows nombra la herramienta %q; el modelo la imita y el turno se cae:\n%s",
+				tool.Name, msgQueryNoRows)
+		}
+	}
+	// La distinción que el mensaje SÍ tiene que conservar: cero filas no prueba cero
+	// gastos. Sin esto el modelo vuelve a afirmar "no tenés gastos" sobre un filtro
+	// mal escrito, que es el bug original del 2026-08-13.
+	if !strings.Contains(msgQueryNoRows, "no existe") {
+		t.Errorf("el mensaje tiene que explicar que un nombre inexistente también da cero:\n%s", msgQueryNoRows)
+	}
 }
