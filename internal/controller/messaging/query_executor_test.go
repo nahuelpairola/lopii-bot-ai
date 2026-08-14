@@ -169,15 +169,15 @@ func TestExec_SumMovements_FoodInMay(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
 	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 
-	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","category":"Comida"}`))
+	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","search":"Comida"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m.lastQuery.Currency != currency.ARS {
 		t.Errorf("currency = %v", m.lastQuery.Currency)
 	}
-	if m.lastQuery.Category == nil || *m.lastQuery.Category != "Comida" {
-		t.Errorf("category filter not set")
+	if m.lastQuery.Search == nil || *m.lastQuery.Search != "Comida" {
+		t.Errorf("search filter not set")
 	}
 	if m.lastQuery.Type != nil {
 		t.Errorf("Type must be nil so the repo excludes transfers by default")
@@ -225,7 +225,7 @@ func TestExec_SumMovements_GroupByMonth(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "2026-04", Total: dec("8000")}, {Label: "2026-05", Total: dec("13000")}}}
 	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 
-	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-04-01","to":"2026-05-31","currency":"ARS","group_by":"month","category":"Auto"}`))
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-04-01","to":"2026-05-31","currency":"ARS","group_by":"month","search":"Auto"}`))
 	if m.lastGroupBy != "month" {
 		t.Errorf("groupBy = %q", m.lastGroupBy)
 	}
@@ -241,23 +241,23 @@ func TestExec_SumMovements_BrokerIncome(t *testing.T) {
 	a := &fakeQueryAccounts{accts: []account.Account{{Model: gorm.Model{ID: 3}, Name: "Broker", Currency: currency.ARS}}}
 	exec := newQueryController(m, a, &fakeQuerySubcats{}).buildQueryExecutor(1)
 
-	_, err := exec("sum_movements", json.RawMessage(`{"from":"2026-01-01","to":"2026-12-31","currency":"ARS","type":"income","subcategory":"Rendimiento inversión","account":"Broker"}`))
+	_, err := exec("sum_movements", json.RawMessage(`{"from":"2026-01-01","to":"2026-12-31","currency":"ARS","type":"income","search":"Rendimiento inversión","account":"Broker"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if m.lastQuery.Type == nil || *m.lastQuery.Type != "income" {
 		t.Errorf("type filter not income")
 	}
-	if m.lastQuery.Subcategory == nil || *m.lastQuery.Subcategory != "Rendimiento inversión" {
-		t.Errorf("subcategory filter not set")
+	if m.lastQuery.Search == nil || *m.lastQuery.Search != "Rendimiento inversión" {
+		t.Errorf("search filter not set")
 	}
 	if m.lastQuery.AccountID == nil || *m.lastQuery.AccountID != 3 {
 		t.Errorf("account name not resolved to id 3")
 	}
 }
 
-// Case: "mis compras en Carrefour" — description filter + abs rendering.
-func TestExec_ListMovements_DescriptionFilterAbs(t *testing.T) {
+// Case: "mis compras en Carrefour" — search filter + abs rendering.
+func TestExec_ListMovements_SearchFilterAbs(t *testing.T) {
 	desc := "compra semanal"
 	m := &fakeQueryMovements{listRows: []movement.Movement{{
 		Type:        movement.Expense,
@@ -269,12 +269,12 @@ func TestExec_ListMovements_DescriptionFilterAbs(t *testing.T) {
 	}}}
 	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 
-	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","description":"Carrefour","limit":5}`))
+	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","search":"Carrefour","limit":5}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.lastQuery.Description == nil || *m.lastQuery.Description != "Carrefour" {
-		t.Errorf("description filter not set")
+	if m.lastQuery.Search == nil || *m.lastQuery.Search != "Carrefour" {
+		t.Errorf("search filter not set")
 	}
 	if m.lastLimit != 5 {
 		t.Errorf("limit = %d", m.lastLimit)
@@ -284,6 +284,23 @@ func TestExec_ListMovements_DescriptionFilterAbs(t *testing.T) {
 	}
 	if strings.Contains(out, "-1500") {
 		t.Errorf("SIGNED amount leaked — must be abs: %s", out)
+	}
+}
+
+// El prompt le pide al modelo arrancar la línea con el emoji y list_categories
+// devuelve "🍔 Alimentación". El modelo aprende ese string y lo copia al filtro.
+// unaccent no borra emojis: sin stripLeadingIcon el LIKE no matchea nada y la
+// respuesta sale $0 sobre gastos que existen.
+func TestExec_SumMovements_SearchStripsLeadingIcon(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	_, err := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","search":"🍔 Alimentación"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.lastQuery.Search == nil || *m.lastQuery.Search != "Alimentación" {
+		t.Errorf("el ícono tiene que salir del filtro; quedó %v", m.lastQuery.Search)
 	}
 }
 
@@ -442,15 +459,12 @@ func TestBuildMovementQuery_StripsTheIconWeAddedFromTheFilter(t *testing.T) {
 	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 
 	_, err := exec("sum_movements", json.RawMessage(
-		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","category":"🍔 Alimentación","subcategory":"🧘 Gimnasio"}`))
+		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","search":"🍔 Alimentación"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.lastQuery.Category == nil || *m.lastQuery.Category != "Alimentación" {
-		t.Errorf("category llegó al repo con el ícono adentro: %v", m.lastQuery.Category)
-	}
-	if m.lastQuery.Subcategory == nil || *m.lastQuery.Subcategory != "Gimnasio" {
-		t.Errorf("subcategory llegó al repo con el ícono adentro: %v", m.lastQuery.Subcategory)
+	if m.lastQuery.Search == nil || *m.lastQuery.Search != "Alimentación" {
+		t.Errorf("search llegó al repo con el ícono adentro: %v", m.lastQuery.Search)
 	}
 }
 
@@ -470,15 +484,15 @@ func TestBuildMovementQuery_AnAllIconFilterStillFilters(t *testing.T) {
 	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 
 	_, err := exec("sum_movements", json.RawMessage(
-		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","category":"🍔"}`))
+		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","search":"🍔"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.lastQuery.Category == nil {
+	if m.lastQuery.Search == nil {
 		t.Fatal("el filtro desapareció: la consulta corrió sin filtrar y contesta por TODO")
 	}
-	if *m.lastQuery.Category != "🍔" {
-		t.Errorf("un filtro que no se entiende se deja como vino, got %q", *m.lastQuery.Category)
+	if *m.lastQuery.Search != "🍔" {
+		t.Errorf("un filtro que no se entiende se deja como vino, got %q", *m.lastQuery.Search)
 	}
 }
 
@@ -489,12 +503,12 @@ func TestBuildMovementQuery_LeavesARealNameAlone(t *testing.T) {
 	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
 
 	_, err := exec("sum_movements", json.RawMessage(
-		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","category":"Deudas / préstamos"}`))
+		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","search":"Deudas / préstamos"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.lastQuery.Category == nil || *m.lastQuery.Category != "Deudas / préstamos" {
-		t.Errorf("un nombre sin ícono tiene que llegar intacto: %v", m.lastQuery.Category)
+	if m.lastQuery.Search == nil || *m.lastQuery.Search != "Deudas / préstamos" {
+		t.Errorf("un nombre sin ícono tiene que llegar intacto: %v", m.lastQuery.Search)
 	}
 }
 

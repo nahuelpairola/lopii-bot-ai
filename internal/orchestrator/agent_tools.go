@@ -130,10 +130,8 @@ func AgentTools() []AgentTool {
 				"currency": {"type": "string", "enum": ["ARS", "USD"]},
 				"group_by": {"type": ["string", "null"], "enum": ["none", "category", "subcategory", "type", "month", "day", "account", null]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null], "description": "opcional; sin esto se excluyen las transferencias"},
-				"category": {"type": ["string", "null"]},
-				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
-				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial, ej. Carrefour)"}
+				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos. Ej: \"alimentacion\", \"netflix\", \"lote\"."}
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -150,10 +148,8 @@ func AgentTools() []AgentTool {
 				"to": {"type": "string", "description": "fecha hasta YYYY-MM-DD"},
 				"currency": {"type": "string", "enum": ["ARS", "USD"]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null]},
-				"category": {"type": ["string", "null"]},
-				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"]},
-				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial)"},
+				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos. Ej: \"alimentacion\", \"netflix\", \"lote\"."},
 				"limit": {"type": ["integer", "null"], "description": "máximo de filas (default 20, tope 50)"}
 			},
 			"required": ["from", "to", "currency"]

@@ -45,10 +45,8 @@ var queryTools = []orchestrator.AgentTool{
 				"currency": {"type": "string", "enum": ["ARS", "USD"]},
 				"group_by": {"type": ["string", "null"], "enum": ["none", "category", "subcategory", "type", "month", "day", "account", null]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null], "description": "opcional; sin esto se excluyen las transferencias"},
-				"category": {"type": ["string", "null"]},
-				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
-				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial, ej. Carrefour)"}
+				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos. Ej: \"alimentacion\", \"netflix\", \"lote\"."}
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -63,10 +61,8 @@ var queryTools = []orchestrator.AgentTool{
 				"to": {"type": "string", "description": "fecha hasta YYYY-MM-DD"},
 				"currency": {"type": "string", "enum": ["ARS", "USD"]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null]},
-				"category": {"type": ["string", "null"]},
-				"subcategory": {"type": ["string", "null"]},
 				"account": {"type": ["string", "null"]},
-				"description": {"type": ["string", "null"], "description": "opcional: texto del movimiento (coincidencia parcial)"},
+				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos. Ej: \"alimentacion\", \"netflix\", \"lote\"."},
 				"limit": {"type": ["integer", "null"], "description": "máximo de filas (default 20, tope 50)"}
 			},
 			"required": ["from", "to", "currency"]
@@ -92,16 +88,18 @@ var queryTools = []orchestrator.AgentTool{
 // queryToolArgs is the union of every tool's argument shape — one struct
 // keeps the executor's json.Unmarshal simple (unused fields stay zero).
 type queryToolArgs struct {
-	From        string `json:"from"`
-	To          string `json:"to"`
-	Currency    string `json:"currency"`
-	GroupBy     string `json:"group_by"`
-	Type        string `json:"type"`
-	Category    string `json:"category"`
-	Subcategory string `json:"subcategory"`
-	Account     string `json:"account"`
-	Description string `json:"description"`
-	Limit       int    `json:"limit"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Currency string `json:"currency"`
+	GroupBy  string `json:"group_by"`
+	Type     string `json:"type"`
+	Account  string `json:"account"`
+	Search   string `json:"search"`
+	Limit    int    `json:"limit"`
+	// Category ya NO filtra movimientos: es el parámetro de list_categories, que
+	// acota el listado de TAXONOMÍA a una sola categoría. Las dos tools de
+	// movimientos filtran con Search.
+	Category string `json:"category"`
 }
 
 // msgQueryNoRows es lo que ve el MODELO cuando una consulta no devuelve filas —no el
@@ -379,14 +377,13 @@ func (c *controller) buildMovementQuery(userID uint64, args queryToolArgs) (move
 		t := args.Type
 		q.Type = &t
 	}
-	if cat := stripLeadingIcon(args.Category); cat != "" {
-		q.Category = &cat
-	}
-	if sub := stripLeadingIcon(args.Subcategory); sub != "" {
-		q.Subcategory = &sub
-	}
-	if args.Description != "" {
-		q.Description = &args.Description
+	// stripLeadingIcon SIGUE haciendo falta, y ahora sobre un solo campo. El
+	// prompt le pide al modelo arrancar la línea con el emoji, list_categories
+	// devuelve "🍔 Alimentación", el modelo aprende ese string y lo copia al
+	// filtro. unaccent no borra emojis: sin esto, LIKE '%🍔 alimentacion%' no
+	// matchea nada y la respuesta sale $0 sobre gastos que existen.
+	if s := stripLeadingIcon(args.Search); s != "" {
+		q.Search = &s
 	}
 	if args.Account != "" {
 		accts, err := c.accounts.FindByUserID(userID)

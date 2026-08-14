@@ -332,20 +332,32 @@ func (r *repository) ReassignAccount(fromID, toID uint64) error {
 // struct serves both SumForUser and ListForUser — identical filters, so a
 // struct beats an 8-arg signature and keeps the two in sync. Type == nil
 // means "exclude transfers" (the cash-flow default); a non-nil Type filters
-// to exactly that type. AccountID and Search are optional narrowing filters.
-// Search is a case- and accent-insensitive substring match against the category
-// name, the subcategory name AND the description, OR'd together. Currency is
-// always required — ARS and USD are never mixed.
+// to exactly that type. AccountID, Category, Subcategory and Search are
+// optional narrowing filters. Category and Subcategory are exact equality — the
+// Mini App's drill sets them from a name the app itself produced. Search is a
+// case- and accent-insensitive substring match against the category name, the
+// subcategory name AND the description, OR'd together — it is what the QUERY
+// tools expose to the model, which is guessing at a name a human typed.
+// Currency is always required — ARS and USD are never mixed.
 type MovementQuery struct {
-	UserID      uint64
-	From        time.Time
-	To          time.Time
-	Currency    currency.Currency
-	Type        *string
+	UserID    uint64
+	From      time.Time
+	To        time.Time
+	Currency  currency.Currency
+	Type      *string
+	AccountID *uint64
+	// Category y Subcategory son igualdad EXACTA, y no las usa ninguna tool del
+	// modelo: las setea el drill del Mini App, donde el nombre no lo adivinó
+	// nadie —viene del renglón que el usuario tocó, por la URL que armamos
+	// nosotros—. Ahí lo exacto es lo correcto: la hoja de una subcategoría tiene
+	// que reconciliar contra el total que trajo al usuario hasta ella, y un
+	// match parcial le metería filas de otras subcategorías que mencionan la
+	// palabra en la descripción.
+	//
+	// Search (abajo) es lo opuesto y por eso conviven: texto que escribió una
+	// persona, resuelto de forma difusa. Ver docs/decisions.md 2026-08-14.
 	Category    *string
 	Subcategory *string
-	AccountID   *uint64
-	Description *string
 	// Search es el filtro de texto ÚNICO de las consultas: matchea, sin
 	// distinguir mayúsculas ni acentos, contra el nombre de la categoría, el de
 	// la subcategoría Y la descripción del movimiento.
@@ -397,9 +409,6 @@ func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 	}
 	if q.Subcategory != nil {
 		db = db.Where("s.subcategory = ?", *q.Subcategory)
-	}
-	if q.Description != nil {
-		db = db.Where("movements.description ILIKE ?", "%"+*q.Description+"%")
 	}
 	if q.Search != nil {
 		// UN predicado con tres patas, no tres filtros. El OR es lo que hace que
