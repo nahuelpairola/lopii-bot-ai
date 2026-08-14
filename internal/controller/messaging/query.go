@@ -102,30 +102,76 @@ type queryToolArgs struct {
 	Category string `json:"category"`
 }
 
-// msgQueryNoRows es lo que ve el MODELO cuando una consulta no devuelve filas —no el
-// usuario—, y por eso vive acá y no en messages.go.
+// Los cuatro desenlaces de una consulta que no devolvió filas. Son lo que ve el
+// MODELO, no el usuario, y por eso viven acá y no en messages.go.
 //
-// Decía "Sin movimientos en ese rango." y esa frase mezcla dos hechos que el modelo
-// necesita distinguir: que no hubo gastos, y que el filtro no matcheó nada. El
-// 2026-08-13 el modelo eligió la lectura equivocada — ante un list_movements con
-// category="lote" (que no es una categoría: "lote" está en la DESCRIPCIÓN de tres
-// gastos de Vivienda) contestó "No tenés registros de gastos en la categoría Lote. El
-// total gastado es $0 ARS", sobre $30.343,74 reales.
+// Son cuatro y no uno porque describen HECHOS DISTINTOS, y hasta el 2026-08-14
+// los cuatro salían por el mismo string ambiguo: el modelo tenía que elegir cuál
+// creer, y el 2026-08-13 eligió mal —contestó "No tenés registros de gastos en la
+// categoría Lote. El total gastado es $0 ARS" sobre $30.343,74 reales—.
 //
-// La salida es avisar, no validar. Chequear el filtro contra la taxonomía antes de
-// consultar es más código, cambia el comportamiento y hay que elegir entre dos métodos
-// con semántica distinta — todo antes de saber si este aviso alcanza. El eval de
-// filtro inexistente es el que decide si hace falta.
+// NINGUNO puede nombrar una herramienta. La narración forzada corre con
+// tool_choice:"none" y sin schemas, y ahí el modelo imita todo lo que se parezca
+// a una tool: la versión que decía "verificá con list_categories" hizo que
+// gpt-oss-20b devolviera 400 y que gpt-oss-120b le imprimiera al usuario
+// {"tool": "list_categories", "params": {}}. Lo fija TestQueryMessages_NameNoTool.
+const (
+	// Sin search, un cero es un cero honesto: no hubo movimientos en ese rango.
+	// No hay filtro de texto que pueda no haber matcheado.
+	msgQueryNoRowsInRange = "sin movimientos en ese rango."
+
+	// El término existe en los datos del usuario, pero no en el rango pedido.
+	// Es una AUSENCIA VERIFICADA: acá el modelo sí puede decir que no gastó.
+	msgSearchOutOfRangeFmt = "sin movimientos con «%s» entre %s y %s. Sí hay con ese texto en otras fechas."
+
+	// El término sólo matchea movimientos de categorías reservadas, que apply()
+	// esconde de todo total de gastos e ingresos. Sin este mensaje la app diría
+	// que "transferencia" no existe, sobre 12 movimientos reales.
+	msgSearchOnlyInternalFmt = "«%s» sólo aparece en movimientos internos —transferencias entre tus cuentas, saldos iniciales, ajustes—, que no entran en los totales de gastos e ingresos."
+
+	// El término no matchea NADA. Es lo único que habilita decir que no existe,
+	// y va como ERROR para que el modelo lo pueda corregir en la ronda siguiente:
+	// AnswerQuery reinyecta los errores del ejecutor en vez de abortar.
+	msgSearchNotFoundFmt = "no encontré nada que diga «%s»: no es una categoría, ni una subcategoría, ni aparece en ninguna descripción."
+)
+
+// searchProbeFrom/To es el rango "todo el historial" de las sondas. Fechas fijas
+// y absurdamente anchas a propósito: la sonda contesta "¿existe este término en
+// algún lado?", y una ventana relativa a hoy haría que la respuesta cambiara
+// sola con el paso del tiempo.
+var (
+	searchProbeFrom = time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+	searchProbeTo   = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+)
+
+// describeEmptyResult decide qué decir cuando la consulta no devolvió filas.
+// Devuelve (mensaje, nil) o ("", error) — el error es "el término no existe".
 //
-// NO puede nombrar ninguna herramienta. La narración forzada corre con
-// tool_choice:"none" y sin schemas, y ahí el modelo imita todo lo que se parezca a una
-// tool: con la versión que decía "verificá los nombres con list_categories",
-// gpt-oss-20b devolvió 400 y gpt-oss-120b le imprimió al usuario
-// {"tool": "list_categories", "params": {}}. Medido el 2026-08-13, 6 llamadas, 3
-// modelos. Lo fija TestMsgQueryNoRows_NamesNoTool.
-const msgQueryNoRows = "sin resultados para esos filtros. OJO: cero resultados no prueba " +
-	"que no haya gastos: un nombre de categoría o de cuenta que no existe da cero igual. " +
-	"Si no podés confirmar que el nombre existe, decílo así en vez de afirmar que no hubo gastos."
+// Las sondas corren SÓLO acá, o sea sólo cuando el resultado ya vino vacío, son
+// LIMIT 1, y cuestan cero tokens: son consultas a Postgres, no llamadas a Groq.
+func (c *controller) describeEmptyResult(q movement.MovementQuery, args queryToolArgs) (string, error) {
+	if q.Search == nil {
+		return msgQueryNoRowsInRange, nil
+	}
+	term := *q.Search
+
+	wide := q
+	wide.From, wide.To = searchProbeFrom, searchProbeTo
+	if rows, err := c.movements.ListForUser(wide, 1); err == nil && len(rows) > 0 {
+		return fmt.Sprintf(msgSearchOutOfRangeFmt, term, args.From, args.To), nil
+	}
+
+	// Sonda 2: las reservadas. apply() las excluye siempre salvo que se pidan, y
+	// el ejecutor de query nunca las pide, así que la sonda 1 las esconde igual
+	// que la consulta real. Sin esto, "transferencia" y "saldo inicial" —12 y 4
+	// movimientos reales en la base local— se declararían inexistentes.
+	wide.OnlyReserved = true
+	if rows, err := c.movements.ListForUser(wide, 1); err == nil && len(rows) > 0 {
+		return fmt.Sprintf(msgSearchOnlyInternalFmt, term), nil
+	}
+
+	return "", fmt.Errorf(msgSearchNotFoundFmt, term)
+}
 
 // handleQuery answers a read-only question via the agent loop. Returns
 // (answered, err): answered=false significa que el loop no produjo respuesta.
@@ -260,7 +306,7 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 		return "", err
 	}
 	if len(rows) == 0 {
-		return msgQueryNoRows, nil
+		return c.describeEmptyResult(q, args)
 	}
 	cur := q.Currency.String()
 	if groupBy == "" || groupBy == "none" {
@@ -300,7 +346,7 @@ func (c *controller) execListMovements(userID uint64, args queryToolArgs) (strin
 		return "", err
 	}
 	if len(ms) == 0 {
-		return msgQueryNoRows, nil
+		return c.describeEmptyResult(q, args)
 	}
 	var lines []string
 	for _, m := range ms {
