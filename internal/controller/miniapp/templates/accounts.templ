@@ -54,6 +54,18 @@ templ Accounts(data AccountsData) {
 // cierre no cuadra con lo que el usuario ve, y parece un error de la app.
 const MsgLeafCapped = "Mostrando los 50 más recientes del período."
 
+// MsgFilterNoMatch reemplaza a la lista cuando el filtro no deja ninguna fila:
+// sin él la pantalla queda en blanco y parece que se rompió.
+const MsgFilterNoMatch = "Nada coincide con esa búsqueda."
+
+// Ids del buscador de la hoja. app.js los tiene escritos igual —es la frontera
+// entre Go y el cliente, no hay forma de compartir la constante—, así que
+// cambiar uno de estos lados obliga a cambiar el otro.
+const (
+	MovFilterID      = "mov-filter"
+	MovFilterEmptyID = "mov-filter-empty"
+)
+
 // AccountLeafData es la hoja de una cuenta: los movimientos que explican su
 // saldo. Opening y Closing NO se derivan de Rows —el tope de filas rompería la
 // cuenta—; salen del acumulado completo, que arma el handler.
@@ -81,7 +93,12 @@ templ AccountLeaf(data AccountLeafData) {
 	if data.Empty {
 		@EmptyState("Sin movimientos en esta cuenta en el período.")
 	} else {
+		// El buscador filtra lo que YA está en pantalla: el período elegido y el
+		// tope de filas, nada más. Por eso vive acá adentro y no sobre una lista
+		// vacía, donde sólo sería ruido.
+		<input id={ MovFilterID } type="search" placeholder="Buscar en esta cuenta" aria-label="Buscar movimientos" autocomplete="off"/>
 		@movementList(data.Rows)
+		<p id={ MovFilterEmptyID } class="muted" hidden>{ MsgFilterNoMatch }</p>
 		if data.Capped {
 			<p class="muted">{ MsgLeafCapped }</p>
 		}

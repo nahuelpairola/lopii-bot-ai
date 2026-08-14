@@ -168,6 +168,71 @@ document.addEventListener('DOMContentLoaded', () => {
   syncBackButton();
 });
 
+// --- Buscador de la hoja de cuenta ---------------------------------------
+// Filtra las filas YA renderizadas: el período elegido y el tope de 50, nada
+// más. Buscar en toda la cuenta sería ?q= + ILIKE en ListForAccount; hoy no
+// hace falta, el bot ya contesta eso por chat.
+// Los ids salen de templates.MovFilterID / MovFilterEmptyID: si cambian allá,
+// cambian acá.
+const MOV_FILTER_ID = 'mov-filter';
+const MOV_FILTER_EMPTY_ID = 'mov-filter-empty';
+// Menos de esto no filtra: con una o dos letras matchea media lista y el
+// resaltado es puro ruido.
+const MOV_FILTER_MIN = 3;
+
+// Un carácter entra, un carácter sale: así los índices del resultado siguen
+// apuntando al texto original, que es lo que hace que el <mark> caiga justo.
+// Normalizar el string entero de una no sirve — NFD lo alarga ("í" son dos
+// unidades) y el resaltado quedaría corrido.
+function normChars(s) {
+  let out = '';
+  for (let i = 0; i < s.length; i++) {
+    const n = s[i].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    out += n.length ? n[0] : s[i];
+  }
+  return out;
+}
+
+// Reescribe el nodo envolviendo cada aparición en <mark>. Sin innerHTML: el
+// texto es del usuario. El original se guarda una vez en dataset.raw, así
+// tipear letra por letra no lo va comiendo.
+function markMatches(el, q) {
+  if (el.dataset.raw === undefined) el.dataset.raw = el.textContent;
+  const text = el.dataset.raw;
+  const hay = normChars(text);
+  el.textContent = '';
+  let i = 0;
+  for (let at = q ? hay.indexOf(q) : -1; at >= 0; at = hay.indexOf(q, i)) {
+    el.append(text.slice(i, at));
+    const m = document.createElement('mark');
+    m.textContent = text.slice(at, at + q.length);
+    el.append(m);
+    i = at + q.length;
+  }
+  el.append(text.slice(i));
+}
+
+// El listener va delegado en document: htmx reemplaza #content entero en cada
+// navegación, y uno atado al input muere en el primer swap.
+document.addEventListener('input', (evt) => {
+  if (evt.target.id !== MOV_FILTER_ID) return;
+  const raw = evt.target.value.trim();
+  const q = raw.length >= MOV_FILTER_MIN ? normChars(raw) : '';
+  let shown = 0;
+  document.querySelectorAll('.mov-row').forEach((row) => {
+    const hit = q === '' || normChars(row.querySelector('.mov-text').textContent).includes(q);
+    // display y no el atributo hidden: .mov-row trae display:flex, que le gana
+    // al display:none que el navegador le da a [hidden].
+    row.style.display = hit ? '' : 'none';
+    if (hit) shown++;
+    // El monto queda afuera de la búsqueda y del resaltado a propósito: "500"
+    // matchearía fechas, montos y cualquier descripción con un número.
+    row.querySelectorAll('.mov-title, .mov-meta').forEach((el) => markMatches(el, hit ? q : ''));
+  });
+  const empty = document.getElementById(MOV_FILTER_EMPTY_ID);
+  if (empty) empty.hidden = shown > 0;
+});
+
 // htmx events bubble to document — listen there, NOT on document.body (this
 // script is in <head>, where document.body is still null).
 document.addEventListener('htmx:afterSwap', (evt) => {

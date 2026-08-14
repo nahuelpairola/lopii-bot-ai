@@ -101,6 +101,43 @@ func TestAccountLeaf_WarnsWhenCapped(t *testing.T) {
 	}
 }
 
+// El buscador y su cartel de "sin resultados" los maneja app.js por id. Si un
+// `templ generate` mal corrido se come el input, no hay nada más que lo note.
+func TestAccountLeaf_RendersFilterInput(t *testing.T) {
+	data := AccountLeafData{
+		AccountName: "Galicia",
+		Rows:        []MovementRow{{Title: "Panadería", Date: "12 ago", Amount: "-$1"}},
+	}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if !strings.Contains(html, `id="`+MovFilterID+`"`) {
+		t.Errorf("falta el buscador, que app.js engancha por ese id:\n%s", html)
+	}
+	if !strings.Contains(html, `id="`+MovFilterEmptyID+`"`) {
+		t.Errorf("falta el cartel de sin resultados: filtrar a cero deja la pantalla en blanco y parece roto:\n%s", html)
+	}
+	if !strings.Contains(html, "hidden") {
+		t.Errorf("el cartel de sin resultados arranca oculto, lo muestra app.js:\n%s", html)
+	}
+}
+
+func TestAccountLeaf_NoFilterInputWhenEmpty(t *testing.T) {
+	data := AccountLeafData{AccountName: "Galicia", Empty: true}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(sb.String(), `id="`+MovFilterID+`"`) {
+		t.Error("un buscador sobre una lista vacía es ruido")
+	}
+}
+
 func TestAccountLeaf_EmptyStillShowsBalances(t *testing.T) {
 	data := AccountLeafData{
 		AccountName:  "Galicia",
