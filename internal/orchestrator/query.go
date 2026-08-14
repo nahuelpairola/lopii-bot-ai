@@ -262,7 +262,19 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	finalMessages := []loopMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userText},
-		{Role: "user", Content: "Datos obtenidos de las herramientas:\n" + strings.Join(toolResults, "\n") + "\n\nRedactá la respuesta final para el usuario con estos datos."},
+		// Que los datos están INCOMPLETOS no es una precaución: es un hecho que Go sabe
+		// con certeza. A este punto se llega SÓLO si el cap de rondas se agotó con el
+		// modelo todavía pidiendo herramientas, o sea que quedó algo sin averiguar. No
+		// hace falta parsear la pregunta ni adivinar qué faltó.
+		//
+		// Sin decirlo, el modelo rellena el hueco NEGANDO: el 2026-08-14 contestó "No
+		// hay registros de Cuota préstamo en agosto" sobre $80.000 reales, habiendo
+		// consultado dos de las tres cosas que le preguntaron.
+		{Role: "user", Content: "Datos que se juntaron:\n" + strings.Join(toolResults, "\n") +
+			"\n\nOJO: están INCOMPLETOS, quedaron cosas sin averiguar. Redactá la respuesta final " +
+			"para el usuario usando SÓLO lo que está acá arriba. De lo que te hayan preguntado y no " +
+			"aparezca en esta lista, decí que no llegaste a averiguarlo: no afirmes que no existe, " +
+			"que no hay, ni que dio cero."},
 	}
 	final, err := o.roundWithFallback(ctx, callTypeQuery, o.narrationChain(), finalMessages, nil, "none", maxNarrationCompletionTokens)
 	if err != nil {
