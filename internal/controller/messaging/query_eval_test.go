@@ -113,10 +113,17 @@ func TestQueryEval(t *testing.T) {
 	// Subcategory ids from the seeded global taxonomy (verified in DB):
 	// 1=Alimentación|Supermercado, 4=Alimentación|Panadería,
 	// 52=Bienestar|Gimnasio, 85=Ingresos|Freelance.
+	// Dos descripciones que comparten la palabra "lote" y viven en CATEGORÍAS
+	// DISTINTAS (Alimentación y Bienestar). Es el caso de producción del
+	// 2026-08-13: una palabra que el usuario trata como si fuera categoría y que
+	// en realidad sólo está en las descripciones, repartida. Suman 13.000, un
+	// número que no coincide con ningún otro total del seed — si coincidiera, el
+	// test no podría distinguir un acierto de una casualidad.
+	loteSuper, loteGym := "compras del lote", "gimnasio del lote"
 	seed := []movement.Movement{
-		{UserID: uid, AccountID: &bancoID, SubcategoryID: 1, Date: d(5), Type: movement.Expense, Amount: dec("-5000"), Currency: currency.ARS},
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: 1, Date: d(5), Type: movement.Expense, Amount: dec("-5000"), Currency: currency.ARS, Description: &loteSuper},
 		{UserID: uid, AccountID: &bancoID, SubcategoryID: 4, Date: d(6), Type: movement.Expense, Amount: dec("-3000"), Currency: currency.ARS},
-		{UserID: uid, AccountID: &bancoID, SubcategoryID: 52, Date: d(7), Type: movement.Expense, Amount: dec("-8000"), Currency: currency.ARS},
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: 52, Date: d(7), Type: movement.Expense, Amount: dec("-8000"), Currency: currency.ARS, Description: &loteGym},
 		{UserID: uid, AccountID: &bancoID, SubcategoryID: 85, Date: d(3), Type: movement.Income, Amount: dec("100000"), Currency: currency.ARS},
 		{UserID: uid, AccountID: &walletID, SubcategoryID: 1, Date: d(4), Type: movement.Expense, Amount: dec("-50"), Currency: currency.USD},
 	}
@@ -296,20 +303,42 @@ func TestQueryEval(t *testing.T) {
 	// "No tenés registros de gastos en la categoría Lote. El total gastado es $0 ARS"
 	// sobre $30.343,74 reales.
 	//
-	// ESTE SUBTEST ES EL PORTÓN de una decisión de diseño: el arreglo elegido avisa
-	// (el resultado vacío le dice al modelo que un filtro inexistente también da cero
-	// y le nombra list_categories) en vez de validar contra la taxonomía antes de
-	// consultar. Si acá el modelo sigue afirmando que no hay gastos, la validación hay
-	// que agregarla — el cómo está escrito en la spec, sección "fuera de alcance".
+	// Desde el 2026-08-14 el ejecutor ya no se limita a avisar: cuando las dos
+	// sondas confirman que el término no aparece en ningún lado, devuelve ERROR,
+	// así que el modelo no tiene con qué afirmar ausencia. Por eso el assert deja
+	// de ser un portón indeciso y suma el "$0" explícito.
+	//
+	// Si esto falla, significa que el modelo afirma ausencia A PESAR del error, y
+	// eso reabre la discusión de validar contra la taxonomía antes de consultar
+	// (el cómo está en la spec, sección "fuera de alcance").
 	t.Run("filtro_inexistente_no_afirma_que_no_hay_gastos", func(t *testing.T) {
 		ans := ask(t, "¿cuánto gasté en la categoría Cochinchina en julio de 2026?")
 		low := strings.ToLower(ans)
-		// La respuesta honesta dice que esa categoría no existe / no la encuentra.
-		// La deshonesta afirma que no hubo gastos, que es un hecho que no se verificó.
-		for _, afirmacion := range []string{"no tenés gastos", "no tuviste gastos", "no hubo gastos", "no registraste gastos"} {
+		// La respuesta honesta dice que no encuentra el término. La deshonesta
+		// afirma un hecho —que no hubo gastos— que nadie verificó.
+		for _, afirmacion := range []string{"no tenés gastos", "no tuviste gastos", "no hubo gastos", "no registraste gastos", "$0", "0 ars"} {
 			if strings.Contains(low, afirmacion) {
-				t.Errorf("un filtro que no existe no puede volverse la afirmación %q: %s", afirmacion, ans)
+				t.Errorf("un término que no existe no puede volverse la afirmación %q: %s", afirmacion, ans)
 			}
+		}
+	})
+
+	// El caso que rompió en producción el 2026-08-13: "lote" no es una categoría,
+	// es una palabra en la DESCRIPCIÓN de movimientos repartidos en dos categorías
+	// distintas. Con los tres filtros viejos no había forma de pedirlo — el modelo
+	// mandaba category="lote", volvía cero, y narró "$0" sobre plata real.
+	t.Run("termino_en_descripcion_cruza_subcategorias", func(t *testing.T) {
+		ans := ask(t, "¿cuánto gasté en el lote en julio de 2026?")
+		if !strings.Contains(normDigits(ans), "13000") {
+			t.Errorf("el término vive en las descripciones de Supermercado (5000) y Gimnasio (8000) y tiene que sumar 13000: %s", ans)
+		}
+	})
+
+	// La promesa del parámetro: se escribe como se escribe y matchea igual.
+	t.Run("search_sin_acentos", func(t *testing.T) {
+		ans := ask(t, "¿cuánto gasté en alimentacion en julio de 2026?") // sin tilde, a propósito
+		if !strings.Contains(normDigits(ans), "8000") {
+			t.Errorf("sin tilde tiene que encontrar Alimentación igual (8000 = 5000+3000): %s", ans)
 		}
 	})
 
