@@ -218,9 +218,26 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 // cadena —y si el suplente hace peor las cosas— se mide, no se supone.
 func (o *Orchestrator) agentRound(ctx context.Context, messages []loopMessage, tools []toolDef, toolChoice string) (loopMessage, error) {
 	chain := append([]string{o.agentModel}, o.agentFallbacks...)
+	return o.roundWithFallback(ctx, callTypeAgent, chain, messages, tools, toolChoice, maxAgentCompletionTokens)
+}
+
+// roundWithFallback corre UNA llamada del loop recorriendo `chain` ante un 429.
+// La comparten agentRound y AnswerQuery, que necesitaban lo mismo con distinto
+// callType, distinta cadena y distinto cap de completion.
+//
+// Que sea UNA función y no dos gemelas es deliberado: `Run` y `AnswerQuery` ya son
+// dos loops casi idénticos, y el riesgo documentado del paquete es arreglar un bug
+// en uno y portarlo al otro por costumbre. La cadena es justo el tipo de lógica
+// donde eso pasa — el loop de query estuvo sin ninguna hasta el 2026-08-13, y un
+// turno rescatado en el agente moría igual un paso después, en la query.
+//
+// Una cadena de un solo modelo (fallbacks vacíos) se comporta exactamente como no
+// tener cadena: una llamada, y el 429 sale para arriba a encolarse.
+func (o *Orchestrator) roundWithFallback(ctx context.Context, callType string, chain []string,
+	messages []loopMessage, tools []toolDef, toolChoice string, maxTokens int) (loopMessage, error) {
 	var lastErr error
-	for _, model := range chain {
-		msg, err := o.client.chatCompletionLoop(ctx, callTypeAgent, model, messages, tools, toolChoice, maxAgentCompletionTokens)
+	for i, model := range chain {
+		msg, err := o.client.chatCompletionLoop(ctx, callType, model, messages, tools, toolChoice, maxTokens)
 		if err == nil {
 			return msg, nil
 		}
@@ -229,8 +246,8 @@ func (o *Orchestrator) agentRound(ctx context.Context, messages []loopMessage, t
 			return msg, err
 		}
 		lastErr = err
-		slog.WarnContext(ctx, "agent: modelo sin cupo, probando el siguiente",
-			"model", model, "restantes", len(chain)-1)
+		slog.WarnContext(ctx, "modelo sin cupo, probando el siguiente",
+			"call_type", callType, "model", model, "restantes", len(chain)-i-1)
 	}
 	// Todos rebotaron: se devuelve el ÚLTIMO 429 para que el caller lo encole.
 	// El RetryAfter del último es el más informativo — es el del modelo que se

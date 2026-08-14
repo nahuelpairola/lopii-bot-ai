@@ -48,6 +48,16 @@ type groq struct {
 	// principal rebota por CUPO, en orden. Los techos de Groq son por modelo, así
 	// que un 429 en uno no dice nada del otro. Vacío = el 429 encola, como antes.
 	AgentFallbackModels []string `mapstructure:"agentFallbackModels"`
+	// QueryFallbackModels es lo mismo para el loop de consultas. Va aparte de la
+	// del agente y NO reusa esa lista: el primario de query (120b) es justamente
+	// el primer suplente del agente, así que reusarla haría que el primer
+	// reintento cayera en el modelo que acaba de rebotar.
+	QueryFallbackModels []string `mapstructure:"queryFallbackModels"`
+	// NarrationModel es el modelo de la narración forzada de una consulta —la
+	// última llamada, donde ya no se eligen herramientas y sólo se redacta—.
+	// Redactar no es razonar: medido el 2026-08-13, un modelo razonador se come la
+	// completion pensando y devuelve vacío. Vacío = se usa queryModel.
+	NarrationModel string `mapstructure:"narrationModel"`
 	// ClassifierModel es el modelo de la clasificación de categorías, que en la
 	// etapa 5 sale del loop. Va en OTRO modelo a propósito: el techo de TPM de
 	// Groq es por modelo, y medido el 2026-08-12 el loop ya entra al suyo una vez
@@ -81,6 +91,107 @@ type Config struct {
 	Log       logConfig `mapstructure:"log"`
 }
 
+// applyDefaults carga los defaults sobre un Viper cualquiera, no sobre el singleton,
+// para que un test pueda resolver un config file sin pisar el estado global.
+func applyDefaults(v *viper.Viper) {
+	v.SetDefault("Server.Port", "80")
+	v.SetDefault("Query.HistoryTtlMinutes", 10)
+	v.SetDefault("Query.HistoryLimit", 5)
+	v.SetDefault("Reminders.SweepIntervalMinutes", 5)
+	// Sin default, un entorno que no declare agentModel deja o.agentModel en ""
+	// y Groq responde 400 en cada llamada del loop. Ya no hay camino alternativo:
+	// desde la etapa 5, Run es el ÚNICO, así que un entorno nuevo sin este valor
+	// no degrada, no arranca.
+	v.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
+	// La cadena por default. Los tres soportan `tools` (verificado contra
+	// /v1/models) y están ordenados por precio: gpt-oss-20b es el más barato de
+	// los capaces, y llama-3.3-70b —el de mayor techo, 12.000 TPM— va último
+	// porque su prompt cuesta 8 veces más. qwen queda AFUERA a propósito: su
+	// completion sale $3 por millón, diez veces el 20b.
+	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "llama-3.3-70b-versatile"})
+	// La cadena de query. llama-3.3-70b primero por el techo medido más alto
+	// (12.000 TPM) y bucket propio; gpt-oss-20b último porque es el más barato pero
+	// el más flojo narrando, y a esa altura la alternativa es no contestar.
+	//
+	// El orden de la cadena del AGENTE no se toca a propósito, aunque su primer
+	// suplente (120b) sea el primario de query: ahora query tiene con qué correrse
+	// de ese choque, e invertir el del agente mandaría todo el tráfico de rescate a
+	// llama-3.3-70b, cuyo prompt cuesta ~8 veces más. Está último por precio.
+	v.SetDefault("Groq.QueryFallbackModels", []string{"llama-3.3-70b-versatile", "openai/gpt-oss-20b"})
+	// llama-3.3-70b-versatile no razona: narra en 35-61 tokens de completion contra
+	// los 174-1.024 de gpt-oss, y por eso no puede quedarse sin presupuesto antes de
+	// escribir. qwen queda afuera: emite su razonamiento DENTRO del contenido.
+	// llama-3.1-8b-instant también: Groq lo da de baja el 2026-08-16.
+	v.SetDefault("Groq.NarrationModel", "llama-3.3-70b-versatile")
+	// llama-3.3-70b-versatile: el techo medido más alto (12.000 TPM), bucket
+	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
+	v.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")
+	v.SetDefault("Log.Level", "info")
+	v.SetDefault("Log.Format", "json")
+}
+
+// sameTurnCalls son los pares de llamadas a Groq que pueden ocurrir en UN MISMO turno.
+//
+// Los techos de Groq (TPM, TPD) son POR MODELO, así que dos llamadas del mismo turno
+// apuntando al mismo modelo compiten entre sí: la primera reserva y la segunda rebota.
+// El 2026-08-13 costó ~95 segundos y ~11.000 tokens quemados en reintentos que no
+// podían avanzar, porque `create` estaba en el mismo modelo que `agent`.
+//
+// Lo que NO entra, y es tan importante como lo que entra: `update` y `onboarding`
+// viven en pasos de flow que llegan en mensajes POSTERIORES, no en el turno del
+// agente. Competir entre turnos ya lo cubre la cadena de fallback.
+//
+// Tampoco entran `query`+`create` (hoy los dos en openai/gpt-oss-120b) ni
+// `classifier`+`narration` (hoy los dos en llama-3.3-70b-versatile), aunque en
+// teoría podrían chocar: sólo aparecen si se lee la tabla como transitiva
+// (agent-query más agent-create implicando query-create, y análogo para el otro
+// par). No hay un trace que muestre a ninguno de los dos ocurriendo de verdad en
+// el mismo turno —cada par que SÍ está listado, lo tiene—. Y satisfacer la
+// lectura transitiva pediría cinco modelos distintos cuando sólo hay tres
+// usables: qwen emite su razonamiento adentro del contenido que le llega al
+// usuario, y Groq da de baja llama-3.1-8b-instant el 2026-08-16. El costo
+// residual de dejarlos afuera es acotado y mucho menor al que esta tabla existe
+// para evitar: la narración reserva ~850 tokens contra el techo de llama
+// (~12.000 TPM), y las cadenas de fallback cubren un rebote. Si algún día un
+// trace muestra a alguno de estos dos pares chocando en producción, se agrega
+// acá y se cambia de modelo.
+var sameTurnCalls = [][2]string{
+	{"agent", "classifier"}, // ClassifyCategories sale del propio ejecutor del agente
+	{"agent", "query"},      // el agente delega en answer_query dentro del mismo turno
+	{"agent", "create"},     // el agente parkea en un wizard y el wizard clasifica
+	// el agente delega en answer_query en el mismo turno, y query gasta cupo en
+	// DOS modelos, no uno: el de las rondas de herramientas y el de la narración.
+	{"agent", "narration"},
+}
+
+// ModelBucketConflicts devuelve una línea por cada par de sameTurnCalls que quedó
+// apuntando al MISMO modelo. Vacío = config sana.
+//
+// Pura y sin I/O a propósito: se la puede correr sobre cualquier config resuelta, que
+// es lo que hace el test sobre config/*.toml.
+func ModelBucketConflicts(g groq) []string {
+	narrationModel := g.NarrationModel
+	if narrationModel == "" {
+		narrationModel = g.QueryModel
+	}
+	modelOf := map[string]string{
+		"agent":      g.AgentModel,
+		"classifier": g.ClassifierModel,
+		"query":      g.QueryModel,
+		"create":     g.CreateModel,
+		"narration":  narrationModel,
+	}
+	var out []string
+	for _, par := range sameTurnCalls {
+		a, b := modelOf[par[0]], modelOf[par[1]]
+		if a == "" || b == "" || a != b {
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s y %s comparten el modelo %s, y pueden ocurrir en el mismo turno", par[0], par[1], a))
+	}
+	return out
+}
+
 func Initialize() (*Config, error) {
 	env := os.Getenv(APP_ENV)
 	configFilePath := fmt.Sprintf("../../config/%s.toml", env)
@@ -88,26 +199,7 @@ func Initialize() (*Config, error) {
 	viper.SetConfigType("toml")
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.SetDefault("Server.Port", "80")
-	viper.SetDefault("Query.HistoryTtlMinutes", 10)
-	viper.SetDefault("Query.HistoryLimit", 5)
-	viper.SetDefault("Reminders.SweepIntervalMinutes", 5)
-	// Sin default, un entorno que no declare agentModel deja o.agentModel en ""
-	// y Groq responde 400 en cada llamada del loop. Ya no hay camino alternativo:
-	// desde la etapa 5, Run es el ÚNICO, así que un entorno nuevo sin este valor
-	// no degrada, no arranca.
-	viper.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
-	// La cadena por default. Los tres soportan `tools` (verificado contra
-	// /v1/models) y están ordenados por precio: gpt-oss-20b es el más barato de
-	// los capaces, y llama-3.3-70b —el de mayor techo, 12.000 TPM— va último
-	// porque su prompt cuesta 8 veces más. qwen queda AFUERA a propósito: su
-	// completion sale $3 por millón, diez veces el 20b.
-	viper.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "llama-3.3-70b-versatile"})
-	// llama-3.3-70b-versatile: el techo medido más alto (12.000 TPM), bucket
-	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
-	viper.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")
-	viper.SetDefault("Log.Level", "info")
-	viper.SetDefault("Log.Format", "json")
+	applyDefaults(viper.GetViper())
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, err

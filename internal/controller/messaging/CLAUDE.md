@@ -73,6 +73,34 @@ both correction paths share it. Do not add a second. Textual relevance is decide
 nothing matches textually but the user has just recorded something, it returns **exactly one**
 candidate — the recent entry — rather than a picker.
 
+## The QUERY tools have ONE text filter, and it is not the only text matcher here
+
+`sum_movements` and `list_movements` take a single `search` (since 2026-08-14; it replaced
+`category`, `subcategory` and `description`). It matches category name OR subcategory name OR
+description, case- and accent-insensitively, **in SQL** via the `unaccent` extension. One
+parameter, because the model cannot reliably tell which of the three fields a name lives in:
+"lote" reads like a category and actually sits in the description of movements spread across
+four subcategories.
+
+**Do not confuse it with `resolveCandidates`.** That one still decides textual relevance in Go
+with `foldAccents`, and the rule above — *textual relevance is decided in Go, never in SQL* —
+still holds **for reference resolution**. The two answer different questions: `search` filters
+an aggregate query, `resolveCandidates` works out which movement a correction refers to.
+
+Three more things that are not obvious from the code:
+
+- `stripLeadingIcon` is still load-bearing, now on `search` alone. The prompt tells the model to
+  lead each line with the emoji, `list_categories` returns `"🍔 Alimentación"`, and the model
+  copies that whole string into the filter. `unaccent` does not strip emoji.
+- `MovementQuery` keeps `Category`/`Subcategory` as **exact** filters. Nothing the model touches
+  sets them — the Mini App's drill does, where the name came from a row the user tapped. Exact
+  is correct there: a fuzzy match would pull in rows from other subcategories and the leaf would
+  stop reconciling against the total that led the user to it.
+- **An empty result runs up to two probes** (`describeEmptyResult`) to tell four different facts
+  apart. The reserved-category probe is not optional: `apply()` hides `Sistema` and
+  `PENDING_REVIEW`, so without it a search for "transferencia" — 12 real movements — would be
+  reported as not existing at all, which is worse than the mute zero it replaced.
+
 ## The 429 queue has an ordering invariant
 
 `enqueueBehindPending` is called from **`handleConversationInput` only** (`controller.go:244`),

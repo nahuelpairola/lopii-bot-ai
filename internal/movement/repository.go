@@ -332,19 +332,42 @@ func (r *repository) ReassignAccount(fromID, toID uint64) error {
 // struct serves both SumForUser and ListForUser — identical filters, so a
 // struct beats an 8-arg signature and keeps the two in sync. Type == nil
 // means "exclude transfers" (the cash-flow default); a non-nil Type filters
-// to exactly that type. Category/Subcategory/AccountID/Description are optional
-// narrowing filters (Description is a substring ILIKE match — description is
-// pg_trgm-indexed). Currency is always required — ARS and USD are never mixed.
+// to exactly that type. AccountID, Category, Subcategory and Search are
+// optional narrowing filters. Category and Subcategory are exact equality — the
+// Mini App's drill sets them from a name the app itself produced. Search is a
+// case- and accent-insensitive substring match against the category name, the
+// subcategory name AND the description, OR'd together — it is what the QUERY
+// tools expose to the model, which is guessing at a name a human typed.
+// Currency is always required — ARS and USD are never mixed.
 type MovementQuery struct {
-	UserID      uint64
-	From        time.Time
-	To          time.Time
-	Currency    currency.Currency
-	Type        *string
+	UserID    uint64
+	From      time.Time
+	To        time.Time
+	Currency  currency.Currency
+	Type      *string
+	AccountID *uint64
+	// Category y Subcategory son igualdad EXACTA, y no las usa ninguna tool del
+	// modelo: las setea el drill del Mini App, donde el nombre no lo adivinó
+	// nadie —viene del renglón que el usuario tocó, por la URL que armamos
+	// nosotros—. Ahí lo exacto es lo correcto: la hoja de una subcategoría tiene
+	// que reconciliar contra el total que trajo al usuario hasta ella, y un
+	// match parcial le metería filas de otras subcategorías que mencionan la
+	// palabra en la descripción.
+	//
+	// Search (abajo) es lo opuesto y por eso conviven: texto que escribió una
+	// persona, resuelto de forma difusa. Ver docs/decisions.md 2026-08-14.
 	Category    *string
 	Subcategory *string
-	AccountID   *uint64
-	Description *string
+	// Search es el filtro de texto ÚNICO de las consultas: matchea, sin
+	// distinguir mayúsculas ni acentos, contra el nombre de la categoría, el de
+	// la subcategoría Y la descripción del movimiento.
+	//
+	// Es uno y no tres porque el modelo no puede decidir bien en cuál de los
+	// tres campos vive un nombre: "lote" es una palabra que el usuario usa como
+	// si fuera categoría y vive en la descripción de cinco movimientos
+	// repartidos en cuatro subcategorías. El 2026-08-13 esa decisión costó una
+	// respuesta de $0 sobre $30.343,74 reales.
+	Search *string
 	// OnlyReserved flips the reserved-category filter. The zero value — every
 	// existing caller — EXCLUDES internal plumbing (opening balances, balance
 	// adjustments, investment yield), because those are corrections to the
@@ -387,8 +410,27 @@ func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 	if q.Subcategory != nil {
 		db = db.Where("s.subcategory = ?", *q.Subcategory)
 	}
-	if q.Description != nil {
-		db = db.Where("movements.description ILIKE ?", "%"+*q.Description+"%")
+	if q.Search != nil {
+		// UN predicado con tres patas, no tres filtros. El OR es lo que hace que
+		// "lote" encuentre los cinco movimientos que lo llevan en la descripción
+		// aunque estén repartidos en cuatro subcategorías.
+		//
+		// El fold va en SQL y no en Go a propósito: las tres patas tienen que
+		// usar el MISMO diccionario. Foldear la taxonomía en Go con foldAccents
+		// (7 runas) y la descripción con unaccent (Unicode completo) daría dos
+		// semánticas distintas dentro del mismo parámetro.
+		//
+		// El TÉRMINO también pasa por unaccent(lower(...)), no sólo la columna:
+		// si sólo se folde un lado, search="panadería" no encuentra "panaderia".
+		//
+		// coalesce porque movements.description es nullable, y NULL LIKE x es
+		// NULL — en un OR no suma, pero tampoco falla de forma ruidosa.
+		t := "%" + *q.Search + "%"
+		db = db.Where(
+			"unaccent(lower(s.category)) LIKE unaccent(lower(?)) OR "+
+				"unaccent(lower(s.subcategory)) LIKE unaccent(lower(?)) OR "+
+				"unaccent(lower(coalesce(movements.description, ''))) LIKE unaccent(lower(?))",
+			t, t, t)
 	}
 	// Reserved categories are excluded by default and returned alone when
 	// asked for — see MovementQuery.OnlyReserved. Both branches need the

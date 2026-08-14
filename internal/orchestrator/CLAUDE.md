@@ -36,12 +36,16 @@ Everything below follows from that, and none of it is arbitrary:
 
 ## `AgentTool.Kind` is vestigial — and that is a loaded gun
 
-`orderCallsByKind` and `kindRank` were deleted in stage 5 (see the comment at `agent.go:44`):
-the loop's toolbox has no read tools, so ordering sorted a set whose elements shared a rank.
-**`Kind` survives as a field that nothing reads.** If a future stage puts read tools back into
-`Run`, ordering has to come back with them — and the old trap has to be avoided rather than
-reintroduced: an unset `Kind` sorted into the same bucket as an explicit `KindRead`, so a write
-tool declared without `Kind` ran *after* the reads. Make the zero value unrepresentable.
+`orderCallsByKind` and `kindRank` were deleted in stage 5 (see the comment at `agent.go:44`).
+**`Kind` survives as a field that nothing reads** — every tool still declares one, and no code
+looks at it.
+
+Note the toolbox *does* declare five read tools (`list_categories`, `sum_movements`,
+`list_movements`, `account_balance`, `get_reminder`), so "there is nothing to order" is not
+the reason ordering went away. If ordering ever comes back, the old trap has to be avoided
+rather than reintroduced: an unset `Kind` sorted into the same bucket as an explicit
+`KindRead`, so a write tool declared without `Kind` ran *after* the reads. Make the zero value
+unrepresentable.
 
 ## Shared prompt fragments must contain no `%` and no backtick
 
@@ -67,7 +71,16 @@ types too: `toolSchema` for single-shot calls, `AgentTool` for loop calls.
 
 The read-tool schemas in `agent_tools.go` are hand-copied **verbatim** from `messaging/query.go`'s
 `queryTools`, because messaging's executor parses those exact argument names (`queryToolArgs`).
-Only a comment enforces it. `recorder.go`'s `LLMCall` is deliberately *not* the `metric`
+
+A comment used to be the only thing enforcing it; since 2026-08-14 a test does —
+`TestQueryTools_ParametersMatchAgentTools` (`messaging/query_tools_parity_test.go`) compares
+the two `Parameters` blocks and fails on any divergence. It exists because the failure mode is
+**silent and wide**: change one file and not the other, and the agent offers the model a
+parameter the executor no longer parses. `json.Unmarshal` drops the unknown field (nothing sets
+`additionalProperties`, so Groq does not 400 on it), the filter is never applied, and the query
+answers over the whole range. No error, no log, and no other test sees it.
+
+`recorder.go`'s `LLMCall` is deliberately *not* the `metric`
 package's GORM model — `server` maps between them by hand, so a new field needs both.
 
 ## The restriction goes in the SCHEMA, not the prompt

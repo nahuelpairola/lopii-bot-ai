@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -68,6 +69,80 @@ const maxQueryIterations = 2
 
 var ErrQueryMaxIterations = errors.New("orchestrator: query loop exceeded max iterations")
 
+// queryChain es el modelo de consultas seguido de sus suplentes. Las DOS llamadas de
+// AnswerQuery la usan —las rondas y la narración forzada—: hasta el 2026-08-13 las dos
+// iban directo contra queryModel y el primer 429 mataba el turno.
+//
+// Ese día quedó en las trazas el caso que lo justifica: un turno cuyo agente FUE
+// rescatado (20b 429 → 120b 429 → llama-3.3-70b 200) murió un paso después, en la
+// query, por no tener lo mismo que lo acababa de salvar.
+func (o *Orchestrator) queryChain() []string {
+	return append([]string{o.queryModel}, o.queryFallbacks...)
+}
+
+// narrationChain es el modelo de redacción seguido de los suplentes de query, sin
+// repetir ninguno: reintentar el mismo modelo que acaba de rebotar por cupo no
+// compra nada.
+//
+// narrationModel vacío devuelve queryChain() tal cual, así que un entorno que no
+// declare el campo cae en el MODELO de query — pero el techo de completion de la
+// narración sigue siendo 400, no los 1024 de antes: eso no depende de la cadena.
+func (o *Orchestrator) narrationChain() []string {
+	if o.narrationModel == "" {
+		return o.queryChain()
+	}
+	chain := []string{o.narrationModel}
+	for _, m := range o.queryChain() {
+		if m != o.narrationModel {
+			chain = append(chain, m)
+		}
+	}
+	return chain
+}
+
+// describeCall rinde una llamada a tool como texto PLANO, para que el dato que
+// produjo viaje identificado hasta la narración forzada.
+//
+// El formato NO es negociable y la restricción es una sola: no puede parecerse a
+// una llamada a función. La primera versión concatenaba el JSON crudo de los
+// argumentos —`sum_movements {"currency":"ARS",...}`— y costó un 400 en producción
+// el 2026-08-13: el modelo lo IMITÓ y emitió una tool call, que con
+// tool_choice:"none" Groq rechaza. El failed_generation lo mostró textual:
+//
+//	{"name": "repo_browser.run_code", "arguments": {"tool": "sum_movements", ...}}
+//
+// Es el mismo mecanismo que documenta TestAnswerQuery_FinalNarration_HistoryHasNoToolTrace
+// —el modelo imita lo que ve— pero por otra puerta: ese test cuida el HISTORIAL de
+// mensajes, y esto entra por el TEXTO. Sin llaves, sin comillas y sin paréntesis, no
+// hay nada que imitar.
+//
+// Las claves van ordenadas para que dos resultados de la misma consulta se lean
+// comparables, y los nulos se omiten: el schema obliga al modelo a mandar los
+// opcionales en null, y "category=null" es ruido que encima invita a razonar sobre
+// un filtro que nadie puso.
+func describeCall(name, args string) string {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(args), &m); err != nil || len(m) == 0 {
+		return name
+	}
+	keys := make([]string, 0, len(m))
+	for k, v := range m {
+		if v == nil || v == "" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return name
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, m[k]))
+	}
+	return name + " con " + strings.Join(parts, ", ")
+}
+
 // AnswerQuery runs the read-only agent loop: it sends the tools with
 // tool_choice:"auto", executes every tool call the model emits in a round
 // (via the caller's execute closure, scoped to the user), feeds each result
@@ -110,15 +185,18 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	var toolResults []string
 
 	for i := 0; i < maxQueryIterations; i++ {
-		// Force a tool call on the first round: weak models (8b-instant)
-		// sometimes deflect ("no puedo darte una respuesta exacta") without
-		// ever calling a tool. "required" guarantees the loop gathers real
+		// Force a tool call on the first round: los modelos flojos a veces
+		// esquivan ("no puedo darte una respuesta exacta") sin llamar ninguna
+		// tool. Lo midió llama-3.1-8b-instant, que Groq da de baja el
+		// 2026-08-16 y este repo ya no usa en ninguna config; la regla queda
+		// porque aplica a cualquier suplente barato que entre por la cadena.
+		// "required" guarantees the loop gathers real
 		// data before it is allowed to narrate; later rounds go back to "auto".
 		choice := "auto"
 		if i == 0 {
 			choice = "required"
 		}
-		assistant, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, messages, toolDefs, choice, maxQueryCompletionTokens)
+		assistant, err := o.roundWithFallback(ctx, callTypeQuery, o.queryChain(), messages, toolDefs, choice, maxQueryCompletionTokens)
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: answer query: %w", err)
 		}
@@ -136,7 +214,21 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 				ToolCallID: call.ID,
 				Content:    result,
 			})
-			toolResults = append(toolResults, result)
+			// El resultado viaja CON su llamada, no suelto. En el camino normal la
+			// asociación la da el ToolCallID del mensaje de arriba; acá no hay nada
+			// que la sostenga, y toolResults es lo único que ve la narración forzada.
+			//
+			// El 2026-08-13, en producción, sin esto: el usuario preguntó por tres
+			// cosas, el modelo alcanzó a consultar dos, y la puerta 2 recibió
+			// "total: 9990.00 ARS" y "total: 8122.73 ARS" — dos números anónimos y
+			// una pregunta que nombraba tres. Contestó con el total de HBO puesto
+			// bajo la etiqueta del lote. No era alucinación: con esa entrada,
+			// acertar la atribución es imposible.
+			//
+			// El formato es texto plano y NO puede parecerse a una llamada a
+			// función. Ver describeCall: mandar los argumentos como JSON crudo
+			// costó un 400 en producción el 2026-08-13.
+			toolResults = append(toolResults, describeCall(call.Function.Name, call.Function.Arguments)+" → "+result)
 		}
 	}
 
@@ -157,7 +249,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		{Role: "user", Content: userText},
 		{Role: "user", Content: "Datos obtenidos de las herramientas:\n" + strings.Join(toolResults, "\n") + "\n\nRedactá la respuesta final para el usuario con estos datos."},
 	}
-	final, err := o.client.chatCompletionLoop(ctx, callTypeQuery, o.queryModel, finalMessages, nil, "none", maxQueryCompletionTokens)
+	final, err := o.roundWithFallback(ctx, callTypeQuery, o.narrationChain(), finalMessages, nil, "none", maxNarrationCompletionTokens)
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: answer query (final): %w", err)
 	}

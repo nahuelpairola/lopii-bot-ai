@@ -30,7 +30,25 @@ type Config struct {
 	//
 	// Vacío = comportamiento de antes: el 429 encola y el usuario espera.
 	AgentFallbackModels []string
-	TimeoutSeconds      int
+	// QueryFallbackModels es lo mismo para el loop de consultas, que hasta el
+	// 2026-08-13 no tenía ninguna: el primer 429 mataba el turno. Va aparte de la
+	// del agente y no reusa esa lista porque el primario de query (120b) es
+	// justamente el primer suplente del agente — reusarla haría que el primer
+	// reintento cayera en el modelo que acaba de rebotar.
+	QueryFallbackModels []string
+	// NarrationModel es el modelo de la NARRACIÓN FORZADA de una consulta: la
+	// última llamada, con tool_choice:"none", donde el modelo ya tiene los datos y
+	// sólo tiene que redactar.
+	//
+	// Va aparte de QueryModel porque redactar no es razonar. Medido el 2026-08-13:
+	// los modelos razonadores gastan la completion pensando y, cuando ese gasto
+	// llega al techo, la respuesta vuelve VACÍA y el turno muere con los datos ya
+	// pagos. Un modelo sin razonamiento no puede fallar así: narra en 35-61 tokens
+	// contra los 174-1.024 de un razonador.
+	//
+	// Vacío = se usa QueryModel, o sea el comportamiento anterior.
+	NarrationModel string
+	TimeoutSeconds int
 	Recorder            LLMRecorder // nil-safe
 }
 
@@ -46,6 +64,8 @@ type Orchestrator struct {
 	agentModel      string
 	classifierModel string
 	agentFallbacks  []string
+	queryFallbacks  []string
+	narrationModel  string
 }
 
 func New(cfg Config) *Orchestrator {
@@ -57,5 +77,7 @@ func New(cfg Config) *Orchestrator {
 		agentModel:      cfg.AgentModel,
 		classifierModel: cfg.ClassifierModel,
 		agentFallbacks:  cfg.AgentFallbackModels,
+		queryFallbacks:  cfg.QueryFallbackModels,
+		narrationModel:  cfg.NarrationModel,
 	}
 }

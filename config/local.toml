@@ -19,7 +19,11 @@ token=""
 [groq]
 apiKey = ""
 baseUrl = "https://api.groq.com/openai/v1"
-createModel = "openai/gpt-oss-20b"
+# createModel NO puede ser el mismo que agentModel: el agente parkea en un wizard y el
+# wizard clasifica DENTRO del mismo turno, así que compartir modelo hace que la segunda
+# llamada rebote contra el cupo que reservó la primera. Lo defiende
+# TestEveryConfigFile_HasNoSameTurnModelCollision.
+createModel = "openai/gpt-oss-120b"
 updateModel = "openai/gpt-oss-20b"
 queryModel = "openai/gpt-oss-120b"
 agentModel = "openai/gpt-oss-20b"
@@ -29,6 +33,8 @@ agentModel = "openai/gpt-oss-20b"
 # uno no dice nada del otro. Van explícitos y no por default para que la prueba
 # del fallback no esté probando, de paso, el parseo de viper.
 agentFallbackModels = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]
+queryFallbackModels = ["llama-3.3-70b-versatile", "openai/gpt-oss-20b"]
+narrationModel = "llama-3.3-70b-versatile"
 # El clasificador va en OTRO modelo a proposito: el techo de TPM de Groq es por
 # modelo, y el loop ya entra al suyo una vez por minuto y medio.
 classifierModel = "llama-3.3-70b-versatile"
