@@ -131,8 +131,11 @@ func TestQueryEval(t *testing.T) {
 		queryModel = "openai/gpt-oss-120b"
 	}
 	t.Logf("queryModel = %s", queryModel)
+	// El eval tiene que reflejar la config de producción (server.go/config.go) o no
+	// gatea nada: sin NarrationModel, la narración forzada cae al QueryModel y nunca
+	// se ejerce el modelo que esta spec existe para probar.
 	orch := orchestrator.New(orchestrator.Config{
-		APIKey: key, BaseURL: baseURL, QueryModel: queryModel, TimeoutSeconds: 30,
+		APIKey: key, BaseURL: baseURL, QueryModel: queryModel, NarrationModel: "llama-3.3-70b-versatile", TimeoutSeconds: 30,
 		Recorder: evalRecorder{t: t},
 	})
 	c := &controller{accounts: accRepo, movements: movRepo, subcategories: cache, orchestrator: orch}
