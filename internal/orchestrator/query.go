@@ -248,7 +248,7 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 		{Role: "user", Content: userText},
 		{Role: "user", Content: "Datos obtenidos de las herramientas:\n" + strings.Join(toolResults, "\n") + "\n\nRedactá la respuesta final para el usuario con estos datos."},
 	}
-	final, err := o.roundWithFallback(ctx, callTypeQuery, o.narrationChain(), finalMessages, nil, "none", maxQueryCompletionTokens)
+	final, err := o.roundWithFallback(ctx, callTypeQuery, o.narrationChain(), finalMessages, nil, "none", maxNarrationCompletionTokens)
 	if err != nil {
 		return "", fmt.Errorf("orchestrator: answer query (final): %w", err)
 	}

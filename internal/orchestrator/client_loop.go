@@ -67,6 +67,16 @@ type loopRequest struct {
 // narración normal sale de una ronda y no de la llamada final forzada.
 const maxQueryCompletionTokens = 1024
 
+// maxNarrationCompletionTokens capea la NARRACIÓN FORZADA, que es más barata que una
+// ronda: el modelo ya tiene los datos y sólo redacta.
+//
+// Groq reserva prompt + max_completion_tokens contra el TPM aunque la respuesta no los
+// use, así que un cap grande de más es cupo que se le saca a la consulta siguiente.
+// Medido el 2026-08-13 contra Groq real, narrando la misma respuesta: 35-61 tokens en
+// llama-3.3-70b (el modelo de narración por default) y 174-376 en los razonadores.
+// 400 deja ~6 veces de margen sobre el caso medido.
+const maxNarrationCompletionTokens = 400
+
 // maxAgentCompletionTokens is Run's own cap. Higher than the query loop's
 // because of the turn cut: one assistant message may carry every tool call of a
 // round plus the final narration.

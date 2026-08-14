@@ -589,3 +589,48 @@ func TestNarrationChain_DoesNotRepeatAModel(t *testing.T) {
 }
 
 var _ = time.Second
+
+// El cap de la narración es propio y más chico que el de las rondas. No es cosmético:
+// Groq reserva prompt + max_completion_tokens contra el TPM AUNQUE no se usen, así que
+// cada token de cap que no se necesita es cupo que se le saca a la consulta siguiente.
+// Medido el 2026-08-13: narrar cuesta 35-61 tokens de completion en un modelo que no
+// razona, así que 400 deja ~6 veces de margen.
+func TestAnswerQuery_ForcedNarrationSendsItsOwnCompletionCap(t *testing.T) {
+	var caps []int
+	call := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		var req loopRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		caps = append(caps, req.MaxCompletionTokens)
+		w.Header().Set("Content-Type", "application/json")
+		if call <= maxQueryIterations {
+			w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{}"}}
+			]}}]}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	o := New(Config{APIKey: "k", BaseURL: server.URL, QueryModel: "q", NarrationModel: "n", TimeoutSeconds: 5})
+	if _, err := o.AnswerQuery(context.Background(), "s", "u", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}},
+		func(string, json.RawMessage) (string, error) { return "total: 1 ARS", nil }); err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+
+	for i := 0; i < maxQueryIterations; i++ {
+		if caps[i] != maxQueryCompletionTokens {
+			t.Errorf("ronda %d mandó cap %d, want %d", i, caps[i], maxQueryCompletionTokens)
+		}
+	}
+	if got := caps[len(caps)-1]; got != maxNarrationCompletionTokens {
+		t.Errorf("la narración mandó cap %d, want %d", got, maxNarrationCompletionTokens)
+	}
+	if maxNarrationCompletionTokens >= maxQueryCompletionTokens {
+		t.Errorf("el cap de narración (%d) tiene que ser MENOR que el de las rondas (%d): si no, no ahorra TPM reservado",
+			maxNarrationCompletionTokens, maxQueryCompletionTokens)
+	}
+}
