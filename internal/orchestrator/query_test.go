@@ -635,3 +635,42 @@ func TestAnswerQuery_ForcedNarrationSendsItsOwnCompletionCap(t *testing.T) {
 			maxNarrationCompletionTokens, maxQueryCompletionTokens)
 	}
 }
+
+// El loop ejecuta TODAS las tool calls de una ronda, no la primera.
+//
+// Es el supuesto sobre el que descansa la instrucción de agrupar del prompt de
+// consultas, y hasta el 2026-08-14 ningún fixture mandaba dos juntas: el
+// comportamiento estaba sin probar. Si alguien "simplifica" el for a un solo call, las
+// consultas multi-entidad vuelven a contestar una sola cosa y nada más se entera.
+func TestAnswerQuery_RunsEveryToolCallInOneRound(t *testing.T) {
+	var ejecutadas []string
+	call := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call++
+		w.Header().Set("Content-Type", "application/json")
+		if call == 1 {
+			w.Write([]byte(`{"choices":[{"message":{"content":null,"tool_calls":[
+				{"id":"a","type":"function","function":{"name":"sum_movements","arguments":"{\"search\":\"Peaje\"}"}},
+				{"id":"b","type":"function","function":{"name":"sum_movements","arguments":"{\"search\":\"Gas\"}"}},
+				{"id":"c","type":"function","function":{"name":"sum_movements","arguments":"{\"search\":\"Cuota\"}"}}
+			]}}]}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"listo","tool_calls":null}}]}`))
+	}))
+	defer server.Close()
+
+	o := newQueryOrchestrator(server.URL)
+	if _, err := o.AnswerQuery(context.Background(), "s", "u", nil,
+		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}},
+		func(name string, args json.RawMessage) (string, error) {
+			ejecutadas = append(ejecutadas, string(args))
+			return "total: 1 ARS", nil
+		}); err != nil {
+		t.Fatalf("AnswerQuery: %v", err)
+	}
+
+	if len(ejecutadas) != 3 {
+		t.Fatalf("la ronda traía 3 tool calls y se ejecutaron %d: %v", len(ejecutadas), ejecutadas)
+	}
+}
