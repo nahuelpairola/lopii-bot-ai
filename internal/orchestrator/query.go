@@ -196,18 +196,22 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	var toolResults []string
 
 	for i := 0; i < maxQueryIterations; i++ {
-		// Force a tool call on the first round: los modelos flojos a veces
-		// esquivan ("no puedo darte una respuesta exacta") sin llamar ninguna
-		// tool. Lo midió llama-3.1-8b-instant, que Groq da de baja el
-		// 2026-08-16 y este repo ya no usa en ninguna config; la regla queda
-		// porque aplica a cualquier suplente barato que entre por la cadena.
-		// "required" guarantees the loop gathers real
-		// data before it is allowed to narrate; later rounds go back to "auto".
-		choice := "auto"
+		// La ronda 0 va forzada a llamar una herramienta Y con un techo de completion
+		// más chico: las dos cosas por la misma razón, que ahí no puede haber prosa.
+		//
+		// "required" porque los modelos flojos a veces esquivan ("no puedo darte una
+		// respuesta exacta") sin llamar ninguna tool — lo midió llama-3.1-8b-instant,
+		// que Groq da de baja el 2026-08-16 y este repo ya no usa, pero la regla aplica
+		// a cualquier suplente barato que entre por la cadena. Garantiza que el loop
+		// junte datos reales antes de poder narrar.
+		//
+		// El techo chico se sigue de lo mismo: una ronda que no puede narrar no tiene
+		// respuesta que truncar. Las rondas siguientes vuelven a "auto" y a su techo.
+		choice, capTokens := "auto", maxQueryCompletionTokens
 		if i == 0 {
-			choice = "required"
+			choice, capTokens = "required", maxFirstRoundCompletionTokens
 		}
-		assistant, err := o.roundWithFallback(ctx, callTypeQuery, o.queryChain(), messages, toolDefs, choice, maxQueryCompletionTokens)
+		assistant, err := o.roundWithFallback(ctx, callTypeQuery, o.queryChain(), messages, toolDefs, choice, capTokens)
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: answer query: %w", err)
 		}

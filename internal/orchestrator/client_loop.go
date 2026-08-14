@@ -61,10 +61,23 @@ type loopRequest struct {
 // La cuenta se hace contra prompt_tokens REAL de la tabla llm_calls, por call_type,
 // no contra una estimación.
 
+// maxFirstRoundCompletionTokens capea SÓLO la primera ronda del loop de query, que
+// corre con tool_choice:"required" y por lo tanto NO PUEDE narrar: está obligada a
+// devolver una llamada a herramienta. Ahí no hay prosa que truncar, que es exactamente
+// lo que impedía bajar maxQueryCompletionTokens.
+//
+// Medido sobre llm_calls (30 rondas de herramientas con HTTP 200): el máximo de
+// completion fue 417 y ninguna pasó de 512. 640 deja 223 de margen sobre el peor caso
+// observado, que además incluye los tokens de razonamiento de los gpt-oss.
+const maxFirstRoundCompletionTokens = 640
+
 // maxQueryCompletionTokens caps narration length in AnswerQuery. Se queda en 1.024:
 // la que aprieta el TPM del loop de query es la cantidad de llamadas
 // (maxQueryIterations), no este cap — bajarlo trunca respuestas reales, porque la
 // narración normal sale de una ronda y no de la llamada final forzada.
+//
+// Aplica a las rondas 1+ y a la narración de la puerta 1. La ronda 0 va por
+// maxFirstRoundCompletionTokens: es la única que no puede narrar.
 const maxQueryCompletionTokens = 1024
 
 // maxNarrationCompletionTokens capea la NARRACIÓN FORZADA, que es más barata que una

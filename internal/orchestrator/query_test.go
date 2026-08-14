@@ -628,7 +628,13 @@ func TestAnswerQuery_ForcedNarrationSendsItsOwnCompletionCap(t *testing.T) {
 		t.Fatalf("AnswerQuery: %v", err)
 	}
 
-	for i := 0; i < maxQueryIterations; i++ {
+	// La ronda 0 corre con tool_choice "required": está obligada a devolver una llamada
+	// a herramienta y NO PUEDE narrar, así que no hay prosa que truncar y su techo es
+	// más bajo. Las rondas 1+ sí pueden narrar y conservan el suyo.
+	if got := caps[0]; got != maxFirstRoundCompletionTokens {
+		t.Errorf("la ronda 0 mandó cap %d, want %d", got, maxFirstRoundCompletionTokens)
+	}
+	for i := 1; i < maxQueryIterations; i++ {
 		if caps[i] != maxQueryCompletionTokens {
 			t.Errorf("ronda %d mandó cap %d, want %d", i, caps[i], maxQueryCompletionTokens)
 		}
@@ -639,6 +645,10 @@ func TestAnswerQuery_ForcedNarrationSendsItsOwnCompletionCap(t *testing.T) {
 	if maxNarrationCompletionTokens >= maxQueryCompletionTokens {
 		t.Errorf("el cap de narración (%d) tiene que ser MENOR que el de las rondas (%d): si no, no ahorra TPM reservado",
 			maxNarrationCompletionTokens, maxQueryCompletionTokens)
+	}
+	if maxFirstRoundCompletionTokens >= maxQueryCompletionTokens {
+		t.Errorf("el cap de la ronda 0 (%d) tiene que ser MENOR que el de las rondas que narran (%d): si no, no ahorra nada",
+			maxFirstRoundCompletionTokens, maxQueryCompletionTokens)
 	}
 }
 
