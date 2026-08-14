@@ -51,21 +51,32 @@ type QueryTurn struct {
 }
 
 // maxQueryIterations caps how many tool rounds the loop runs before giving up.
-// Una consulta sana es 1 ronda de tools + 1 narración.
+// Una consulta sana es 1 ronda de herramientas + 1 narración, y sale por la puerta 1.
 //
-// El número NO es libre: es lo que decide cuántas llamadas a Groq puede hacer una
-// consulta, y cada llamada reserva contra el TPM (ver el modelo de costo en
-// client_loop.go). Medido el 2026-08-10 en producción, con prompts de 1.173 a 1.370
-// y maxQueryCompletionTokens en 1.024 → ~2.300 reservados por llamada, TPM 8.000:
+// Estuvo en 2 desde el 2026-08-10 y subió a 3 el 2026-08-14. La aritmética que
+// justificaba el 2 —"cap 3 son 4 llamadas contra un TPM de 8.000, así que la última
+// 429ea siempre"— venció en tres puntos, los tres medidos:
 //
-//	cap 2 → 3 llamadas = ~6.850. Entra, y deja lugar para el router del mensaje siguiente (~670).
-//	cap 3 → 4 llamadas = ~9.200 > 8.000: la última llamada 429ea SIEMPRE, con el bucket lleno.
+//   - La narración forzada SE FUE del bucket: usa narrationChain() (llama-3.3-70b) con
+//     techo 400 y un prompt limpio, 788 tokens medidos. Con cap 3 el bucket de
+//     gpt-oss-120b ve 3 llamadas, no 4.
+//   - El router que reservaba ~670 para el mensaje siguiente lo borró la etapa 5.
+//   - Un 429 dejó de ser fatal: roundWithFallback camina la cadena. El 2026-08-14, 20
+//     de 52 llamadas rebotaron y no se perdió ninguna consulta.
 //
-// Se bajó de 3 a 2 tras el incidente del 2026-08-10, donde cuatro consultas seguidas
-// murieron con 429 sin que hubiera otro tráfico en cuatro horas. No le saca ninguna
-// ronda a ninguna consulta que haya funcionado: en 14 días, ninguna consulta exitosa
-// pasó de 3 llamadas. La 4ª solo existió para fallar.
-const maxQueryIterations = 2
+// Presupuesto con cap 3 contra el bucket de 8.000, caso promedio (prompt de primera
+// ronda 1.209 y +320 por ronda, medidos sobre llm_calls):
+//
+//	(1.209+640) + (1.529+1.024) + (1.849+1.024) = 7.275 → entra con ~9% de aire.
+//
+// En p95 (prompt 2.409) se pasa, y se acepta: la tercera ronda es rara —el prompt pide
+// agrupar las herramientas en una sola ronda— y pasarse cuesta un salto de modelo, no
+// la respuesta.
+//
+// El 21% de los turnos agotaba el cap de 2 (11 de 53 medidos), y en esa puerta vive el
+// bug que este cambio acompaña: la narración forzada afirmaba ausencia sobre lo que
+// nunca se consultó.
+const maxQueryIterations = 3
 
 var ErrQueryMaxIterations = errors.New("orchestrator: query loop exceeded max iterations")
 

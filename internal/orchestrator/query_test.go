@@ -210,16 +210,22 @@ func TestAnswerQuery_FinalNarration_CarriesToolResults(t *testing.T) {
 	}
 }
 
-// Regresión del 2026-08-10: cuatro consultas seguidas murieron con 429 (TPM 8000,
-// gpt-oss-120b) con el bucket LLENO — ningún otro tráfico en 4 horas. Groq cobra
-// prompt + max_completion_tokens reservado por adelantado, así que cada llamada de
-// query cuesta ~2.300 aunque narre 176 tokens. Con el cap de iteraciones en 3, una
-// consulta podía hacer 4 llamadas: ~9.200 reservados, más que el techo entero.
+// El techo de llamadas a Groq de UNA consulta: maxQueryIterations rondas + 1 narración
+// forzada. Este test falla si alguien sube el cap sin rehacer la cuenta de tokens, que
+// es justo lo que pasó el 2026-08-10 —cuatro consultas seguidas muertas con 429 y el
+// bucket lleno, sin otro tráfico en cuatro horas— y de nuevo, a propósito, el
+// 2026-08-14 al subir el cap de 2 a 3.
 //
-// El techo real es este número de llamadas, no el cap de tokens: en 14 días de
-// consultas exitosas, NINGUNA pasó de 3 llamadas. La 4ª solo existió para fallar.
-// Este test falla si alguien vuelve a subir maxQueryIterations sin rehacer la cuenta.
-func TestAnswerQuery_NeverExceedsThreeGroqCalls(t *testing.T) {
+// Groq reserva prompt + max_completion_tokens por adelantado, así que el costo se paga
+// aunque la respuesta sea corta. La cuenta vigente está entera en el comentario de
+// maxQueryIterations; el resumen es que las RONDAS van al bucket del modelo de query y
+// la narración forzada va al de narrationModel, o sea a otro bucket. Por eso 4 llamadas
+// hoy entran donde 4 no entraban en agosto: no son 4 contra el mismo techo.
+//
+// OJO con lo que este fake NO muestra: newQueryOrchestrator no setea NarrationModel, y
+// sin él narrationChain() cae al modelo de query. Acá las 4 llamadas van al mismo lado;
+// en producción (dev.toml y los defaults de config) la última va a llama-3.3-70b.
+func TestAnswerQuery_NeverExceedsTheRoundBudget(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -236,8 +242,8 @@ func TestAnswerQuery_NeverExceedsThreeGroqCalls(t *testing.T) {
 	o.AnswerQuery(context.Background(), "s", "u", nil,
 		[]AgentTool{{Name: "sum_movements", Parameters: json.RawMessage(`{}`)}}, execute)
 
-	if calls > 3 {
-		t.Errorf("llamadas a Groq = %d, want <= 3: a ~2.300 reservados cada una, 4 no entran en el TPM de 8.000", calls)
+	if want := maxQueryIterations + 1; calls > want {
+		t.Errorf("llamadas a Groq = %d, want <= %d (%d rondas + la narración forzada)", calls, want, maxQueryIterations)
 	}
 }
 
