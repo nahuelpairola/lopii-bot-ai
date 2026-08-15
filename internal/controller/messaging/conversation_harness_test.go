@@ -528,7 +528,7 @@ func (h *convHarness) insertCoffeeThenCorrection(t *testing.T) {
 	// Sin esto los tests de abajo serían vacíos: arman el callback a mano, así
 	// que pasarían aunque el gate no hubiera marcado nada. Lo que se exige acá
 	// es que el RECIBO haya salido con los botones puestos.
-	if !h.lastMarkupHas(nearDupPrefix) {
+	if !h.lastMarkupHas(flow.NearDupPrefix) {
 		t.Fatalf("el recibo salió sin los botones del gate. Markups: %v", h.rt.markups)
 	}
 }
@@ -550,7 +550,7 @@ func (h *convHarness) nearDupButton(t *testing.T, action string) string {
 	if len(movs) != 2 {
 		t.Fatalf("esperaba dos filas antes de tocar el botón, hay %d", len(movs))
 	}
-	return nearDupPrefix + action + ":" +
+	return flow.NearDupPrefix + action + ":" +
 		strconv.FormatUint(uint64(movs[1].ID), 10) + ":" +
 		strconv.FormatUint(uint64(movs[0].ID), 10)
 }
@@ -559,7 +559,7 @@ func TestNearDuplicate_SumaloAEse_MergesAndDeletes(t *testing.T) {
 	h := newConversationHarness(t)
 	h.insertCoffeeThenCorrection(t)
 
-	h.TapButton(h.nearDupButton(t, nearDupMerge))
+	h.TapButton(h.nearDupButton(t, flow.NearDupMerge))
 
 	movs := h.Movements()
 	if len(movs) != 1 {
@@ -574,7 +574,7 @@ func TestNearDuplicate_Reemplazalo_KeepsOnlyTheNewAmount(t *testing.T) {
 	h := newConversationHarness(t)
 	h.insertCoffeeThenCorrection(t)
 
-	h.TapButton(h.nearDupButton(t, nearDupReplace))
+	h.TapButton(h.nearDupButton(t, flow.NearDupReplace))
 
 	movs := h.Movements()
 	if len(movs) != 1 {
@@ -612,7 +612,7 @@ func TestNearDuplicate_VaAparte_ChangesNothing(t *testing.T) {
 	h := newConversationHarness(t)
 	h.insertCoffeeThenCorrection(t)
 
-	h.TapButton(h.nearDupButton(t, nearDupSeparte))
+	h.TapButton(h.nearDupButton(t, flow.NearDupSeparte))
 
 	if got := len(h.Movements()); got != 2 {
 		t.Errorf("movimientos = %d, want 2", got)

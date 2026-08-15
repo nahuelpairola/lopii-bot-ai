@@ -37,11 +37,6 @@ const (
 	// candidato de "eran 1500".
 	recencyLimit  = 30
 	recencyWindow = 90 * 24 * time.Hour
-	// justCreatedWindow: dentro de esta ventana, un mensaje SIN referente
-	// textual se resuelve al último movimiento cargado en vez de abrir un
-	// picker. Generosa a propósito — solo se consulta cuando no hay ninguna
-	// otra señal, y el confirm sigue pidiendo el OK del usuario.
-	justCreatedWindow = 10 * time.Minute
 )
 
 // transactionGroup is a set of movements sharing one transaction_id (or
@@ -205,7 +200,7 @@ func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo 
 	// monto nuevo), así que la recencia de carga es la mejor señal disponible, y
 	// mucho mejor que hacerlo elegir entre cinco movimientos cualesquiera.
 	// El usuario confirma igual antes de que se aplique nada.
-	if len(groups) > 0 && time.Since(groups[0].Movements[0].CreatedAt) <= justCreatedWindow {
+	if len(groups) > 0 && time.Since(groups[0].Movements[0].CreatedAt) <= flow.JustCreatedWindow {
 		return groups[:1], nil
 	}
 

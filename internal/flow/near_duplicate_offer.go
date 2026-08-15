@@ -1,4 +1,4 @@
-package messaging
+package flow
 
 import (
 	"context"
@@ -18,12 +18,13 @@ import (
 // resultado por default —ignorarlo— es exactamente el de hoy, dos filas y
 // totales correctos. Esa propiedad es la que lo hace shippeable.
 const (
-	// nearDupPrefix ·acción· id insertado · id previo. callback_data son 64
-	// bytes: van ids, nunca etiquetas.
-	nearDupPrefix  = "nd:"
-	nearDupSeparte = "sep"
-	nearDupMerge   = "mrg"
-	nearDupReplace = "rpl"
+	// NearDupPrefix ·acción· id insertado · id previo. callback_data son 64
+	// bytes: van ids, nunca etiquetas. El prefijo y las acciones están
+	// exportados porque el harness del borde arma los callbacks a mano.
+	NearDupPrefix  = "nd:"
+	NearDupSeparte = "sep"
+	NearDupMerge   = "mrg"
+	NearDupReplace = "rpl"
 
 	// nearDupRecentLimit acota cuántos previos se traen para comparar. La
 	// ventana ya es de 10 minutos; esto es sólo un techo de seguridad.
@@ -33,21 +34,21 @@ const (
 // nearDuplicateButtons arma las tres opciones del recibo.
 func nearDuplicateButtons(insertedID, priorID uint) []conversation.Button {
 	id := func(action string) string {
-		return fmt.Sprintf("%s%s:%d:%d", nearDupPrefix, action, insertedID, priorID)
+		return fmt.Sprintf("%s%s:%d:%d", NearDupPrefix, action, insertedID, priorID)
 	}
 	return []conversation.Button{
-		{Label: "Va aparte", Data: id(nearDupSeparte)},
-		{Label: "Sumalo a ese", Data: id(nearDupMerge)},
-		{Label: "Reemplazalo", Data: id(nearDupReplace)},
+		{Label: "Va aparte", Data: id(NearDupSeparte)},
+		{Label: "Sumalo a ese", Data: id(NearDupMerge)},
+		{Label: "Reemplazalo", Data: id(NearDupReplace)},
 	}
 }
 
-// maybeNearDuplicate corre el gate sobre lo recién insertado y, si marca,
+// MaybeNearDuplicate corre el gate sobre lo recién insertado y, si marca,
 // devuelve los botones para colgar del recibo.
 //
 // Best-effort: si la búsqueda de previos falla, no marca. Un gate que rompe un
 // CREATE que ya se escribió sería peor que el duplicado que viene a evitar.
-func (c *controller) maybeNearDuplicate(userID uint64, inserted []movement.Movement) []conversation.Button {
+func MaybeNearDuplicate(r runner, userID uint64, inserted []movement.Movement) []conversation.Button {
 	if len(inserted) == 0 {
 		return nil
 	}
@@ -56,8 +57,8 @@ func (c *controller) maybeNearDuplicate(userID uint64, inserted []movement.Movem
 		sameTurn = append(sameTurn, m.ID)
 	}
 
-	priors, err := c.movements.FindRecentlyCreatedForUser(
-		userID, nearDuplicateWindowStart(time.Now()), nearDupRecentLimit)
+	priors, err := r.FindRecentlyCreatedForUser(
+		userID, NearDuplicateWindowStart(time.Now()), nearDupRecentLimit)
 	if err != nil {
 		return nil
 	}
@@ -65,7 +66,7 @@ func (c *controller) maybeNearDuplicate(userID uint64, inserted []movement.Movem
 	// Como mucho UNA pregunta por mensaje, sin importar cuántas filas entraron:
 	// el presupuesto de interrupciones es de una por mensaje.
 	for _, m := range inserted {
-		if prior := findNearDuplicate(m, sameTurn, priors); prior != nil {
+		if prior := FindNearDuplicate(m, sameTurn, priors); prior != nil {
 			slog.Info("near duplicate flagged", "user_id", userID, "inserted", m.ID, "prior", prior.ID)
 			return nearDuplicateButtons(m.ID, prior.ID)
 		}
@@ -73,14 +74,14 @@ func (c *controller) maybeNearDuplicate(userID uint64, inserted []movement.Movem
 	return nil
 }
 
-// handleNearDuplicateChoice atiende el tap. Va ANTES del engine, como el de los
+// HandleNearDuplicateChoice atiende el tap. Va ANTES del engine, como el de los
 // tips: un flow abierto no se puede comer este callback como si fuera una
-// opción suya.
-func (c *controller) handleNearDuplicateChoice(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, data string) bool {
-	if !strings.HasPrefix(data, nearDupPrefix) {
+// opción suya. Devuelve true si el callback era nuestro.
+func HandleNearDuplicateChoice(ctx context.Context, r runner, b *bot.Bot, chatID int64, userID uint64, data string) bool {
+	if !strings.HasPrefix(data, NearDupPrefix) {
 		return false
 	}
-	parts := strings.Split(strings.TrimPrefix(data, nearDupPrefix), ":")
+	parts := strings.Split(strings.TrimPrefix(data, NearDupPrefix), ":")
 	if len(parts) != 3 {
 		return true // es nuestro, pero está roto: consumirlo igual
 	}
@@ -91,22 +92,22 @@ func (c *controller) handleNearDuplicateChoice(ctx context.Context, b *bot.Bot, 
 		return true
 	}
 
-	if action == nearDupSeparte {
-		c.sendText(ctx, b, chatID, msgNearDupSeparate)
+	if action == NearDupSeparte {
+		r.SendText(ctx, b, chatID, MsgNearDupSeparate)
 		return true
 	}
 
-	if err := c.applyNearDuplicateChoice(userID, action, uint(insertedID), uint(priorID)); err != nil {
+	if err := ApplyNearDuplicateChoice(r, userID, action, uint(insertedID), uint(priorID)); err != nil {
 		slog.ErrorContext(ctx, "near duplicate choice failed",
 			"user_id", userID, "action", action, "inserted", insertedID, "prior", priorID, "err", err)
-		c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
+		r.SendText(ctx, b, chatID, MsgCouldNotSave("el cambio"))
 		return true
 	}
-	c.sendText(ctx, b, chatID, msgNearDupMerged)
+	r.SendText(ctx, b, chatID, MsgNearDupMerged)
 	return true
 }
 
-// applyNearDuplicateChoice es el camino de plata: fusiona o reemplaza el monto
+// ApplyNearDuplicateChoice es el camino de plata: fusiona o reemplaza el monto
 // del previo y borra el recién insertado.
 //
 // Se releen las dos filas de la base en vez de confiar en el callback: el tap
@@ -120,8 +121,8 @@ func (c *controller) handleNearDuplicateChoice(ctx context.Context, b *bot.Bot, 
 // a Normalize obligaría a traer el mapa de cuentas para re-derivar lo que el
 // candidato ya garantiza. El techo: si alguna vez se afloja la regla de mismo
 // tipo en near_duplicate.go, esto SÍ necesita el guard.
-func (c *controller) applyNearDuplicateChoice(userID uint64, action string, insertedID, priorID uint) error {
-	recent, err := c.movements.FindRecentlyCreatedForUser(userID, nearDuplicateWindowStart(time.Now()), nearDupRecentLimit)
+func ApplyNearDuplicateChoice(r runner, userID uint64, action string, insertedID, priorID uint) error {
+	recent, err := r.FindRecentlyCreatedForUser(userID, NearDuplicateWindowStart(time.Now()), nearDupRecentLimit)
 	if err != nil {
 		return fmt.Errorf("near duplicate: find recent: %w", err)
 	}
@@ -140,19 +141,19 @@ func (c *controller) applyNearDuplicateChoice(userID uint64, action string, inse
 
 	merged := *prior
 	switch action {
-	case nearDupMerge:
+	case NearDupMerge:
 		merged.Amount = prior.Amount.Add(inserted.Amount)
-	case nearDupReplace:
+	case NearDupReplace:
 		merged.Amount = inserted.Amount
 	default:
 		return fmt.Errorf("near duplicate: acción desconocida %q", action)
 	}
 	merged.ID = 0 // ReplaceMovements borra la vieja e inserta esta
 
-	if err := c.movements.ReplaceMovements([]uint{prior.ID}, []movement.Movement{merged}); err != nil {
+	if err := r.ReplaceMovements([]uint{prior.ID}, []movement.Movement{merged}); err != nil {
 		return fmt.Errorf("near duplicate: replace: %w", err)
 	}
-	if err := c.movements.SoftDeleteByIDs([]uint{inserted.ID}); err != nil {
+	if err := r.SoftDeleteByIDs([]uint{inserted.ID}); err != nil {
 		return fmt.Errorf("near duplicate: delete inserted: %w", err)
 	}
 	return nil

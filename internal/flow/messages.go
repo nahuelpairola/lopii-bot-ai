@@ -288,6 +288,9 @@ const (
 	MsgReminderHubExit   = "Listo 👌 Dejé todo como estaba."
 	MsgWeeklySummaryOn   = "📊 Listo, te mando el resumen todos los lunes."
 	MsgWeeklySummaryOff  = "📊 Ok, no te mando el resumen semanal."
+
+	MsgNearDupSeparate = "Perfecto, los dejo separados."
+	MsgNearDupMerged   = "Listo, quedó uno solo."
 )
 
 // MsgCouldNotSave nombra qué no quedó guardado, para que el usuario sepa que

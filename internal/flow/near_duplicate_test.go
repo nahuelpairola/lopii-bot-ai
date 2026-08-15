@@ -1,4 +1,4 @@
-package messaging
+package flow
 
 import (
 	"testing"
@@ -44,10 +44,10 @@ func TestFindNearDuplicate(t *testing.T) {
 		{"acentos: panadería vs panaderia",
 			ndMov(200, 1, 43, currency.ARS, "-500", "panaderia", now.Add(-time.Minute)), false},
 
-		{"justo en el borde de justCreatedWindow",
-			ndMov(201, 1, 43, currency.ARS, "-1070", "otra cosa", now.Add(-justCreatedWindow)), true},
+		{"justo en el borde de JustCreatedWindow",
+			ndMov(201, 1, 43, currency.ARS, "-1070", "otra cosa", now.Add(-JustCreatedWindow)), true},
 		{"un segundo pasado el borde",
-			ndMov(202, 1, 43, currency.ARS, "-1070", "otra cosa", now.Add(-justCreatedWindow-time.Second)), false},
+			ndMov(202, 1, 43, currency.ARS, "-1070", "otra cosa", now.Add(-JustCreatedWindow-time.Second)), false},
 		{"un previo del futuro no cuenta",
 			ndMov(203, 1, 43, currency.ARS, "-1070", "otra cosa", now.Add(time.Minute)), false},
 
@@ -63,9 +63,9 @@ func TestFindNearDuplicate(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := findNearDuplicate(base, nil, []movement.Movement{tc.prior})
+			got := FindNearDuplicate(base, nil, []movement.Movement{tc.prior})
 			if (got != nil) != tc.want {
-				t.Errorf("findNearDuplicate = %v, want flagged=%v", got, tc.want)
+				t.Errorf("FindNearDuplicate = %v, want flagged=%v", got, tc.want)
 			}
 		})
 	}
@@ -78,7 +78,7 @@ func TestFindNearDuplicate_FoldsAccents(t *testing.T) {
 	base := ndMov(300, 1, 43, currency.ARS, "-500", "compra en panadería", now)
 	prior := ndMov(301, 1, 43, currency.ARS, "-999", "panaderia del barrio", now.Add(-time.Minute))
 
-	if findNearDuplicate(base, nil, []movement.Movement{prior}) == nil {
+	if FindNearDuplicate(base, nil, []movement.Movement{prior}) == nil {
 		t.Error("panadería/panaderia tiene que marcar: el fold de acentos ya está resuelto")
 	}
 }
@@ -92,7 +92,7 @@ func TestFindNearDuplicate_TransferLegsAreNotDuplicates(t *testing.T) {
 	in := ndMov(401, 1, 43, currency.ARS, "5000", "pase a caja", now.Add(-time.Second))
 	out.TransactionID, in.TransactionID = &tx, &tx
 
-	if findNearDuplicate(out, nil, []movement.Movement{in}) != nil {
+	if FindNearDuplicate(out, nil, []movement.Movement{in}) != nil {
 		t.Error("las dos patas de un transfer no pueden marcarse entre sí")
 	}
 }
@@ -106,11 +106,11 @@ func TestFindNearDuplicate_SameTurnBatchDoesNotFlagItself(t *testing.T) {
 	first := ndMov(500, 1, 43, currency.ARS, "-1070", "café", now.Add(-time.Second))
 	second := ndMov(501, 1, 43, currency.ARS, "-1070", "café", now)
 
-	if got := findNearDuplicate(second, []uint{500, 501}, []movement.Movement{first}); got != nil {
+	if got := FindNearDuplicate(second, []uint{500, 501}, []movement.Movement{first}); got != nil {
 		t.Errorf("marcó %v: dos filas del MISMO mensaje no son un duplicado", got)
 	}
 	// Y sin la exclusión sí marcaría — o el test de arriba no probaría nada.
-	if findNearDuplicate(second, nil, []movement.Movement{first}) == nil {
+	if FindNearDuplicate(second, nil, []movement.Movement{first}) == nil {
 		t.Error("sin la exclusión del turno tendría que marcar; el test anterior es vacío")
 	}
 }
@@ -121,7 +121,7 @@ func TestFindNearDuplicate_IgnoresSoftDeleted(t *testing.T) {
 	prior := ndMov(601, 1, 43, currency.ARS, "-1070", "Café", now.Add(-time.Minute))
 	prior.DeletedAt = gorm.DeletedAt{Time: now, Valid: true}
 
-	if findNearDuplicate(base, nil, []movement.Movement{prior}) != nil {
+	if FindNearDuplicate(base, nil, []movement.Movement{prior}) != nil {
 		t.Error("un movimiento ya borrado no puede ser el duplicado")
 	}
 }
@@ -134,7 +134,7 @@ func TestFindNearDuplicate_PicksOneAndPrefersTheToken(t *testing.T) {
 	byAmount := ndMov(701, 1, 43, currency.ARS, "-1070", "kiosco", now.Add(-2*time.Minute))
 	byToken := ndMov(702, 1, 43, currency.ARS, "-9999", "Cafe", now.Add(-5*time.Minute))
 
-	got := findNearDuplicate(base, nil, []movement.Movement{byAmount, byToken})
+	got := FindNearDuplicate(base, nil, []movement.Movement{byAmount, byToken})
 	if got == nil || got.ID != 702 {
 		t.Errorf("eligió %v, want el match por token (702)", got)
 	}
@@ -146,7 +146,7 @@ func TestFindNearDuplicate_PrefersTheMostRecentOfTheSameKind(t *testing.T) {
 	older := ndMov(801, 1, 43, currency.ARS, "-1070", "kiosco", now.Add(-8*time.Minute))
 	newer := ndMov(802, 1, 43, currency.ARS, "-1070", "kiosco", now.Add(-1*time.Minute))
 
-	got := findNearDuplicate(base, nil, []movement.Movement{older, newer})
+	got := FindNearDuplicate(base, nil, []movement.Movement{older, newer})
 	if got == nil || got.ID != 802 {
 		t.Errorf("eligió %v, want el más reciente (802)", got)
 	}
@@ -176,14 +176,14 @@ func TestFindNearDuplicate_NeverTouchesATransferLeg(t *testing.T) {
 		Amount: decimal.NewFromInt(-500000), Description: &desc, Type: movement.Transfer,
 	}
 
-	if got := findNearDuplicate(pata2, nil, []movement.Movement{pata1}); got != nil {
+	if got := FindNearDuplicate(pata2, nil, []movement.Movement{pata1}); got != nil {
 		t.Errorf("marcó la pata #%d: fusionar una pata rompe los dos grupos", got.ID)
 	}
 	// Y en la otra dirección: un gasto suelto tampoco puede marcar a una pata.
 	gasto := pata2
 	gasto.TransactionID = nil
 	gasto.Type = movement.Expense
-	if got := findNearDuplicate(gasto, nil, []movement.Movement{pata1}); got != nil {
+	if got := FindNearDuplicate(gasto, nil, []movement.Movement{pata1}); got != nil {
 		t.Errorf("un gasto marcó la pata #%d como duplicado", got.ID)
 	}
 }
@@ -204,7 +204,7 @@ func TestFindNearDuplicate_ARefundIsNotADuplicateOfItsExpense(t *testing.T) {
 	reintegro := ndMov(501, 1, 43, currency.ARS, "5000", "Super, me lo devolvieron", now)
 	reintegro.Type = movement.Income
 
-	if got := findNearDuplicate(reintegro, nil, []movement.Movement{gasto}); got != nil {
+	if got := FindNearDuplicate(reintegro, nil, []movement.Movement{gasto}); got != nil {
 		t.Errorf("el reintegro marcó al gasto #%d: fusionarlos da una fila de monto 0", got.ID)
 	}
 	// Y en la otra dirección. Los timestamps se invierten a propósito: el gate
@@ -215,7 +215,7 @@ func TestFindNearDuplicate_ARefundIsNotADuplicateOfItsExpense(t *testing.T) {
 	gastoSegundo := ndMov(503, 1, 43, currency.ARS, "-5000", "Super", now)
 	gastoSegundo.Type = movement.Expense
 
-	if got := findNearDuplicate(gastoSegundo, nil, []movement.Movement{reintegroPrimero}); got != nil {
+	if got := FindNearDuplicate(gastoSegundo, nil, []movement.Movement{reintegroPrimero}); got != nil {
 		t.Errorf("el gasto marcó al reintegro #%d", got.ID)
 	}
 }

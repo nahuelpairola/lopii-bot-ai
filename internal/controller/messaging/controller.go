@@ -556,6 +556,10 @@ func (c *controller) SetWeeklySummary(userID uint64, enabled bool) error {
 	return c.reminders.SetWeeklySummary(userID, enabled)
 }
 
+func (c *controller) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error) {
+	return c.movements.FindRecentlyCreatedForUser(userID, since, limit)
+}
+
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
 	if b == nil {
 		return

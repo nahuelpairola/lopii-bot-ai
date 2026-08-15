@@ -2,6 +2,7 @@ package flow
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
@@ -41,6 +42,8 @@ type runner interface {
 	DeleteSubcategory(userID, id uint64) error
 	CountMovementsBySubcategory(userID, subcategoryID uint64) (int64, error)
 	ReassignSubcategoryMovements(userID, fromID, toID uint64) error
+
+	FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error)
 
 	UpsertReminder(rem *reminder.Reminder) error
 	DisableReminder(userID uint64) error
