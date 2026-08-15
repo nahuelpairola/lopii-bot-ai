@@ -488,6 +488,34 @@ func (c *controller) SoftDeleteByIDs(ids []uint) error {
 	return c.movements.SoftDeleteByIDs(ids)
 }
 
+func (c *controller) RenameAccount(id uint64, name string) error {
+	return c.accounts.Rename(id, name)
+}
+
+func (c *controller) FindDefaultAccountByCurrency(userID uint64, cur currency.Currency) (*account.Account, error) {
+	return c.accounts.FindDefaultByCurrency(userID, cur)
+}
+
+func (c *controller) UnsetDefaultAccount(userID uint64, cur currency.Currency) error {
+	return c.accounts.UnsetDefault(userID, cur)
+}
+
+func (c *controller) SetDefaultAccount(id uint64) error {
+	return c.accounts.SetDefault(id)
+}
+
+func (c *controller) InsertMovementsBatch(movs []movement.Movement) error {
+	return c.movements.InsertBatch(movs)
+}
+
+func (c *controller) ReassignAccountMovements(fromID, toID uint64) error {
+	return c.movements.ReassignAccount(fromID, toID)
+}
+
+func (c *controller) StartAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+	return c.startAccountCreate(ctx, b, chatID, userID, text)
+}
+
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
 	if b == nil {
 		return

@@ -37,7 +37,7 @@ const (
 
 	// Errores por-significado. Cada uno le dice al usuario de quién es la
 	// culpa y qué pasó con su dato. Reemplazan al viejo msgGenericFlowError.
-	msgCouldNotLoad   = "No pude traer tus datos ahora. Probá en un momento."
+	msgCouldNotLoad   = flow.MsgCouldNotLoad
 	msgSomethingBroke = flow.MsgSomethingBroke
 
 	// Ack de la cola de pending jobs (429 terminal de Groq). Nunca silencioso:
@@ -291,17 +291,17 @@ const (
 )
 
 const (
-	msgAccountCreateCancelled = "🚫 Cancelado, no se creó ninguna cuenta."
+	msgAccountCreateCancelled = flow.MsgAccountCreateCancelled
 )
 
 func msgAccountCreateSuccess(name, cur, balance string) string {
-	return "✅ Cuenta \"" + name + "\" creada en " + currency.Currency(cur).Label() + " con saldo inicial " + balance + "."
+	return flow.MsgAccountCreateSuccess(name, cur, balance)
 }
 
 // msgFlowCancelled: "cancelaste, no escribí nada" — no es específico de
 // cuentas ni categorías, cualquier flujo de gestión que se cancela lo usa.
-const msgFlowCancelled = "Listo, no toqué nada."
-const msgAccountManageNoChange = "Ya tenías ese saldo, no cambié nada."
+const msgFlowCancelled = flow.MsgFlowCancelled
+const msgAccountManageNoChange = flow.MsgAccountManageNoChange
 
 const msgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae ahí solo (ej: \"gasté 5000 en un regalo\")."
 

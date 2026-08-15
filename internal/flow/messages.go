@@ -272,6 +272,11 @@ const (
 	MsgCreateCancelled    = "🚫 Cancelado, no registré nada."
 	MsgInviteMoreAccounts = "Podés tener más cuentas (inversiones, dólares, lo que sea). Decime \"creá una cuenta\" cuando quieras."
 	MsgLogMissingFirst    = "Dale, registrá primero lo que falta y volvé a mandarme esto."
+
+	MsgFlowCancelled          = "Listo, no toqué nada."
+	MsgCouldNotLoad           = "No pude traer tus datos ahora. Probá en un momento."
+	MsgAccountCreateCancelled = "🚫 Cancelado, no se creó ninguna cuenta."
+	MsgAccountManageNoChange  = "Ya tenías ese saldo, no cambié nada."
 )
 
 // MsgCouldNotSave nombra qué no quedó guardado, para que el usuario sepa que
@@ -284,6 +289,10 @@ func MsgCouldNotSave(cosa string) string {
 // reaseguro es inverso — la cosa sigue existiendo, no desapareció a medias.
 func MsgCouldNotDelete(cosa string) string {
 	return "No pude borrar " + cosa + ". Sigue ahí, probá de nuevo."
+}
+
+func MsgAccountCreateSuccess(name, cur, balance string) string {
+	return "✅ Cuenta \"" + name + "\" creada en " + currency.Currency(cur).Label() + " con saldo inicial " + balance + "."
 }
 
 // MsgFirstAccountDefault nombra las monedas de las cuentas recién creadas. Son

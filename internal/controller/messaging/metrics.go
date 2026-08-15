@@ -31,7 +31,7 @@ const (
 	outcomeNoCandidates        = "no_candidates"
 	outcomeQueryAnswered       = "query_answered"
 	outcomeQueryFailed         = "query_failed"
-	outcomeAccountCreateRouted = "account_create_routed"
+	outcomeAccountCreateRouted = flow.OutcomeAccountCreateRouted
 	outcomeReminderSetRouted   = "reminder_set_routed"
 	outcomeHelpShown           = "help_shown"
 	outcomeUnclear             = "unclear"
@@ -39,10 +39,10 @@ const (
 	outcomeCategoryCreated     = "category_created"
 	outcomeCategoryCancelled   = "category_create_cancelled"
 
-	outcomeAccountRenamed         = "account_renamed"
-	outcomeAccountAdjusted        = "account_adjusted"
-	outcomeAccountDefaultSet      = "account_default_set"
-	outcomeAccountManageCancelled = "account_manage_cancelled"
+	outcomeAccountRenamed         = flow.OutcomeAccountRenamed
+	outcomeAccountAdjusted        = flow.OutcomeAccountAdjusted
+	outcomeAccountDefaultSet      = flow.OutcomeAccountDefaultSet
+	outcomeAccountManageCancelled = flow.OutcomeAccountManageCancelled
 
 	// outcomeCategoryManageNoOwn: el usuario pidió sacar una categoría pero no
 	// creó ninguna. El bot entendió y respondió bien; no es una falla.
