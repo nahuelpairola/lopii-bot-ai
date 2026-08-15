@@ -287,7 +287,7 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 
 	inserted, err := e.c.resolveAndInsertMovements(seed)
 	if err != nil {
-		var short *insufficientFunds
+		var short *flow.InsufficientFunds
 		if errors.As(err, &short) {
 			return e.parkFundsGate(seed, short)
 		}
@@ -458,9 +458,9 @@ func (e *agentExecutor) parkCreate(seed conversation.Data) (string, error) {
 //
 // conversation.KeyGatePrompt es lo que distingue este parkeo del de gaps al retomarlo: es la
 // copy del faltante, y sólo la pone este camino.
-func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *insufficientFunds) (string, error) {
+func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *flow.InsufficientFunds) (string, error) {
 	gateSeed := conversation.CopyData(seed)
-	gateSeed[conversation.KeyGatePrompt] = msgInsufficientFunds(short.shortfalls)
+	gateSeed[conversation.KeyGatePrompt] = msgInsufficientFunds(short.Shortfalls)
 	e.parked = append(e.parked, parkedAction{
 		Tool:    orchestrator.ToolRecordMovements,
 		Payload: agentPayload{Seed: gateSeed, Chosen: 0},

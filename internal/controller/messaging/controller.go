@@ -207,6 +207,39 @@ func NewController(
 	}
 }
 
+// Los métodos de abajo implementan flow.runner: el pipeline de escritura de
+// movimientos (flow/movement_write.go) corre en flow y solo necesita estas
+// lecturas/escrituras mínimas sobre los repos del borde. Ver flow/runner.go.
+// Exportados porque una interfaz con métodos unexported solo la implementan
+// tipos del mismo paquete que la interfaz.
+func (c *controller) FindUserAccounts(userID uint64) ([]account.Account, error) {
+	return c.accounts.FindByUserID(userID)
+}
+
+func (c *controller) InsertAccount(a *account.Account) error {
+	return c.accounts.Insert(a)
+}
+
+func (c *controller) GetAccount(id uint64) (*account.Account, error) {
+	return c.accounts.GetAccount(id)
+}
+
+func (c *controller) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
+	return c.movements.SumAmountForAccount(id)
+}
+
+func (c *controller) InsertMovements(movs []movement.Movement) error {
+	return c.movements.InsertBatch(movs)
+}
+
+func (c *controller) ReplaceMovements(oldIDs []uint, movs []movement.Movement) error {
+	return c.movements.ReplaceMovements(oldIDs, movs)
+}
+
+func (c *controller) FindSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error) {
+	return c.subcategories.FindByCategoryAndSubcategory(userID, category, subcategory)
+}
+
 func (c *controller) RegisterHandlers(b *bot.Bot) {
 	b.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypePrefix, c.handleStart)
 	b.RegisterHandlerMatchFunc(c.hasIncomingInput, c.handleConversationInput)

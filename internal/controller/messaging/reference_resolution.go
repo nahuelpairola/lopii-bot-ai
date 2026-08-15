@@ -6,23 +6,15 @@ import (
 	"time"
 
 	"lopiibot.com/internal/constants"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
 
-// accentFolder strips the Spanish diacritics so a word typed without them still
-// matches text stored with them ("panaderia" vs "panadería"). Seven runes cover
-// the whole language, which is why this is a replacer and not
-// golang.org/x/text/unicode/norm — that package is an indirect dependency today
-// and promoting it to direct would be a lot of machinery for seven characters.
-//
-// ñ folds to n on purpose: this is only ever used for substring matching inside
-// a message, never for storage or display, so "nino" finding "niño" is a feature.
-var accentFolder = strings.NewReplacer(
-	"á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ü", "u", "ñ", "n",
-)
-
-func foldAccents(s string) string { return accentFolder.Replace(s) }
+// foldAccents y tokenAppearsInString viven en flow (movement_text.go), junto al
+// foldAccents del matcher de nombres de cuenta; acá quedan los puentes que usa
+// la resolución de referencias del borde.
+func foldAccents(s string) string { return flow.FoldAccents(s) }
 
 func startOfTodayArgentina() time.Time {
 	now := time.Now().In(constants.ArgentinaZone)
@@ -31,7 +23,6 @@ func startOfTodayArgentina() time.Time {
 
 const (
 	dateAnchorMargin  = 24 * time.Hour
-	minMatchTokenLen  = 4
 	fallbackRecentCap = 5
 	// recencyLimit / recencyWindow acotan la ventana de "lo que tengo fresco".
 	//
@@ -120,19 +111,9 @@ func tokenAppearsIn(field *string, lowerHaystack string) bool {
 
 // tokenAppearsInString es la misma prueba sobre un string ya desreferenciado.
 // La usa guessNamesOwnAccount, que compara contra la description de la fila y
-// no contra el mensaje.
+// no contra el mensaje. La implementación vive en flow (movement_text.go).
 func tokenAppearsInString(field, lowerHaystack string) bool {
-	for _, tok := range strings.Fields(foldAccents(strings.ToLower(field))) {
-		// ponytail: length>=4 skips es stopwords (de/en/el/con/por) without a
-		// stopword list; standalone <=3-char descriptions like "pan"/"ypf"
-		// won't match as tokens — revisit if that bites.
-		if len([]rune(tok)) >= minMatchTokenLen {
-			if strings.Contains(lowerHaystack, tok) {
-				return true
-			}
-		}
-	}
-	return false
+	return flow.TokenAppearsInString(field, lowerHaystack)
 }
 
 // dropReservedGroups saca los grupos cuya categoría es interna (Sistema,

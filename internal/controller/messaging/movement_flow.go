@@ -7,46 +7,23 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
 
-// guessNamesOwnAccount discrimina los dos motivos por los que el modelo llena
-// AccountNameGuess en una fila que NO es transferencia:
-//
-//   - "pagué el curso con Brubank" → Brubank es una cuenta del usuario que
-//     todavía no existe. Hay que preguntar y, si él lo pide, crearla.
-//   - "pizza con Pablo" → Pablo es la contraparte, no una cuenta. Crear una
-//     cuenta "Pablo" sería un error, y hasta preguntar sería interrumpir un
-//     gasto que hoy se guarda solo.
-//
-// La señal es DÓNDE cae el nombre. Si es parte de lo que pasó, queda en la
-// description ("pizza con Pablo") y no es una cuenta. Si la description es la
-// cosa comprada y el nombre quedó afuera ("pagué el curso con Brubank"), es una
-// cuenta.
-//
-// Antes esto se decidía comparando el guess contra merchant, que ya no existe.
-// Sin reemplazo la condición colapsaba a `guess != ""` y CADA contraparte
-// abriría un gap ofreciendo crear una cuenta con el nombre de una persona.
-//
-// Limitación heredada, no introducida: tokenAppearsInString exige tokens de
-// minMatchTokenLen (4), así que un nombre de 3 letras ("Ana") no matchea y abre
-// un gap de más. Es estrictamente más raro que la falla que reemplaza.
-//
-// Las dos direcciones las fijan TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount
-// y TestResolveAndInsert_NonTransferCreatesNamedOwnAccount.
+// guessNamesOwnAccount vive en flow (movement_text.go); acá queda solo el
+// puente que usan buildCreateSeed y los caminos de corrección del borde.
 func guessNamesOwnAccount(guess, description string) bool {
-	if guess == "" {
-		return false
-	}
-	return !tokenAppearsInString(guess, foldAccents(strings.ToLower(description)))
+	return flow.GuessNamesOwnAccount(guess, description)
 }
 
 // mode discriminates buildCreateSeed's flow: a fresh CREATE vs a resolved
 // UPDATE reusing the create flow. Stored under conversation.KeyMode.
+// Las consts viven en flow (movement_write.go), acá el alias local.
 const (
-	modeCreate = "create"
-	modeUpdate = "update"
+	modeCreate = flow.ModeCreate
+	modeUpdate = flow.ModeUpdate
 )
 
 // buildCreateSeed converts a Call 2 CREATE (or a resolved Call 2
@@ -234,19 +211,10 @@ func normalizeForTaxonomy(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// parseUintSlice turns the string-encoded movement IDs carried through
-// conversation.Data back into real uint IDs, for repository calls that
-// take []uint (SoftDeleteByIDs, ReplaceMovements).
+// parseUintSlice vive en flow (movement_text.go); el alias de acá lo usan los
+// finishes de DELETE/UPDATE, que todavía viven en el borde.
 func parseUintSlice(ids []string) ([]uint, error) {
-	out := make([]uint, 0, len(ids))
-	for _, s := range ids {
-		v, err := strconv.ParseUint(s, 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, uint(v))
-	}
-	return out, nil
+	return flow.ParseUintSlice(ids)
 }
 
 // accountGapsFor devuelve los índices de las filas que NOMBRAN una cuenta que no
