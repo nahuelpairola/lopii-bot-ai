@@ -6,7 +6,7 @@ import (
 )
 
 // Outcome* son los valores de intent_events.outcome para los flujos de
-// movimientos y cuentas. El resto (query, loop, categorías) sigue en
+// movimientos, cuentas y categorías. El resto (query, loop) sigue en
 // messaging/metrics.go. Los valores son un contrato con la columna de DB:
 // renombrarlos rompe las series históricas.
 const (
@@ -24,6 +24,12 @@ const (
 	OutcomeAccountAdjusted        = "account_adjusted"
 	OutcomeAccountDefaultSet      = "account_default_set"
 	OutcomeAccountManageCancelled = "account_manage_cancelled"
+
+	OutcomeCategoryMatchUsed       = "category_match_used"
+	OutcomeCategoryCreated         = "category_created"
+	OutcomeCategoryCancelled       = "category_create_cancelled"
+	OutcomeCategoryManageCancelled = "category_manage_cancelled"
+	OutcomeCategoryManageApplied   = "category_manage_applied"
 )
 
 // WriteOutcomeFor devuelve el outcome de éxito del finish según el modo con el

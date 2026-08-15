@@ -84,8 +84,7 @@ const (
 	msgWeeklySummaryOn  = "📊 Listo, te mando el resumen todos los lunes."
 	msgWeeklySummaryOff = "📊 Ok, no te mando el resumen semanal."
 
-	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
-		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
+	msgSubcategorySetupFinished = flow.MsgSubcategorySetupFinished
 
 	msgNotUnderstood = flow.MsgNotUnderstood
 )
@@ -303,7 +302,7 @@ func msgAccountCreateSuccess(name, cur, balance string) string {
 const msgFlowCancelled = flow.MsgFlowCancelled
 const msgAccountManageNoChange = flow.MsgAccountManageNoChange
 
-const msgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae ahí solo (ej: \"gasté 5000 en un regalo\")."
+const msgCategoryMatchUse = flow.MsgCategoryMatchUse
 
 const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 

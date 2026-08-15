@@ -516,6 +516,34 @@ func (c *controller) StartAccountCreate(ctx context.Context, b *bot.Bot, chatID 
 	return c.startAccountCreate(ctx, b, chatID, userID, text)
 }
 
+func (c *controller) SubcategoryIconForCategory(userID uint64, category string) string {
+	return c.subcategories.IconForCategory(userID, category)
+}
+
+func (c *controller) InsertSubcategory(s *subcategory.Subcategory) error {
+	return c.subcategories.Insert(s)
+}
+
+func (c *controller) ReloadSubcategories() error {
+	return c.subcategories.Reload()
+}
+
+func (c *controller) DeleteSubcategory(userID, id uint64) error {
+	return c.subcategories.Delete(userID, id)
+}
+
+func (c *controller) CountMovementsBySubcategory(userID, subcategoryID uint64) (int64, error) {
+	return c.movements.CountBySubcategory(userID, subcategoryID)
+}
+
+func (c *controller) ReassignSubcategoryMovements(userID, fromID, toID uint64) error {
+	return c.movements.ReassignSubcategory(userID, fromID, toID)
+}
+
+func (c *controller) SuggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {
+	return c.suggestMergeTarget(ctx, userID, sourceID, data)
+}
+
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
 	if b == nil {
 		return

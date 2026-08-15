@@ -34,6 +34,13 @@ type runner interface {
 	InsertMovementsBatch(movs []movement.Movement) error
 	ReassignAccountMovements(fromID, toID uint64) error
 
+	SubcategoryIconForCategory(userID uint64, category string) string
+	InsertSubcategory(*subcategory.Subcategory) error
+	ReloadSubcategories() error
+	DeleteSubcategory(userID, id uint64) error
+	CountMovementsBySubcategory(userID, subcategoryID uint64) (int64, error)
+	ReassignSubcategoryMovements(userID, fromID, toID uint64) error
+
 	// Outbound + métricas: lo que un finish de movimiento toca de Telegram y
 	// del borde (intent_events, nudges, borrado físico) y que flow no quiere
 	// conocer. SendText y StartFlow son los que vuelven a flow como salida.
@@ -43,4 +50,5 @@ type runner interface {
 	MarkTipSent(userID uint64, tip string) error
 	SoftDeleteByIDs(ids []uint) error
 	StartAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error
+	SuggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory
 }

@@ -277,6 +277,10 @@ const (
 	MsgCouldNotLoad           = "No pude traer tus datos ahora. Probá en un momento."
 	MsgAccountCreateCancelled = "🚫 Cancelado, no se creó ninguna cuenta."
 	MsgAccountManageNoChange  = "Ya tenías ese saldo, no cambié nada."
+
+	MsgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
+		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
+	MsgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae ahí solo (ej: \"gasté 5000 en un regalo\")."
 )
 
 // MsgCouldNotSave nombra qué no quedó guardado, para que el usuario sepa que

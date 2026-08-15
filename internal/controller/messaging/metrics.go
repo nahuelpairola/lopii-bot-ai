@@ -35,9 +35,9 @@ const (
 	outcomeReminderSetRouted   = "reminder_set_routed"
 	outcomeHelpShown           = "help_shown"
 	outcomeUnclear             = "unclear"
-	outcomeCategoryMatchUsed   = "category_match_used"
-	outcomeCategoryCreated     = "category_created"
-	outcomeCategoryCancelled   = "category_create_cancelled"
+	outcomeCategoryMatchUsed   = flow.OutcomeCategoryMatchUsed
+	outcomeCategoryCreated     = flow.OutcomeCategoryCreated
+	outcomeCategoryCancelled   = flow.OutcomeCategoryCancelled
 
 	outcomeAccountRenamed         = flow.OutcomeAccountRenamed
 	outcomeAccountAdjusted        = flow.OutcomeAccountAdjusted
@@ -47,8 +47,8 @@ const (
 	// outcomeCategoryManageNoOwn: el usuario pidió sacar una categoría pero no
 	// creó ninguna. El bot entendió y respondió bien; no es una falla.
 	outcomeCategoryManageNoOwn     = "category_manage_no_own"
-	outcomeCategoryManageApplied   = "category_manage_applied"
-	outcomeCategoryManageCancelled = "category_manage_cancelled"
+	outcomeCategoryManageApplied   = flow.OutcomeCategoryManageApplied
+	outcomeCategoryManageCancelled = flow.OutcomeCategoryManageCancelled
 )
 
 // Los outcomes de los flujos de movimiento viven en flow (movement_metrics.go);

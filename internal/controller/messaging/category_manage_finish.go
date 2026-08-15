@@ -2,9 +2,6 @@ package messaging
 
 import (
 	"context"
-	"fmt"
-	"log/slog"
-	"strconv"
 	"strings"
 
 	"github.com/go-telegram/bot"
@@ -14,56 +11,19 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// finishCategoryManagePickFlow corre cuando el usuario eligió (o no) el origen.
-// Si eligió, hace el puente al flujo 2.
+// Los finishes de CATEGORY_MANAGE viven en flow (category_finish.go). Estos
+// delegadores conservan los nombres de borde mientras los tests y
+// handleFlowFinished los usen.
 func (c *controller) finishCategoryManagePickFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if conversation.Flag(data, conversation.KeyCancelled) {
-		c.resolveMetric(ctx, data.UserID(), outcomeCategoryManageCancelled)
-		c.sendText(ctx, b, chatID, msgFlowCancelled)
-		return
-	}
-	if err := c.proceedToCategoryTarget(ctx, b, chatID, data); err != nil {
-		slog.ErrorContext(ctx, "category manage: proceed to target", "err", err)
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
-	}
+	flow.FinishCategoryManagePickFlow(ctx, c, b, chatID, data)
 }
 
-// proceedToCategoryTarget es el puente entre los dos flujos: cuenta los
-// movimientos del origen y, solo si hay alguno, pide una sugerencia de destino.
-// Después arranca el flujo 2 con todo eso sembrado.
+func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	flow.FinishCategoryManageTargetFlow(ctx, c, b, chatID, data)
+}
+
 func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) error {
-	userID := data.UserID()
-	sourceID, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeySourceSubcategoryID]), 10, 64)
-	if err != nil {
-		return fmt.Errorf("category manage: source id inválido: %w", err)
-	}
-
-	count, err := c.movements.CountBySubcategory(userID, sourceID)
-	if err != nil {
-		return fmt.Errorf("category manage: contar movimientos: %w", err)
-	}
-
-	seed := conversation.Data{
-		conversation.KeySourceSubcategoryID: conversation.StringOrEmpty(data[conversation.KeySourceSubcategoryID]),
-		conversation.KeySourceCategory:      conversation.StringOrEmpty(data[conversation.KeySourceCategory]),
-		conversation.KeySourceSubcategory:   conversation.StringOrEmpty(data[conversation.KeySourceSubcategory]),
-		conversation.KeyMovementCount:       strconv.FormatInt(count, 10),
-	}
-
-	if count > 0 {
-		if sug := c.suggestMergeTarget(ctx, userID, sourceID, data); sug != nil {
-			seed[conversation.KeySuggestedSubcategoryID] = strconv.FormatUint(uint64(sug.ID), 10)
-			seed[conversation.KeySuggestedCategory] = sug.Category
-			seed[conversation.KeySuggestedSubcategory] = sug.Subcategory
-		}
-	}
-
-	prompt, err := c.engine.StartWithData(userID, flow.CategoryManageTargetFlowName, seed)
-	if err != nil {
-		return fmt.Errorf("start category_manage_target flow: %w", err)
-	}
-	c.sendPrompt(ctx, b, chatID, prompt)
-	return nil
+	return flow.ProceedToCategoryTarget(ctx, c, b, chatID, data)
 }
 
 // suggestMergeTarget le pregunta al LLM a qué subcategoría existente se parece
@@ -73,6 +33,10 @@ func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, ch
 // Devuelve nil ante cualquier duda — error, timeout, propuesta en vez de match,
 // o un match que resuelve al propio origen. nil significa "sin sugerencia", y
 // el flujo cae al picker manual. Nunca bloquea.
+//
+// Vive en el borde a propósito: es la única parte de CATEGORY_MANAGE que toca
+// el LLM, y flow no conoce al orchestrator. flow la alcanza via runner
+// (SuggestMergeTarget).
 func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
@@ -126,63 +90,4 @@ func mergeSuggestionText(category, subcategoryName, description string, samples 
 		text += " — gastos en: " + strings.Join(samples, ", ")
 	}
 	return text
-}
-
-// finishCategoryManageTargetFlow aplica lo que el confirm ya le mostró al
-// usuario. Es pura ejecución: el gate de confirmación quedó atrás, dentro del
-// flujo.
-//
-// El orden importa. Primero se mueven los movimientos, después se borra la
-// categoría. Al revés, un fallo intermedio dejaría movimientos apuntando a una
-// fila borrada. En este orden, un fallo del borrado deja la categoría vacía —
-// un estado consistente que el usuario puede reintentar.
-func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if conversation.Flag(data, conversation.KeyCancelled) || !conversation.Flag(data, conversation.KeyConfirmed) {
-		c.resolveMetric(ctx, data.UserID(), outcomeCategoryManageCancelled)
-		c.sendText(ctx, b, chatID, msgFlowCancelled)
-		return
-	}
-
-	userID := data.UserID()
-	sourceID, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeySourceSubcategoryID]), 10, 64)
-	if err != nil {
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
-		return
-	}
-
-	targetRaw := conversation.StringOrEmpty(data[conversation.KeyTargetSubcategoryID])
-	if targetRaw != "" {
-		targetID, err := strconv.ParseUint(targetRaw, 10, 64)
-		if err != nil {
-			c.sendText(ctx, b, chatID, msgSomethingBroke)
-			return
-		}
-		if err := c.movements.ReassignSubcategory(userID, sourceID, targetID); err != nil {
-			slog.ErrorContext(ctx, "category manage: reassign", "err", err)
-			c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
-			return
-		}
-	}
-
-	// Delete devuelve ErrSubcategoryNotFound cuando no borró nada (fila ajena,
-	// global o inexistente). Hay que cortar acá: decirle "listo, la saqué" a
-	// alguien cuya categoría sigue estando sería mentirle.
-	if err := c.subcategories.Delete(userID, sourceID); err != nil {
-		slog.ErrorContext(ctx, "category manage: delete", "err", err)
-		c.sendText(ctx, b, chatID, msgCouldNotDelete("tu categoría"))
-		return
-	}
-	// El Cache es read-through: sin Reload la categoría borrada seguiría
-	// apareciendo hasta el próximo reinicio del server.
-	if err := c.subcategories.Reload(); err != nil {
-		slog.ErrorContext(ctx, "category manage: cache reload", "err", err)
-	}
-
-	c.resolveMetric(ctx, userID, outcomeCategoryManageApplied)
-	if targetRaw == "" {
-		c.sendText(ctx, b, chatID, flow.MsgCategoryManageDeleted(flow.SourceLabel(data)))
-		return
-	}
-	c.sendText(ctx, b, chatID, flow.MsgCategoryManageMerged(
-		conversation.StringOrEmpty(data[conversation.KeyMovementCount]), flow.SourceLabel(data), flow.TargetLabel(data)))
 }
