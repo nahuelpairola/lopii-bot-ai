@@ -28,7 +28,7 @@ queryModel = "openai/gpt-oss-120b"
 agentModel = "openai/gpt-oss-20b"
 # El clasificador va en OTRO modelo a proposito: el techo de TPM de Groq es por
 # modelo, y el loop ya entra al suyo una vez por minuto y medio.
-classifierModel = "llama-3.3-70b-versatile"
+classifierModel = "openai/gpt-oss-20b"
 timeoutSeconds = 10
 
 [query]
