@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/reminder"
 )
 
@@ -20,15 +21,15 @@ func TestParseWindow(t *testing.T) {
 		{"20-22", 1200, 1320},
 	}
 	for _, c := range ok {
-		s, e, err := parseWindow(c.in)
+		s, e, err := flow.ParseWindow(c.in)
 		if err != nil || s != c.wantStart || e != c.wantEnd {
-			t.Errorf("parseWindow(%q) = (%d,%d,%v), want (%d,%d,nil)", c.in, s, e, err, c.wantStart, c.wantEnd)
+			t.Errorf("flow.ParseWindow(%q) = (%d,%d,%v), want (%d,%d,nil)", c.in, s, e, err, c.wantStart, c.wantEnd)
 		}
 	}
 	bad := []string{"", "21", "abc", "25 a 26", "21 a 20", "20 a 20", "-1 a 5"}
 	for _, in := range bad {
-		if _, _, err := parseWindow(in); err == nil {
-			t.Errorf("parseWindow(%q) expected error, got nil", in)
+		if _, _, err := flow.ParseWindow(in); err == nil {
+			t.Errorf("flow.ParseWindow(%q) expected error, got nil", in)
 		}
 	}
 }
@@ -56,9 +57,9 @@ func TestFinishReminderSetup_Preset(t *testing.T) {
 	c := &controller{reminders: repo}
 	data := conversation.Data{
 		conversation.UserIDKey: uint64(42),
-		reminderActionKey:      reminderActionSet,
-		reminderStartKey:       "1200",
-		reminderEndKey:         "1320",
+		flow.ReminderActionKey: flow.ReminderActionSet,
+		flow.ReminderStartKey:  "1200",
+		flow.ReminderEndKey:    "1320",
 	}
 	c.finishReminderSetup(context.Background(), nil, 0, data)
 	if repo.upserted == nil || repo.upserted.WindowStartMin != 1200 || repo.upserted.WindowEndMin != 1320 || !repo.upserted.Enabled || repo.upserted.UserID != 42 {
@@ -71,8 +72,8 @@ func TestFinishReminderSetup_Custom(t *testing.T) {
 	c := &controller{reminders: repo}
 	data := conversation.Data{
 		conversation.UserIDKey: uint64(7),
-		reminderActionKey:      reminderActionSet,
-		reminderCustomKey:      "9 a 13",
+		flow.ReminderActionKey: flow.ReminderActionSet,
+		flow.ReminderCustomKey: "9 a 13",
 	}
 	c.finishReminderSetup(context.Background(), nil, 0, data)
 	if repo.upserted == nil || repo.upserted.WindowStartMin != 540 || repo.upserted.WindowEndMin != 780 {
@@ -85,7 +86,7 @@ func TestFinishReminderSetup_Disable(t *testing.T) {
 	c := &controller{reminders: repo}
 	data := conversation.Data{
 		conversation.UserIDKey: uint64(99),
-		reminderActionKey:      reminderActionOff,
+		flow.ReminderActionKey: flow.ReminderActionOff,
 	}
 	c.finishReminderSetup(context.Background(), nil, 0, data)
 	if repo.disabled != 99 {
@@ -107,13 +108,13 @@ func TestFinishReminderSetup_Cancelled(t *testing.T) {
 
 func TestNewReminderSetupFlow_Valid(t *testing.T) {
 	// panics at construction if the step graph is invalid
-	_ = NewReminderSetupFlow()
+	_ = flow.NewReminderSetupFlow()
 }
 
 func TestReminderSetup_PresetThenWeeklyYes(t *testing.T) {
-	// onReminderPickWindow(preset) then onReminderWeekly(Sí) sets the flag; finish Upserts it.
-	data := onReminderPickWindow("1200-1320", conversation.Data{conversation.UserIDKey: uint64(42)})
-	data = onReminderWeekly(optionWeeklyOn, data)
+	// flow.OnReminderPickWindow(preset) then flow.OnReminderWeekly(Sí) sets the flag; finish Upserts it.
+	data := flow.OnReminderPickWindow("1200-1320", conversation.Data{conversation.UserIDKey: uint64(42)})
+	data = flow.OnReminderWeekly(flow.OptionWeeklyOn, data)
 
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
@@ -133,8 +134,8 @@ func TestReminderSetup_WeeklyOnlyOff(t *testing.T) {
 	c := &controller{reminders: repo}
 	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
 		conversation.UserIDKey: uint64(7),
-		reminderActionKey:      reminderActionWeeklyOnly,
-		keyHubHasRow:           "true",
+		flow.ReminderActionKey: flow.ReminderActionWeeklyOnly,
+		flow.KeyHubHasRow:      "true",
 		// conversation.KeyWeeklySummary absent => turning OFF
 	})
 	if repo.weeklySet == nil || *repo.weeklySet != false || repo.weeklySetFor != 7 {
@@ -150,7 +151,7 @@ func TestFinishReminderSetup_OffAll(t *testing.T) {
 	c := &controller{reminders: repo}
 	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
 		conversation.UserIDKey: uint64(42),
-		reminderActionKey:      reminderActionOffAll,
+		flow.ReminderActionKey: flow.ReminderActionOffAll,
 	})
 	if repo.disabled != 42 {
 		t.Fatalf("expected Disable(42), got %d", repo.disabled)
@@ -165,7 +166,7 @@ func TestFinishReminderSetup_SoftExit(t *testing.T) {
 	c := &controller{reminders: repo}
 	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
 		conversation.UserIDKey: uint64(1),
-		reminderActionKey:      reminderActionSoftExit,
+		flow.ReminderActionKey: flow.ReminderActionSoftExit,
 	})
 	if repo.upserted != nil || repo.disabled != 0 || repo.weeklySet != nil {
 		t.Fatal("soft-exit must not touch the repo")
@@ -179,9 +180,9 @@ func TestFinishReminderSetup_WeeklyActivateNoRow(t *testing.T) {
 	c := &controller{reminders: repo}
 	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
 		conversation.UserIDKey:        uint64(8),
-		reminderActionKey:             reminderActionWeeklyOnly,
+		flow.ReminderActionKey:        flow.ReminderActionWeeklyOnly,
 		conversation.KeyWeeklySummary: "true",
-		// keyHubHasRow absent => no row
+		// flow.KeyHubHasRow absent => no row
 	})
 	if repo.upserted == nil || !repo.upserted.WeeklySummaryEnabled || repo.upserted.Enabled {
 		t.Fatalf("expected minimal weekly-only upsert (weekly=true, enabled=false), got %+v", repo.upserted)
@@ -196,9 +197,9 @@ func TestFinishReminderSetup_WeeklyActivateHasRow(t *testing.T) {
 	c := &controller{reminders: repo}
 	c.finishReminderSetup(context.Background(), nil, 0, conversation.Data{
 		conversation.UserIDKey:        uint64(9),
-		reminderActionKey:             reminderActionWeeklyOnly,
+		flow.ReminderActionKey:        flow.ReminderActionWeeklyOnly,
 		conversation.KeyWeeklySummary: "true",
-		keyHubHasRow:                  "true",
+		flow.KeyHubHasRow:             "true",
 	})
 	if repo.weeklySet == nil || *repo.weeklySet != true || repo.weeklySetFor != 9 {
 		t.Fatalf("expected SetWeeklySummary(9,true), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
@@ -220,43 +221,43 @@ func hubOpt(t *testing.T, opts []conversation.ChoiceOption, value string) conver
 }
 
 func TestHubOptions_AllOff(t *testing.T) {
-	opts := hubOptions(conversation.Data{})
-	daily := hubOpt(t, opts, optionHubDaily)
+	opts := flow.HubOptions(conversation.Data{})
+	daily := hubOpt(t, opts, flow.OptionHubDaily)
 	if !strings.Contains(daily.Label, "Activar recordatorio diario") {
 		t.Errorf("daily-off label should say Activar recordatorio diario, got %q", daily.Label)
 	}
-	if daily.NextStep != stepReminderPickWindow {
+	if daily.NextStep != flow.StepReminderPickWindow {
 		t.Errorf("daily option must route to the picker, got %q", daily.NextStep)
 	}
-	weekly := hubOpt(t, opts, optionWeeklyOn)
+	weekly := hubOpt(t, opts, flow.OptionWeeklyOn)
 	if !strings.Contains(weekly.Label, "Activar resumen") || !weekly.Finish {
 		t.Errorf("weekly-off toggle should say Activar and Finish, got %+v", weekly)
 	}
 	for _, o := range opts {
-		if o.Value == optionOffAll {
+		if o.Value == flow.OptionOffAll {
 			t.Error("Apagar todo must be hidden when nothing is on")
 		}
 	}
-	_ = hubOpt(t, opts, optionSoftExit) // Salir always present
+	_ = hubOpt(t, opts, flow.OptionSoftExit) // Salir always present
 }
 
 func TestHubOptions_AllOn(t *testing.T) {
 	data := conversation.Data{
-		keyHubDailyOn:                 "true",
-		reminderStartKey:              "1200",
-		reminderEndKey:                "1320",
+		flow.KeyHubDailyOn:            "true",
+		flow.ReminderStartKey:         "1200",
+		flow.ReminderEndKey:           "1320",
 		conversation.KeyWeeklySummary: "true",
 	}
-	opts := hubOptions(data)
-	daily := hubOpt(t, opts, optionHubDaily)
+	opts := flow.HubOptions(data)
+	daily := hubOpt(t, opts, flow.OptionHubDaily)
 	if !strings.Contains(daily.Label, "Cambiar horario") || !strings.Contains(daily.Label, "20-22") {
 		t.Errorf("daily-on label should show Cambiar horario (20-22), got %q", daily.Label)
 	}
-	weekly := hubOpt(t, opts, optionWeeklyOff)
+	weekly := hubOpt(t, opts, flow.OptionWeeklyOff)
 	if !strings.Contains(weekly.Label, "Desactivar resumen") || !weekly.Finish {
 		t.Errorf("weekly-on toggle should say Desactivar and Finish, got %+v", weekly)
 	}
-	off := hubOpt(t, opts, optionOffAll)
+	off := hubOpt(t, opts, flow.OptionOffAll)
 	if !off.Finish {
 		t.Errorf("Apagar todo must Finish, got %+v", off)
 	}
@@ -268,16 +269,16 @@ func TestOnReminderHub(t *testing.T) {
 		wantAction string
 		wantWeekly string // "" = flag absent
 	}{
-		{optionHubDaily, "", ""},
-		{optionWeeklyOn, reminderActionWeeklyOnly, "true"},
-		{optionWeeklyOff, reminderActionWeeklyOnly, "false"},
-		{optionOffAll, reminderActionOffAll, ""},
-		{optionSoftExit, reminderActionSoftExit, ""},
+		{flow.OptionHubDaily, "", ""},
+		{flow.OptionWeeklyOn, flow.ReminderActionWeeklyOnly, "true"},
+		{flow.OptionWeeklyOff, flow.ReminderActionWeeklyOnly, "false"},
+		{flow.OptionOffAll, flow.ReminderActionOffAll, ""},
+		{flow.OptionSoftExit, flow.ReminderActionSoftExit, ""},
 	}
 	for _, c := range cases {
-		got := onReminderHub(c.value, conversation.Data{})
-		if conversation.StringOrEmpty(got[reminderActionKey]) != c.wantAction {
-			t.Errorf("%s: action = %q, want %q", c.value, got[reminderActionKey], c.wantAction)
+		got := flow.OnReminderHub(c.value, conversation.Data{})
+		if conversation.StringOrEmpty(got[flow.ReminderActionKey]) != c.wantAction {
+			t.Errorf("%s: action = %q, want %q", c.value, got[flow.ReminderActionKey], c.wantAction)
 		}
 		if conversation.StringOrEmpty(got[conversation.KeyWeeklySummary]) != c.wantWeekly {
 			t.Errorf("%s: weekly flag = %q, want %q", c.value, got[conversation.KeyWeeklySummary], c.wantWeekly)
@@ -286,19 +287,19 @@ func TestOnReminderHub(t *testing.T) {
 }
 
 func TestSkipHubIfSeeded(t *testing.T) {
-	if next, ok := skipHubIfSeeded(conversation.Data{keySkipHub: "true"}); !ok || next != stepReminderPickWindow {
+	if next, ok := flow.SkipHubIfSeeded(conversation.Data{flow.KeySkipHub: "true"}); !ok || next != flow.StepReminderPickWindow {
 		t.Errorf("seeded skipHub should skip to picker, got (%q,%v)", next, ok)
 	}
-	if _, ok := skipHubIfSeeded(conversation.Data{}); ok {
+	if _, ok := flow.SkipHubIfSeeded(conversation.Data{}); ok {
 		t.Error("no seed => hub must not be skipped")
 	}
 }
 
 func TestPickOptions_NoWeeklyButton(t *testing.T) {
 	// The band picker must not carry the weekly-summary button anymore.
-	flow := NewReminderSetupFlow() // panics if the graph is invalid
-	_ = flow
-	opts := reminderPickOptions(conversation.Data{})
+	fl := flow.NewReminderSetupFlow() // panics if the graph is invalid
+	_ = fl
+	opts := flow.ReminderPickOptions(conversation.Data{})
 	for _, o := range opts {
 		if strings.Contains(o.Label, "Resumen semanal") {
 			t.Errorf("picker must not show a weekly button, got %q", o.Label)
@@ -316,10 +317,10 @@ func TestPickOptions_NoWeeklyButton(t *testing.T) {
 }
 
 func TestSkipWeeklyUnlessAsked(t *testing.T) {
-	if next, ok := skipWeeklyUnlessAsked(conversation.Data{}); !ok || next != "" {
+	if next, ok := flow.SkipWeeklyUnlessAsked(conversation.Data{}); !ok || next != "" {
 		t.Errorf("hub entry (no askWeekly) must skip weekly and complete, got (%q,%v)", next, ok)
 	}
-	if _, ok := skipWeeklyUnlessAsked(conversation.Data{keyAskWeekly: "true"}); ok {
+	if _, ok := flow.SkipWeeklyUnlessAsked(conversation.Data{flow.KeyAskWeekly: "true"}); ok {
 		t.Error("onboarding (askWeekly) must NOT skip the weekly step")
 	}
 }
@@ -327,19 +328,19 @@ func TestSkipWeeklyUnlessAsked(t *testing.T) {
 func newReminderTestEngine() (*conversation.Engine, *fakeStateStore) {
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "los recordatorios" })
-	engine.Register(NewReminderSetupFlow())
+	engine.Register(flow.NewReminderSetupFlow())
 	return engine, store
 }
 
 func TestReminderFlow_HubBandChange_SkipsWeekly(t *testing.T) {
 	engine, _ := newReminderTestEngine()
 	// hub entry seeded as if the user already had weekly ON and daily OFF
-	seed := conversation.Data{conversation.KeyWeeklySummary: "true", keyHubHasRow: "true"}
-	if _, err := engine.StartWithData(1, reminderSetupFlowName, seed); err != nil {
+	seed := conversation.Data{conversation.KeyWeeklySummary: "true", flow.KeyHubHasRow: "true"}
+	if _, err := engine.StartWithData(1, flow.ReminderSetupFlowName, seed); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	// tap "Activar recordatorio diario" -> picker
-	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionHubDaily}); err != nil {
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionHubDaily}); err != nil {
 		t.Fatalf("hub choice: %v", err)
 	}
 	// pick a preset band -> should COMPLETE (weekly skipped), preserving weekly=true
@@ -353,17 +354,17 @@ func TestReminderFlow_HubBandChange_SkipsWeekly(t *testing.T) {
 	if conversation.StringOrEmpty(res.Data[conversation.KeyWeeklySummary]) != "true" {
 		t.Errorf("weekly flag must be preserved through a band change, got %q", res.Data[conversation.KeyWeeklySummary])
 	}
-	if conversation.StringOrEmpty(res.Data[reminderActionKey]) != reminderActionSet {
-		t.Errorf("expected action=set, got %q", res.Data[reminderActionKey])
+	if conversation.StringOrEmpty(res.Data[flow.ReminderActionKey]) != flow.ReminderActionSet {
+		t.Errorf("expected action=set, got %q", res.Data[flow.ReminderActionKey])
 	}
 }
 
 func TestReminderFlow_Onboarding_SkipsHubShowsWeekly(t *testing.T) {
 	engine, _ := newReminderTestEngine()
 	seed := conversation.Data{}
-	conversation.SetFlag(seed, keySkipHub)
-	conversation.SetFlag(seed, keyAskWeekly)
-	prompt, err := engine.StartWithData(1, reminderSetupFlowName, seed)
+	conversation.SetFlag(seed, flow.KeySkipHub)
+	conversation.SetFlag(seed, flow.KeyAskWeekly)
+	prompt, err := engine.StartWithData(1, flow.ReminderSetupFlowName, seed)
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}

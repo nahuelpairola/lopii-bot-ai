@@ -16,6 +16,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
@@ -308,7 +309,7 @@ func TestResolveAndInsertMovements_PendingAccountCreation(t *testing.T) {
 
 	rows := []movement.MovementRow{
 		{Type: "transfer", Amount: "-120000", Currency: "ARS", AccountID: "1", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
-		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "FCI", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
+		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: flow.AccountPendingCreate, AccountNameGuess: "FCI", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
@@ -694,8 +695,8 @@ func TestResolveAndInsertMovements_CreatesBothPendingAccounts(t *testing.T) {
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movement.MovementRow{
-		{Type: "transfer", Amount: "-50000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "Banco", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
-		{Type: "transfer", Amount: "50000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "Mercado Pago", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
+		{Type: "transfer", Amount: "-50000", Currency: "ARS", AccountID: flow.AccountPendingCreate, AccountNameGuess: "Banco", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
+		{Type: "transfer", Amount: "50000", Currency: "ARS", AccountID: flow.AccountPendingCreate, AccountNameGuess: "Mercado Pago", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
@@ -804,7 +805,7 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 	rows := []movement.MovementRow{{Type: "expense", Amount: "100000", Currency: "ARS",
 		Category: "Ocio y salidas", Subcategory: "Restaurante",
 		Description:      "pizza con Pablo",
-		AccountNameGuess: "Pablo", AccountID: accountPendingCreate, Date: "2026-07-07"}}
+		AccountNameGuess: "Pablo", AccountID: flow.AccountPendingCreate, Date: "2026-07-07"}}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
@@ -840,7 +841,7 @@ func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 	rows := []movement.MovementRow{{Type: "income", Amount: "200000", Currency: "ARS",
 		Category: "Ingresos", Subcategory: "Sueldo",
 		Description:      "sueldo de julio", // Brubank NO aparece acá: es una cuenta
-		AccountNameGuess: "Brubank", AccountID: accountPendingCreate, Date: "2026-07-07"}}
+		AccountNameGuess: "Brubank", AccountID: flow.AccountPendingCreate, Date: "2026-07-07"}}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {

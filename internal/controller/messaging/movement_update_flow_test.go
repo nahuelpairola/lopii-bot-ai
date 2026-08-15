@@ -13,6 +13,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -145,7 +146,7 @@ func TestEncodeDecodeCandidateGroups_RoundTrip(t *testing.T) {
 	}
 
 	encoded := encodeCandidateGroups(groups)
-	decoded := decodeCandidateGroups(conversation.Data{"candidate_groups": encoded})
+	decoded := flow.DecodeCandidateGroups(conversation.Data{"candidate_groups": encoded})
 
 	if len(decoded) != 1 {
 		t.Fatalf("got %d candidates, want 1", len(decoded))
@@ -165,7 +166,7 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementUpdateConfirmFlow())
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
 
 	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(7, currency.ARS, false)}}
 	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
@@ -174,8 +175,8 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, changeAsk{}); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
 	}
-	if store.flowName != movementUpdateConfirmFlowName {
-		t.Errorf("started flow = %q, want %q", store.flowName, movementUpdateConfirmFlowName)
+	if store.flowName != flow.MovementUpdateConfirmFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, flow.MovementUpdateConfirmFlowName)
 	}
 	if len(orch.gotUpdateAccounts) == 0 {
 		t.Error("ResolveUpdate should receive the user's accounts so it can re-target by name, got none")
@@ -186,7 +187,7 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	orch := &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: false}}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementUpdateConfirmFlow())
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
 	c := &controller{orchestrator: orch, engine: engine, accounts: &fakeAccountRepoFull{}}
 
 	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "che no sé", "", nil, nil, changeAsk{}); err != nil {
@@ -204,7 +205,7 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	actions := &fakeActionsRepo{}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(NewAskUserFlow())
+	engine.Register(flow.NewAskUserFlow())
 	c := &controller{
 		engine: engine, actions: actions,
 		orchestrator: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: false}},
@@ -284,8 +285,8 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 	actions := &fakeActionsRepo{}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAskUserFlow())
-	engine.Register(NewMovementUpdateConfirmFlow())
+	engine.Register(flow.NewAskUserFlow())
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
 	c := &controller{
 		engine: engine, actions: actions, movements: &fakeMovementRepoFull{},
 		accounts:      &fakeAccountRepoFull{},
@@ -301,7 +302,7 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if store.flowName == movementUpdateConfirmFlowName {
+	if store.flowName == flow.MovementUpdateConfirmFlowName {
 		t.Fatal("una corrección que no cambia nada no puede llegar al gate de confirmación")
 	}
 	if len(actions.rows) != 1 {
@@ -322,7 +323,7 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 	actions := &fakeActionsRepo{}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(NewAskUserFlow())
+	engine.Register(flow.NewAskUserFlow())
 	// orchestrator nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
 	c := &controller{engine: engine, actions: actions, accounts: &fakeAccountRepoFull{}}
 
@@ -359,7 +360,7 @@ func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Description: "Cafe"}}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementUpdateConfirmFlow())
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
 	// orchestrator nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
 	c := &controller{engine: engine, accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{}}
 
@@ -371,7 +372,7 @@ func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 	}
 
 	// El gate NO se saltea: el usuario tiene que ver el antes/después igual.
-	if store.flowName != movementUpdateConfirmFlowName {
+	if store.flowName != flow.MovementUpdateConfirmFlowName {
 		t.Fatalf("tenía que abrir el confirm, abrió %q", store.flowName)
 	}
 	after := movement.DecodeMovementRows(store.data)
@@ -470,7 +471,7 @@ func TestCorrectionIsNoOp_DetectsARealChange(t *testing.T) {
 // respuesta dice el valor nuevo ("2000"): con uno solo ResolveUpdate no cierra.
 func TestApplyAnswers_ChangeAnswerIsAppended(t *testing.T) {
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
-		Change: "el café estaba mal", Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
+		Change: "el café estaba mal", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
 	})}
 	answers := []pendingaction.OpenQuestion{{Key: questionKeyChange, Answer: "eran 2000"}}
 
@@ -487,7 +488,7 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	// orchestrator is deliberately nil — this function must not call it.
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementUpdateConfirmFlow())
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
 	c := &controller{engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: &fakeAccountRepoFull{}}
 
 	result := orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{
@@ -496,8 +497,8 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	if err := c.seedAndStartUpdateConfirm(context.Background(), nil, 0, 1, "eran 3500", []string{"7"}, nil, result); err != nil {
 		t.Fatalf("seedAndStartUpdateConfirm: %v", err)
 	}
-	if store.flowName != movementUpdateConfirmFlowName {
-		t.Errorf("started flow = %q, want %q", store.flowName, movementUpdateConfirmFlowName)
+	if store.flowName != flow.MovementUpdateConfirmFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, flow.MovementUpdateConfirmFlowName)
 	}
 }
 
@@ -557,7 +558,7 @@ func (o *fakeOrchestrator) ClassifyCategories(_ context.Context, _ string, rows 
 func TestApplyAnswers_ButtonPlusValueBuildsTheChange(t *testing.T) {
 	// Primera vuelta: toca el botón, que nombra el campo y nada más.
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
-		Change: "editá la panadería", Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
+		Change: "editá la panadería", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
 	})}
 	options := changeFieldOptions()
 	picked, _ := applyAnswers(action, []pendingaction.OpenQuestion{
@@ -591,7 +592,7 @@ func TestApplyAnswers_ButtonPlusValueBuildsTheChange(t *testing.T) {
 // monto (amountOnlyCorrection), no un cambio de categoría.
 func TestApplyAnswers_ValueWithoutAButtonBuildsNothing(t *testing.T) {
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
-		Change: "el café estaba mal", Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
+		Change: "el café estaba mal", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
 	})}
 	payload, _ := applyAnswers(action, []pendingaction.OpenQuestion{
 		{Key: questionKeyChange, Answer: "2000"},

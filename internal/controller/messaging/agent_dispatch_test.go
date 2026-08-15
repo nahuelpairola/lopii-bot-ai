@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -68,8 +69,8 @@ func (r *fakeActionsRepo) CountForUser(userID uint64) (int64, error) {
 func newDispatchController(t *testing.T, repo *fakeActionsRepo) *controller {
 	t.Helper()
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(NewAskUserFlow())
-	engine.Register(NewMovementDeleteFlow())
+	engine.Register(flow.NewAskUserFlow())
+	engine.Register(flow.NewMovementDeleteFlow())
 	return &controller{engine: engine, actions: repo, movements: &fakeMovementRepoFull{}}
 }
 
@@ -79,7 +80,7 @@ func twoCandidateAction(t *testing.T) parkedAction {
 		Tool: orchestrator.ToolCorrectMovement,
 		Payload: agentPayload{
 			Change: "eran 2000",
-			Candidates: []candidateGroup{
+			Candidates: []flow.CandidateGroup{
 				{TransactionID: "", OldIDs: []string{"10"}, Rows: []movement.MovementRow{{Amount: "3000", Currency: "ARS"}}},
 				{TransactionID: "", OldIDs: []string{"11"}, Rows: []movement.MovementRow{{Amount: "5000", Currency: "ARS"}}},
 			},
@@ -145,7 +146,7 @@ func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
 	}
 	repo := &fakeActionsRepo{}
 	c := newDispatchController(t, repo)
-	c.engine.Register(NewMovementCreateFlow(&fakeSubcategoryRepoFull{}, &fakeAccountRepoFull{}))
+	c.engine.Register(flow.NewMovementCreateFlow(&fakeSubcategoryRepoFull{}, &fakeAccountRepoFull{}))
 	c.accounts, c.subcategories = &fakeAccountRepoFull{}, &fakeSubcategoryRepoFull{}
 
 	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{{
@@ -179,7 +180,7 @@ func TestDrain_NothingParkedIsANoOp(t *testing.T) {
 // TestAnswerResolvesTheCandidate: la etiqueta contestada es el índice.
 func TestApplyAnswers_LabelPositionIsTheCandidateIndex(t *testing.T) {
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
-		Candidates: []candidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}},
+		Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}},
 		Chosen:     -1,
 	})}
 	answers := []pendingaction.OpenQuestion{{
@@ -194,7 +195,7 @@ func TestApplyAnswers_LabelPositionIsTheCandidateIndex(t *testing.T) {
 
 func TestApplyAnswers_FreeTextThatNamesNoCandidateStaysUnresolved(t *testing.T) {
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
-		Candidates: []candidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}},
+		Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}},
 		Chosen:     -1,
 	})}
 	answers := []pendingaction.OpenQuestion{{
@@ -256,7 +257,7 @@ func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 	action := &pendingaction.PendingAction{
 		UserID: 1, Tool: orchestrator.ToolDeleteMovements,
 		Payload: mustJSON(t, agentPayload{
-			Candidates: []candidateGroup{{OldIDs: []string{"10"}, Rows: []movement.MovementRow{{Amount: "3000", Currency: "ARS", Type: "expense"}}}},
+			Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}, Rows: []movement.MovementRow{{Amount: "3000", Currency: "ARS", Type: "expense"}}}},
 			Chosen:     0,
 		}),
 		Questions: []byte(`[]`),
@@ -283,7 +284,7 @@ func TestResume_RefusesACandidateOutOfRange(t *testing.T) {
 	c := newDispatchController(t, repo)
 	action := &pendingaction.PendingAction{
 		UserID: 1, Tool: orchestrator.ToolDeleteMovements,
-		Payload: mustJSON(t, agentPayload{Candidates: []candidateGroup{{OldIDs: []string{"10"}}}, Chosen: 7}),
+		Payload: mustJSON(t, agentPayload{Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}}, Chosen: 7}),
 	}
 	if err := repo.Insert(action); err != nil {
 		t.Fatal(err)

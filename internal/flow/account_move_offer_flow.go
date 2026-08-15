@@ -1,4 +1,4 @@
-package messaging
+package flow
 
 import (
 	"fmt"
@@ -7,12 +7,7 @@ import (
 )
 
 const (
-	accountMoveOfferFlowName = "account_move_offer"
-	stepAccountMoveOffer     = "account_move_offer_ask"
-
-	// move-choice button values stored under conversation.KeyMoveChoice.
-	moveChoiceMove = "move"
-	moveChoiceKeep = "keep"
+	stepAccountMoveOffer = "account_move_offer_ask"
 )
 
 // NewAccountMoveOfferFlow is the one-question follow-up after a default
@@ -26,18 +21,18 @@ func NewAccountMoveOfferFlow() *conversation.Flow {
 					conversation.StringOrEmpty(data[conversation.KeyMoveToName]), conversation.StringOrEmpty(data[conversation.KeyMoveFromName]))
 			},
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Sí, mover", Value: moveChoiceMove, Finish: true},
-				{Label: "✋ No, dejar como está", Value: moveChoiceKeep, Finish: true},
+				{Label: "✅ Sí, mover", Value: MoveChoiceMove, Finish: true},
+				{Label: "✋ No, dejar como está", Value: MoveChoiceKeep, Finish: true},
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := conversation.CopyData(data)
 				next[conversation.KeyMoveChoice] = value
 				return next
 			},
-			InvalidChoiceMessage: msgInvalidChoice,
+			InvalidChoiceMessage: MsgInvalidChoice,
 		},
 	}
-	flow, err := conversation.NewFlow(accountMoveOfferFlowName, stepAccountMoveOffer, steps)
+	flow, err := conversation.NewFlow(AccountMoveOfferFlowName, stepAccountMoveOffer, steps)
 	if err != nil {
 		panic(err)
 	}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 )
 
@@ -106,10 +107,10 @@ func TestParseARAmount_AcceptsValidNumbers(t *testing.T) {
 func TestValidateBalanceAmount_RejectsAbbreviation(t *testing.T) {
 	// El hook que ven los flows: una abreviatura tiene que devolver el mensaje
 	// de error, y un número limpio tiene que pasar.
-	if msg := validateBalanceAmount("30k", nil); msg != account.MsgInvalidAmount {
-		t.Errorf("validateBalanceAmount(%q) = %q, want %q", "30k", msg, account.MsgInvalidAmount)
+	if msg := flow.ValidateBalanceAmount("30k", nil); msg != account.MsgInvalidAmount {
+		t.Errorf("flow.ValidateBalanceAmount(%q) = %q, want %q", "30k", msg, account.MsgInvalidAmount)
 	}
-	if msg := validateBalanceAmount("30000", nil); msg != "" {
-		t.Errorf("validateBalanceAmount(%q) = %q, want empty", "30000", msg)
+	if msg := flow.ValidateBalanceAmount("30000", nil); msg != "" {
+		t.Errorf("flow.ValidateBalanceAmount(%q) = %q, want empty", "30000", msg)
 	}
 }

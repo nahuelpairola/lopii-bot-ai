@@ -1,4 +1,4 @@
-package messaging
+package flow
 
 import (
 	"lopiibot.com/internal/account"
@@ -8,23 +8,18 @@ import (
 )
 
 const (
-	accountCreateFlowName = "account_create"
-
-	stepAccountCreateAskName     = "account_create_ask_name"
-	stepAccountCreateAskCurrency = "account_create_ask_currency"
-	stepAccountCreateAskBalance  = "account_create_ask_balance"
-	stepAccountCreateConfirm     = "account_create_confirm"
-
-	optionBack        = "back"
-	optionConfirmSeed = "confirm_seed"
+	StepAccountCreateAskName     = "account_create_ask_name"
+	StepAccountCreateAskCurrency = "account_create_ask_currency"
+	StepAccountCreateAskBalance  = "account_create_ask_balance"
+	StepAccountCreateConfirm     = "account_create_confirm"
 )
 
-// onAccountCreateEscape is the shared OnEscape/OnChoice handler for this
+// OnAccountCreateEscape is the shared OnEscape/OnChoice handler for this
 // flow's Cancelar and Atrás buttons: Cancelar flags cancelled=true (read
 // by finishAccountCreateFlow to skip every DB write); Atrás just moves to
 // the declared NextStep with data untouched.
-func onAccountCreateEscape(value string, data conversation.Data) conversation.Data {
-	if value != optionCancel {
+func OnAccountCreateEscape(value string, data conversation.Data) conversation.Data {
+	if value != OptionCancel {
 		return data
 	}
 	next := conversation.CopyData(data)
@@ -39,30 +34,30 @@ func onAccountCreateEscape(value string, data conversation.Data) conversation.Da
 // as ACCOUNT_CREATE.
 func NewAccountCreateFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
-		stepAccountCreateAskName: conversation.TextStep{
-			PromptText: msgAskAccountCreateName,
+		StepAccountCreateAskName: conversation.TextStep{
+			PromptText: MsgAskAccountCreateName,
 			DataKey:    conversation.KeyAccountName,
 			Validate: func(text string, _ conversation.Data) string {
 				if text == "" {
-					return msgInvalidAccountCreateName
+					return MsgInvalidAccountCreateName
 				}
 				return ""
 			},
-			NextStep:      stepAccountCreateAskCurrency,
-			EscapeOptions: []conversation.ChoiceOption{cancelOption},
+			NextStep:      StepAccountCreateAskCurrency,
+			EscapeOptions: []conversation.ChoiceOption{CancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				name := conversation.StringOrEmpty(data[conversation.KeyAccountName])
 				if name == "" {
 					return nil
 				}
 				return []conversation.ChoiceOption{
-					{Label: "✅ Usar " + name, Value: optionConfirmSeed, NextStep: stepAccountCreateAskCurrency},
+					{Label: "✅ Usar " + name, Value: OptionConfirmSeed, NextStep: StepAccountCreateAskCurrency},
 				}
 			},
-			OnEscape: onAccountCreateEscape,
+			OnEscape: OnAccountCreateEscape,
 		},
-		stepAccountCreateAskCurrency: conversation.ChoiceStep{
-			PromptText: msgAskAccountCreateCurrency,
+		StepAccountCreateAskCurrency: conversation.ChoiceStep{
+			PromptText: MsgAskAccountCreateCurrency,
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				opts := make([]conversation.ChoiceOption, 0, len(currency.SupportedCurrencies)+2)
 				for _, cu := range currency.SupportedCurrencies {
@@ -72,36 +67,36 @@ func NewAccountCreateFlow() *conversation.Flow {
 						// cosas distintas justamente acá.
 						Label:    "💱 " + cu.Label(),
 						Value:    cu.String(),
-						NextStep: stepAccountCreateAskBalance,
+						NextStep: StepAccountCreateAskBalance,
 					})
 				}
 				opts = append(opts,
-					conversation.ChoiceOption{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountCreateAskName},
-					cancelOption,
+					conversation.ChoiceOption{Label: "⬅️ Atrás", Value: OptionBack, NextStep: StepAccountCreateAskName},
+					CancelOption,
 				)
 				return opts
 			},
-			DeclaredNextSteps: []string{stepAccountCreateAskBalance, stepAccountCreateAskName},
+			DeclaredNextSteps: []string{StepAccountCreateAskBalance, StepAccountCreateAskName},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				if value == optionCancel || value == optionBack {
-					return onAccountCreateEscape(value, data)
+				if value == OptionCancel || value == OptionBack {
+					return OnAccountCreateEscape(value, data)
 				}
 				next := conversation.CopyData(data)
 				next[conversation.KeyAccountCurrency] = value
 				return next
 			},
-			InvalidChoiceMessage: msgInvalidChoice,
+			InvalidChoiceMessage: MsgInvalidChoice,
 		},
-		stepAccountCreateAskBalance: conversation.TextStep{
+		StepAccountCreateAskBalance: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
 				return account.MsgAskInitialBalance(conversation.StringOrEmpty(data[conversation.KeyAccountName]), conversation.StringOrEmpty(data[conversation.KeyAccountCurrency]))
 			},
 			DataKey:  conversation.KeyAccountBalance,
-			Validate: validateBalanceAmount,
-			NextStep: stepAccountCreateConfirm,
+			Validate: ValidateBalanceAmount,
+			NextStep: StepAccountCreateConfirm,
 			EscapeOptions: []conversation.ChoiceOption{
-				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountCreateAskCurrency},
-				cancelOption,
+				{Label: "⬅️ Atrás", Value: OptionBack, NextStep: StepAccountCreateAskCurrency},
+				CancelOption,
 			},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				bal := conversation.StringOrEmpty(data[conversation.KeyAccountBalance])
@@ -113,33 +108,33 @@ func NewAccountCreateFlow() *conversation.Flow {
 					label += " " + cur
 				}
 				return []conversation.ChoiceOption{
-					{Label: label, Value: optionConfirmSeed, NextStep: stepAccountCreateConfirm},
+					{Label: label, Value: OptionConfirmSeed, NextStep: StepAccountCreateConfirm},
 				}
 			},
-			OnEscape: onAccountCreateEscape,
+			OnEscape: OnAccountCreateEscape,
 		},
-		stepAccountCreateConfirm: conversation.ChoiceStep{
-			PromptText: msgConfirmAccountCreate,
+		StepAccountCreateConfirm: conversation.ChoiceStep{
+			PromptText: MsgConfirmAccountCreate,
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
-				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepAccountCreateAskBalance},
-				cancelOption,
+				{Label: "✅ Confirmar", Value: OptionConfirm, Finish: true},
+				{Label: "⬅️ Atrás", Value: OptionBack, NextStep: StepAccountCreateAskBalance},
+				CancelOption,
 			},
-			OnChoice:             onAccountCreateEscape,
-			InvalidChoiceMessage: msgInvalidChoice,
+			OnChoice:             OnAccountCreateEscape,
+			InvalidChoiceMessage: MsgInvalidChoice,
 		},
 	}
 
-	flow, err := conversation.NewFlow(accountCreateFlowName, stepAccountCreateAskName, steps)
+	flow, err := conversation.NewFlow(AccountCreateFlowName, StepAccountCreateAskName, steps)
 	if err != nil {
 		panic(err)
 	}
 	return flow
 }
 
-// validateBalanceAmount validates that text is a valid decimal amount
+// ValidateBalanceAmount validates that text is a valid decimal amount
 // (non-negative). Used in account creation and initial balance flows.
-func validateBalanceAmount(text string, _ conversation.Data) string {
+func ValidateBalanceAmount(text string, _ conversation.Data) string {
 	amount, err := movement.ParseARAmount(text)
 	if err != nil || amount.IsNegative() {
 		return account.MsgInvalidAmount

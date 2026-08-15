@@ -1,15 +1,8 @@
-package messaging
+package flow
 
 import "lopiibot.com/internal/conversation"
 
-// categoryLister es lo mínimo que hace falta para armar un picker de
-// categorías: los nombres y su ícono.
-type categoryLister interface {
-	DistinctCategoriesForUser(userID uint64) ([]string, error)
-	IconForCategory(userID uint64, category string) string
-}
-
-// categoryOptions arma un botón por categoría disponible para el usuario
+// CategoryOptions arma un botón por categoría disponible para el usuario
 // (propias + globales, sin reservadas — eso lo filtra DistinctCategoriesForUser),
 // todos apuntando a nextStep, y después agrega las opciones extra tal cual.
 //
@@ -20,7 +13,7 @@ type categoryLister interface {
 //
 // Un error del lister devuelve solo las extras: el usuario se queda sin
 // categorías para elegir, pero nunca sin botón para salir.
-func categoryOptions(subs categoryLister, data conversation.Data, nextStep string, extra ...conversation.ChoiceOption) []conversation.ChoiceOption {
+func CategoryOptions(subs categoryLister, data conversation.Data, nextStep string, extra ...conversation.ChoiceOption) []conversation.ChoiceOption {
 	cats, _ := subs.DistinctCategoriesForUser(data.UserID())
 	opts := make([]conversation.ChoiceOption, 0, len(cats)+len(extra))
 	for _, cat := range cats {
@@ -33,7 +26,7 @@ func categoryOptions(subs categoryLister, data conversation.Data, nextStep strin
 	return append(opts, extra...)
 }
 
-// backOptionTo es el botón Atrás estándar de los flujos multi-step.
-func backOptionTo(step string) conversation.ChoiceOption {
-	return conversation.ChoiceOption{Label: "⬅️ Atrás", Value: optionBack, NextStep: step}
+// BackOptionTo es el botón Atrás estándar de los flujos multi-step.
+func BackOptionTo(step string) conversation.ChoiceOption {
+	return conversation.ChoiceOption{Label: "⬅️ Atrás", Value: OptionBack, NextStep: step}
 }

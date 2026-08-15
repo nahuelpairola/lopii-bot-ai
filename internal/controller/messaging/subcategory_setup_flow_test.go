@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -71,16 +72,16 @@ func (s *fakeConvStore) Clear(userID uint64) error {
 
 func newSubcategorySetupTestEngine(repo subcategoryRepository) *conversation.Engine {
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(NewSubcategorySetupFlow(repo))
+	engine.Register(flow.NewSubcategorySetupFlow(repo))
 	return engine
 }
 
 func TestSubcategorySetup_ChooseMode_NewCategory_AdvancesToNameStep(t *testing.T) {
 	engine := newSubcategorySetupTestEngine(&fakeSubcatSetupRepo{})
-	if _, err := engine.Start(1, subcategorySetupFlowName); err != nil {
+	if _, err := engine.Start(1, flow.SubcategorySetupFlowName); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	result, found, err := engine.Handle(1, conversation.Input{CallbackData: optionNewCategory})
+	result, found, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionNewCategory})
 	if err != nil || !found {
 		t.Fatalf("Handle: found=%v err=%v", found, err)
 	}
@@ -91,10 +92,10 @@ func TestSubcategorySetup_ChooseMode_NewCategory_AdvancesToNameStep(t *testing.T
 
 func TestSubcategorySetup_NewCategoryName_RejectsReservedNames(t *testing.T) {
 	engine := newSubcategorySetupTestEngine(&fakeSubcatSetupRepo{})
-	if _, err := engine.Start(1, subcategorySetupFlowName); err != nil {
+	if _, err := engine.Start(1, flow.SubcategorySetupFlowName); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionNewCategory}); err != nil {
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionNewCategory}); err != nil {
 		t.Fatalf("Handle (choose mode): %v", err)
 	}
 
@@ -116,10 +117,10 @@ func TestSubcategorySetup_SeededStepsOfferConfirmButton(t *testing.T) {
 		"category": "Regalos", "category_is_new": "true", "category_icon": "🎁",
 		"subcategory": "Regalos", "subcategory_description": "Regalos a terceros.",
 	}
-	if _, err := engine.StartWithData(1, subcategorySetupFlowName, seed); err != nil {
+	if _, err := engine.StartWithData(1, flow.SubcategorySetupFlowName, seed); err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	res, _, err := engine.Handle(1, conversation.Input{CallbackData: optionNewCategory})
+	res, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionNewCategory})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,7 @@ func TestSubcategorySetup_SeededStepsOfferConfirmButton(t *testing.T) {
 
 func TestSubcategorySetup_ExistingCategory_SkipsIconStep_LandsOnSubcategoryName(t *testing.T) {
 	engine := newSubcategorySetupTestEngine(&fakeSubcatSetupRepo{categories: []string{"Mascotas"}})
-	if _, err := engine.Start(1, subcategorySetupFlowName); err != nil {
+	if _, err := engine.Start(1, flow.SubcategorySetupFlowName); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: "existing"}); err != nil {
@@ -154,7 +155,7 @@ func TestSubcategorySetup_ExistingCategory_SkipsIconStep_LandsOnSubcategoryName(
 func TestSubcategorySetup_SubcategoryName_RejectsDuplicate(t *testing.T) {
 	existing := &subcategory.Subcategory{Category: "Mascotas", Subcategory: "Veterinario"}
 	engine := newSubcategorySetupTestEngine(&fakeSubcatSetupRepo{categories: []string{"Mascotas"}, existing: existing})
-	if _, err := engine.Start(1, subcategorySetupFlowName); err != nil {
+	if _, err := engine.Start(1, flow.SubcategorySetupFlowName); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: "existing"}); err != nil {
@@ -178,10 +179,10 @@ func TestSubcategorySetup_SubcategoryName_RejectsDuplicate(t *testing.T) {
 
 func TestSubcategorySetup_SubcategoryName_ThenDescription_AdvancesToConfirm(t *testing.T) {
 	engine := newSubcategorySetupTestEngine(&fakeSubcatSetupRepo{})
-	if _, err := engine.Start(1, subcategorySetupFlowName); err != nil {
+	if _, err := engine.Start(1, flow.SubcategorySetupFlowName); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionNewCategory}); err != nil {
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionNewCategory}); err != nil {
 		t.Fatalf("Handle (choose mode): %v", err)
 	}
 	if _, _, err := engine.Handle(1, conversation.Input{Text: "Mascotas"}); err != nil {
@@ -212,10 +213,10 @@ func TestSubcategorySetup_SubcategoryName_ThenDescription_AdvancesToConfirm(t *t
 
 func TestSubcategorySetup_Description_RejectsEmpty(t *testing.T) {
 	engine := newSubcategorySetupTestEngine(&fakeSubcatSetupRepo{})
-	if _, err := engine.Start(1, subcategorySetupFlowName); err != nil {
+	if _, err := engine.Start(1, flow.SubcategorySetupFlowName); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionNewCategory}); err != nil {
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionNewCategory}); err != nil {
 		t.Fatalf("Handle (choose mode): %v", err)
 	}
 	if _, _, err := engine.Handle(1, conversation.Input{Text: "Mascotas"}); err != nil {

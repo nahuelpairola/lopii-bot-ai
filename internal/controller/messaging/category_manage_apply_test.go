@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 )
@@ -154,16 +155,16 @@ func TestFinishCategoryManage_BadTargetID_WritesNothing(t *testing.T) {
 // El dispatcher tiene que conocer los dos flujos nuevos: si faltara un case,
 // el flujo terminaría en el default y no escribiría nunca.
 func TestHandleFlowFinished_KnowsCategoryManageFlows(t *testing.T) {
-	for _, name := range []string{categoryManagePickFlowName, categoryManageTargetFlowName} {
+	for _, name := range []string{flow.CategoryManagePickFlowName, flow.CategoryManageTargetFlowName} {
 		if name == "" {
 			t.Fatal("nombre de flujo vacío")
 		}
 	}
 	// NewFlow valida el grafo al construir: si un NextStep colgara, esto explota.
-	if f := NewCategoryManagePickFlow(fakeOwnedLister{}); f.Name != categoryManagePickFlowName {
+	if f := flow.NewCategoryManagePickFlow(fakeOwnedLister{}); f.Name != flow.CategoryManagePickFlowName {
 		t.Errorf("pick flow Name = %q", f.Name)
 	}
-	if f := NewCategoryManageTargetFlow(fakeTargetLister{}); f.Name != categoryManageTargetFlowName {
+	if f := flow.NewCategoryManageTargetFlow(fakeTargetLister{}); f.Name != flow.CategoryManageTargetFlowName {
 		t.Errorf("target flow Name = %q", f.Name)
 	}
 }
@@ -191,8 +192,8 @@ func newCategoryManageE2E(count int64, match *orchestrator.CategoryMatch) (*cont
 
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManagePickFlow(subs))
-	engine.Register(NewCategoryManageTargetFlow(subs))
+	engine.Register(flow.NewCategoryManagePickFlow(subs))
+	engine.Register(flow.NewCategoryManageTargetFlow(subs))
 
 	c := &controller{
 		engine:        engine,
@@ -211,7 +212,7 @@ func TestCategoryManageE2E_MergePath(t *testing.T) {
 	c, movs, subs := newCategoryManageE2E(3, match)
 	const userID = uint64(1)
 
-	if _, err := c.engine.Start(userID, categoryManagePickFlowName); err != nil {
+	if _, err := c.engine.Start(userID, flow.CategoryManagePickFlowName); err != nil {
 		t.Fatalf("Start flujo 1: %v", err)
 	}
 
@@ -225,7 +226,7 @@ func TestCategoryManageE2E_MergePath(t *testing.T) {
 	c.finishCategoryManagePickFlow(context.Background(), nil, 100, res1.Data)
 
 	// el flujo 2 tiene que estar mostrando la sugerencia
-	res2, found, err := c.engine.Handle(userID, conversation.Input{CallbackData: optionAcceptSuggestion})
+	res2, found, err := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionAcceptSuggestion})
 	if err != nil || !found {
 		t.Fatalf("aceptar sugerencia: found=%v err=%v (¿arrancó el flujo 2?)", found, err)
 	}
@@ -233,7 +234,7 @@ func TestCategoryManageE2E_MergePath(t *testing.T) {
 		t.Fatal("aceptar la sugerencia no debería terminar el flujo: falta confirmar")
 	}
 
-	res3, _, err := c.engine.Handle(userID, conversation.Input{CallbackData: optionConfirm})
+	res3, _, err := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirm})
 	if err != nil || !res3.Finished {
 		t.Fatalf("confirmar: finished=%v err=%v", res3.Finished, err)
 	}
@@ -255,7 +256,7 @@ func TestCategoryManageE2E_EmptyDeletePath(t *testing.T) {
 	c, movs, subs := newCategoryManageE2E(0, nil)
 	const userID = uint64(1)
 
-	c.engine.Start(userID, categoryManagePickFlowName)
+	c.engine.Start(userID, flow.CategoryManagePickFlowName)
 	res1, _, err := c.engine.Handle(userID, conversation.Input{CallbackData: "7"})
 	if err != nil || !res1.Finished {
 		t.Fatalf("elegir origen: %v", err)
@@ -263,7 +264,7 @@ func TestCategoryManageE2E_EmptyDeletePath(t *testing.T) {
 	c.finishCategoryManagePickFlow(context.Background(), nil, 100, res1.Data)
 
 	// sin movimientos no se le pregunta nada al LLM ni se ofrece destino
-	res2, found, err := c.engine.Handle(userID, conversation.Input{CallbackData: optionConfirm})
+	res2, found, err := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirm})
 	if err != nil || !found {
 		t.Fatalf("confirmar borrado: found=%v err=%v", found, err)
 	}
@@ -288,11 +289,11 @@ func TestCategoryManageE2E_ManualPath_ConfirmShowsTargetName(t *testing.T) {
 	c, movs, _ := newCategoryManageE2E(3, match)
 	const userID = uint64(1)
 
-	c.engine.Start(userID, categoryManagePickFlowName)
+	c.engine.Start(userID, flow.CategoryManagePickFlowName)
 	res1, _, _ := c.engine.Handle(userID, conversation.Input{CallbackData: "7"})
 	c.finishCategoryManagePickFlow(context.Background(), nil, 100, res1.Data)
 
-	c.engine.Handle(userID, conversation.Input{CallbackData: optionChooseOther})
+	c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionChooseOther})
 	c.engine.Handle(userID, conversation.Input{CallbackData: "Alimentos"})
 	res, _, err := c.engine.Handle(userID, conversation.Input{CallbackData: "4"}) // Supermercado
 	if err != nil {
@@ -303,7 +304,7 @@ func TestCategoryManageE2E_ManualPath_ConfirmShowsTargetName(t *testing.T) {
 		t.Errorf("el confirm no nombra el destino elegido.\ngot: %q", res.Prompt.Text)
 	}
 
-	res3, _, _ := c.engine.Handle(userID, conversation.Input{CallbackData: optionConfirm})
+	res3, _, _ := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirm})
 	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, res3.Data)
 
 	if movs.reassignedTo != 4 {

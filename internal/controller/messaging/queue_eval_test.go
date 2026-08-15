@@ -15,6 +15,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -137,7 +138,7 @@ func TestQueueEval_DrainReplaysFreeText(t *testing.T) {
 	// call, not deterministic) — wire the real engine + movement_create flow,
 	// same as server.go, so either branch works instead of nil-panicking.
 	engine := conversation.NewEngine(conversation.NewRepository(conn), FlowResumeLabel)
-	engine.Register(NewMovementCreateFlow(cache, accRepo))
+	engine.Register(flow.NewMovementCreateFlow(cache, accRepo))
 
 	orch := orchestrator.New(cfg)
 	c := &controller{users: userRepo, accounts: accRepo, movements: movRepo, subcategories: cache, engine: engine, orchestrator: orch, jobs: jobsRepo}

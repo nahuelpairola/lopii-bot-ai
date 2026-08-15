@@ -11,82 +11,12 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/trace"
 )
-
-const (
-	movementUpdatePickFlowName    = "movement_update_pick"
-	movementUpdateConfirmFlowName = "movement_update_confirm"
-
-	stepPickUpdateCandidate = "pick_update_candidate"
-	stepConfirmUpdate       = "confirm_update"
-)
-
-// NewMovementUpdatePickFlow is only ever started when reference
-// resolution found 2+ ambiguous candidates (see free_text.go, Task 18)
-// — a single resolved candidate skips straight to
-// NewMovementUpdateConfirmFlow via proceedToUpdateConfirm.
-func NewMovementUpdatePickFlow() *conversation.Flow {
-	steps := map[string]conversation.Step{
-		stepPickUpdateCandidate: conversation.ChoiceStep{
-			PromptText: msgPickUpdateCandidate,
-			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				labels := conversation.DecodeStringSlice(data, conversation.KeyCandidateLabels)
-				opts := make([]conversation.ChoiceOption, 0, len(labels))
-				for i, label := range labels {
-					opts = append(opts, conversation.ChoiceOption{
-						Label:  label,
-						Value:  strconv.Itoa(i),
-						Finish: true,
-					})
-				}
-				return opts
-			},
-			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				next := conversation.CopyData(data)
-				next["chosen_index"] = value
-				return next
-			},
-			InvalidChoiceMessage: msgInvalidChoice,
-		},
-	}
-
-	flow, err := conversation.NewFlow(movementUpdatePickFlowName, stepPickUpdateCandidate, steps)
-	if err != nil {
-		panic(err)
-	}
-	return flow
-}
-
-// NewMovementUpdateConfirmFlow is a single confirm/cancel gate — always
-// reached before an UPDATE touches the DB, whether the candidate was a
-// single unambiguous resolveCandidates match or picked from a list.
-func NewMovementUpdateConfirmFlow() *conversation.Flow {
-	steps := map[string]conversation.Step{
-		stepConfirmUpdate: conversation.ChoiceStep{
-			PromptText: msgConfirmUpdateDiff,
-			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
-				{Label: "❌ Cancelar", Value: "cancel", Finish: true},
-			},
-			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				next := conversation.CopyData(data)
-				next[conversation.KeyConfirmed] = strconv.FormatBool(value == optionConfirm)
-				return next
-			},
-			InvalidChoiceMessage: msgInvalidChoice,
-		},
-	}
-
-	flow, err := conversation.NewFlow(movementUpdateConfirmFlowName, stepConfirmUpdate, steps)
-	if err != nil {
-		panic(err)
-	}
-	return flow
-}
 
 func movementToRow(m movement.Movement) movement.MovementRow {
 	row := movement.MovementRow{
@@ -128,7 +58,7 @@ func rowToDraft(r movement.MovementRow) orchestrator.MovementDraft {
 		Date:             r.Date,
 		Group:            r.Group,
 	}
-	if r.AccountID != "" && r.AccountID != accountPendingCreate {
+	if r.AccountID != "" && r.AccountID != flow.AccountPendingCreate {
 		if id, err := strconv.ParseUint(r.AccountID, 10, 64); err == nil {
 			draft.AccountID = &id
 		}
@@ -155,21 +85,12 @@ func draftToRow(d orchestrator.MovementDraft) movement.MovementRow {
 	return row
 }
 
-// candidateGroup is the row-based shape a picker candidate travels in
-// through conversation.Data — distinct from transactionGroup (Task 15),
-// which holds real movement.Movement rows straight from the DB.
-type candidateGroup struct {
-	TransactionID string
-	OldIDs        []string
-	Rows          []movement.MovementRow
-}
-
 // encodeCandidateGroups converts freshly-searched transactionGroups
 // into their row-based Data shape, so the ambiguous-candidate picker
 // (movement_update_pick) can carry full "before" state for whichever
 // one the user ends up choosing, without a second DB round-trip.
 func encodeCandidateGroups(groups []transactionGroup) []interface{} {
-	converted := make([]candidateGroup, 0, len(groups))
+	converted := make([]flow.CandidateGroup, 0, len(groups))
 	for _, g := range groups {
 		converted = append(converted, toCandidateGroup(g))
 	}
@@ -177,9 +98,9 @@ func encodeCandidateGroups(groups []transactionGroup) []interface{} {
 }
 
 // encodeCandidateGroupList existe aparte porque el drenaje del agent loop ya
-// tiene candidateGroup (viene del payload parkeado) y nunca tuvo el
+// tiene flow.CandidateGroup (viene del payload parkeado) y nunca tuvo el
 // transactionGroup con los movimientos enteros.
-func encodeCandidateGroupList(groups []candidateGroup) []interface{} {
+func encodeCandidateGroupList(groups []flow.CandidateGroup) []interface{} {
 	encoded := make([]interface{}, 0, len(groups))
 	for _, g := range groups {
 		encoded = append(encoded, map[string]interface{}{
@@ -189,20 +110,6 @@ func encodeCandidateGroupList(groups []candidateGroup) []interface{} {
 		})
 	}
 	return encoded
-}
-
-func decodeCandidateGroups(data conversation.Data) []candidateGroup {
-	raw, _ := data[conversation.KeyCandidateGroups].([]interface{})
-	groups := make([]candidateGroup, 0, len(raw))
-	for _, r := range raw {
-		m, _ := r.(map[string]interface{})
-		groups = append(groups, candidateGroup{
-			TransactionID: conversation.StringOrEmpty(m["transaction_id"]),
-			OldIDs:        conversation.DecodeStringSlice(conversation.Data{"ids": m["old_ids"]}, "ids"),
-			Rows:          movement.DecodeMovementRows(conversation.Data{conversation.KeyMovements: m["rows"]}),
-		})
-	}
-	return groups
 }
 
 // changeAsk es en qué punto está la pregunta de "qué cambiarle al movimiento".
@@ -391,7 +298,7 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 	}
 	payload, err := json.Marshal(agentPayload{
 		Change:            change,
-		Candidates:        []candidateGroup{{TransactionID: transactionID, OldIDs: oldIDs, Rows: rows}},
+		Candidates:        []flow.CandidateGroup{{TransactionID: transactionID, OldIDs: oldIDs, Rows: rows}},
 		Chosen:            0,
 		PickedChangeField: ask.pickedField,
 		PickedField:       ask.field,
@@ -450,7 +357,7 @@ func (c *controller) userTaxonomy(userID uint64) []orchestrator.TaxonomyEntry {
 // paso algo que nadie le pidió — que es literalmente lo que pasó con "el café
 // estaba mal" (traza 317df846). El gate de confirmación NO se saltea: el usuario
 // ve el antes/después igual.
-func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, payload agentPayload, groups []candidateGroup) error {
+func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, payload agentPayload, groups []flow.CandidateGroup) error {
 	before := make([][]movement.MovementRow, 0, len(groups))
 	var oldIDs []string
 	for _, g := range groups {
@@ -614,10 +521,10 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	//
 	// Se pierde el diff antes/después en ese caso, y es un intercambio a
 	// conciencia: antes el movimiento se PERDÍA con un error genérico.
-	flowName := movementUpdateConfirmFlowName
+	flowName := flow.MovementUpdateConfirmFlowName
 	if len(conversation.DecodeStringSlice(seed, conversation.KeyPendingCategoryGaps)) > 0 ||
 		len(conversation.DecodeStringSlice(seed, conversation.KeyPendingAccountGaps)) > 0 {
-		flowName = movementCreateFlowName
+		flowName = flow.MovementCreateFlowName
 	}
 
 	prompt, err := c.engine.StartWithData(userID, flowName, seed)
@@ -639,7 +546,7 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 		return
 	}
 
-	candidates := decodeCandidateGroups(data)
+	candidates := flow.DecodeCandidateGroups(data)
 	if idx < 0 || idx >= len(candidates) {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 		return

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 )
@@ -15,7 +16,7 @@ import (
 // startSubcategoryWizard starts the classic 7-step wizard fresh — the
 // fallback whenever the LLM path can't produce a trustworthy match/proposal.
 func (c *controller) startSubcategoryWizard(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) error {
-	return c.startFlow(ctx, b, chatID, userID, subcategorySetupFlowName, nil, "start subcategory_setup flow")
+	return c.startFlow(ctx, b, chatID, userID, flow.SubcategorySetupFlowName, nil, "start subcategory_setup flow")
 }
 
 // startSubcategorySetup resolves a CREATE_CATEGORY message with the LLM
@@ -23,7 +24,7 @@ func (c *controller) startSubcategoryWizard(ctx context.Context, b *bot.Bot, cha
 // case), a full proposal collapses the 7-step wizard into one confirmation.
 // Any doubt → the classic wizard, never a dead end.
 func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	slog.InfoContext(ctx, "flow started", "flow", subcategorySetupFlowName, "user_id", userID)
+	slog.InfoContext(ctx, "flow started", "flow", flow.SubcategorySetupFlowName, "user_id", userID)
 	subs, err := c.subcategories.FindAllForUser(userID)
 	if err != nil {
 		return c.startSubcategoryWizard(ctx, b, chatID, userID)
@@ -87,7 +88,7 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 		conversation.KeySubcategory:            p.Subcategory,
 		conversation.KeySubcategoryDescription: strings.TrimSpace(p.Description),
 	}
-	prompt, err := c.engine.StartWithData(userID, categoryProposalConfirmFlowName, seed)
+	prompt, err := c.engine.StartWithData(userID, flow.CategoryProposalConfirmFlowName, seed)
 	if err != nil {
 		return c.startSubcategoryWizard(ctx, b, chatID, userID)
 	}
@@ -99,7 +100,7 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 // nada verifica que el usuario tenga alguna: sin eso el picker mostraría solo
 // "Cancelar", que es un callejón sin salida disfrazado de flujo.
 func (c *controller) startCategoryManage(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) error {
-	slog.InfoContext(ctx, "flow started", "flow", categoryManagePickFlowName, "user_id", userID)
+	slog.InfoContext(ctx, "flow started", "flow", flow.CategoryManagePickFlowName, "user_id", userID)
 
 	owned, err := c.subcategories.FindOwnedByUser(userID)
 	if err != nil {
@@ -111,11 +112,11 @@ func (c *controller) startCategoryManage(ctx context.Context, b *bot.Bot, chatID
 		// evento queda pendiente y el sweeper lo marca "abandoned", que en las
 		// métricas de asertividad se lee como una falla del bot.
 		c.resolveMetric(ctx, userID, outcomeCategoryManageNoOwn)
-		c.sendText(ctx, b, chatID, msgCategoryManageNoOwn)
+		c.sendText(ctx, b, chatID, flow.MsgCategoryManageNoOwn)
 		return nil
 	}
 
-	return c.startFlow(ctx, b, chatID, userID, categoryManagePickFlowName, nil, "start category_manage_pick flow")
+	return c.startFlow(ctx, b, chatID, userID, flow.CategoryManagePickFlowName, nil, "start category_manage_pick flow")
 }
 
 // startCategoryMatchOffer seeds and starts category_match_offer from an
@@ -127,7 +128,7 @@ func (c *controller) startCategoryMatchOffer(ctx context.Context, b *bot.Bot, ch
 		conversation.KeySubcategoryDescription: s.Description,
 		conversation.KeyCategoryIcon:           s.Icon,
 	}
-	prompt, err := c.engine.StartWithData(userID, categoryMatchOfferFlowName, seed)
+	prompt, err := c.engine.StartWithData(userID, flow.CategoryMatchOfferFlowName, seed)
 	if err != nil {
 		return c.startSubcategoryWizard(ctx, b, chatID, userID)
 	}

@@ -1,4 +1,4 @@
-package messaging
+package flow
 
 import (
 	"strings"
@@ -8,17 +8,15 @@ import (
 )
 
 const (
-	subcategorySetupFlowName = "subcategory_setup"
+	StepChooseMode             = "subcategory_setup_choose_mode"
+	StepPickExistingCategory   = "subcategory_setup_pick_category"
+	StepNewCategoryName        = "subcategory_setup_new_category_name"
+	StepNewCategoryIcon        = "subcategory_setup_new_category_icon"
+	StepSubcategoryName        = "subcategory_setup_subcategory_name"
+	StepSubcategoryDescription = "subcategory_setup_description"
+	StepConfirmSubcategory     = "subcategory_setup_confirm"
 
-	stepChooseMode             = "subcategory_setup_choose_mode"
-	stepPickExistingCategory   = "subcategory_setup_pick_category"
-	stepNewCategoryName        = "subcategory_setup_new_category_name"
-	stepNewCategoryIcon        = "subcategory_setup_new_category_icon"
-	stepSubcategoryName        = "subcategory_setup_subcategory_name"
-	stepSubcategoryDescription = "subcategory_setup_description"
-	stepConfirmSubcategory     = "subcategory_setup_confirm"
-
-	optionNewCategory = "new_category"
+	OptionNewCategory = "new_category"
 )
 
 // NewSubcategorySetupFlow builds the 7-step flow for creating a custom
@@ -27,58 +25,58 @@ const (
 // for future CREATE classification. Started by startSubcategorySetup
 // (free_text.go) whenever Call 1 classifies a message as CREATE_CATEGORY.
 // Every step is cancelable via TextStep.EscapeOptions/ChoiceOption's
-// cancelOption (the same mechanism account_create_flow.go already uses)
-// and back-able except the entry point stepChooseMode.
+// CancelOption (the same mechanism account_create_flow.go already uses)
+// and back-able except the entry point StepChooseMode.
 func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.Flow {
 	backOption := func(to string) conversation.ChoiceOption {
-		return conversation.ChoiceOption{Label: "⬅️ Atrás", Value: optionBack, NextStep: to}
+		return conversation.ChoiceOption{Label: "⬅️ Atrás", Value: OptionBack, NextStep: to}
 	}
 
 	steps := map[string]conversation.Step{
-		stepChooseMode: conversation.ChoiceStep{
+		StepChooseMode: conversation.ChoiceStep{
 			PromptText: func(conversation.Data) string { return subcategory.MsgChooseCategoryIntro },
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				cats, _ := subcategories.DistinctCategoriesForUser(data.UserID())
 				opts := make([]conversation.ChoiceOption, 0, len(cats)+2)
 				if len(cats) > 0 {
-					opts = append(opts, conversation.ChoiceOption{Label: "📂 Elegir categoría existente", Value: "existing", NextStep: stepPickExistingCategory})
+					opts = append(opts, conversation.ChoiceOption{Label: "📂 Elegir categoría existente", Value: "existing", NextStep: StepPickExistingCategory})
 				}
 				opts = append(opts,
-					conversation.ChoiceOption{Label: subcategory.BtnNewCategory, Value: optionNewCategory, NextStep: stepNewCategoryName},
-					cancelOption,
+					conversation.ChoiceOption{Label: subcategory.BtnNewCategory, Value: OptionNewCategory, NextStep: StepNewCategoryName},
+					CancelOption,
 				)
 				return opts
 			},
-			DeclaredNextSteps: []string{stepPickExistingCategory, stepNewCategoryName},
+			DeclaredNextSteps: []string{StepPickExistingCategory, StepNewCategoryName},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				if value == optionCancel {
-					return onAccountCreateEscape(optionCancel, data)
+				if value == OptionCancel {
+					return OnAccountCreateEscape(OptionCancel, data)
 				}
 				next := conversation.CopyData(data)
-				if value == optionNewCategory {
+				if value == OptionNewCategory {
 					conversation.SetFlag(next, conversation.KeyCategoryIsNew)
 				}
 				return next
 			},
-			InvalidChoiceMessage: msgInvalidChoice,
+			InvalidChoiceMessage: MsgInvalidChoice,
 		},
 
-		stepPickExistingCategory: conversation.ChoiceStep{
+		StepPickExistingCategory: conversation.ChoiceStep{
 			PromptText: func(conversation.Data) string { return subcategory.MsgChooseCategoryIntro },
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				return categoryOptions(subcategories, data, stepSubcategoryName,
-					conversation.ChoiceOption{Label: subcategory.BtnNewCategory, Value: optionNewCategory, NextStep: stepNewCategoryName},
-					backOption(stepChooseMode),
-					cancelOption,
+				return CategoryOptions(subcategories, data, StepSubcategoryName,
+					conversation.ChoiceOption{Label: subcategory.BtnNewCategory, Value: OptionNewCategory, NextStep: StepNewCategoryName},
+					backOption(StepChooseMode),
+					CancelOption,
 				)
 			},
-			DeclaredNextSteps: []string{stepSubcategoryName, stepNewCategoryName, stepChooseMode},
+			DeclaredNextSteps: []string{StepSubcategoryName, StepNewCategoryName, StepChooseMode},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				if value == optionCancel || value == optionBack {
-					return onAccountCreateEscape(value, data)
+				if value == OptionCancel || value == OptionBack {
+					return OnAccountCreateEscape(value, data)
 				}
 				next := conversation.CopyData(data)
-				if value == optionNewCategory {
+				if value == OptionNewCategory {
 					conversation.SetFlag(next, conversation.KeyCategoryIsNew)
 					return next
 				}
@@ -86,10 +84,10 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				next[conversation.KeyCategoryIsNew] = "false"
 				return next
 			},
-			InvalidChoiceMessage: msgInvalidChoice,
+			InvalidChoiceMessage: MsgInvalidChoice,
 		},
 
-		stepNewCategoryName: conversation.TextStep{
+		StepNewCategoryName: conversation.TextStep{
 			PromptText: func(conversation.Data) string { return subcategory.MsgAskNewCategoryName() },
 			DataKey:    conversation.KeyCategory,
 			Validate: func(text string, _ conversation.Data) string {
@@ -98,24 +96,24 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				}
 				return ""
 			},
-			NextStep:      stepNewCategoryIcon,
-			EscapeOptions: []conversation.ChoiceOption{backOption(stepChooseMode), cancelOption},
+			NextStep:      StepNewCategoryIcon,
+			EscapeOptions: []conversation.ChoiceOption{backOption(StepChooseMode), CancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				v := conversation.StringOrEmpty(data["category"])
 				if v == "" {
 					return nil
 				}
-				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: optionConfirmSeed, NextStep: stepNewCategoryIcon}}
+				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: OptionConfirmSeed, NextStep: StepNewCategoryIcon}}
 			},
-			OnEscape: onAccountCreateEscape,
+			OnEscape: OnAccountCreateEscape,
 		},
 
-		// stepNewCategoryIcon is only ever reached via stepNewCategoryName's
-		// NextStep — the existing-category path in stepPickExistingCategory
-		// targets stepSubcategoryName directly, so this step is "skipped"
+		// StepNewCategoryIcon is only ever reached via StepNewCategoryName's
+		// NextStep — the existing-category path in StepPickExistingCategory
+		// targets StepSubcategoryName directly, so this step is "skipped"
 		// by construction (two different NextStep targets) rather than via
 		// a runtime Skip/SkipIf check.
-		stepNewCategoryIcon: conversation.TextStep{
+		StepNewCategoryIcon: conversation.TextStep{
 			PromptText: func(conversation.Data) string { return "¿Qué emoji querés usar para esta categoría?" },
 			DataKey:    conversation.KeyCategoryIcon,
 			Validate: func(text string, _ conversation.Data) string {
@@ -124,19 +122,19 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				}
 				return ""
 			},
-			NextStep:      stepSubcategoryName,
-			EscapeOptions: []conversation.ChoiceOption{backOption(stepNewCategoryName), cancelOption},
+			NextStep:      StepSubcategoryName,
+			EscapeOptions: []conversation.ChoiceOption{backOption(StepNewCategoryName), CancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				v := conversation.StringOrEmpty(data[conversation.KeyCategoryIcon])
 				if v == "" {
 					return nil
 				}
-				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: optionConfirmSeed, NextStep: stepSubcategoryName}}
+				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: OptionConfirmSeed, NextStep: StepSubcategoryName}}
 			},
-			OnEscape: onAccountCreateEscape,
+			OnEscape: OnAccountCreateEscape,
 		},
 
-		stepSubcategoryName: conversation.TextStep{
+		StepSubcategoryName: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
 				return subcategory.MsgAskSubcategoryName(conversation.StringOrEmpty(data["category"]))
 			},
@@ -151,19 +149,19 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				}
 				return ""
 			},
-			NextStep:      stepSubcategoryDescription,
-			EscapeOptions: []conversation.ChoiceOption{cancelOption},
+			NextStep:      StepSubcategoryDescription,
+			EscapeOptions: []conversation.ChoiceOption{CancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				v := conversation.StringOrEmpty(data["subcategory"])
 				if v == "" {
 					return nil
 				}
-				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: optionConfirmSeed, NextStep: stepSubcategoryDescription}}
+				return []conversation.ChoiceOption{{Label: "✅ Usar " + v, Value: OptionConfirmSeed, NextStep: StepSubcategoryDescription}}
 			},
-			OnEscape: onAccountCreateEscape,
+			OnEscape: OnAccountCreateEscape,
 		},
 
-		// stepSubcategoryDescription asks the one thing the pre-existing
+		// StepSubcategoryDescription asks the one thing the pre-existing
 		// scaffolding (msgAskNewCategoryName et al.) never covered: a short
 		// description of *when* this subcategory applies. This is not
 		// decorative — orchestrator.TaxonomyEntry.Description is fed to Call
@@ -172,9 +170,9 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 		// carnicería"); a user-created subcategory with no description is
 		// indistinguishable from PENDING_REVIEW to the LLM the next time a
 		// movement should land here.
-		stepSubcategoryDescription: conversation.TextStep{
+		StepSubcategoryDescription: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return msgAskSubcategoryDescription(conversation.StringOrEmpty(data["subcategory"]))
+				return MsgAskSubcategoryDescription(conversation.StringOrEmpty(data["subcategory"]))
 			},
 			DataKey: conversation.KeySubcategoryDescription,
 			Validate: func(text string, _ conversation.Data) string {
@@ -183,18 +181,18 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				}
 				return ""
 			},
-			NextStep:      stepConfirmSubcategory,
-			EscapeOptions: []conversation.ChoiceOption{backOption(stepSubcategoryName), cancelOption},
+			NextStep:      StepConfirmSubcategory,
+			EscapeOptions: []conversation.ChoiceOption{backOption(StepSubcategoryName), CancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				if conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription]) == "" {
 					return nil
 				}
-				return []conversation.ChoiceOption{{Label: "✅ Usar la propuesta", Value: optionConfirmSeed, NextStep: stepConfirmSubcategory}}
+				return []conversation.ChoiceOption{{Label: "✅ Usar la propuesta", Value: OptionConfirmSeed, NextStep: StepConfirmSubcategory}}
 			},
-			OnEscape: onAccountCreateEscape,
+			OnEscape: OnAccountCreateEscape,
 		},
 
-		stepConfirmSubcategory: conversation.ChoiceStep{
+		StepConfirmSubcategory: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
 				icon := conversation.StringOrEmpty(data[conversation.KeyCategoryIcon])
 				if icon == "" {
@@ -204,16 +202,16 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 					"\n📝 " + conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription]) + "\n\n¿Confirmás?"
 			},
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
-				backOption(stepSubcategoryDescription),
-				cancelOption,
+				{Label: "✅ Confirmar", Value: OptionConfirm, Finish: true},
+				backOption(StepSubcategoryDescription),
+				CancelOption,
 			},
-			OnChoice:             onAccountCreateEscape,
-			InvalidChoiceMessage: msgInvalidChoice,
+			OnChoice:             OnAccountCreateEscape,
+			InvalidChoiceMessage: MsgInvalidChoice,
 		},
 	}
 
-	flow, err := conversation.NewFlow(subcategorySetupFlowName, stepChooseMode, steps)
+	flow, err := conversation.NewFlow(SubcategorySetupFlowName, StepChooseMode, steps)
 	if err != nil {
 		panic(err)
 	}

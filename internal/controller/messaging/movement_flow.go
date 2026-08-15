@@ -42,11 +42,6 @@ func guessNamesOwnAccount(guess, description string) bool {
 	return !tokenAppearsInString(guess, foldAccents(strings.ToLower(description)))
 }
 
-// accountPendingCreate is the sentinel MovementRow.AccountID value
-// meaning "the user chose, mid-flow, to create this account" — real
-// account ids are always numeric strings, so this can never collide.
-const accountPendingCreate = "PENDING_CREATE"
-
 // mode discriminates buildCreateSeed's flow: a fresh CREATE vs a resolved
 // UPDATE reusing the create flow. Stored under conversation.KeyMode.
 const (

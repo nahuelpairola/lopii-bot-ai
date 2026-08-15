@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -13,7 +14,7 @@ import (
 func TestStartCategoryManage_NoOwnCategories_DoesNotStartFlow(t *testing.T) {
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManagePickFlow(fakeOwnedLister{}))
+	engine.Register(flow.NewCategoryManagePickFlow(fakeOwnedLister{}))
 
 	subs := &fakeSubcategoryRepoFull{owned: nil}
 	c := &controller{engine: engine, subcategories: subs}
@@ -30,7 +31,7 @@ func TestStartCategoryManage_WithOwnCategories_StartsPickFlow(t *testing.T) {
 	owned := []subcategory.Subcategory{ownedSub(7, "Comida", "Delivery", "🍕")}
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManagePickFlow(fakeOwnedLister{owned: owned}))
+	engine.Register(flow.NewCategoryManagePickFlow(fakeOwnedLister{owned: owned}))
 
 	subs := &fakeSubcategoryRepoFull{owned: owned}
 	c := &controller{engine: engine, subcategories: subs}
@@ -38,8 +39,8 @@ func TestStartCategoryManage_WithOwnCategories_StartsPickFlow(t *testing.T) {
 	if err := c.startCategoryManage(context.Background(), nil, 100, 1); err != nil {
 		t.Fatalf("startCategoryManage: %v", err)
 	}
-	if store.stepName != stepPickSource {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepPickSource)
+	if store.stepName != flow.StepPickSource {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepPickSource)
 	}
 }
 
@@ -48,7 +49,7 @@ func TestStartCategoryManage_WithOwnCategories_StartsPickFlow(t *testing.T) {
 func TestStartCategoryManage_RepoError_DoesNotStartFlow(t *testing.T) {
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManagePickFlow(fakeOwnedLister{}))
+	engine.Register(flow.NewCategoryManagePickFlow(fakeOwnedLister{}))
 
 	subs := &fakeSubcategoryRepoFull{ownedErr: errFake}
 	c := &controller{engine: engine, subcategories: subs}
@@ -68,7 +69,7 @@ func TestStartCategoryManage_RepoError_DoesNotStartFlow(t *testing.T) {
 func TestStartCategoryManage_NoOwnCategories_ResolvesMetric(t *testing.T) {
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManagePickFlow(fakeOwnedLister{}))
+	engine.Register(flow.NewCategoryManagePickFlow(fakeOwnedLister{}))
 
 	metrics := &fakeMetricRepo{}
 	c := &controller{engine: engine, subcategories: &fakeSubcategoryRepoFull{}, metrics: metrics}

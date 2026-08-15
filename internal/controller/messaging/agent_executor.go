@@ -10,6 +10,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -48,9 +49,9 @@ type parkedAction struct {
 // Candidates son grupos que resolvió LA APP con resolveCandidates. Chosen es el
 // índice dentro de Candidates, o -1 cuando hay que preguntar cuál.
 type agentPayload struct {
-	Change     string           `json:"change,omitempty"`
-	Candidates []candidateGroup `json:"candidates,omitempty"`
-	Chosen     int              `json:"chosen"`
+	Change     string                `json:"change,omitempty"`
+	Candidates []flow.CandidateGroup `json:"candidates,omitempty"`
+	Chosen     int                   `json:"chosen"`
 	// Seed es el estado del CREATE que quedó incompleto: las filas ya resueltas
 	// y qué falta. Viaja al flujo movement_create, que es quien sabe preguntar
 	// categoría/subcategoría/cuenta con sus pickers. Sólo lo usa
@@ -195,12 +196,12 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		defaultChangeOps(a.Changes)
 		return e.park(parkRequest{
 			tool: orchestrator.ToolCorrectMovement, change: a.Change,
-			question: msgPickUpdateCandidate(nil), scope: a.Scope, changes: a.Changes,
+			question: flow.MsgPickUpdateCandidate(nil), scope: a.Scope, changes: a.Changes,
 		})
 	case orchestrator.ToolRecordMovements:
 		return e.record(args)
 	case orchestrator.ToolDeleteMovements:
-		return e.park(parkRequest{tool: orchestrator.ToolDeleteMovements, question: msgPickDeleteCandidate(nil)})
+		return e.park(parkRequest{tool: orchestrator.ToolDeleteMovements, question: flow.MsgPickDeleteCandidate(nil)})
 	case orchestrator.ToolAnswerQuery:
 		// Sin argumentos: la app pasa el texto ORIGINAL. QUERY se queda en su
 		// propio loop y su propio modelo a propósito — el techo de Groq es por
@@ -277,7 +278,7 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 
 	hasGaps := len(conversation.DecodeStringSlice(seed, conversation.KeyPendingCategoryGaps)) > 0 ||
 		len(conversation.DecodeStringSlice(seed, conversation.KeyPendingAccountGaps)) > 0
-	hasFirst := needsFirstAccount(seed, func(cur currency.Currency) bool {
+	hasFirst := flow.NeedsFirstAccount(seed, func(cur currency.Currency) bool {
 		return e.c.accounts.HasDefaultForCurrency(e.userID, cur)
 	})
 	if hasGaps || hasFirst {
@@ -391,7 +392,7 @@ func (e *agentExecutor) park(req parkRequest) (string, error) {
 		return resultNoCandidates, orchestrator.ErrAgentTurnDone
 	}
 
-	candidates := make([]candidateGroup, 0, len(groups))
+	candidates := make([]flow.CandidateGroup, 0, len(groups))
 	options := make([]string, 0, len(groups))
 	for _, g := range groups {
 		candidates = append(candidates, toCandidateGroup(g))
@@ -467,12 +468,12 @@ func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *insufficien
 	return "pendiente: el saldo no alcanza, la app le pide confirmación al usuario", orchestrator.ErrAgentTurnDone
 }
 
-func toCandidateGroup(g transactionGroup) candidateGroup {
+func toCandidateGroup(g transactionGroup) flow.CandidateGroup {
 	rows := make([]movement.MovementRow, 0, len(g.Movements))
 	ids := make([]string, 0, len(g.Movements))
 	for _, m := range g.Movements {
 		rows = append(rows, movementToRow(m))
 		ids = append(ids, strconv.FormatUint(uint64(m.ID), 10))
 	}
-	return candidateGroup{TransactionID: g.TransactionID, OldIDs: ids, Rows: rows}
+	return flow.CandidateGroup{TransactionID: g.TransactionID, OldIDs: ids, Rows: rows}
 }

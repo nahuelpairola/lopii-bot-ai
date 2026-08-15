@@ -5,6 +5,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 )
 
 type fakeBalanceSummer struct{ sum decimal.Decimal }
@@ -16,7 +17,7 @@ func (f fakeBalanceSummer) SumAmountForAccount(uint64) (decimal.Decimal, error) 
 func newAccountManageTestEngine() (*conversation.Engine, *fakeStateStore) {
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountManageFlow(fakeBalanceSummer{sum: decimal.NewFromInt(50000)}))
+	engine.Register(flow.NewAccountManageFlow(fakeBalanceSummer{sum: decimal.NewFromInt(50000)}))
 	return engine, store
 }
 
@@ -40,11 +41,11 @@ func manageSeed(withAccount bool) conversation.Data {
 func TestAccountManageFlow_SeededMatch_SkipsPick(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
-	if _, err := engine.StartWithData(userID, accountManageFlowName, manageSeed(true)); err != nil {
+	if _, err := engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true)); err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepAccountManageMenu {
-		t.Errorf("stepName = %q, want %q (pick should be skipped)", store.stepName, stepAccountManageMenu)
+	if store.stepName != flow.StepAccountManageMenu {
+		t.Errorf("stepName = %q, want %q (pick should be skipped)", store.stepName, flow.StepAccountManageMenu)
 	}
 }
 
@@ -52,16 +53,16 @@ func TestAccountManageFlow_SeededMatch_SkipsPick(t *testing.T) {
 func TestAccountManageFlow_Pick_SelectsCandidate(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(false))
-	if store.stepName != stepAccountManagePick {
-		t.Fatalf("initial stepName = %q, want %q", store.stepName, stepAccountManagePick)
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(false))
+	if store.stepName != flow.StepAccountManagePick {
+		t.Fatalf("initial stepName = %q, want %q", store.stepName, flow.StepAccountManagePick)
 	}
 	result, found, err := engine.Handle(userID, conversation.Input{CallbackData: "pick_0"})
 	if err != nil || !found || result.Finished {
 		t.Fatalf("pick_0: result=%+v found=%v err=%v", result, found, err)
 	}
-	if store.stepName != stepAccountManageMenu {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountManageMenu)
+	if store.stepName != flow.StepAccountManageMenu {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountManageMenu)
 	}
 	if store.data["account_id"] != "10" || store.data["account_name"] != "Wallet" || store.data["account_currency"] != "ARS" {
 		t.Errorf("picked fields = %v/%v/%v, want 10/Wallet/ARS",
@@ -73,8 +74,8 @@ func TestAccountManageFlow_Pick_SelectsCandidate(t *testing.T) {
 func TestAccountManageFlow_Pick_CreateNew(t *testing.T) {
 	engine, _ := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(false))
-	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: optionManageCreate})
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(false))
+	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: flow.OptionManageCreate})
 	if err != nil || !result.Finished {
 		t.Fatalf("create-new: result=%+v err=%v", result, err)
 	}
@@ -87,7 +88,7 @@ func TestAccountManageFlow_Pick_CreateNew(t *testing.T) {
 func TestAccountManageFlow_Pick_Cancel(t *testing.T) {
 	engine, _ := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(false))
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(false))
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "cancel"})
 	if err != nil || !result.Finished {
 		t.Fatalf("cancel at pick: result=%+v err=%v", result, err)
@@ -101,21 +102,21 @@ func TestAccountManageFlow_Pick_Cancel(t *testing.T) {
 func TestAccountManageFlow_Rename_HappyPath(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(true))
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true))
 
-	engine.Handle(userID, conversation.Input{CallbackData: optionManageRename})
-	if store.stepName != stepAccountManageAskName {
-		t.Fatalf("after op_rename stepName = %q, want %q", store.stepName, stepAccountManageAskName)
+	engine.Handle(userID, conversation.Input{CallbackData: flow.OptionManageRename})
+	if store.stepName != flow.StepAccountManageAskName {
+		t.Fatalf("after op_rename stepName = %q, want %q", store.stepName, flow.StepAccountManageAskName)
 	}
 	// empty name → retry
 	result, _, _ := engine.Handle(userID, conversation.Input{Text: "   "})
-	if result.Finished || store.stepName != stepAccountManageAskName {
+	if result.Finished || store.stepName != flow.StepAccountManageAskName {
 		t.Fatalf("empty name should retry: finished=%v step=%q", result.Finished, store.stepName)
 	}
 	// valid name → confirm step
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
-	if store.stepName != stepAccountManageConfirmRename {
-		t.Fatalf("after name stepName = %q, want %q", store.stepName, stepAccountManageConfirmRename)
+	if store.stepName != flow.StepAccountManageConfirmRename {
+		t.Fatalf("after name stepName = %q, want %q", store.stepName, flow.StepAccountManageConfirmRename)
 	}
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "confirm"})
 	if err != nil || !result.Finished {
@@ -130,16 +131,16 @@ func TestAccountManageFlow_Rename_HappyPath(t *testing.T) {
 func TestAccountManageFlow_Rename_BackFromConfirm(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(true))
-	engine.Handle(userID, conversation.Input{CallbackData: optionManageRename})
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true))
+	engine.Handle(userID, conversation.Input{CallbackData: flow.OptionManageRename})
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "back"})
 	if err != nil || result.Finished {
 		t.Fatalf("back from confirm rename: result=%+v err=%v", result, err)
 	}
-	if store.stepName != stepAccountManageAskName {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountManageAskName)
+	if store.stepName != flow.StepAccountManageAskName {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountManageAskName)
 	}
 }
 
@@ -147,23 +148,23 @@ func TestAccountManageFlow_Rename_BackFromConfirm(t *testing.T) {
 func TestAccountManageFlow_Adjust_HappyPath(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(true))
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true))
 
-	engine.Handle(userID, conversation.Input{CallbackData: optionManageAdjust})
-	if store.stepName != stepAccountManageAskTotal {
-		t.Fatalf("after op_adjust stepName = %q, want %q", store.stepName, stepAccountManageAskTotal)
+	engine.Handle(userID, conversation.Input{CallbackData: flow.OptionManageAdjust})
+	if store.stepName != flow.StepAccountManageAskTotal {
+		t.Fatalf("after op_adjust stepName = %q, want %q", store.stepName, flow.StepAccountManageAskTotal)
 	}
 	result, _, _ := engine.Handle(userID, conversation.Input{Text: "abc"})
-	if result.Finished || store.stepName != stepAccountManageAskTotal {
+	if result.Finished || store.stepName != flow.StepAccountManageAskTotal {
 		t.Fatal("non-numeric total should retry")
 	}
 	result, _, _ = engine.Handle(userID, conversation.Input{Text: "-5"})
-	if result.Finished || store.stepName != stepAccountManageAskTotal {
+	if result.Finished || store.stepName != flow.StepAccountManageAskTotal {
 		t.Fatal("negative total should retry")
 	}
 	engine.Handle(userID, conversation.Input{Text: "52000"})
-	if store.stepName != stepAccountManageConfirmAdjust {
-		t.Fatalf("after total stepName = %q, want %q", store.stepName, stepAccountManageConfirmAdjust)
+	if store.stepName != flow.StepAccountManageConfirmAdjust {
+		t.Fatalf("after total stepName = %q, want %q", store.stepName, flow.StepAccountManageConfirmAdjust)
 	}
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "confirm"})
 	if err != nil || !result.Finished {
@@ -178,10 +179,10 @@ func TestAccountManageFlow_Adjust_HappyPath(t *testing.T) {
 func TestAccountManageFlow_Adjust_ZeroAccepted(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(true))
-	engine.Handle(userID, conversation.Input{CallbackData: optionManageAdjust})
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true))
+	engine.Handle(userID, conversation.Input{CallbackData: flow.OptionManageAdjust})
 	engine.Handle(userID, conversation.Input{Text: "0"})
-	if store.stepName != stepAccountManageConfirmAdjust {
+	if store.stepName != flow.StepAccountManageConfirmAdjust {
 		t.Fatalf("total 0 should advance to confirm, stepName = %q", store.stepName)
 	}
 	result, _, _ := engine.Handle(userID, conversation.Input{CallbackData: "confirm"})
@@ -194,8 +195,8 @@ func TestAccountManageFlow_Adjust_ZeroAccepted(t *testing.T) {
 func TestAccountManageFlow_Default_HappyPath(t *testing.T) {
 	engine, _ := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(true))
-	engine.Handle(userID, conversation.Input{CallbackData: optionManageDefault})
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true))
+	engine.Handle(userID, conversation.Input{CallbackData: flow.OptionManageDefault})
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "confirm"})
 	if err != nil || !result.Finished {
 		t.Fatalf("confirm default: result=%+v err=%v", result, err)
@@ -209,7 +210,7 @@ func TestAccountManageFlow_Default_HappyPath(t *testing.T) {
 func TestAccountManageFlow_Menu_Cancel(t *testing.T) {
 	engine, _ := newAccountManageTestEngine()
 	const userID = uint64(1)
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(true))
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true))
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "cancel"})
 	if err != nil || !result.Finished {
 		t.Fatalf("cancel at menu: result=%+v err=%v", result, err)
@@ -224,16 +225,16 @@ func TestAccountManageFlow_CancelInsideTextSteps(t *testing.T) {
 	const userID = uint64(1)
 
 	engine, _ := newAccountManageTestEngine()
-	engine.StartWithData(userID, accountManageFlowName, manageSeed(true))
-	engine.Handle(userID, conversation.Input{CallbackData: optionManageRename})
+	engine.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true))
+	engine.Handle(userID, conversation.Input{CallbackData: flow.OptionManageRename})
 	result, _, _ := engine.Handle(userID, conversation.Input{CallbackData: "cancel"})
 	if !result.Finished || result.Data["cancelled"] != "true" {
 		t.Fatalf("cancel in name step: finished=%v cancelled=%v", result.Finished, result.Data["cancelled"])
 	}
 
 	engine2, _ := newAccountManageTestEngine()
-	engine2.StartWithData(userID, accountManageFlowName, manageSeed(true))
-	engine2.Handle(userID, conversation.Input{CallbackData: optionManageAdjust})
+	engine2.StartWithData(userID, flow.AccountManageFlowName, manageSeed(true))
+	engine2.Handle(userID, conversation.Input{CallbackData: flow.OptionManageAdjust})
 	result, _, _ = engine2.Handle(userID, conversation.Input{CallbackData: "cancel"})
 	if !result.Finished || result.Data["cancelled"] != "true" {
 		t.Fatalf("cancel in total step: finished=%v cancelled=%v", result.Finished, result.Data["cancelled"])

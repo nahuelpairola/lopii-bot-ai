@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -163,7 +164,7 @@ func TestMoney_ChangingTheAccountMovesBothBalances(t *testing.T) {
 		"change":"el peaje ponelo en Galicia Test",
 		"changes":[{"field":"account","value":"Galicia Test"}]}`))
 	h.SendText("el peaje ponelo en Galicia Test")
-	h.TapButton(optionConfirm)
+	h.TapButton(flow.OptionConfirm)
 
 	movs := h.Movements()
 	if len(movs) != 1 {

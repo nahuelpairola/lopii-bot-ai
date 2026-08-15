@@ -6,6 +6,7 @@ import (
 
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -18,7 +19,7 @@ func TestMsgConfirmUpdateDiff_ShowsAccountChange(t *testing.T) {
 		"movements":        movement.EncodeMovementRows(after),
 	}
 
-	msg := msgConfirmUpdateDiff(data)
+	msg := flow.MsgConfirmUpdateDiff(data)
 	for _, want := range []string{"Galicia", "Efectivo"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("diff %q missing %q — account change must be visible", msg, want)
@@ -48,7 +49,7 @@ func TestAskPrompts_DistinguishRows(t *testing.T) {
 		conversation.KeyPendingCategoryGaps: conversation.EncodeStringSlice([]string{"0", "1"}),
 	}
 
-	prompt0 := msgAskCategory(data)
+	prompt0 := flow.MsgAskCategory(data)
 	if !strings.Contains(prompt0, "5000") || !strings.Contains(prompt0, "Coto") {
 		t.Errorf("row 0 prompt missing its own data: %q", prompt0)
 	}
@@ -59,7 +60,7 @@ func TestAskPrompts_DistinguishRows(t *testing.T) {
 	// Advance past row 0 (mirrors stepResolveCategory's OnChoice: gap stays
 	// queued until the paired subcategory answer pops it).
 	data[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice([]string{"1"})
-	prompt1 := msgAskCategory(data)
+	prompt1 := flow.MsgAskCategory(data)
 	if prompt1 == prompt0 {
 		t.Fatalf("row 1 prompt identical to row 0's — this is the reported bug")
 	}
@@ -74,7 +75,7 @@ func TestAskPrompts_DistinguishRows(t *testing.T) {
 	data["gap_active_row"] = "0"
 	rows[0].Category = "Alimentación"
 	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
-	subPrompt := msgAskSubcategory(data)
+	subPrompt := flow.MsgAskSubcategory(data)
 	if !strings.Contains(subPrompt, "Coto") || !strings.Contains(subPrompt, "Alimentación") {
 		t.Errorf("subcategory prompt missing row+category context: %q", subPrompt)
 	}
@@ -129,7 +130,7 @@ func TestMsgConfirmUpdateDiff_IncludesSubcategoryDescriptionDate(t *testing.T) {
 		"movements":        movement.EncodeMovementRows(after),
 	}
 
-	msg := msgConfirmUpdateDiff(data)
+	msg := flow.MsgConfirmUpdateDiff(data)
 	for _, want := range []string{"Alimentación", "Café", "Café con Juan", "04/07"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("diff message %q missing %q", msg, want)
@@ -158,7 +159,7 @@ func TestMsgConfirmDelete_IncludesSubcategoryDescriptionDate(t *testing.T) {
 		"candidate_groups": encodeCandidateGroups(groups),
 	}
 
-	msg := msgConfirmDelete(data)
+	msg := flow.MsgConfirmDelete(data)
 	for _, want := range []string{"Transporte", "Nafta", "Nafta YPF", "2026-07-04"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("delete confirm message %q missing %q", msg, want)

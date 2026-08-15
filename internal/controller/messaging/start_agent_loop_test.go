@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -17,9 +18,9 @@ import (
 func newLoopController(t *testing.T, orch *fakeFullOrchestrator, repo *fakeActionsRepo, movements *fakeMovementRepoFull) *controller {
 	t.Helper()
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(NewAskUserFlow())
-	engine.Register(NewMovementDeleteFlow())
-	engine.Register(NewMovementUpdateConfirmFlow())
+	engine.Register(flow.NewAskUserFlow())
+	engine.Register(flow.NewMovementDeleteFlow())
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
 	return &controller{
 		engine:        engine,
 		orchestrator:  orch,
@@ -183,7 +184,7 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 		runFn: func(func(string, json.RawMessage) (string, error)) (string, error) { return "ok", nil },
 	}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(NewAskUserFlow())
+	engine.Register(flow.NewAskUserFlow())
 	c := &controller{
 		engine: engine, orchestrator: orch, actions: &fakeActionsRepo{},
 		accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{},
@@ -334,7 +335,7 @@ func TestLoop_InsertedResolvesCreateInserted(t *testing.T) {
 		},
 	}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(NewAskUserFlow())
+	engine.Register(flow.NewAskUserFlow())
 	c := &controller{
 		engine: engine, orchestrator: orch, actions: &fakeActionsRepo{}, metrics: metrics,
 		accounts: accountsWithDefault(), subcategories: subcategoriesForTest(),
@@ -371,7 +372,7 @@ func TestLoop_NoQueueAfterAWrite(t *testing.T) {
 		},
 	}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(NewAskUserFlow())
+	engine.Register(flow.NewAskUserFlow())
 	c := &controller{
 		engine: engine, orchestrator: orch, jobs: jobs, actions: &fakeActionsRepo{},
 		accounts: accountsWithDefault(), subcategories: subcategoriesForTest(),
@@ -392,7 +393,7 @@ func TestDrainAfterLoop_OpensTheQuestion(t *testing.T) {
 	c := newLoopController(t, &fakeFullOrchestrator{}, repo, &fakeMovementRepoFull{})
 	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{{
 		Tool:    orchestrator.ToolCorrectMovement,
-		Payload: agentPayload{Change: "eran 2000", Candidates: []candidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}}, Chosen: -1},
+		Payload: agentPayload{Change: "eran 2000", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}}, Chosen: -1},
 		Questions: []pendingaction.OpenQuestion{{
 			Key: questionKeyCandidate, Prompt: "¿Cuál es?", Options: []string{"a", "b"},
 		}},

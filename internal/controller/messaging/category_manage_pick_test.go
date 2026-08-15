@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -25,7 +26,7 @@ func ownedSub(id uint, category, sub, icon string) subcategory.Subcategory {
 func newCategoryManagePickEngine(owned []subcategory.Subcategory) (*conversation.Engine, *fakeStateStore) {
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManagePickFlow(fakeOwnedLister{owned: owned}))
+	engine.Register(flow.NewCategoryManagePickFlow(fakeOwnedLister{owned: owned}))
 	return engine, store
 }
 
@@ -39,23 +40,23 @@ func twoOwned() []subcategory.Subcategory {
 // El flujo construye sin panic: NewFlow valida el grafo al registrar, así que
 // un NextStep colgado explota acá y no en producción.
 func TestCategoryManagePickFlow_BuildsWithoutPanic(t *testing.T) {
-	flow := NewCategoryManagePickFlow(fakeOwnedLister{})
-	if flow.Name != categoryManagePickFlowName {
-		t.Errorf("Name = %q, want %q", flow.Name, categoryManagePickFlowName)
+	fl := flow.NewCategoryManagePickFlow(fakeOwnedLister{})
+	if fl.Name != flow.CategoryManagePickFlowName {
+		t.Errorf("Name = %q, want %q", fl.Name, flow.CategoryManagePickFlowName)
 	}
-	if flow.InitialStep != stepPickSource {
-		t.Errorf("InitialStep = %q, want %q", flow.InitialStep, stepPickSource)
+	if fl.InitialStep != flow.StepPickSource {
+		t.Errorf("InitialStep = %q, want %q", fl.InitialStep, flow.StepPickSource)
 	}
 }
 
 func TestCategoryManagePickFlow_ListsOneOptionPerOwnedRow(t *testing.T) {
 	engine, store := newCategoryManagePickEngine(twoOwned())
-	prompt, err := engine.StartWithData(1, categoryManagePickFlowName, conversation.Data{})
+	prompt, err := engine.StartWithData(1, flow.CategoryManagePickFlowName, conversation.Data{})
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepPickSource {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepPickSource)
+	if store.stepName != flow.StepPickSource {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepPickSource)
 	}
 	if len(prompt.Buttons) != 3 {
 		t.Fatalf("len(Buttons) = %d, want 3 (2 propias + cancelar)", len(prompt.Buttons))
@@ -70,14 +71,14 @@ func TestCategoryManagePickFlow_ListsOneOptionPerOwnedRow(t *testing.T) {
 	if prompt.Buttons[1].Label != "📂 Regalos › Cumpleaños" {
 		t.Errorf("Buttons[1].Label = %q, want %q", prompt.Buttons[1].Label, "📂 Regalos › Cumpleaños")
 	}
-	if prompt.Buttons[2].Data != optionCancel {
-		t.Errorf("último botón = %q, want %q", prompt.Buttons[2].Data, optionCancel)
+	if prompt.Buttons[2].Data != flow.OptionCancel {
+		t.Errorf("último botón = %q, want %q", prompt.Buttons[2].Data, flow.OptionCancel)
 	}
 }
 
 func TestCategoryManagePickFlow_ChoosingSourceFinishesWithIDAndNames(t *testing.T) {
 	engine, _ := newCategoryManagePickEngine(twoOwned())
-	engine.StartWithData(1, categoryManagePickFlowName, conversation.Data{})
+	engine.StartWithData(1, flow.CategoryManagePickFlowName, conversation.Data{})
 
 	result, found, err := engine.Handle(1, conversation.Input{CallbackData: "7"})
 	if err != nil || !found {
@@ -102,9 +103,9 @@ func TestCategoryManagePickFlow_ChoosingSourceFinishesWithIDAndNames(t *testing.
 
 func TestCategoryManagePickFlow_CancelMarksCancelledAndSetsNoSource(t *testing.T) {
 	engine, _ := newCategoryManagePickEngine(twoOwned())
-	engine.StartWithData(1, categoryManagePickFlowName, conversation.Data{})
+	engine.StartWithData(1, flow.CategoryManagePickFlowName, conversation.Data{})
 
-	result, _, err := engine.Handle(1, conversation.Input{CallbackData: optionCancel})
+	result, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionCancel})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -149,9 +150,9 @@ func TestCategoryManagePickFlow_RowDisappearsBetweenQueries_NoPartialSource(t *t
 	}
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManagePickFlow(lister))
+	engine.Register(flow.NewCategoryManagePickFlow(lister))
 
-	if _, err := engine.StartWithData(1, categoryManagePickFlowName, conversation.Data{}); err != nil {
+	if _, err := engine.StartWithData(1, flow.CategoryManagePickFlowName, conversation.Data{}); err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
 
@@ -175,7 +176,7 @@ func TestCategoryManagePickFlow_RowDisappearsBetweenQueries_NoPartialSource(t *t
 
 func TestCategoryManagePickFlow_UnknownCallbackRetries(t *testing.T) {
 	engine, _ := newCategoryManagePickEngine(twoOwned())
-	engine.StartWithData(1, categoryManagePickFlowName, conversation.Data{})
+	engine.StartWithData(1, flow.CategoryManagePickFlowName, conversation.Data{})
 
 	result, _, err := engine.Handle(1, conversation.Input{CallbackData: "999"})
 	if err != nil {

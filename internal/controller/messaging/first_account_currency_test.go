@@ -7,12 +7,13 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
 
 // El alta lazy de la primera cuenta pregunta por UNA moneda —
-// firstAccountCurrency decide cuál— pero opera sobre TODAS las filas del
+// flow.FirstAccountCurrency decide cuál— pero opera sobre TODAS las filas del
 // mensaje. Estos tests fijan que lo que se crea y el saldo que se le pone
 // correspondan a la moneda que se preguntó, y no a la primera fila que pase.
 //
@@ -64,7 +65,7 @@ func TestCreateFirstAccount_SkipsCurrenciesThatAlreadyHaveADefault(t *testing.T)
 	}
 	data := firstAccountData(rows, "Broker", "500")
 
-	if got := firstAccountCurrency(data, hasDefaultFor(accRepo, data)); got != "USD" {
+	if got := flow.FirstAccountCurrency(data, flow.HasDefaultFor(accRepo, data)); got != "USD" {
 		t.Fatalf("la pregunta fue por %q, want USD", got)
 	}
 
@@ -156,7 +157,7 @@ func TestCreateFirstAccount_ZeroAccountsMixed_BalanceOnlyToTheAskedCurrency(t *t
 	}
 	data := firstAccountData(rows, "Mi plata", "20.000")
 
-	if got := firstAccountCurrency(data, hasDefaultFor(accRepo, data)); got != "ARS" {
+	if got := flow.FirstAccountCurrency(data, flow.HasDefaultFor(accRepo, data)); got != "ARS" {
 		t.Fatalf("la pregunta fue por %q, want ARS (la primera fila sin default)", got)
 	}
 

@@ -11,6 +11,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -25,14 +26,14 @@ func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, ch
 	}
 
 	switch conversation.StringOrEmpty(data[conversation.KeyOperation]) {
-	case opCreateNew:
+	case flow.OpCreateNew:
 		c.resolveMetric(ctx, data.UserID(), outcomeAccountCreateRouted)
 		c.startAccountCreate(ctx, b, chatID, data.UserID(), conversation.StringOrEmpty(data[conversation.KeyMessage]))
-	case opRename:
+	case flow.OpRename:
 		c.finishAccountRename(ctx, b, chatID, data)
-	case opAdjust:
+	case flow.OpAdjust:
 		c.finishAccountAdjust(ctx, b, chatID, data) // Task 7
-	case opDefault:
+	case flow.OpDefault:
 		c.finishAccountDefault(ctx, b, chatID, data) // Task 8
 	default:
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
@@ -187,7 +188,7 @@ func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatI
 		conversation.KeyMoveToID:        strconv.FormatUint(accountID, 10),
 		conversation.KeyMoveToName:      name,
 	}
-	prompt, err := c.engine.StartWithData(data.UserID(), accountMoveOfferFlowName, seed)
+	prompt, err := c.engine.StartWithData(data.UserID(), flow.AccountMoveOfferFlowName, seed)
 	if err != nil {
 		return
 	}
@@ -195,7 +196,7 @@ func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatI
 }
 
 func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if conversation.StringOrEmpty(data[conversation.KeyMoveChoice]) != moveChoiceMove {
+	if conversation.StringOrEmpty(data[conversation.KeyMoveChoice]) != flow.MoveChoiceMove {
 		c.sendText(ctx, b, chatID, "Listo, dejé todo como estaba.")
 		return
 	}

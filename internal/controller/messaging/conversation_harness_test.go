@@ -19,6 +19,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -188,21 +189,21 @@ func newConversationHarness(t *testing.T) *convHarness {
 	// Los mismos que registra server.go: parkear a un flow no registrado es un
 	// error de arranque, y un escenario que lo toque muere con un mensaje que no
 	// habla de lo que el escenario prueba.
-	engine.Register(NewMovementCreateFlow(cache, accRepo))
-	engine.Register(NewMovementUpdatePickFlow())
-	engine.Register(NewMovementUpdateConfirmFlow())
-	engine.Register(NewMovementDeleteFlow())
-	engine.Register(NewAccountCreateFlow())
-	engine.Register(NewAccountManageFlow(movRepo))
-	engine.Register(NewAccountMoveOfferFlow())
-	engine.Register(NewSubcategorySetupFlow(cache))
-	engine.Register(NewCategoryMatchOfferFlow())
-	engine.Register(NewCategoryProposalConfirmFlow())
-	engine.Register(NewCategoryManagePickFlow(cache))
-	engine.Register(NewCategoryManageTargetFlow(cache))
-	engine.Register(NewMovementNegativeConfirmFlow())
-	engine.Register(NewReminderSetupFlow())
-	engine.Register(NewAskUserFlow())
+	engine.Register(flow.NewMovementCreateFlow(cache, accRepo))
+	engine.Register(flow.NewMovementUpdatePickFlow())
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
+	engine.Register(flow.NewMovementDeleteFlow())
+	engine.Register(flow.NewAccountCreateFlow())
+	engine.Register(flow.NewAccountManageFlow(movRepo))
+	engine.Register(flow.NewAccountMoveOfferFlow())
+	engine.Register(flow.NewSubcategorySetupFlow(cache))
+	engine.Register(flow.NewCategoryMatchOfferFlow())
+	engine.Register(flow.NewCategoryProposalConfirmFlow())
+	engine.Register(flow.NewCategoryManagePickFlow(cache))
+	engine.Register(flow.NewCategoryManageTargetFlow(cache))
+	engine.Register(flow.NewMovementNegativeConfirmFlow())
+	engine.Register(flow.NewReminderSetupFlow())
+	engine.Register(flow.NewAskUserFlow())
 
 	// El clasificador va scripteado con un par válido por default: desde que la
 	// clasificación salió del loop, sin par TODA fila cae en PENDING_REVIEW y
@@ -398,7 +399,7 @@ func TestConversation_DeleteConfirmedActuallyDeletes(t *testing.T) {
 	// Con UN candidato el loop siembra resolved_index y el picker se saltea, así
 	// que el primer botón que ve el usuario ya es el de confirmar. (Cuando hay
 	// varios, el picker manda ÍNDICES y no etiquetas: callback_data son 64 bytes.)
-	h.TapButton(optionConfirm)
+	h.TapButton(flow.OptionConfirm)
 
 	movs := h.Movements()
 	if len(movs) != 0 {
@@ -445,7 +446,7 @@ func TestConversation_CorrectionWithUnknownCategoryKeepsTheMovement(t *testing.T
 		"changes":[{"field":"category","op":"set","value":"proyecto hogar"}]}`))
 
 	h.SendText("el café ponelo en proyecto hogar")
-	h.TapButton(optionConfirm) // resuelve el picker de candidatos
+	h.TapButton(flow.OptionConfirm) // resuelve el picker de candidatos
 
 	if got := h.Movements(); len(got) != 1 || got[0].ID != id {
 		t.Fatalf("el movimiento %d se perdió — este es EL bug. Quedó: %+v. Copia: %v", id, got, h.Messages())
@@ -495,7 +496,7 @@ func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t
 	}
 
 	// Y aunque confirme lo que sea que se le ofreció, el movimiento sigue.
-	h.TapButton(optionConfirm)
+	h.TapButton(flow.OptionConfirm)
 	movs := h.Movements()
 	if len(movs) != 1 || movs[0].ID != id {
 		t.Fatalf("el movimiento se perdió: %+v. Copia: %v", movs, h.Messages())

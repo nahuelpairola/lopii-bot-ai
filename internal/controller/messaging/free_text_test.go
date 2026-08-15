@@ -10,6 +10,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
@@ -91,9 +92,9 @@ func (o *fakeFullOrchestrator) ResolveAccountManage(ctx context.Context, text st
 func newCreateCategoryController(orch *fakeFullOrchestrator, subs *fakeSubcategoryRepoFull) (*controller, *fakeStoreForController) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewSubcategorySetupFlow(subs))
-	engine.Register(NewCategoryMatchOfferFlow())
-	engine.Register(NewCategoryProposalConfirmFlow())
+	engine.Register(flow.NewSubcategorySetupFlow(subs))
+	engine.Register(flow.NewCategoryMatchOfferFlow())
+	engine.Register(flow.NewCategoryProposalConfirmFlow())
 	// Desde que no hay router, TODO mensaje pasa por el loop, y el loop arma el
 	// prompt con cuentas y taxonomía: un controller sin esas repos ahora es un
 	// nil deref, no un test más chico.
@@ -127,8 +128,8 @@ func TestCreateCategory_MatchStartsMatchOfferFlow(t *testing.T) {
 		t.Fatalf("handleFreeText: %v", err)
 	}
 
-	if store.flowName != categoryMatchOfferFlowName {
-		t.Errorf("flow = %q, want %q", store.flowName, categoryMatchOfferFlowName)
+	if store.flowName != flow.CategoryMatchOfferFlowName {
+		t.Errorf("flow = %q, want %q", store.flowName, flow.CategoryMatchOfferFlowName)
 	}
 }
 
@@ -141,8 +142,8 @@ func TestCreateCategory_ProposalStartsConfirmFlow(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "categoría regalos")
 
-	if store.flowName != categoryProposalConfirmFlowName {
-		t.Errorf("flow = %q, want %q", store.flowName, categoryProposalConfirmFlowName)
+	if store.flowName != flow.CategoryProposalConfirmFlowName {
+		t.Errorf("flow = %q, want %q", store.flowName, flow.CategoryProposalConfirmFlowName)
 	}
 	if conversation.StringOrEmpty(store.data["category_is_new"]) != "true" {
 		t.Errorf("category_is_new = %q, want true (Regalos not in existing categories)", store.data["category_is_new"])
@@ -159,8 +160,8 @@ func TestCreateCategory_ProposalDuplicateFallsToMatch(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "categoría regalos")
 
-	if store.flowName != categoryMatchOfferFlowName {
-		t.Errorf("flow = %q, want %q (exact-duplicate proposal must offer the existing)", store.flowName, categoryMatchOfferFlowName)
+	if store.flowName != flow.CategoryMatchOfferFlowName {
+		t.Errorf("flow = %q, want %q (exact-duplicate proposal must offer the existing)", store.flowName, flow.CategoryMatchOfferFlowName)
 	}
 }
 
@@ -173,8 +174,8 @@ func TestCreateCategory_ReservedProposalFallsToWizard(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "categoría sistema")
 
-	if store.flowName != subcategorySetupFlowName {
-		t.Errorf("flow = %q, want %q (reserved proposal falls to wizard)", store.flowName, subcategorySetupFlowName)
+	if store.flowName != flow.SubcategorySetupFlowName {
+		t.Errorf("flow = %q, want %q (reserved proposal falls to wizard)", store.flowName, flow.SubcategorySetupFlowName)
 	}
 }
 
@@ -185,16 +186,16 @@ func TestCreateCategory_LLMErrorFallsToWizard(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "categoría lo que sea")
 
-	if store.flowName != subcategorySetupFlowName {
-		t.Errorf("flow = %q, want %q (LLM error falls to wizard)", store.flowName, subcategorySetupFlowName)
+	if store.flowName != flow.SubcategorySetupFlowName {
+		t.Errorf("flow = %q, want %q (LLM error falls to wizard)", store.flowName, flow.SubcategorySetupFlowName)
 	}
 }
 
 func newManageDispatchEngine() (*conversation.Engine, *fakeStoreForController) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountCreateFlow())
-	engine.Register(NewAccountManageFlow(fakeBalanceSummer{}))
+	engine.Register(flow.NewAccountCreateFlow())
+	engine.Register(flow.NewAccountManageFlow(fakeBalanceSummer{}))
 	return engine, store
 }
 
@@ -211,8 +212,8 @@ func TestHandleFreeText_AccountManage_WantsNew_StartsCreate(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "quiero crear una cuenta nueva")
 
-	if store.flowName != accountCreateFlowName {
-		t.Errorf("started flow = %q, want %q", store.flowName, accountCreateFlowName)
+	if store.flowName != flow.AccountCreateFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, flow.AccountCreateFlowName)
 	}
 }
 
@@ -230,11 +231,11 @@ func TestHandleFreeText_AccountManage_Matched_StartsMenu(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "renombrá la segunda")
 
-	if store.flowName != accountManageFlowName {
-		t.Fatalf("started flow = %q, want %q", store.flowName, accountManageFlowName)
+	if store.flowName != flow.AccountManageFlowName {
+		t.Fatalf("started flow = %q, want %q", store.flowName, flow.AccountManageFlowName)
 	}
-	if store.stepName != stepAccountManageMenu {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountManageMenu)
+	if store.stepName != flow.StepAccountManageMenu {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountManageMenu)
 	}
 }
 
@@ -248,8 +249,8 @@ func TestHandleFreeText_AccountManage_NoMatch_StartsPick(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "cambiá el monto")
 
-	if store.flowName != accountManageFlowName || store.stepName != stepAccountManagePick {
-		t.Errorf("flow/step = %q/%q, want %q/%q", store.flowName, store.stepName, accountManageFlowName, stepAccountManagePick)
+	if store.flowName != flow.AccountManageFlowName || store.stepName != flow.StepAccountManagePick {
+		t.Errorf("flow/step = %q/%q, want %q/%q", store.flowName, store.stepName, flow.AccountManageFlowName, flow.StepAccountManagePick)
 	}
 }
 
@@ -267,8 +268,8 @@ func TestHandleFreeText_AccountManage_HallucinatedID_StartsPick(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "renombrá esa")
 
-	if store.stepName != stepAccountManagePick {
-		t.Errorf("stepName = %q, want %q (hallucinated id must not skip the pick)", store.stepName, stepAccountManagePick)
+	if store.stepName != flow.StepAccountManagePick {
+		t.Errorf("stepName = %q, want %q (hallucinated id must not skip the pick)", store.stepName, flow.StepAccountManagePick)
 	}
 }
 
@@ -282,8 +283,8 @@ func TestHandleFreeText_AccountManage_NoAccounts_StartsCreate(t *testing.T) {
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "quiero modificar una cuenta")
 
-	if store.flowName != accountCreateFlowName {
-		t.Errorf("started flow = %q, want %q (no accounts → create)", store.flowName, accountCreateFlowName)
+	if store.flowName != flow.AccountCreateFlowName {
+		t.Errorf("started flow = %q, want %q (no accounts → create)", store.flowName, flow.AccountCreateFlowName)
 	}
 }
 
@@ -295,19 +296,19 @@ func TestHandleFreeText_CreateCategory_FallsBackToWizard(t *testing.T) {
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewSubcategorySetupFlow(subs))
-	engine.Register(NewCategoryMatchOfferFlow())
-	engine.Register(NewCategoryProposalConfirmFlow())
+	engine.Register(flow.NewSubcategorySetupFlow(subs))
+	engine.Register(flow.NewCategoryMatchOfferFlow())
+	engine.Register(flow.NewCategoryProposalConfirmFlow())
 	c := &controller{orchestrator: orch, engine: engine, subcategories: subs,
 		accounts: &fakeAccountRepoFull{}, movements: &fakeMovementRepoFull{}, chatHistory: stubChatHistory{}}
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "quiero crear una categoría nueva")
 
-	if store.flowName != subcategorySetupFlowName {
-		t.Errorf("started flow = %q, want %q", store.flowName, subcategorySetupFlowName)
+	if store.flowName != flow.SubcategorySetupFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, flow.SubcategorySetupFlowName)
 	}
-	if store.stepName != stepChooseMode {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepChooseMode)
+	if store.stepName != flow.StepChooseMode {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepChooseMode)
 	}
 }
 
@@ -462,7 +463,7 @@ func TestStartAccountCreate_OneAccount_SeedsNameAndBalance(t *testing.T) {
 	}}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountCreateFlow())
+	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
 	c.startAccountCreate(context.Background(), nil, 0, 1, "Nueva cuenta: Cedears tengo 1041265")
@@ -476,8 +477,8 @@ func TestStartAccountCreate_OneAccount_SeedsNameAndBalance(t *testing.T) {
 	if _, ok := store.data["account_currency"]; ok {
 		t.Error("account_currency must NOT be seeded (stays the currency ChoiceStep)")
 	}
-	if store.stepName != stepAccountCreateAskName {
-		t.Errorf("stepName = %q, want %q (prefill, not skip)", store.stepName, stepAccountCreateAskName)
+	if store.stepName != flow.StepAccountCreateAskName {
+		t.Errorf("stepName = %q, want %q (prefill, not skip)", store.stepName, flow.StepAccountCreateAskName)
 	}
 }
 
@@ -485,7 +486,7 @@ func TestStartAccountCreate_NoAccounts_NoSeed(t *testing.T) {
 	orch := &fakeFullOrchestrator{onboardingResult: orchestrator.OnboardingResult{}}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountCreateFlow())
+	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
 	c.startAccountCreate(context.Background(), nil, 0, 1, "quiero crear una cuenta nueva")
@@ -496,8 +497,8 @@ func TestStartAccountCreate_NoAccounts_NoSeed(t *testing.T) {
 	if _, ok := store.data["account_balance"]; ok {
 		t.Error("no account extracted → account_balance must not be seeded")
 	}
-	if store.stepName != stepAccountCreateAskName {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepAccountCreateAskName)
+	if store.stepName != flow.StepAccountCreateAskName {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountCreateAskName)
 	}
 }
 
@@ -510,7 +511,7 @@ func TestStartAccountCreate_MultipleAccounts_NoSeed(t *testing.T) {
 	}}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountCreateFlow())
+	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
 	c.startAccountCreate(context.Background(), nil, 0, 1, "tengo el banco con 1000 y efectivo 2000")
@@ -526,7 +527,7 @@ func TestStartAccountCreate_GarbageBalance_SeedsNameOnly(t *testing.T) {
 	}}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountCreateFlow())
+	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
 	c.startAccountCreate(context.Background(), nil, 0, 1, "nueva cuenta Cripto")

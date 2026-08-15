@@ -17,6 +17,7 @@ import (
 	miniappctrl "lopiibot.com/internal/controller/miniapp"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/database"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/health"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/logging"
@@ -146,21 +147,21 @@ func InitServer(conf *config.Config) error {
 	}
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
-	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
-	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
-	conversationEngine.Register(messagingctrl.NewMovementUpdateConfirmFlow())
-	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())
-	conversationEngine.Register(messagingctrl.NewAccountCreateFlow())
-	conversationEngine.Register(messagingctrl.NewAccountManageFlow(movementRepo))
-	conversationEngine.Register(messagingctrl.NewAccountMoveOfferFlow())
-	conversationEngine.Register(messagingctrl.NewSubcategorySetupFlow(subcategoryCache))
-	conversationEngine.Register(messagingctrl.NewCategoryMatchOfferFlow())
-	conversationEngine.Register(messagingctrl.NewCategoryProposalConfirmFlow())
-	conversationEngine.Register(messagingctrl.NewCategoryManagePickFlow(subcategoryCache))
-	conversationEngine.Register(messagingctrl.NewCategoryManageTargetFlow(subcategoryCache))
-	conversationEngine.Register(messagingctrl.NewMovementNegativeConfirmFlow())
-	conversationEngine.Register(messagingctrl.NewReminderSetupFlow())
-	conversationEngine.Register(messagingctrl.NewAskUserFlow())
+	conversationEngine.Register(flow.NewMovementCreateFlow(subcategoryCache, accountRepo))
+	conversationEngine.Register(flow.NewMovementUpdatePickFlow())
+	conversationEngine.Register(flow.NewMovementUpdateConfirmFlow())
+	conversationEngine.Register(flow.NewMovementDeleteFlow())
+	conversationEngine.Register(flow.NewAccountCreateFlow())
+	conversationEngine.Register(flow.NewAccountManageFlow(movementRepo))
+	conversationEngine.Register(flow.NewAccountMoveOfferFlow())
+	conversationEngine.Register(flow.NewSubcategorySetupFlow(subcategoryCache))
+	conversationEngine.Register(flow.NewCategoryMatchOfferFlow())
+	conversationEngine.Register(flow.NewCategoryProposalConfirmFlow())
+	conversationEngine.Register(flow.NewCategoryManagePickFlow(subcategoryCache))
+	conversationEngine.Register(flow.NewCategoryManageTargetFlow(subcategoryCache))
+	conversationEngine.Register(flow.NewMovementNegativeConfirmFlow())
+	conversationEngine.Register(flow.NewReminderSetupFlow())
+	conversationEngine.Register(flow.NewAskUserFlow())
 
 	healthController := healthctrl.NewController(healthChecker)
 	messagingController := messagingctrl.NewController(

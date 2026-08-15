@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -17,7 +18,7 @@ import (
 // unclear → the candidate picker. Candidates are always seeded — the pick
 // step needs them, the menu path skips it via SkipIf.
 func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	slog.InfoContext(ctx, "flow started", "flow", accountManageFlowName, "user_id", userID)
+	slog.InfoContext(ctx, "flow started", "flow", flow.AccountManageFlowName, "user_id", userID)
 	accs, err := c.accounts.FindByUserID(userID)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgCouldNotLoad)
@@ -74,13 +75,13 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 		}
 	}
 
-	return c.startFlow(ctx, b, chatID, userID, accountManageFlowName, seed, "account manage: start account_manage flow")
+	return c.startFlow(ctx, b, chatID, userID, flow.AccountManageFlowName, seed, "account manage: start account_manage flow")
 }
 
 func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	slog.InfoContext(ctx, "flow started", "flow", accountCreateFlowName, "user_id", userID)
+	slog.InfoContext(ctx, "flow started", "flow", flow.AccountCreateFlowName, "user_id", userID)
 	seed := c.accountCreateSeed(ctx, text)
-	return c.startFlow(ctx, b, chatID, userID, accountCreateFlowName, seed, "start account_create flow")
+	return c.startFlow(ctx, b, chatID, userID, flow.AccountCreateFlowName, seed, "start account_create flow")
 }
 
 // accountCreateSeed reuses ClassifyOnboarding to prefill the flow when the

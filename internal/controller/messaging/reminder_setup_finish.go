@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/reminder"
 )
 
@@ -19,8 +20,8 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 		return
 	}
 
-	switch conversation.StringOrEmpty(data[reminderActionKey]) {
-	case reminderActionOff:
+	switch conversation.StringOrEmpty(data[flow.ReminderActionKey]) {
+	case flow.ReminderActionOff:
 		if err := c.reminders.Disable(userID); err != nil {
 			c.sendText(ctx, b, chatID, msgCouldNotSave("tu recordatorio"))
 			return
@@ -28,7 +29,7 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 		c.sendText(ctx, b, chatID, msgReminderDisabled)
 		return
 
-	case reminderActionOffAll:
+	case flow.ReminderActionOffAll:
 		if err := c.reminders.Disable(userID); err != nil {
 			c.sendText(ctx, b, chatID, msgCouldNotSave("tu recordatorio"))
 			return
@@ -40,13 +41,13 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 		c.sendText(ctx, b, chatID, msgReminderAllOff)
 		return
 
-	case reminderActionSoftExit:
+	case flow.ReminderActionSoftExit:
 		c.sendText(ctx, b, chatID, msgReminderHubExit)
 		return
 
-	case reminderActionWeeklyOnly:
+	case flow.ReminderActionWeeklyOnly:
 		on := conversation.Flag(data, conversation.KeyWeeklySummary)
-		if on && !conversation.Flag(data, keyHubHasRow) {
+		if on && !conversation.Flag(data, flow.KeyHubHasRow) {
 			// no row yet: SetWeeklySummary is UPDATE-only and would no-op.
 			// Create a minimal weekly-only row (daily disabled).
 			if err := c.reminders.Upsert(&reminder.Reminder{
@@ -73,11 +74,11 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 	}
 
 	// set: a preset stored start/end mins directly; the custom path stored raw
-	// text validated by parseWindow, so re-parsing here cannot fail.
-	startMin, err := strconv.Atoi(conversation.StringOrEmpty(data[reminderStartKey]))
-	endMin, err2 := strconv.Atoi(conversation.StringOrEmpty(data[reminderEndKey]))
+	// text validated by flow.ParseWindow, so re-parsing here cannot fail.
+	startMin, err := strconv.Atoi(conversation.StringOrEmpty(data[flow.ReminderStartKey]))
+	endMin, err2 := strconv.Atoi(conversation.StringOrEmpty(data[flow.ReminderEndKey]))
 	if err != nil || err2 != nil {
-		startMin, endMin, err = parseWindow(conversation.StringOrEmpty(data[reminderCustomKey]))
+		startMin, endMin, err = flow.ParseWindow(conversation.StringOrEmpty(data[flow.ReminderCustomKey]))
 		if err != nil {
 			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return

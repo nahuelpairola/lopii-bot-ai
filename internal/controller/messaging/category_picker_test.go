@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 )
 
 type fakeCategoryLister struct {
@@ -27,7 +28,7 @@ var errFake = errors.New("db down")
 
 func TestCategoryOptions_OneOptionPerCategoryPlusExtras(t *testing.T) {
 	subs := fakeCategoryLister{cats: []string{"Alimentos", "Hogar"}}
-	opts := categoryOptions(subs, conversation.Data{}, "next_step", cancelOption)
+	opts := flow.CategoryOptions(subs, conversation.Data{}, "next_step", flow.CancelOption)
 
 	if len(opts) != 3 {
 		t.Fatalf("len(opts) = %d, want 3 (2 categorías + cancelar)", len(opts))
@@ -44,14 +45,14 @@ func TestCategoryOptions_OneOptionPerCategoryPlusExtras(t *testing.T) {
 	if opts[1].Label != "📂 Hogar" {
 		t.Errorf("opts[1].Label = %q, want %q", opts[1].Label, "📂 Hogar")
 	}
-	if opts[2].Value != optionCancel {
-		t.Errorf("última opción = %q, want %q", opts[2].Value, optionCancel)
+	if opts[2].Value != flow.OptionCancel {
+		t.Errorf("última opción = %q, want %q", opts[2].Value, flow.OptionCancel)
 	}
 }
 
 func TestCategoryOptions_NoExtrasIsJustCategories(t *testing.T) {
 	subs := fakeCategoryLister{cats: []string{"Alimentos"}}
-	opts := categoryOptions(subs, conversation.Data{}, "next_step")
+	opts := flow.CategoryOptions(subs, conversation.Data{}, "next_step")
 	if len(opts) != 1 {
 		t.Fatalf("len(opts) = %d, want 1", len(opts))
 	}
@@ -60,16 +61,16 @@ func TestCategoryOptions_NoExtrasIsJustCategories(t *testing.T) {
 // Sin esto, un error de DB dejaría al usuario con cero botones y sin salida.
 func TestCategoryOptions_ListerErrorStillReturnsExtras(t *testing.T) {
 	subs := fakeCategoryLister{err: errFake}
-	opts := categoryOptions(subs, conversation.Data{}, "next_step", cancelOption)
-	if len(opts) != 1 || opts[0].Value != optionCancel {
+	opts := flow.CategoryOptions(subs, conversation.Data{}, "next_step", flow.CancelOption)
+	if len(opts) != 1 || opts[0].Value != flow.OptionCancel {
 		t.Errorf("con error del lister, opts = %+v, want solo cancelar", opts)
 	}
 }
 
 func TestBackOptionTo_TargetsGivenStep(t *testing.T) {
-	opt := backOptionTo("algun_step")
-	if opt.Value != optionBack {
-		t.Errorf("Value = %q, want %q", opt.Value, optionBack)
+	opt := flow.BackOptionTo("algun_step")
+	if opt.Value != flow.OptionBack {
+		t.Errorf("Value = %q, want %q", opt.Value, flow.OptionBack)
 	}
 	if opt.NextStep != "algun_step" {
 		t.Errorf("NextStep = %q, want %q", opt.NextStep, "algun_step")

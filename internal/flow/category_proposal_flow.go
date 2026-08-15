@@ -1,18 +1,12 @@
-package messaging
+package flow
 
 import (
 	"lopiibot.com/internal/conversation"
 )
 
 const (
-	categoryMatchOfferFlowName      = "category_match_offer"
-	stepCategoryMatchOffer          = "category_match_offer_step"
-	categoryProposalConfirmFlowName = "category_proposal_confirm"
-	stepCategoryProposalConfirm     = "category_proposal_confirm_step"
-
-	optionUseExisting  = "use_existing"
-	optionCreateNew    = "create_new"
-	optionEditProposal = "edit_proposal"
+	stepCategoryMatchOffer      = "category_match_offer_step"
+	stepCategoryProposalConfirm = "category_proposal_confirm_step"
 )
 
 // NewCategoryMatchOfferFlow is the single-step "ya existe algo parecido"
@@ -22,24 +16,24 @@ const (
 func NewCategoryMatchOfferFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepCategoryMatchOffer: conversation.ChoiceStep{
-			PromptText: msgCategoryMatchOffer,
+			PromptText: MsgCategoryMatchOffer,
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Usar esa", Value: optionUseExisting, Finish: true},
-				{Label: "➕ Crear una distinta", Value: optionCreateNew, Finish: true},
-				cancelOption,
+				{Label: "✅ Usar esa", Value: OptionUseExisting, Finish: true},
+				{Label: "➕ Crear una distinta", Value: OptionCreateNew, Finish: true},
+				CancelOption,
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				if value == optionCancel {
-					return onAccountCreateEscape(optionCancel, data)
+				if value == OptionCancel {
+					return OnAccountCreateEscape(OptionCancel, data)
 				}
 				next := conversation.CopyData(data)
 				next[conversation.KeyMatchChoice] = value
 				return next
 			},
-			InvalidChoiceMessage: msgInvalidChoice,
+			InvalidChoiceMessage: MsgInvalidChoice,
 		},
 	}
-	flow, err := conversation.NewFlow(categoryMatchOfferFlowName, stepCategoryMatchOffer, steps)
+	flow, err := conversation.NewFlow(CategoryMatchOfferFlowName, stepCategoryMatchOffer, steps)
 	if err != nil {
 		panic(err)
 	}
@@ -53,26 +47,26 @@ func NewCategoryMatchOfferFlow() *conversation.Flow {
 func NewCategoryProposalConfirmFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepCategoryProposalConfirm: conversation.ChoiceStep{
-			PromptText: msgCategoryProposalConfirm,
+			PromptText: MsgCategoryProposalConfirm,
 			Options: []conversation.ChoiceOption{
-				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
-				{Label: "✏️ Editar", Value: optionEditProposal, Finish: true},
-				cancelOption,
+				{Label: "✅ Confirmar", Value: OptionConfirm, Finish: true},
+				{Label: "✏️ Editar", Value: OptionEditProposal, Finish: true},
+				CancelOption,
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				if value == optionCancel {
-					return onAccountCreateEscape(optionCancel, data)
+				if value == OptionCancel {
+					return OnAccountCreateEscape(OptionCancel, data)
 				}
 				next := conversation.CopyData(data)
-				if value == optionEditProposal {
+				if value == OptionEditProposal {
 					conversation.SetFlag(next, conversation.KeyEditProposal)
 				}
 				return next
 			},
-			InvalidChoiceMessage: msgInvalidChoice,
+			InvalidChoiceMessage: MsgInvalidChoice,
 		},
 	}
-	flow, err := conversation.NewFlow(categoryProposalConfirmFlowName, stepCategoryProposalConfirm, steps)
+	flow, err := conversation.NewFlow(CategoryProposalConfirmFlowName, stepCategoryProposalConfirm, steps)
 	if err != nil {
 		panic(err)
 	}

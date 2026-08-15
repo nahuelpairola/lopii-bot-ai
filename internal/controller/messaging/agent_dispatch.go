@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/trace"
@@ -76,7 +77,7 @@ func (c *controller) drainNextAgentAction(ctx context.Context, b *bot.Bot, chatI
 	if err := json.Unmarshal(action.Questions, &questions); err != nil {
 		return fmt.Errorf("drain: questions: %w", err)
 	}
-	if hasOpenQuestion(questions) {
+	if flow.HasOpenQuestion(questions) {
 		return c.openAskUser(ctx, b, chatID, userID, action, action.Budget)
 	}
 	return c.resumeAgentAction(ctx, b, chatID, userID, action)
@@ -94,7 +95,7 @@ func (c *controller) openAskUser(ctx context.Context, b *bot.Bot, chatID int64, 
 		conversation.KeyOpenQuestions: string(action.Questions),
 		conversation.KeyAskBudget:     strconv.Itoa(budget),
 	}
-	prompt, err := c.engine.StartWithData(userID, askUserFlowName, seed)
+	prompt, err := c.engine.StartWithData(userID, flow.AskUserFlowName, seed)
 	if err != nil {
 		return fmt.Errorf("drain: start ask_user: %w", err)
 	}
@@ -124,12 +125,12 @@ func (c *controller) finishAskUserFlow(ctx context.Context, b *bot.Bot, chatID i
 		return
 	}
 
-	answers := decodeOpenQuestions(data)
+	answers := flow.DecodeOpenQuestions(data)
 	payload, resolved := applyAnswers(action, answers)
 	if !resolved {
 		// La respuesta no cerró la pregunta (texto libre que no nombra ninguno de
 		// los candidatos). Se vuelve a preguntar con lo que quede de presupuesto.
-		if err := c.openAskUser(ctx, b, chatID, userID, action, askBudget(data)); err != nil {
+		if err := c.openAskUser(ctx, b, chatID, userID, action, flow.AskBudget(data)); err != nil {
 			slog.ErrorContext(ctx, "reopen ask_user failed", "err", err)
 			c.sendText(ctx, b, chatID, msgSomethingBroke)
 		}
@@ -241,7 +242,7 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 	// resolver.
 	// Una corrección en lote no tiene candidato elegido —el cambio va sobre
 	// todos— así que Chosen se queda en -1 y chosenCandidate lo rechazaría.
-	var chosen candidateGroup
+	var chosen flow.CandidateGroup
 	if action.Tool != orchestrator.ToolRecordMovements && !isBatchCorrection(payload) {
 		var err error
 		if chosen, err = chosenCandidate(payload); err != nil {
@@ -267,14 +268,14 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		// Dos parkeos distintos vuelven por acá: el que tiene gaps y el que
 		// chocó contra el saldo. La copy del faltante es lo único que los
 		// separa — la pone parkFundsGate y nadie más.
-		flow := movementCreateFlowName
+		flowName := flow.MovementCreateFlowName
 		if _, gated := payload.Seed[conversation.KeyGatePrompt]; gated {
-			flow = movementNegativeConfirmFlowName
+			flowName = flow.MovementNegativeConfirmFlowName
 		}
-		return c.startFlow(ctx, b, chatID, userID, flow, seed, "drain: start "+flow)
+		return c.startFlow(ctx, b, chatID, userID, flowName, seed, "drain: start "+flowName)
 	case orchestrator.ToolCorrectMovement:
 		if len(payload.Changes) > 0 {
-			groups := []candidateGroup{chosen}
+			groups := []flow.CandidateGroup{chosen}
 			if isBatchCorrection(payload) {
 				groups = payload.Candidates
 			}
@@ -296,10 +297,10 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
 	case orchestrator.ToolDeleteMovements:
 		seed := conversation.Data{
-			conversation.KeyCandidateGroups: encodeCandidateGroupList([]candidateGroup{chosen}),
+			conversation.KeyCandidateGroups: encodeCandidateGroupList([]flow.CandidateGroup{chosen}),
 			conversation.KeyResolvedIndex:   "0",
 		}
-		return c.startFlow(ctx, b, chatID, userID, movementDeleteFlowName, seed, "drain: start movement_delete flow")
+		return c.startFlow(ctx, b, chatID, userID, flow.MovementDeleteFlowName, seed, "drain: start movement_delete flow")
 	default:
 		return fmt.Errorf("resume: tool %q has no resume path", action.Tool)
 	}
@@ -308,9 +309,9 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 // chosenCandidate saca el candidato elegido. El chequeo de rango vive acá y no
 // arriba porque sólo aplica a las tools que TIENEN candidatos: un CREATE nunca
 // los tiene, y el chequeo genérico lo rechazaba antes de llegar a su rama.
-func chosenCandidate(payload agentPayload) (candidateGroup, error) {
+func chosenCandidate(payload agentPayload) (flow.CandidateGroup, error) {
 	if payload.Chosen < 0 || payload.Chosen >= len(payload.Candidates) {
-		return candidateGroup{}, fmt.Errorf("resume: candidate %d out of range (%d)", payload.Chosen, len(payload.Candidates))
+		return flow.CandidateGroup{}, fmt.Errorf("resume: candidate %d out of range (%d)", payload.Chosen, len(payload.Candidates))
 	}
 	return payload.Candidates[payload.Chosen], nil
 }

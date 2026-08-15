@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -90,8 +91,8 @@ func TestMaybeNudge_SkipsWhenFlowInProgress(t *testing.T) {
 	nudgeRepo := &stubNudgeRepo{}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountCreateFlow())
-	if _, err := engine.Start(1, accountCreateFlowName); err != nil {
+	engine.Register(flow.NewAccountCreateFlow())
+	if _, err := engine.Start(1, flow.AccountCreateFlowName); err != nil {
 		t.Fatalf("engine.Start: %v", err)
 	}
 	c := &controller{movements: movRepo, nudges: nudgeRepo, engine: engine}

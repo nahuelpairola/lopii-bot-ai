@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 )
@@ -57,7 +58,7 @@ func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, ch
 		}
 	}
 
-	prompt, err := c.engine.StartWithData(userID, categoryManageTargetFlowName, seed)
+	prompt, err := c.engine.StartWithData(userID, flow.CategoryManageTargetFlowName, seed)
 	if err != nil {
 		return fmt.Errorf("start category_manage_target flow: %w", err)
 	}
@@ -93,7 +94,7 @@ func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID ui
 		})
 	}
 
-	descriptions, _ := c.movements.TopDescriptionsBySubcategory(userID, sourceID, topDescriptionsForSuggestion)
+	descriptions, _ := c.movements.TopDescriptionsBySubcategory(userID, sourceID, flow.TopDescriptionsForSuggestion)
 	text := mergeSuggestionText(
 		conversation.StringOrEmpty(data[conversation.KeySourceCategory]),
 		conversation.StringOrEmpty(data[conversation.KeySourceSubcategory]),
@@ -179,9 +180,9 @@ func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.
 
 	c.resolveMetric(ctx, userID, outcomeCategoryManageApplied)
 	if targetRaw == "" {
-		c.sendText(ctx, b, chatID, msgCategoryManageDeleted(sourceLabel(data)))
+		c.sendText(ctx, b, chatID, flow.MsgCategoryManageDeleted(flow.SourceLabel(data)))
 		return
 	}
-	c.sendText(ctx, b, chatID, msgCategoryManageMerged(
-		conversation.StringOrEmpty(data[conversation.KeyMovementCount]), sourceLabel(data), targetLabel(data)))
+	c.sendText(ctx, b, chatID, flow.MsgCategoryManageMerged(
+		conversation.StringOrEmpty(data[conversation.KeyMovementCount]), flow.SourceLabel(data), flow.TargetLabel(data)))
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 )
 
 // finishCategoryMatchOffer handles the "ya existe algo parecido" gate result:
@@ -17,10 +18,10 @@ func (c *controller) finishCategoryMatchOffer(ctx context.Context, b *bot.Bot, c
 		return
 	}
 	switch conversation.StringOrEmpty(data[conversation.KeyMatchChoice]) {
-	case optionUseExisting:
+	case flow.OptionUseExisting:
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryMatchUsed)
 		c.sendText(ctx, b, chatID, msgCategoryMatchUse)
-	case optionCreateNew:
+	case flow.OptionCreateNew:
 		// stays pending in intent_events; the wizard's own terminal resolves it
 		c.startSubcategoryWizard(ctx, b, chatID, data.UserID())
 	default:
@@ -45,7 +46,7 @@ func (c *controller) finishCategoryProposalConfirm(ctx context.Context, b *bot.B
 			conversation.KeySubcategory:            conversation.StringOrEmpty(data[conversation.KeySubcategory]),
 			conversation.KeySubcategoryDescription: conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription]),
 		}
-		prompt, err := c.engine.StartWithData(data.UserID(), subcategorySetupFlowName, seed)
+		prompt, err := c.engine.StartWithData(data.UserID(), flow.SubcategorySetupFlowName, seed)
 		if err != nil {
 			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return

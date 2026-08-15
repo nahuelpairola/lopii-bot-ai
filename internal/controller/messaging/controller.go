@@ -18,6 +18,7 @@ import (
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -304,7 +305,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	// acción, volver a preguntar, o descartarla). Los demás flujos terminales
 	// destapan la cola: es el único momento en que se sabe que no hay nada
 	// abierto, y por eso el WIP=1 se sostiene solo.
-	if result.FlowName == askUserFlowName {
+	if result.FlowName == flow.AskUserFlowName {
 		c.finishAskUserFlow(ctx, b, chatID, result.Data)
 		return
 	}
@@ -315,33 +316,33 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	}()
 
 	switch result.FlowName {
-	case movementCreateFlowName:
+	case flow.MovementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
-	case movementUpdatePickFlowName:
+	case flow.MovementUpdatePickFlowName:
 		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
-	case movementUpdateConfirmFlowName:
+	case flow.MovementUpdateConfirmFlowName:
 		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
-	case movementDeleteFlowName:
+	case flow.MovementDeleteFlowName:
 		c.finishMovementDeleteFlow(ctx, b, chatID, result.Data)
-	case accountCreateFlowName:
+	case flow.AccountCreateFlowName:
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
-	case accountManageFlowName:
+	case flow.AccountManageFlowName:
 		c.finishAccountManageFlow(ctx, b, chatID, result.Data)
-	case accountMoveOfferFlowName:
+	case flow.AccountMoveOfferFlowName:
 		c.finishAccountMoveOffer(ctx, b, chatID, result.Data)
-	case subcategorySetupFlowName:
+	case flow.SubcategorySetupFlowName:
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
-	case categoryMatchOfferFlowName:
+	case flow.CategoryMatchOfferFlowName:
 		c.finishCategoryMatchOffer(ctx, b, chatID, result.Data)
-	case categoryProposalConfirmFlowName:
+	case flow.CategoryProposalConfirmFlowName:
 		c.finishCategoryProposalConfirm(ctx, b, chatID, result.Data)
-	case categoryManagePickFlowName:
+	case flow.CategoryManagePickFlowName:
 		c.finishCategoryManagePickFlow(ctx, b, chatID, result.Data)
-	case categoryManageTargetFlowName:
+	case flow.CategoryManageTargetFlowName:
 		c.finishCategoryManageTargetFlow(ctx, b, chatID, result.Data)
-	case movementNegativeConfirmFlowName:
+	case flow.MovementNegativeConfirmFlowName:
 		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
-	case reminderSetupFlowName:
+	case flow.ReminderSetupFlowName:
 		c.finishReminderSetup(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})

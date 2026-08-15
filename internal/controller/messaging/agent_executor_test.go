@@ -47,7 +47,7 @@ func taxonomyForTest() []orchestrator.TaxonomyEntry {
 }
 
 // accountsWithDefault da una cuenta ARS por defecto, que es lo que evita el
-// camino de needsFirstAccount.
+// camino de flow.NeedsFirstAccount.
 func accountsWithDefault() *fakeAccountRepoFull {
 	acc := &account.Account{Model: gorm.Model{ID: 1}, Name: "Mercado Pago", Currency: currency.ARS, IsDefault: true}
 	return &fakeAccountRepoFull{

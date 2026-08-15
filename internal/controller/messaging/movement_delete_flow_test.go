@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/gorm"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 )
 
@@ -17,7 +18,7 @@ func movementModelWithID(t *testing.T, id uint) (m gorm.Model) {
 func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementDeleteFlow())
+	engine.Register(flow.NewMovementDeleteFlow())
 
 	seed := conversation.Data{
 		"resolved_index": "0",
@@ -26,12 +27,12 @@ func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 		),
 	}
 
-	prompt, err := engine.StartWithData(1, movementDeleteFlowName, seed)
+	prompt, err := engine.StartWithData(1, flow.MovementDeleteFlowName, seed)
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepConfirmDelete {
-		t.Errorf("landed on step %q, want %q (should skip the picker)", store.stepName, stepConfirmDelete)
+	if store.stepName != flow.StepConfirmDelete {
+		t.Errorf("landed on step %q, want %q (should skip the picker)", store.stepName, flow.StepConfirmDelete)
 	}
 	_ = prompt
 }
@@ -39,7 +40,7 @@ func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementDeleteFlow())
+	engine.Register(flow.NewMovementDeleteFlow())
 
 	seed := conversation.Data{
 		"candidate_labels": conversation.EncodeStringSlice([]string{"🔴 3000 ARS · Café", "🔴 3200 ARS · Café"}),
@@ -51,12 +52,12 @@ func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
 		),
 	}
 
-	_, err := engine.StartWithData(1, movementDeleteFlowName, seed)
+	_, err := engine.StartWithData(1, flow.MovementDeleteFlowName, seed)
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepPickDeleteCandidate {
-		t.Errorf("landed on step %q, want %q (should show the picker)", store.stepName, stepPickDeleteCandidate)
+	if store.stepName != flow.StepPickDeleteCandidate {
+		t.Errorf("landed on step %q, want %q (should show the picker)", store.stepName, flow.StepPickDeleteCandidate)
 	}
 }
 

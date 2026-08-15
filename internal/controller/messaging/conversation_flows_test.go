@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -176,8 +177,8 @@ func TestConversation_ManageSettingsReminder_OpensTheWizard(t *testing.T) {
 
 	h.SendText("quiero que me recuerdes cargar los gastos")
 
-	if flow, _ := h.FlowState(); flow != reminderSetupFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, reminderSetupFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.ReminderSetupFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.ReminderSetupFlowName, h.Messages())
 	}
 }
 
@@ -191,8 +192,8 @@ func TestConversation_ManageSettingsAccount_OpensTheManageFlow(t *testing.T) {
 
 	h.SendText("renombrá la cuenta del banco")
 
-	if flow, _ := h.FlowState(); flow != accountManageFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, accountManageFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.AccountManageFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.AccountManageFlowName, h.Messages())
 	}
 }
 
@@ -213,8 +214,8 @@ func TestConversation_ManageSettingsCategory_OpensTheProposalConfirm(t *testing.
 
 	h.SendText("quiero una categoría para la escalada")
 
-	if flow, _ := h.FlowState(); flow != categoryProposalConfirmFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, categoryProposalConfirmFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.CategoryProposalConfirmFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.CategoryProposalConfirmFlowName, h.Messages())
 	}
 }
 
@@ -231,8 +232,8 @@ func TestConversation_ManageSettingsCategory_DuplicateOffersTheExistingOne(t *te
 
 	h.SendText("quiero una categoría para el veterinario")
 
-	if flow, _ := h.FlowState(); flow != categoryMatchOfferFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, categoryMatchOfferFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.CategoryMatchOfferFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.CategoryMatchOfferFlowName, h.Messages())
 	}
 }
 
@@ -281,7 +282,7 @@ func TestConversation_RecategorizeABatch(t *testing.T) {
 		"changes":[{"field":"category","op":"set","value":"mantenimiento hogar"}]}`))
 
 	h.SendText("mové los movimientos del lote a mantenimiento hogar")
-	h.TapButton(optionConfirm)
+	h.TapButton(flow.OptionConfirm)
 
 	var moved int
 	for _, m := range h.Movements() {
@@ -353,8 +354,8 @@ func TestConversation_ManageSettingsCategoryManage_OpensThePickFlow(t *testing.T
 	h.ScriptToolCalls(manageSettingsCall(settingsAreaCategoryManage))
 	h.SendText("eliminá subcategorías")
 
-	if flow, _ := h.FlowState(); flow != categoryManagePickFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, categoryManagePickFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.CategoryManagePickFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.CategoryManagePickFlowName, h.Messages())
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-telegram/bot"
@@ -14,273 +13,10 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
-
-const (
-	movementCreateFlowName = "movement_create"
-
-	stepCreateFirstAccount  = "create_first_account"
-	stepFirstAccountBalance = "first_account_balance"
-	stepResolveCategory     = "resolve_category"
-	stepResolveSubcategory  = "resolve_subcategory"
-	stepResolveAccount      = "resolve_account"
-
-	// optionCancel is the escape hatch every gap-fill ChoiceStep offers:
-	// the user realizing mid-flow that the original message was a
-	// mistake, with nowhere else to bail out (see finishMovementCreateFlow).
-	optionCancel = "cancel"
-
-	// optionConfirm is the shared confirm-button value across movement/account flows.
-	optionConfirm = "confirm"
-
-	// optionBalanceLater lets the user skip the opening-balance question for
-	// a freshly lazy-created account.
-	optionBalanceLater = "balance_later"
-
-	// accountChoiceExistingPrefix marca el botón de una cuenta que YA existe,
-	// contra optionAccountCreate. El valor se arma con este prefijo y se
-	// desarma con TrimPrefix — el par clásico que se desincroniza si cada lado
-	// escribe el literal por su cuenta.
-	accountChoiceExistingPrefix = "existing:"
-
-	// optionAccountCreate es el botón "crear la cuenta que adivinó el LLM".
-	optionAccountCreate = "create"
-)
-
-// cancelOption is the "🚫 Cancelar" button appended to every gap-fill
-// step's options — same escape hatch the movement_confirm_intent gate
-// offers before the flow even starts, but for the case where the user
-// only realizes mid-flow that the message was wrong.
-var cancelOption = conversation.ChoiceOption{Label: "🚫 Cancelar", Value: optionCancel, Finish: true}
-
-// NewMovementCreateFlow builds the single registered flow used for
-// CREATE's gap-fill (and, per movement_update_flow.go, for reusing the
-// same graph to fill gaps in an UPDATE's corrected set). It is only
-// ever started via StartWithData when Call 2 CREATE left at least one
-// gap — a fully-resolved CREATE never touches the conversation engine
-// at all (see free_text.go).
-func NewMovementCreateFlow(subcategories subcategoryRepository, accounts accountRepository) *conversation.Flow {
-	steps := map[string]conversation.Step{
-		stepCreateFirstAccount: conversation.TextStep{
-			PromptText: func(data conversation.Data) string {
-				return msgAskFirstAccountName(firstAccountCurrency(data, hasDefaultFor(accounts, data)))
-			},
-			DataKey: conversation.KeyFirstAccountName,
-			SkipIf: func(data conversation.Data) (string, bool) {
-				if needsFirstAccount(data, hasDefaultFor(accounts, data)) {
-					return "", false // hay que preguntar
-				}
-				return stepResolveCategory, true
-			},
-			Validate: func(text string, _ conversation.Data) string {
-				if strings.TrimSpace(text) == "" {
-					return msgInvalidAccountCreateName
-				}
-				return ""
-			},
-			NextStep:      stepFirstAccountBalance,
-			EscapeOptions: []conversation.ChoiceOption{cancelOption},
-			OnEscape: func(value string, data conversation.Data) conversation.Data {
-				if value != optionCancel {
-					return data
-				}
-				next := conversation.CopyData(data)
-				conversation.SetFlag(next, conversation.KeyCancelled)
-				return next
-			},
-		},
-		stepFirstAccountBalance: conversation.TextStep{
-			PromptText: func(data conversation.Data) string {
-				return msgAskFirstAccountBalance(
-					conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]),
-					firstAccountCurrency(data, hasDefaultFor(accounts, data)),
-				)
-			},
-			DataKey: conversation.KeyFirstAccountBalance,
-			SkipIf: func(data conversation.Data) (string, bool) {
-				if conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]) == "" {
-					return stepResolveCategory, true // no hubo first-account
-				}
-				return "", false
-			},
-			Validate: func(text string, _ conversation.Data) string {
-				if _, err := movement.ParseARAmount(text); err != nil {
-					return account.MsgInvalidAmount
-				}
-				return ""
-			},
-			NextStep: stepResolveCategory,
-			EscapeOptions: []conversation.ChoiceOption{
-				{Label: "⬅️ Atrás", Value: optionBack, NextStep: stepCreateFirstAccount},
-				{Label: "⏭️ Después", Value: optionBalanceLater, NextStep: stepResolveCategory},
-				cancelOption,
-			},
-			OnEscape: func(value string, data conversation.Data) conversation.Data {
-				next := conversation.CopyData(data)
-				if value == optionCancel {
-					conversation.SetFlag(next, conversation.KeyCancelled)
-				}
-				return next
-			},
-		},
-		stepResolveCategory: conversation.ChoiceStep{
-			PromptText: msgAskCategory,
-			SkipIf: func(data conversation.Data) (string, bool) {
-				if len(conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)) == 0 {
-					return stepResolveAccount, true
-				}
-				return "", false
-			},
-			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				cats, _ := subcategories.DistinctCategoriesForUser(data.UserID())
-				opts := make([]conversation.ChoiceOption, 0, len(cats))
-				for _, cat := range cats {
-					opts = append(opts, conversation.ChoiceOption{
-						Label:    subcategories.IconForCategory(data.UserID(), cat) + " " + cat,
-						Value:    cat,
-						NextStep: stepResolveSubcategory,
-					})
-				}
-				opts = append(opts, cancelOption)
-				return opts
-			},
-			DeclaredNextSteps: []string{stepResolveSubcategory},
-			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				if value == optionCancel {
-					next := conversation.CopyData(data)
-					conversation.SetFlag(next, conversation.KeyCancelled)
-					return next
-				}
-				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)
-				if len(gaps) == 0 {
-					return data
-				}
-				next := conversation.CopyData(data)
-				next[conversation.KeyGapActiveRow] = gaps[0]
-				rows := movement.DecodeMovementRows(data)
-				idx, _ := strconv.Atoi(gaps[0])
-				rows[idx].Category = value
-				next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
-				return next
-			},
-			InvalidChoiceMessage: msgInvalidChoice,
-		},
-		stepResolveSubcategory: conversation.ChoiceStep{
-			PromptText: msgAskSubcategory,
-			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				rowIdx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyGapActiveRow]))
-				rows := movement.DecodeMovementRows(data)
-				category := rows[rowIdx].Category
-
-				subs, _ := subcategories.FindAllForUser(data.UserID())
-				var opts []conversation.ChoiceOption
-				for _, s := range subs {
-					if s.Category != category {
-						continue
-					}
-					opts = append(opts, conversation.ChoiceOption{
-						Label:    s.Subcategory,
-						Value:    s.Subcategory,
-						NextStep: stepResolveCategory,
-					})
-				}
-				opts = append(opts, cancelOption)
-				return opts
-			},
-			DeclaredNextSteps: []string{stepResolveCategory},
-			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				if value == optionCancel {
-					next := conversation.CopyData(data)
-					conversation.SetFlag(next, conversation.KeyCancelled)
-					return next
-				}
-				next := conversation.CopyData(data)
-				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)
-				rowIdx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyGapActiveRow]))
-
-				rows := movement.DecodeMovementRows(data)
-				rows[rowIdx].Subcategory = value
-				next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
-				if len(gaps) > 0 {
-					next[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice(gaps[1:])
-				}
-				next[conversation.KeyGapActiveRow] = ""
-				return next
-			},
-			InvalidChoiceMessage: msgInvalidChoice,
-		},
-		stepResolveAccount: conversation.ChoiceStep{
-			PromptText: msgAskAccount,
-			SkipIf: func(data conversation.Data) (string, bool) {
-				if len(conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)) == 0 {
-					return "", true // nothing left — the flow is complete
-				}
-				return "", false
-			},
-			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)
-				if len(gaps) == 0 {
-					return nil
-				}
-				rowIdx, _ := strconv.Atoi(gaps[0])
-				rows := movement.DecodeMovementRows(data)
-
-				accs, _ := accounts.FindByUserID(data.UserID())
-				var opts []conversation.ChoiceOption
-				for _, a := range accs {
-					if a.Currency.String() != rows[rowIdx].Currency {
-						continue
-					}
-					opts = append(opts, conversation.ChoiceOption{
-						Label:    a.Name,
-						Value:    accountChoiceExistingPrefix + strconv.FormatUint(uint64(a.ID), 10),
-						NextStep: stepResolveAccount,
-					})
-				}
-				opts = append(opts, conversation.ChoiceOption{
-					Label:    "➕ Crear cuenta \"" + rows[rowIdx].AccountNameGuess + "\"",
-					Value:    optionAccountCreate,
-					NextStep: stepResolveAccount,
-				})
-				opts = append(opts, cancelOption)
-				return opts
-			},
-			DeclaredNextSteps: []string{stepResolveAccount},
-			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				if value == optionCancel {
-					next := conversation.CopyData(data)
-					conversation.SetFlag(next, conversation.KeyCancelled)
-					return next
-				}
-				next := conversation.CopyData(data)
-				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)
-				if len(gaps) == 0 {
-					return next
-				}
-				rowIdx, _ := strconv.Atoi(gaps[0])
-
-				rows := movement.DecodeMovementRows(data)
-				if value == optionAccountCreate {
-					rows[rowIdx].AccountID = accountPendingCreate
-				} else {
-					rows[rowIdx].AccountID = strings.TrimPrefix(value, accountChoiceExistingPrefix)
-				}
-				next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
-				next[conversation.KeyPendingAccountGaps] = conversation.EncodeStringSlice(gaps[1:])
-				return next
-			},
-			InvalidChoiceMessage: msgInvalidChoice,
-		},
-	}
-
-	flow, err := conversation.NewFlow(movementCreateFlowName, stepCreateFirstAccount, steps)
-	if err != nil {
-		panic(err)
-	}
-	return flow
-}
 
 // finishMovementCreateFlow is the Telegram-facing wrapper around
 // resolveAndInsertMovements — same split for testability as
@@ -303,7 +39,7 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 		if errors.As(err, &short) {
 			gateSeed := conversation.CopyData(data)
 			gateSeed[conversation.KeyGatePrompt] = msgInsufficientFunds(short.shortfalls)
-			if serr := c.startFlow(ctx, b, chatID, data.UserID(), movementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow"); serr != nil {
+			if serr := c.startFlow(ctx, b, chatID, data.UserID(), flow.MovementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow"); serr != nil {
 				slog.ErrorContext(ctx, "negative-confirm flow failed to start", "user_id", data.UserID(), "error", serr)
 			}
 			return
@@ -475,7 +211,7 @@ func (c *controller) createFirstAccount(data conversation.Data, rows []movement.
 	// a la que se le puede aplicar el saldo declarado: el usuario contestó ese
 	// número mirando "¿cuánto tenés en <nombre> (dólares)?". Se calcula ANTES de
 	// crear nada, porque crear una cuenta cambia la respuesta.
-	asked := firstAccountCurrency(data, idx.hasDefault)
+	asked := flow.FirstAccountCurrency(data, idx.hasDefault)
 	// El neteo se calcula ACÁ, antes de que el loop les ponga account_id a las
 	// filas: firstAccountNetDelta saltea toda fila que ya tenga cuenta, así que
 	// calcularlo después da cero siempre.
@@ -605,7 +341,7 @@ func (c *controller) insertOpeningMovement(acc *account.Account, amount decimal.
 func (c *controller) createCounterpartyAccounts(userID uint64, rows []movement.MovementRow, idx *accountIndex) error {
 	created := make(map[string]uint64) // "nombre|moneda" -> id, para no crear dos veces la misma
 	for i, row := range rows {
-		if row.AccountID != accountPendingCreate {
+		if row.AccountID != flow.AccountPendingCreate {
 			continue
 		}
 		if movement.TypeFromString(row.Type) != movement.Transfer &&

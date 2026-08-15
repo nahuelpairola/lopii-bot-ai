@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -39,7 +40,7 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 	}
 	rows := movement.DecodeMovementRows(data)
 
-	prompt0 := msgAskCategory(data)
+	prompt0 := flow.MsgAskCategory(data)
 	idx0, _ := strconv.Atoi(gaps[0])
 	if !strings.Contains(prompt0, rows[idx0].Amount) {
 		t.Errorf("category prompt missing row %d's own amount %q: %q", idx0, rows[idx0].Amount, prompt0)
@@ -53,7 +54,7 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 	data["gap_active_row"] = gaps[0]
 	rows[idx0].Category = "Mascotas"
 	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
-	subPrompt := msgAskSubcategory(data)
+	subPrompt := flow.MsgAskSubcategory(data)
 	if !strings.Contains(subPrompt, rows[idx0].Amount) {
 		t.Errorf("subcategory prompt missing row %d's amount: %q", idx0, subPrompt)
 	}
@@ -64,7 +65,7 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 	// Advance to row 1 — this is the exact failure mode from the bug report:
 	// two consecutive category prompts that read identically.
 	data[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice(gaps[1:])
-	prompt1 := msgAskCategory(data)
+	prompt1 := flow.MsgAskCategory(data)
 	if prompt1 == prompt0 {
 		t.Fatalf("row 1's category prompt is identical to row 0's — this is the reported bug")
 	}

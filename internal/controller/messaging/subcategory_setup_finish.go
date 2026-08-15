@@ -37,7 +37,7 @@ func (c *controller) finishSubcategorySetupFlow(ctx context.Context, b *bot.Bot,
 // step the user just answered (category_icon); otherwise it's copied
 // from the existing category's icon (found via the same Cache lookup
 // used for the duplicate check) — never re-asked. Description comes
-// straight from stepSubcategoryDescription's answer — this is the field
+// straight from flow.StepSubcategoryDescription's answer — this is the field
 // orchestrator.TaxonomyEntry.Description feeds to Call 2 CREATE as a
 // classification hint, so a user-created subcategory is only as useful
 // as this description is specific.

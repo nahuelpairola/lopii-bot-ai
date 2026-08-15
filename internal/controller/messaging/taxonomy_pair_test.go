@@ -3,6 +3,7 @@ package messaging
 import (
 	"testing"
 
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -50,7 +51,7 @@ func TestResolveTaxonomyPair(t *testing.T) {
 // estructurado hay que volver al picker: la alternativa es pedirle al modelo que
 // reproduzca N filas enteras, que es donde corrompe datos en silencio.
 func TestIsBatchCorrection(t *testing.T) {
-	twoCandidates := []candidateGroup{{OldIDs: []string{"1"}}, {OldIDs: []string{"2"}}}
+	twoCandidates := []flow.CandidateGroup{{OldIDs: []string{"1"}}, {OldIDs: []string{"2"}}}
 	change := []correctionChange{{fieldCategory, opSet, "Vivienda"}}
 
 	cases := []struct {
