@@ -1,49 +1,22 @@
 package messaging
 
 import (
-	"errors"
 	"strings"
 
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 )
 
-// createErrorCopy maps a guard rejection to specific user copy, falling back
-// to the generic error. Mirrors finishAccountCreateFlow's ErrAccountAlreadyExists.
+// createErrorCopy/guardReason viven en flow (movement_label.go). El alias
+// conserva el nombre corto para el finish de cuentas (account_manage_finish.go),
+// que se migra en un commit posterior.
 func createErrorCopy(err error) string {
-	switch {
-	case errors.Is(err, movement.ErrZeroAmount):
-		return msgAmountUnclear
-	case errors.Is(err, movement.ErrCurrencyAccountMismatch):
-		return msgCurrencyMismatch
-	case errors.Is(err, movement.ErrNoAccountForCurrency):
-		return msgNoAccountCurrency
-	case errors.Is(err, movement.ErrTransferLeg):
-		return msgMovementMalformed
-	default:
-		return msgCouldNotSave("tu movimiento")
-	}
+	return flow.CreateErrorCopy(err)
 }
 
-// guardReason maps a guard rejection to a stable log value. Mirror of
-// createErrorCopy, which maps the same sentinels to user-facing copy.
-//
-// Los valores son un contrato con los logs de producción (campo `reason`):
-// cambiarlos rompe cualquier búsqueda histórica, aunque se renombren los
-// sentinels de Go.
 func guardReason(err error) string {
-	switch {
-	case errors.Is(err, movement.ErrZeroAmount):
-		return "zero_amount"
-	case errors.Is(err, movement.ErrCurrencyAccountMismatch):
-		return "currency_account_mismatch"
-	case errors.Is(err, movement.ErrNoAccountForCurrency):
-		return "no_account_for_currency"
-	case errors.Is(err, movement.ErrTransferLeg):
-		return "malformed_transfer"
-	default:
-		return "other"
-	}
+	return flow.GuardReason(err)
 }
 
 // candidateLabel builds the short display line shown per option in both

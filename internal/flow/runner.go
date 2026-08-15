@@ -1,8 +1,12 @@
 package flow
 
 import (
+	"context"
+
+	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -20,4 +24,13 @@ type runner interface {
 	InsertMovements(movs []movement.Movement) error
 	ReplaceMovements(oldIDs []uint, movs []movement.Movement) error
 	FindSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error)
+
+	// Outbound + métricas: lo que un finish de movimiento toca de Telegram y
+	// del borde (intent_events, nudges, borrado físico) y que flow no quiere
+	// conocer. SendText y StartFlow son los que vuelven a flow como salida.
+	ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint)
+	SendText(ctx context.Context, b *bot.Bot, chatID int64, text string)
+	StartFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error
+	MarkTipSent(userID uint64, tip string) error
+	SoftDeleteByIDs(ids []uint) error
 }

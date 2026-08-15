@@ -4,6 +4,11 @@ import "lopiibot.com/internal/conversation"
 
 const stepNegativeConfirm = "negative_confirm"
 
+// gateChoiceKey guarda la elección del gate ("register"/"rewrite"/"missing")
+// en el Data. La lee el finish (movement_finish.go) — misma pareja
+// builder/finish que en el resto de los flujos.
+const gateChoiceKey = "_gate_choice"
+
 // NewMovementNegativeConfirmFlow is the insufficient-funds gate: a well-formed
 // CREATE that would drive an account negative stops here instead of inserting.
 // Three exits — register as-is, rewrite, or "something's missing" (abort with a
@@ -22,7 +27,7 @@ func NewMovementNegativeConfirmFlow() *conversation.Flow {
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := conversation.CopyData(data)
-				next["_gate_choice"] = value
+				next[gateChoiceKey] = value
 				return next
 			},
 			InvalidChoiceMessage: MsgInvalidChoice,

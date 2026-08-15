@@ -5,23 +5,12 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 )
 
-// finishMovementNegativeConfirmFlow applies the user's choice.
+// finishMovementNegativeConfirmFlow es el puente al finish que ahora vive en
+// flow (FinishMovementNegativeConfirm). Los tests del borde lo llaman por este
+// nombre; el puente se borra al cerrar la costura.
 func (c *controller) finishMovementNegativeConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	switch conversation.StringOrEmpty(data["_gate_choice"]) {
-	case "register":
-		conversation.SetFlag(data, conversation.KeySkipBalanceCheck)
-		inserted, err := c.resolveAndInsertMovements(data)
-		if err != nil {
-			c.sendText(ctx, b, chatID, createErrorCopy(err))
-			return
-		}
-		c.resolveMetric(ctx, data.UserID(), writeOutcomeFor(data), collectMovementIDs(inserted)...)
-		c.sendText(ctx, b, chatID, msgConfirmMovements(inserted))
-	case "missing":
-		c.sendText(ctx, b, chatID, msgLogMissingFirst)
-	default: // rewrite / anything else: drop it, the user re-sends
-		c.sendText(ctx, b, chatID, msgNotUnderstood)
-	}
+	flow.FinishMovementNegativeConfirm(ctx, c, b, chatID, data)
 }

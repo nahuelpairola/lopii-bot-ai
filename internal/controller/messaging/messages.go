@@ -3,7 +3,6 @@ package messaging
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -39,7 +38,7 @@ const (
 	// Errores por-significado. Cada uno le dice al usuario de quién es la
 	// culpa y qué pasó con su dato. Reemplazan al viejo msgGenericFlowError.
 	msgCouldNotLoad   = "No pude traer tus datos ahora. Probá en un momento."
-	msgSomethingBroke = "Se me complicó algo de mi lado, no es por vos. Probá de nuevo."
+	msgSomethingBroke = flow.MsgSomethingBroke
 
 	// Ack de la cola de pending jobs (429 terminal de Groq). Nunca silencioso:
 	// ackShortWaitThreshold decide cuál de las dos rinde (pending_jobs.go).
@@ -70,10 +69,10 @@ const (
 	// admin package can't reach unexported messaging strings.
 	MsgAccountReset = "🔄 Reseteamos tu cuenta. Arrancamos de nuevo:"
 
-	msgAmountUnclear     = "No entendí el monto 🤔 ¿Lo reescribís?"
-	msgCurrencyMismatch  = "Esa cuenta es de otra moneda. Reescribí el movimiento."
-	msgNoAccountCurrency = "No tenés una cuenta en esa moneda. Creá una primero."
-	msgMovementMalformed = "No pude armar ese movimiento. Reescribilo, porfa."
+	msgAmountUnclear     = flow.MsgAmountUnclear
+	msgCurrencyMismatch  = flow.MsgCurrencyMismatch
+	msgNoAccountCurrency = flow.MsgNoAccountCurrency
+	msgMovementMalformed = flow.MsgMovementMalformed
 
 	msgQueryFailed = "No pude resolver esa consulta ahora. Probá reformularla o intentá de nuevo en un momento."
 
@@ -88,13 +87,13 @@ const (
 	msgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 
-	msgNotUnderstood = "No te entendí 🤔 Probá de nuevo."
+	msgNotUnderstood = flow.MsgNotUnderstood
 )
 
-// msgCouldNotSave nombra qué no quedó guardado, para que el usuario sepa que
-// su acción no se registró. cosa: "tu movimiento", "tu cuenta", "el cambio", etc.
+// msgCouldNotSave vive en flow (MsgCouldNotSave); el alias conserva el nombre
+// corto para los callers del borde que aún no se migran.
 func msgCouldNotSave(cosa string) string {
-	return "No pude guardar " + cosa + ". No se guardó nada, probá de nuevo."
+	return flow.MsgCouldNotSave(cosa)
 }
 
 // msgJobGaveUp: el drain se rindió con un job (429 permanente). Reusa
@@ -114,10 +113,8 @@ func msgJobGaveUp(job pendingjob.PendingJob) string {
 	return msgCouldNotSave("«" + txt + "»")
 }
 
-// msgCouldNotDelete es el gemelo de msgCouldNotSave para borrados: el reaseguro
-// es inverso — la cosa sigue existiendo, no desapareció a medias.
 func msgCouldNotDelete(cosa string) string {
-	return "No pude borrar " + cosa + ". Sigue ahí, probá de nuevo."
+	return flow.MsgCouldNotDelete(cosa)
 }
 
 // msgReminderSet builds the set/edit receipt. startMin/endMin are minutes
@@ -126,57 +123,20 @@ func msgReminderSet(startMin, endMin int) string {
 	return fmt.Sprintf("Listo 🙌 Te recuerdo cargar gastos entre las %d y las %d, solo los días que no hayas anotado nada.", startMin/60, endMin/60)
 }
 
-// msgFirstAccountDefault nombra las monedas de las cuentas recién creadas. Son
-// varias cuando un mismo mensaje trae filas en dos monedas: createFirstAccount
-// crea UNA CUENTA POR MONEDA, todas con el nombre que dio el usuario.
 func msgFirstAccountDefault(name string, currencies []string) string {
-	labels := make([]string, 0, len(currencies))
-	for _, c := range currencies {
-		labels = append(labels, currency.Currency(c).Label())
-	}
-	switch len(labels) {
-	case 0:
-		return "⭐ Dejé " + name + " como tu cuenta principal — la uso cuando no me aclarás de dónde sale la plata."
-	case 1:
-		return "⭐ Dejé " + name + " como tu cuenta en " + labels[0] + " por defecto — la uso para los movimientos en " + labels[0] + " cuando no me aclarás de dónde sale la plata."
-	default:
-		list := strings.Join(labels[:len(labels)-1], ", ") + " y " + labels[len(labels)-1]
-		return "⭐ Creé " + name + " en " + list + ", y las dejé por defecto para cada una — las uso cuando no me aclarás de dónde sale la plata."
-	}
+	return flow.MsgFirstAccountDefault(name, currencies)
 }
 
-const msgInviteMoreAccounts = "Podés tener más cuentas (inversiones, dólares, lo que sea). Decime \"creá una cuenta\" cuando quieras."
+const msgInviteMoreAccounts = flow.MsgInviteMoreAccounts
 
 func msgConfirmMovements(movements []movement.Movement) string {
-	lines := make([]string, 0, len(movements))
-	for _, m := range movements {
-		lines = append(lines, movementReceiptLine(m))
-	}
-	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
+	return flow.MsgConfirmMovements(movements)
 }
 
-// movementReceiptLine formats one movement for a receipt/confirmation
-// message: icon, category › subcategory, amount, currency, description,
-// and date — enough to tell movements apart at a glance when several
-// look similar. Category/subcategory come from Movement.Subcategory
-// (populated at construction time — see movement_create_flow.go — or via
-// Preload for DB-fetched candidates — see movement/repository.go).
+// movementReceiptLine vive en flow (MovementReceiptLine). El alias conserva el
+// nombre corto para los tests del borde que todavía lo ejercitan.
 func movementReceiptLine(m movement.Movement) string {
-	category, sub := "", ""
-	if m.Subcategory != nil {
-		category, sub = m.Subcategory.Category, m.Subcategory.Subcategory
-	}
-	desc := ""
-	if m.Description != nil {
-		desc = *m.Description
-	}
-	amount := currency.FormatMoney(m.Amount.Abs(), m.Currency)
-	if m.Account != nil && m.Account.Name != "" {
-		return fmt.Sprintf("%s %s › %s — %s · %s · %s (%s)",
-			movement.IconForType(m.Type), category, sub, amount, desc, m.Account.Name, movement.RelativeDate(m.Date))
-	}
-	return fmt.Sprintf("%s %s › %s — %s · %s (%s)",
-		movement.IconForType(m.Type), category, sub, amount, desc, movement.RelativeDate(m.Date))
+	return flow.MovementReceiptLine(m)
 }
 
 // displayAmount renders a movement amount for any audience outside storage —
@@ -212,9 +172,9 @@ func rowDate(r movement.MovementRow) string {
 }
 
 const (
-	msgUpdateApplied   = "✅ Corregido."
-	msgUpdateDeleted   = "🗑️ Listo, lo borré (quedó gratis)."
-	msgUpdateCancelled = "Cancelado, no cambié nada."
+	msgUpdateApplied   = flow.MsgUpdateApplied
+	msgUpdateDeleted   = flow.MsgUpdateDeleted
+	msgUpdateCancelled = flow.MsgUpdateCancelled
 
 	// msgAgentActionDiscarded sale cuando se agota el presupuesto de preguntas.
 	// NOMBRA lo que se cayó a propósito: tirar algo en silencio es la falla que
@@ -321,13 +281,13 @@ func iconOrDefault(icon string) string {
 }
 
 const (
-	msgDeleteApplied   = "🗑️ Borrado."
-	msgDeleteCancelled = "Cancelado, no borré nada."
+	msgDeleteApplied   = flow.MsgDeleteApplied
+	msgDeleteCancelled = flow.MsgDeleteCancelled
 )
 
 const (
 	msgAskRewrite      = "✍️ Dale, mandalo de nuevo con más detalle (monto, categoría, y si es un movimiento nuevo)."
-	msgCreateCancelled = "🚫 Cancelado, no registré nada."
+	msgCreateCancelled = flow.MsgCreateCancelled
 )
 
 const (
@@ -348,14 +308,10 @@ const msgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae
 const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 
 func msgInsufficientFunds(short []movement.AccountShortfall) string {
-	s := short[0]
-	c := currency.Currency(s.Currency)
-	// FormatMoney sobre el valor SIN Abs: el signo es parte de lo que se avisa.
-	return fmt.Sprintf("⚠️ Ojo: %s quedaría en %s (te faltan %s). ¿Cómo lo registro?",
-		s.Name, currency.FormatMoney(s.After, c), currency.FormatMoney(s.After.Abs(), c))
+	return flow.MsgInsufficientFunds(short)
 }
 
-const msgLogMissingFirst = "Dale, registrá primero lo que falta y volvé a mandarme esto."
+const msgLogMissingFirst = flow.MsgLogMissingFirst
 
 // FlowResumeLabel gives the resume gate (conversation.Engine) a short,
 // per-flow description of what the user was doing, for its "¿retomamos o

@@ -8,11 +8,14 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/subcategory"
 )
 
 const (
-	nudgeCorrectTip    = "correct_tip"
+	// nudgeCorrectTip vive en flow (NudgeCorrectTip) — la marca el finish de
+	// CREATE; el alias conserva el nombre corto para la lista de nudges.
+	nudgeCorrectTip    = flow.NudgeCorrectTip
 	nudgeQueryTip      = "query_tip"
 	nudgeReminderOffer = "reminder_offer"
 	nudgeTransferTip   = "transfer_tip"

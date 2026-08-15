@@ -251,3 +251,98 @@ func MsgConfirmAccountDefault(name, cur string) string {
 func MsgAskSubcategoryDescription(sub string) string {
 	return "En una frase: ¿cuándo se usa \"" + sub + "\"? (ej: \"gastos de comida y snacks en la calle\")"
 }
+
+// --- Copy de RESULTADO de los finishes de movimientos ---
+// La consumen los finishes (movement_finish.go). El borde que todavía vive en
+// messaging la re-exporta con nombres cortos (messages.go) hasta que se migre;
+// por eso el copy es un contrato estable, no un detalle interno de flow.
+
+const (
+	MsgSomethingBroke     = "Se me complicó algo de mi lado, no es por vos. Probá de nuevo."
+	MsgNotUnderstood      = "No te entendí 🤔 Probá de nuevo."
+	MsgAmountUnclear      = "No entendí el monto 🤔 ¿Lo reescribís?"
+	MsgCurrencyMismatch   = "Esa cuenta es de otra moneda. Reescribí el movimiento."
+	MsgNoAccountCurrency  = "No tenés una cuenta en esa moneda. Creá una primero."
+	MsgMovementMalformed  = "No pude armar ese movimiento. Reescribilo, porfa."
+	MsgUpdateApplied      = "✅ Corregido."
+	MsgUpdateDeleted      = "🗑️ Listo, lo borré (quedó gratis)."
+	MsgUpdateCancelled    = "Cancelado, no cambié nada."
+	MsgDeleteApplied      = "🗑️ Borrado."
+	MsgDeleteCancelled    = "Cancelado, no borré nada."
+	MsgCreateCancelled    = "🚫 Cancelado, no registré nada."
+	MsgInviteMoreAccounts = "Podés tener más cuentas (inversiones, dólares, lo que sea). Decime \"creá una cuenta\" cuando quieras."
+	MsgLogMissingFirst    = "Dale, registrá primero lo que falta y volvé a mandarme esto."
+)
+
+// MsgCouldNotSave nombra qué no quedó guardado, para que el usuario sepa que
+// su acción no se registró. cosa: "tu movimiento", "tu cuenta", "el cambio", etc.
+func MsgCouldNotSave(cosa string) string {
+	return "No pude guardar " + cosa + ". No se guardó nada, probá de nuevo."
+}
+
+// MsgCouldNotDelete es el gemelo de MsgCouldNotSave para borrados: el
+// reaseguro es inverso — la cosa sigue existiendo, no desapareció a medias.
+func MsgCouldNotDelete(cosa string) string {
+	return "No pude borrar " + cosa + ". Sigue ahí, probá de nuevo."
+}
+
+// MsgFirstAccountDefault nombra las monedas de las cuentas recién creadas. Son
+// varias cuando un mismo mensaje trae filas en dos monedas: CreateFirstAccount
+// crea UNA CUENTA POR MONEDA, todas con el nombre que dio el usuario.
+func MsgFirstAccountDefault(name string, currencies []string) string {
+	labels := make([]string, 0, len(currencies))
+	for _, c := range currencies {
+		labels = append(labels, currency.Currency(c).Label())
+	}
+	switch len(labels) {
+	case 0:
+		return "⭐ Dejé " + name + " como tu cuenta principal — la uso cuando no me aclarás de dónde sale la plata."
+	case 1:
+		return "⭐ Dejé " + name + " como tu cuenta en " + labels[0] + " por defecto — la uso para los movimientos en " + labels[0] + " cuando no me aclarás de dónde sale la plata."
+	default:
+		list := strings.Join(labels[:len(labels)-1], ", ") + " y " + labels[len(labels)-1]
+		return "⭐ Creé " + name + " en " + list + ", y las dejé por defecto para cada una — las uso cuando no me aclarás de dónde sale la plata."
+	}
+}
+
+// MsgConfirmMovements es el recibo de un CREATE: una línea por movimiento.
+func MsgConfirmMovements(movements []movement.Movement) string {
+	lines := make([]string, 0, len(movements))
+	for _, m := range movements {
+		lines = append(lines, MovementReceiptLine(m))
+	}
+	return "✅ Movimiento registrado\n" + strings.Join(lines, "\n")
+}
+
+// MovementReceiptLine formats one movement for a receipt/confirmation
+// message: icon, category › subcategory, amount, currency, description,
+// and date — enough to tell movements apart at a glance when several
+// look similar. Category/subcategory come from Movement.Subcategory
+// (populated at construction time or via Preload for DB-fetched candidates).
+func MovementReceiptLine(m movement.Movement) string {
+	category, sub := "", ""
+	if m.Subcategory != nil {
+		category, sub = m.Subcategory.Category, m.Subcategory.Subcategory
+	}
+	desc := ""
+	if m.Description != nil {
+		desc = *m.Description
+	}
+	amount := currency.FormatMoney(m.Amount.Abs(), m.Currency)
+	if m.Account != nil && m.Account.Name != "" {
+		return fmt.Sprintf("%s %s › %s — %s · %s · %s (%s)",
+			movement.IconForType(m.Type), category, sub, amount, desc, m.Account.Name, movement.RelativeDate(m.Date))
+	}
+	return fmt.Sprintf("%s %s › %s — %s · %s (%s)",
+		movement.IconForType(m.Type), category, sub, amount, desc, movement.RelativeDate(m.Date))
+}
+
+// MsgInsufficientFunds es el prompt del gate de saldo insuficiente: nombra qué
+// cuenta quedaría negativa y cuánto le faltaría.
+func MsgInsufficientFunds(short []movement.AccountShortfall) string {
+	s := short[0]
+	c := currency.Currency(s.Currency)
+	// FormatMoney sobre el valor SIN Abs: el signo es parte de lo que se avisa.
+	return fmt.Sprintf("⚠️ Ojo: %s quedaría en %s (te faltan %s). ¿Cómo lo registro?",
+		s.Name, currency.FormatMoney(s.After, c), currency.FormatMoney(s.After.Abs(), c))
+}

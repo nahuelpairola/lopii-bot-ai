@@ -461,6 +461,33 @@ func (c *controller) startFlow(ctx context.Context, b *bot.Bot, chatID int64, us
 	return nil
 }
 
+// Implementación de runner para los finishes migrados a flow (movement_finish.go).
+// El contrato (runner) vive en flow/runner.go: métodos exportados, pero el tipo
+// es unexported. Son puentes de una línea al nombre interno — el borde conserva
+// su nomenclatura y flow solo ve la interfaz angosta.
+func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint) {
+	c.resolveMetric(ctx, userID, outcome, movementIDs...)
+}
+
+func (c *controller) SendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
+	c.sendText(ctx, b, chatID, text)
+}
+
+func (c *controller) StartFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
+	return c.startFlow(ctx, b, chatID, userID, flowName, seed, errCtx)
+}
+
+func (c *controller) MarkTipSent(userID uint64, tip string) error {
+	if c.nudges == nil {
+		return nil
+	}
+	return c.nudges.MarkSent(userID, tip)
+}
+
+func (c *controller) SoftDeleteByIDs(ids []uint) error {
+	return c.movements.SoftDeleteByIDs(ids)
+}
+
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
 	if b == nil {
 		return

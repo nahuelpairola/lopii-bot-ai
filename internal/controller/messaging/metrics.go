@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/trace"
@@ -15,13 +16,8 @@ import (
 // movimiento arrancan en pending y se resuelven en su terminal; el resto es
 // terminal directo.
 const (
-	outcomePending         = "pending"
-	outcomeCreateInserted  = "create_inserted"
-	outcomeCreateCancelled = "create_cancelled"
-	outcomeCreateRewrite   = "create_rewrite"
-	outcomeCreateFailed    = "create_failed"
-	outcomeUpdateConfirmed = "update_confirmed"
-	outcomeUpdateCancelled = "update_cancelled"
+	outcomePending       = "pending"
+	outcomeCreateRewrite = "create_rewrite"
 
 	// Los cuatro que reemplazan a update_failed. Se escribía desde SIETE
 	// lugares con significados opuestos —el loop reventó, el parking falló, el
@@ -32,9 +28,6 @@ const (
 	outcomeLoopErrored         = "loop_errored"     // la llamada al loop falló (transporte, no-429)
 	outcomeParkFailed          = "park_failed"      // no se pudo guardar la acción parkeada
 	outcomeLoopDidNothing      = "loop_did_nothing" // el turno no parkeó ni escribió nada
-	outcomeWriteFailed         = "write_failed"     // el usuario confirmó y falló la escritura
-	outcomeDeleteConfirmed     = "delete_confirmed"
-	outcomeDeleteCancelled     = "delete_cancelled"
 	outcomeNoCandidates        = "no_candidates"
 	outcomeQueryAnswered       = "query_answered"
 	outcomeQueryFailed         = "query_failed"
@@ -56,6 +49,20 @@ const (
 	outcomeCategoryManageNoOwn     = "category_manage_no_own"
 	outcomeCategoryManageApplied   = "category_manage_applied"
 	outcomeCategoryManageCancelled = "category_manage_cancelled"
+)
+
+// Los outcomes de los flujos de movimiento viven en flow (movement_metrics.go);
+// acá quedan los puentes que usan los caminos que todavía viven en el borde
+// (agent_executor, start_movement, los tests). Un solo origen, dos nombres.
+const (
+	outcomeCreateInserted  = flow.OutcomeCreateInserted
+	outcomeCreateCancelled = flow.OutcomeCreateCancelled
+	outcomeCreateFailed    = flow.OutcomeCreateFailed
+	outcomeUpdateConfirmed = flow.OutcomeUpdateConfirmed
+	outcomeUpdateCancelled = flow.OutcomeUpdateCancelled
+	outcomeWriteFailed     = flow.OutcomeWriteFailed
+	outcomeDeleteConfirmed = flow.OutcomeDeleteConfirmed
+	outcomeDeleteCancelled = flow.OutcomeDeleteCancelled
 )
 
 // routerOutcome mapea el intent del router al outcome inicial que se loguea
@@ -174,18 +181,15 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 // en los casos que la etapa viene a arreglar.
 //
 // El seed ya traía el dato (`conversation.KeyMode`); nadie lo miraba.
+//
+// La lógica vive en flow (WriteOutcomeFor); el alias conserva el nombre corto
+// para los callers del borde que aún no se migran.
 func writeOutcomeFor(data conversation.Data) string {
-	if conversation.StringOrEmpty(data[conversation.KeyMode]) == modeUpdate {
-		return outcomeUpdateConfirmed
-	}
-	return outcomeCreateInserted
+	return flow.WriteOutcomeFor(data)
 }
 
 func failureOutcomeFor(data conversation.Data) string {
-	if conversation.StringOrEmpty(data[conversation.KeyMode]) == modeUpdate {
-		return outcomeWriteFailed
-	}
-	return outcomeCreateFailed
+	return flow.FailureOutcomeFor(data)
 }
 
 // resolveMetric mueve el último pending del usuario a un outcome terminal.
@@ -201,14 +205,10 @@ func (c *controller) resolveMetric(ctx context.Context, userID uint64, outcome s
 	}
 }
 
-// collectMovementIDs pulls the primary keys of a resolved movement set for
-// intent_events traceability (populated by GORM Create on insert/replace).
+// collectMovementIDs vive en flow (CollectMovementIDs); el alias conserva el
+// nombre corto para los callers del borde que aún no se migran.
 func collectMovementIDs(ms []movement.Movement) []uint {
-	ids := make([]uint, len(ms))
-	for i, m := range ms {
-		ids[i] = m.ID
-	}
-	return ids
+	return flow.CollectMovementIDs(ms)
 }
 
 // setQueuedIntent completa el intent de un evento que se encoló sin saberlo.

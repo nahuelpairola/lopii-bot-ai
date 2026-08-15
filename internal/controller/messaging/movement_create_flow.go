@@ -2,8 +2,6 @@ package messaging
 
 import (
 	"context"
-	"errors"
-	"log/slog"
 
 	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
@@ -12,52 +10,11 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// finishMovementCreateFlow is the Telegram-facing wrapper around
-// flow.ResolveAndInsertMovements — same split for testability as
-// finishInitialBalanceFlow/insertInitialBalanceMovements.
+// finishMovementCreateFlow es el puente al finish que ahora vive en flow
+// (FinishMovementCreate). Los tests del borde lo llaman por este nombre; el
+// puente se borra al cerrar la costura.
 func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if conversation.Flag(data, conversation.KeyCancelled) {
-		c.resolveMetric(ctx, data.UserID(), outcomeCreateCancelled)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCreateCancelled})
-		}
-		return
-	}
-
-	inserted, err := flow.ResolveAndInsertMovements(c, data)
-	if err != nil {
-		// Saldo insuficiente no es una falla: es una pregunta. Los otros dos
-		// caminos de CREATE (startMovementCreate y agentExecutor.record) ya la
-		// hacían; éste no, y se comía el movimiento con un error genérico.
-		var short *flow.InsufficientFunds
-		if errors.As(err, &short) {
-			gateSeed := conversation.CopyData(data)
-			gateSeed[conversation.KeyGatePrompt] = msgInsufficientFunds(short.Shortfalls)
-			if serr := c.startFlow(ctx, b, chatID, data.UserID(), flow.MovementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow"); serr != nil {
-				slog.ErrorContext(ctx, "negative-confirm flow failed to start", "user_id", data.UserID(), "error", serr)
-			}
-			return
-		}
-		slog.ErrorContext(ctx, "movement insert failed", "user_id", data.UserID(), "reason", guardReason(err))
-		c.resolveMetric(ctx, data.UserID(), failureOutcomeFor(data))
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
-		}
-		return
-	}
-	c.resolveMetric(ctx, data.UserID(), writeOutcomeFor(data), collectMovementIDs(inserted)...)
-	if b != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
-		if name := conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]); name != "" {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgFirstAccountDefault(name, conversation.DecodeStringSlice(data, conversation.KeyFirstAccountCurrencies))})
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgInviteMoreAccounts})
-			// R1/R2 just fired — mark correct_tip sent (not delivered) so the
-			// post-message nudge hook doesn't stack a 3rd tip on this same turn.
-			if c.nudges != nil {
-				_ = c.nudges.MarkSent(data.UserID(), nudgeCorrectTip)
-			}
-		}
-	}
+	flow.FinishMovementCreate(ctx, c, b, chatID, data)
 }
 
 // Los métodos de abajo son delgados puentes al pipeline que ahora vive en flow

@@ -562,63 +562,11 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 	}
 }
 
-// finishMovementUpdateConfirmFlow applies (or discards) the correction
-// depending on which button the user pressed — never both, never
-// neither: the confirm ChoiceStep always finishes with "confirmed" set
-// to one of "true"/"false".
+// finishMovementUpdateConfirmFlow es el puente al finish que ahora vive en
+// flow (FinishMovementUpdateConfirm). Los tests del borde lo llaman por este
+// nombre; el puente se borra al cerrar la costura.
 func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if !conversation.Flag(data, conversation.KeyConfirmed) {
-		c.resolveMetric(ctx, data.UserID(), outcomeUpdateCancelled)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateCancelled})
-		}
-		return
-	}
-
-	// A correction that zeroes the movement (regalo/gratis total) deletes it
-	// instead of storing an illegal amount-0 row — see correctionIsDeletion.
-	if conversation.Flag(data, conversation.KeyDeleteInstead) {
-		oldIDs, err := parseUintSlice(conversation.DecodeStringSlice(data, conversation.KeyOldMovementIDs))
-		if err == nil {
-			err = c.movements.SoftDeleteByIDs(oldIDs)
-		}
-		if err != nil {
-			// El error acá se convierte en copy y se pierde. Sin esta línea un
-			// update_failed no dice nada: medido el 2026-08-10, dos de dos salieron
-			// de este gate (el usuario ya había confirmado) y no hubo con qué saber
-			// por qué falló la escritura.
-			slog.ErrorContext(ctx, "update delete failed", "user_id", data.UserID(), "old_ids", oldIDs, "err", err)
-			// El movimiento ya no está: el usuario pidió que desapareciera y no
-			// está. Decirle que falló sería mentirle, y lo mandaría a reintentar.
-			if errors.Is(err, movement.ErrMovementNotFound) {
-				c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, oldIDs...)
-				c.sendText(ctx, b, chatID, msgUpdateDeleted)
-				return
-			}
-			c.resolveMetric(ctx, data.UserID(), outcomeWriteFailed)
-			c.sendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
-			return
-		}
-		c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, oldIDs...)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateDeleted})
-		}
-		return
-	}
-
-	inserted, err := c.resolveAndInsertMovements(data)
-	if err != nil {
-		slog.ErrorContext(ctx, "update insert failed", "user_id", data.UserID(), "err", err)
-		c.resolveMetric(ctx, data.UserID(), outcomeWriteFailed)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: createErrorCopy(err)})
-		}
-		return
-	}
-	c.resolveMetric(ctx, data.UserID(), outcomeUpdateConfirmed, collectMovementIDs(inserted)...)
-	if b != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateApplied})
-	}
+	flow.FinishMovementUpdateConfirm(ctx, c, b, chatID, data)
 }
 
 // palabrasDeMontoCero: las formas de decir "no salió nada" que no traen ningún
