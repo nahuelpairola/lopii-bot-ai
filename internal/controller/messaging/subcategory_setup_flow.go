@@ -54,9 +54,9 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				if value == optionCancel {
 					return onAccountCreateEscape(optionCancel, data)
 				}
-				next := copyData(data)
+				next := conversation.CopyData(data)
 				if value == optionNewCategory {
-					setFlag(next, keyCategoryIsNew)
+					conversation.SetFlag(next, conversation.KeyCategoryIsNew)
 				}
 				return next
 			},
@@ -77,13 +77,13 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 				if value == optionCancel || value == optionBack {
 					return onAccountCreateEscape(value, data)
 				}
-				next := copyData(data)
+				next := conversation.CopyData(data)
 				if value == optionNewCategory {
-					setFlag(next, keyCategoryIsNew)
+					conversation.SetFlag(next, conversation.KeyCategoryIsNew)
 					return next
 				}
 				next["category"] = value
-				next[keyCategoryIsNew] = "false"
+				next[conversation.KeyCategoryIsNew] = "false"
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -91,7 +91,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 
 		stepNewCategoryName: conversation.TextStep{
 			PromptText: func(conversation.Data) string { return subcategory.MsgAskNewCategoryName() },
-			DataKey:    keyCategory,
+			DataKey:    conversation.KeyCategory,
 			Validate: func(text string, _ conversation.Data) string {
 				if strings.TrimSpace(text) == "" || subcategory.IsReserved(text) {
 					return subcategory.MsgInvalidCategoryName
@@ -101,7 +101,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			NextStep:      stepNewCategoryIcon,
 			EscapeOptions: []conversation.ChoiceOption{backOption(stepChooseMode), cancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				v := stringOrEmpty(data["category"])
+				v := conversation.StringOrEmpty(data["category"])
 				if v == "" {
 					return nil
 				}
@@ -117,7 +117,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 		// a runtime Skip/SkipIf check.
 		stepNewCategoryIcon: conversation.TextStep{
 			PromptText: func(conversation.Data) string { return "¿Qué emoji querés usar para esta categoría?" },
-			DataKey:    keyCategoryIcon,
+			DataKey:    conversation.KeyCategoryIcon,
 			Validate: func(text string, _ conversation.Data) string {
 				if !subcategory.ValidIcon(strings.TrimSpace(text)) {
 					return "Mandame un solo emoji para representar la categoría."
@@ -127,7 +127,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			NextStep:      stepSubcategoryName,
 			EscapeOptions: []conversation.ChoiceOption{backOption(stepNewCategoryName), cancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				v := stringOrEmpty(data[keyCategoryIcon])
+				v := conversation.StringOrEmpty(data[conversation.KeyCategoryIcon])
 				if v == "" {
 					return nil
 				}
@@ -138,23 +138,23 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 
 		stepSubcategoryName: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return subcategory.MsgAskSubcategoryName(stringOrEmpty(data["category"]))
+				return subcategory.MsgAskSubcategoryName(conversation.StringOrEmpty(data["category"]))
 			},
-			DataKey: keySubcategory,
+			DataKey: conversation.KeySubcategory,
 			Validate: func(text string, data conversation.Data) string {
 				text = strings.TrimSpace(text)
 				if text == "" {
 					return subcategory.MsgInvalidSubcategoryName
 				}
-				if _, err := subcategories.FindByCategoryAndSubcategory(data.UserID(), stringOrEmpty(data["category"]), text); err == nil {
-					return subcategory.MsgSubcategoryAlreadyExists(stringOrEmpty(data["category"]), text)
+				if _, err := subcategories.FindByCategoryAndSubcategory(data.UserID(), conversation.StringOrEmpty(data["category"]), text); err == nil {
+					return subcategory.MsgSubcategoryAlreadyExists(conversation.StringOrEmpty(data["category"]), text)
 				}
 				return ""
 			},
 			NextStep:      stepSubcategoryDescription,
 			EscapeOptions: []conversation.ChoiceOption{cancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				v := stringOrEmpty(data["subcategory"])
+				v := conversation.StringOrEmpty(data["subcategory"])
 				if v == "" {
 					return nil
 				}
@@ -174,9 +174,9 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 		// movement should land here.
 		stepSubcategoryDescription: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return msgAskSubcategoryDescription(stringOrEmpty(data["subcategory"]))
+				return msgAskSubcategoryDescription(conversation.StringOrEmpty(data["subcategory"]))
 			},
-			DataKey: keySubcategoryDescription,
+			DataKey: conversation.KeySubcategoryDescription,
 			Validate: func(text string, _ conversation.Data) string {
 				if strings.TrimSpace(text) == "" {
 					return "Contame en pocas palabras cuándo se usa esta subcategoría."
@@ -186,7 +186,7 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			NextStep:      stepConfirmSubcategory,
 			EscapeOptions: []conversation.ChoiceOption{backOption(stepSubcategoryName), cancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				if stringOrEmpty(data[keySubcategoryDescription]) == "" {
+				if conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription]) == "" {
 					return nil
 				}
 				return []conversation.ChoiceOption{{Label: "✅ Usar la propuesta", Value: optionConfirmSeed, NextStep: stepConfirmSubcategory}}
@@ -196,12 +196,12 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 
 		stepConfirmSubcategory: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
-				icon := stringOrEmpty(data[keyCategoryIcon])
+				icon := conversation.StringOrEmpty(data[conversation.KeyCategoryIcon])
 				if icon == "" {
-					icon = subcategories.IconForCategory(data.UserID(), stringOrEmpty(data["category"]))
+					icon = subcategories.IconForCategory(data.UserID(), conversation.StringOrEmpty(data["category"]))
 				}
-				return icon + " " + stringOrEmpty(data["category"]) + " › " + stringOrEmpty(data["subcategory"]) +
-					"\n📝 " + stringOrEmpty(data[keySubcategoryDescription]) + "\n\n¿Confirmás?"
+				return icon + " " + conversation.StringOrEmpty(data["category"]) + " › " + conversation.StringOrEmpty(data["subcategory"]) +
+					"\n📝 " + conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription]) + "\n\n¿Confirmás?"
 			},
 			Options: []conversation.ChoiceOption{
 				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},

@@ -173,16 +173,16 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 // de la etapa 5 lee exactamente esta columna — o sea que la métrica mentía justo
 // en los casos que la etapa viene a arreglar.
 //
-// El seed ya traía el dato (`keyMode`); nadie lo miraba.
+// El seed ya traía el dato (`conversation.KeyMode`); nadie lo miraba.
 func writeOutcomeFor(data conversation.Data) string {
-	if stringOrEmpty(data[keyMode]) == modeUpdate {
+	if conversation.StringOrEmpty(data[conversation.KeyMode]) == modeUpdate {
 		return outcomeUpdateConfirmed
 	}
 	return outcomeCreateInserted
 }
 
 func failureOutcomeFor(data conversation.Data) string {
-	if stringOrEmpty(data[keyMode]) == modeUpdate {
+	if conversation.StringOrEmpty(data[conversation.KeyMode]) == modeUpdate {
 		return outcomeWriteFailed
 	}
 	return outcomeCreateFailed

@@ -23,10 +23,10 @@ func newAccountManageTestEngine() (*conversation.Engine, *fakeStateStore) {
 func manageSeed(withAccount bool) conversation.Data {
 	seed := conversation.Data{
 		"message":              "x",
-		"candidate_ids":        encodeStringSlice([]string{"10", "20"}),
-		"candidate_labels":     encodeStringSlice([]string{"Wallet (ARS)", "FCI (USD)"}),
-		"candidate_names":      encodeStringSlice([]string{"Wallet", "FCI"}),
-		"candidate_currencies": encodeStringSlice([]string{"ARS", "USD"}),
+		"candidate_ids":        conversation.EncodeStringSlice([]string{"10", "20"}),
+		"candidate_labels":     conversation.EncodeStringSlice([]string{"Wallet (ARS)", "FCI (USD)"}),
+		"candidate_names":      conversation.EncodeStringSlice([]string{"Wallet", "FCI"}),
+		"candidate_currencies": conversation.EncodeStringSlice([]string{"ARS", "USD"}),
 	}
 	if withAccount {
 		seed["account_id"] = "10"

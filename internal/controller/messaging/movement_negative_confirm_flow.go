@@ -20,14 +20,16 @@ const (
 func NewMovementNegativeConfirmFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepNegativeConfirm: conversation.ChoiceStep{
-			PromptText: func(data conversation.Data) string { return stringOrEmpty(data[keyGatePrompt]) },
+			PromptText: func(data conversation.Data) string {
+				return conversation.StringOrEmpty(data[conversation.KeyGatePrompt])
+			},
 			Options: []conversation.ChoiceOption{
 				{Label: "✅ Registrar igual", Value: "register", Finish: true},
 				{Label: "✍️ Reescribir", Value: "rewrite", Finish: true},
 				{Label: "➕ Falta registrar algo", Value: "missing", Finish: true},
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				next := copyData(data)
+				next := conversation.CopyData(data)
 				next["_gate_choice"] = value
 				return next
 			},
@@ -43,9 +45,9 @@ func NewMovementNegativeConfirmFlow() *conversation.Flow {
 
 // finishMovementNegativeConfirmFlow applies the user's choice.
 func (c *controller) finishMovementNegativeConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	switch stringOrEmpty(data["_gate_choice"]) {
+	switch conversation.StringOrEmpty(data["_gate_choice"]) {
 	case "register":
-		setFlag(data, keySkipBalanceCheck)
+		conversation.SetFlag(data, conversation.KeySkipBalanceCheck)
 		inserted, err := c.resolveAndInsertMovements(data)
 		if err != nil {
 			c.sendText(ctx, b, chatID, createErrorCopy(err))

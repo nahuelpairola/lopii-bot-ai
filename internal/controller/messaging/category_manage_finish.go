@@ -16,7 +16,7 @@ import (
 // finishCategoryManagePickFlow corre cuando el usuario eligió (o no) el origen.
 // Si eligió, hace el puente al flujo 2.
 func (c *controller) finishCategoryManagePickFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if flag(data, keyCancelled) {
+	if conversation.Flag(data, conversation.KeyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryManageCancelled)
 		c.sendText(ctx, b, chatID, msgFlowCancelled)
 		return
@@ -32,7 +32,7 @@ func (c *controller) finishCategoryManagePickFlow(ctx context.Context, b *bot.Bo
 // Después arranca el flujo 2 con todo eso sembrado.
 func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) error {
 	userID := data.UserID()
-	sourceID, err := strconv.ParseUint(stringOrEmpty(data[keySourceSubcategoryID]), 10, 64)
+	sourceID, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeySourceSubcategoryID]), 10, 64)
 	if err != nil {
 		return fmt.Errorf("category manage: source id inválido: %w", err)
 	}
@@ -43,17 +43,17 @@ func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, ch
 	}
 
 	seed := conversation.Data{
-		keySourceSubcategoryID: stringOrEmpty(data[keySourceSubcategoryID]),
-		keySourceCategory:      stringOrEmpty(data[keySourceCategory]),
-		keySourceSubcategory:   stringOrEmpty(data[keySourceSubcategory]),
-		keyMovementCount:       strconv.FormatInt(count, 10),
+		conversation.KeySourceSubcategoryID: conversation.StringOrEmpty(data[conversation.KeySourceSubcategoryID]),
+		conversation.KeySourceCategory:      conversation.StringOrEmpty(data[conversation.KeySourceCategory]),
+		conversation.KeySourceSubcategory:   conversation.StringOrEmpty(data[conversation.KeySourceSubcategory]),
+		conversation.KeyMovementCount:       strconv.FormatInt(count, 10),
 	}
 
 	if count > 0 {
 		if sug := c.suggestMergeTarget(ctx, userID, sourceID, data); sug != nil {
-			seed[keySuggestedSubcategoryID] = strconv.FormatUint(uint64(sug.ID), 10)
-			seed[keySuggestedCategory] = sug.Category
-			seed[keySuggestedSubcategory] = sug.Subcategory
+			seed[conversation.KeySuggestedSubcategoryID] = strconv.FormatUint(uint64(sug.ID), 10)
+			seed[conversation.KeySuggestedCategory] = sug.Category
+			seed[conversation.KeySuggestedSubcategory] = sug.Subcategory
 		}
 	}
 
@@ -95,8 +95,8 @@ func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID ui
 
 	descriptions, _ := c.movements.TopDescriptionsBySubcategory(userID, sourceID, topDescriptionsForSuggestion)
 	text := mergeSuggestionText(
-		stringOrEmpty(data[keySourceCategory]),
-		stringOrEmpty(data[keySourceSubcategory]),
+		conversation.StringOrEmpty(data[conversation.KeySourceCategory]),
+		conversation.StringOrEmpty(data[conversation.KeySourceSubcategory]),
 		sourceDescription,
 		descriptions,
 	)
@@ -136,20 +136,20 @@ func mergeSuggestionText(category, subcategoryName, description string, samples 
 // fila borrada. En este orden, un fallo del borrado deja la categoría vacía —
 // un estado consistente que el usuario puede reintentar.
 func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if flag(data, keyCancelled) || !flag(data, keyConfirmed) {
+	if conversation.Flag(data, conversation.KeyCancelled) || !conversation.Flag(data, conversation.KeyConfirmed) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryManageCancelled)
 		c.sendText(ctx, b, chatID, msgFlowCancelled)
 		return
 	}
 
 	userID := data.UserID()
-	sourceID, err := strconv.ParseUint(stringOrEmpty(data[keySourceSubcategoryID]), 10, 64)
+	sourceID, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeySourceSubcategoryID]), 10, 64)
 	if err != nil {
 		c.sendText(ctx, b, chatID, msgSomethingBroke)
 		return
 	}
 
-	targetRaw := stringOrEmpty(data[keyTargetSubcategoryID])
+	targetRaw := conversation.StringOrEmpty(data[conversation.KeyTargetSubcategoryID])
 	if targetRaw != "" {
 		targetID, err := strconv.ParseUint(targetRaw, 10, 64)
 		if err != nil {
@@ -183,5 +183,5 @@ func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.
 		return
 	}
 	c.sendText(ctx, b, chatID, msgCategoryManageMerged(
-		stringOrEmpty(data[keyMovementCount]), sourceLabel(data), targetLabel(data)))
+		conversation.StringOrEmpty(data[conversation.KeyMovementCount]), sourceLabel(data), targetLabel(data)))
 }

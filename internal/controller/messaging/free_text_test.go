@@ -10,6 +10,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 )
@@ -143,7 +144,7 @@ func TestCreateCategory_ProposalStartsConfirmFlow(t *testing.T) {
 	if store.flowName != categoryProposalConfirmFlowName {
 		t.Errorf("flow = %q, want %q", store.flowName, categoryProposalConfirmFlowName)
 	}
-	if stringOrEmpty(store.data["category_is_new"]) != "true" {
+	if conversation.StringOrEmpty(store.data["category_is_new"]) != "true" {
 		t.Errorf("category_is_new = %q, want true (Regalos not in existing categories)", store.data["category_is_new"])
 	}
 }
@@ -413,10 +414,10 @@ func TestFinishMovementUpdateConfirmFlow_Error_NilBotNoPanic(t *testing.T) {
 	data := conversation.Data{
 		conversation.UserIDKey: uint64(1),
 		"confirmed":            "true",
-		"movements": encodeMovementRows([]movementRow{
+		"movements": movement.EncodeMovementRows([]movement.MovementRow{
 			{Type: "expense", Amount: "1000", Currency: "ARS", Category: "Alimentación", Subcategory: "NoExiste", Date: "2026-07-02"},
 		}),
-		"old_movement_ids": encodeStringSlice([]string{"42"}),
+		"old_movement_ids": conversation.EncodeStringSlice([]string{"42"}),
 	}
 
 	// Must not panic with b == nil, even though resolveAndInsertMovements fails
@@ -434,10 +435,10 @@ func TestFinishMovementUpdateConfirmFlow_Success_NilBotNoPanic(t *testing.T) {
 	data := conversation.Data{
 		conversation.UserIDKey: uint64(1),
 		"confirmed":            "true",
-		"movements": encodeMovementRows([]movementRow{
+		"movements": movement.EncodeMovementRows([]movement.MovementRow{
 			{Type: "expense", Amount: "1000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},
 		}),
-		"old_movement_ids": encodeStringSlice([]string{"42"}),
+		"old_movement_ids": conversation.EncodeStringSlice([]string{"42"}),
 	}
 
 	// Must not panic with b == nil, even though resolveAndInsertMovements succeeds and tries to send a message

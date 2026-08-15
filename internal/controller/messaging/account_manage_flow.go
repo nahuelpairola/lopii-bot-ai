@@ -6,6 +6,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/movement"
 )
 
 const (
@@ -24,7 +25,7 @@ const (
 	optionManageDefault = "op_default"
 	optionManageCreate  = "op_create_new"
 
-	// operation values stored under keyOperation and switched on in
+	// operation values stored under conversation.KeyOperation and switched on in
 	// account_manage_finish.go — distinct from the optionManage* button values.
 	opRename    = "rename"
 	opAdjust    = "adjust"
@@ -43,13 +44,13 @@ func onAccountManageCancel(value string, data conversation.Data) conversation.Da
 	if value != optionCancel {
 		return data
 	}
-	next := copyData(data)
-	setFlag(next, keyCancelled)
+	next := conversation.CopyData(data)
+	conversation.SetFlag(next, conversation.KeyCancelled)
 	return next
 }
 
 func accountManageBalance(balances balanceSummer, data conversation.Data) decimal.Decimal {
-	id, err := strconv.ParseUint(stringOrEmpty(data[keyAccountID]), 10, 64)
+	id, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeyAccountID]), 10, 64)
 	if err != nil {
 		return decimal.Zero
 	}
@@ -69,7 +70,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		stepAccountManagePick: conversation.ChoiceStep{
 			PromptText: msgAccountManagePick,
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				labels := decodeStringSlice(data, keyCandidateLabels)
+				labels := conversation.DecodeStringSlice(data, conversation.KeyCandidateLabels)
 				opts := make([]conversation.ChoiceOption, 0, len(labels)+2)
 				for i, l := range labels {
 					opts = append(opts, conversation.ChoiceOption{
@@ -84,28 +85,28 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 			},
 			DeclaredNextSteps: []string{stepAccountManageMenu},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				next := copyData(data)
+				next := conversation.CopyData(data)
 				switch value {
 				case optionCancel:
-					setFlag(next, keyCancelled)
+					conversation.SetFlag(next, conversation.KeyCancelled)
 				case optionManageCreate:
-					next[keyOperation] = opCreateNew
+					next[conversation.KeyOperation] = opCreateNew
 				default:
 					i, err := strconv.Atoi(strings.TrimPrefix(value, "pick_"))
-					ids := decodeStringSlice(data, keyCandidateIDs)
-					names := decodeStringSlice(data, keyCandidateNames)
-					curs := decodeStringSlice(data, keyCandidateCurrencies)
+					ids := conversation.DecodeStringSlice(data, conversation.KeyCandidateIDs)
+					names := conversation.DecodeStringSlice(data, conversation.KeyCandidateNames)
+					curs := conversation.DecodeStringSlice(data, conversation.KeyCandidateCurrencies)
 					if err == nil && i >= 0 && i < len(ids) {
-						next[keyAccountID] = ids[i]
-						next[keyAccountName] = names[i]
-						next[keyAccountCurrency] = curs[i]
+						next[conversation.KeyAccountID] = ids[i]
+						next[conversation.KeyAccountName] = names[i]
+						next[conversation.KeyAccountCurrency] = curs[i]
 					}
 				}
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if stringOrEmpty(data[keyAccountID]) != "" {
+				if conversation.StringOrEmpty(data[conversation.KeyAccountID]) != "" {
 					return stepAccountManageMenu, true
 				}
 				return "", false
@@ -114,8 +115,8 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		stepAccountManageMenu: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
 				return msgAccountManageMenu(
-					stringOrEmpty(data[keyAccountName]),
-					stringOrEmpty(data[keyAccountCurrency]),
+					conversation.StringOrEmpty(data[conversation.KeyAccountName]),
+					conversation.StringOrEmpty(data[conversation.KeyAccountCurrency]),
 					accountManageBalance(balances, data),
 				)
 			},
@@ -130,9 +131,9 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		},
 		stepAccountManageAskName: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return msgAskAccountNewName(stringOrEmpty(data[keyAccountName]))
+				return msgAskAccountNewName(conversation.StringOrEmpty(data[conversation.KeyAccountName]))
 			},
-			DataKey: keyNewName,
+			DataKey: conversation.KeyNewName,
 			Validate: func(text string, _ conversation.Data) string {
 				if text == "" {
 					return msgInvalidAccountCreateName
@@ -148,7 +149,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		},
 		stepAccountManageConfirmRename: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
-				return msgConfirmAccountRename(stringOrEmpty(data[keyAccountName]), stringOrEmpty(data[keyNewName]))
+				return msgConfirmAccountRename(conversation.StringOrEmpty(data[conversation.KeyAccountName]), conversation.StringOrEmpty(data[conversation.KeyNewName]))
 			},
 			Options: []conversation.ChoiceOption{
 				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
@@ -158,8 +159,8 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := onAccountManageCancel(value, data)
 				if value == optionConfirm {
-					next = copyData(next)
-					next[keyOperation] = opRename
+					next = conversation.CopyData(next)
+					next[conversation.KeyOperation] = opRename
 				}
 				return next
 			},
@@ -167,9 +168,9 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		},
 		stepAccountManageAskTotal: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return msgAskAccountNewTotal(stringOrEmpty(data[keyAccountName]))
+				return msgAskAccountNewTotal(conversation.StringOrEmpty(data[conversation.KeyAccountName]))
 			},
-			DataKey:  keyNewTotal,
+			DataKey:  conversation.KeyNewTotal,
 			Validate: validateBalanceAmount,
 			NextStep: stepAccountManageConfirmAdjust,
 			EscapeOptions: []conversation.ChoiceOption{
@@ -183,10 +184,10 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 				current := accountManageBalance(balances, data)
 				// ponytail: error ignorado a propósito — stepAccountManageAskTotal ya
 				// validó este valor con validateBalanceAmount, así que acá no puede fallar.
-				newTotal, _ := parseARAmount(stringOrEmpty(data[keyNewTotal]))
+				newTotal, _ := movement.ParseARAmount(conversation.StringOrEmpty(data[conversation.KeyNewTotal]))
 				return msgConfirmAccountAdjust(
-					stringOrEmpty(data[keyAccountName]),
-					stringOrEmpty(data[keyAccountCurrency]),
+					conversation.StringOrEmpty(data[conversation.KeyAccountName]),
+					conversation.StringOrEmpty(data[conversation.KeyAccountCurrency]),
 					current, newTotal,
 				)
 			},
@@ -198,8 +199,8 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := onAccountManageCancel(value, data)
 				if value == optionConfirm {
-					next = copyData(next)
-					next[keyOperation] = opAdjust
+					next = conversation.CopyData(next)
+					next[conversation.KeyOperation] = opAdjust
 				}
 				return next
 			},
@@ -207,7 +208,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		},
 		stepAccountManageConfirmDefault: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
-				return msgConfirmAccountDefault(stringOrEmpty(data[keyAccountName]), stringOrEmpty(data[keyAccountCurrency]))
+				return msgConfirmAccountDefault(conversation.StringOrEmpty(data[conversation.KeyAccountName]), conversation.StringOrEmpty(data[conversation.KeyAccountCurrency]))
 			},
 			Options: []conversation.ChoiceOption{
 				{Label: "✅ Confirmar", Value: optionConfirm, Finish: true},
@@ -217,8 +218,8 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := onAccountManageCancel(value, data)
 				if value == optionConfirm {
-					next = copyData(next)
-					next[keyOperation] = opDefault
+					next = conversation.CopyData(next)
+					next[conversation.KeyOperation] = opDefault
 				}
 				return next
 			},

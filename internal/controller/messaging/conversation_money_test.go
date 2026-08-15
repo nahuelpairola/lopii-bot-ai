@@ -149,7 +149,7 @@ func itoa(id uint64) string { return strconv.FormatUint(id, 10) }
 //
 // Medido en vivo el 2026-08-12, donde falló por DOS bugs encadenados: la guarda
 // de no-op no comparaba AccountNameGuess (cambiar de cuenta pone el nombre y
-// VACÍA el id, y el vacío se leía como "no lo tocó"), y keyPendingAccountGaps
+// VACÍA el id, y el vacío se leía como "no lo tocó"), y conversation.KeyPendingAccountGaps
 // iba hardcodeado en nil — el mismo bug que ya había tenido la categoría.
 func TestMoney_ChangingTheAccountMovesBothBalances(t *testing.T) {
 	h := newConversationHarness(t)

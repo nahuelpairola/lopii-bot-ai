@@ -9,6 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -199,7 +200,7 @@ func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	return orchestrator.BuildAgentPrompt(todayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools,
+	return orchestrator.BuildAgentPrompt(movement.TodayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools,
 		c.buildRecentEntities(userID)), taxonomy, nil
 }
 

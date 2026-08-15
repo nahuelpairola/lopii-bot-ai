@@ -32,8 +32,8 @@ func NewCategoryMatchOfferFlow() *conversation.Flow {
 				if value == optionCancel {
 					return onAccountCreateEscape(optionCancel, data)
 				}
-				next := copyData(data)
-				next[keyMatchChoice] = value
+				next := conversation.CopyData(data)
+				next[conversation.KeyMatchChoice] = value
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -63,9 +63,9 @@ func NewCategoryProposalConfirmFlow() *conversation.Flow {
 				if value == optionCancel {
 					return onAccountCreateEscape(optionCancel, data)
 				}
-				next := copyData(data)
+				next := conversation.CopyData(data)
 				if value == optionEditProposal {
-					setFlag(next, keyEditProposal)
+					conversation.SetFlag(next, conversation.KeyEditProposal)
 				}
 				return next
 			},

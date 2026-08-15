@@ -86,16 +86,16 @@ func TestCategoryManagePickFlow_ChoosingSourceFinishesWithIDAndNames(t *testing.
 	if !result.Finished {
 		t.Fatal("elegir el origen debería terminar el flujo 1")
 	}
-	if got := stringOrEmpty(result.Data[keySourceSubcategoryID]); got != "7" {
+	if got := conversation.StringOrEmpty(result.Data[conversation.KeySourceSubcategoryID]); got != "7" {
 		t.Errorf("source id = %q, want %q", got, "7")
 	}
-	if got := stringOrEmpty(result.Data[keySourceCategory]); got != "Comida" {
+	if got := conversation.StringOrEmpty(result.Data[conversation.KeySourceCategory]); got != "Comida" {
 		t.Errorf("source category = %q, want %q", got, "Comida")
 	}
-	if got := stringOrEmpty(result.Data[keySourceSubcategory]); got != "Delivery" {
+	if got := conversation.StringOrEmpty(result.Data[conversation.KeySourceSubcategory]); got != "Delivery" {
 		t.Errorf("source subcategory = %q, want %q", got, "Delivery")
 	}
-	if flag(result.Data, keyCancelled) {
+	if conversation.Flag(result.Data, conversation.KeyCancelled) {
 		t.Error("elegir no debería marcar cancelado")
 	}
 }
@@ -111,10 +111,10 @@ func TestCategoryManagePickFlow_CancelMarksCancelledAndSetsNoSource(t *testing.T
 	if !result.Finished {
 		t.Fatal("cancelar debería terminar el flujo")
 	}
-	if !flag(result.Data, keyCancelled) {
-		t.Error("cancelar debería marcar keyCancelled")
+	if !conversation.Flag(result.Data, conversation.KeyCancelled) {
+		t.Error("cancelar debería marcar conversation.KeyCancelled")
 	}
-	if stringOrEmpty(result.Data[keySourceSubcategoryID]) != "" {
+	if conversation.StringOrEmpty(result.Data[conversation.KeySourceSubcategoryID]) != "" {
 		t.Error("cancelar no debería dejar un origen seteado")
 	}
 }
@@ -162,14 +162,14 @@ func TestCategoryManagePickFlow_RowDisappearsBetweenQueries_NoPartialSource(t *t
 	if !result.Finished {
 		t.Fatal("elegir un id que matcheó debería terminar el flujo 1")
 	}
-	if got := stringOrEmpty(result.Data[keySourceSubcategoryID]); got != "" {
-		t.Errorf("la fila desapareció en la segunda consulta de OnChoice: no debería quedar keySourceSubcategoryID (got %q)", got)
+	if got := conversation.StringOrEmpty(result.Data[conversation.KeySourceSubcategoryID]); got != "" {
+		t.Errorf("la fila desapareció en la segunda consulta de OnChoice: no debería quedar conversation.KeySourceSubcategoryID (got %q)", got)
 	}
-	if got := stringOrEmpty(result.Data[keySourceCategory]); got != "" {
-		t.Errorf("no debería quedar keySourceCategory sin su ID (got %q)", got)
+	if got := conversation.StringOrEmpty(result.Data[conversation.KeySourceCategory]); got != "" {
+		t.Errorf("no debería quedar conversation.KeySourceCategory sin su ID (got %q)", got)
 	}
-	if got := stringOrEmpty(result.Data[keySourceSubcategory]); got != "" {
-		t.Errorf("no debería quedar keySourceSubcategory sin su ID (got %q)", got)
+	if got := conversation.StringOrEmpty(result.Data[conversation.KeySourceSubcategory]); got != "" {
+		t.Errorf("no debería quedar conversation.KeySourceSubcategory sin su ID (got %q)", got)
 	}
 }
 

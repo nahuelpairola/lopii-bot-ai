@@ -15,7 +15,7 @@ import (
 // separate data["_resume_cancelled"] marker, per the engine-level
 // short-circuit in handleFlowFinished).
 func (c *controller) finishSubcategorySetupFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if flag(data, keyCancelled) {
+	if conversation.Flag(data, conversation.KeyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryCancelled)
 		c.sendText(ctx, b, chatID, msgCreateCancelled)
 		return
@@ -43,11 +43,11 @@ func (c *controller) finishSubcategorySetupFlow(ctx context.Context, b *bot.Bot,
 // as this description is specific.
 func (c *controller) insertNewSubcategory(data conversation.Data) error {
 	userID := data.UserID()
-	category := stringOrEmpty(data[keyCategory])
-	sub := stringOrEmpty(data[keySubcategory])
-	description := stringOrEmpty(data[keySubcategoryDescription])
+	category := conversation.StringOrEmpty(data[conversation.KeyCategory])
+	sub := conversation.StringOrEmpty(data[conversation.KeySubcategory])
+	description := conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription])
 
-	icon := stringOrEmpty(data[keyCategoryIcon])
+	icon := conversation.StringOrEmpty(data[conversation.KeyCategoryIcon])
 	if icon == "" {
 		icon = c.subcategories.IconForCategory(userID, category)
 	}

@@ -90,9 +90,9 @@ func (c *controller) openAskUser(ctx context.Context, b *bot.Bot, chatID int64, 
 		return c.discardAgentAction(ctx, b, chatID, userID, action)
 	}
 	seed := conversation.Data{
-		keyActionID:      strconv.FormatUint(action.ID, 10),
-		keyOpenQuestions: string(action.Questions),
-		keyAskBudget:     strconv.Itoa(budget),
+		conversation.KeyActionID:      strconv.FormatUint(action.ID, 10),
+		conversation.KeyOpenQuestions: string(action.Questions),
+		conversation.KeyAskBudget:     strconv.Itoa(budget),
 	}
 	prompt, err := c.engine.StartWithData(userID, askUserFlowName, seed)
 	if err != nil {
@@ -113,11 +113,11 @@ func (c *controller) finishAskUserFlow(ctx context.Context, b *bot.Bot, chatID i
 		return
 	}
 
-	if flag(data, keyCancelled) {
+	if conversation.Flag(data, conversation.KeyCancelled) {
 		c.dropAgentAction(ctx, b, chatID, userID, action, msgUpdateCancelled)
 		return
 	}
-	if flag(data, keyAskDiscarded) {
+	if conversation.Flag(data, conversation.KeyAskDiscarded) {
 		if err := c.discardAgentAction(ctx, b, chatID, userID, action); err != nil {
 			slog.ErrorContext(ctx, "discard parked action failed", "err", err)
 		}
@@ -160,8 +160,8 @@ func (c *controller) openAction(userID uint64, data conversation.Data) (*pending
 	if err != nil {
 		return nil, err
 	}
-	if strconv.FormatUint(action.ID, 10) != stringOrEmpty(data[keyActionID]) {
-		return nil, fmt.Errorf("ask_user was answering action %s, queue head is %d", stringOrEmpty(data[keyActionID]), action.ID)
+	if strconv.FormatUint(action.ID, 10) != conversation.StringOrEmpty(data[conversation.KeyActionID]) {
+		return nil, fmt.Errorf("ask_user was answering action %s, queue head is %d", conversation.StringOrEmpty(data[conversation.KeyActionID]), action.ID)
 	}
 	return action, nil
 }
@@ -268,7 +268,7 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		// chocó contra el saldo. La copy del faltante es lo único que los
 		// separa — la pone parkFundsGate y nadie más.
 		flow := movementCreateFlowName
-		if _, gated := payload.Seed[keyGatePrompt]; gated {
+		if _, gated := payload.Seed[conversation.KeyGatePrompt]; gated {
 			flow = movementNegativeConfirmFlowName
 		}
 		return c.startFlow(ctx, b, chatID, userID, flow, seed, "drain: start "+flow)
@@ -296,8 +296,8 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
 	case orchestrator.ToolDeleteMovements:
 		seed := conversation.Data{
-			keyCandidateGroups: encodeCandidateGroupList([]candidateGroup{chosen}),
-			keyResolvedIndex:   "0",
+			conversation.KeyCandidateGroups: encodeCandidateGroupList([]candidateGroup{chosen}),
+			conversation.KeyResolvedIndex:   "0",
 		}
 		return c.startFlow(ctx, b, chatID, userID, movementDeleteFlowName, seed, "drain: start movement_delete flow")
 	default:

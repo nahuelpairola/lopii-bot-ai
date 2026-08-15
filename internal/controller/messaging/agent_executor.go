@@ -57,7 +57,7 @@ type agentPayload struct {
 	// record_movements; para correct/delete va nil.
 	//
 	// Ojo: pasa por JSONB, así que todo valor acá adentro tiene que ser string o
-	// string-JSON. buildCreateSeed ya cumple (movementRow va codificado).
+	// string-JSON. buildCreateSeed ya cumple (movement.MovementRow va codificado).
 	Seed map[string]any `json:"seed,omitempty"`
 	// GaveChangeValue marca que el usuario ya intentó decir el valor nuevo por
 	// texto libre. Si aun así no sale una corrección, se corta: volver a
@@ -275,8 +275,8 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	seed := buildCreateSeed(result, e.taxonomy, accounts)
 	seed[conversation.UserIDKey] = e.userID
 
-	hasGaps := len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 ||
-		len(decodeStringSlice(seed, keyPendingAccountGaps)) > 0
+	hasGaps := len(conversation.DecodeStringSlice(seed, conversation.KeyPendingCategoryGaps)) > 0 ||
+		len(conversation.DecodeStringSlice(seed, conversation.KeyPendingAccountGaps)) > 0
 	hasFirst := needsFirstAccount(seed, func(cur currency.Currency) bool {
 		return e.c.accounts.HasDefaultForCurrency(e.userID, cur)
 	})
@@ -455,11 +455,11 @@ func (e *agentExecutor) parkCreate(seed conversation.Data) (string, error) {
 // start_movement.go: no se inserta nada, se le muestra el faltante y decide el
 // usuario. El loop no relaja ni un gate (spec 4.5).
 //
-// keyGatePrompt es lo que distingue este parkeo del de gaps al retomarlo: es la
+// conversation.KeyGatePrompt es lo que distingue este parkeo del de gaps al retomarlo: es la
 // copy del faltante, y sólo la pone este camino.
 func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *insufficientFunds) (string, error) {
-	gateSeed := copyData(seed)
-	gateSeed[keyGatePrompt] = msgInsufficientFunds(short.shortfalls)
+	gateSeed := conversation.CopyData(seed)
+	gateSeed[conversation.KeyGatePrompt] = msgInsufficientFunds(short.shortfalls)
 	e.parked = append(e.parked, parkedAction{
 		Tool:    orchestrator.ToolRecordMovements,
 		Payload: agentPayload{Seed: gateSeed, Chosen: 0},
@@ -468,7 +468,7 @@ func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *insufficien
 }
 
 func toCandidateGroup(g transactionGroup) candidateGroup {
-	rows := make([]movementRow, 0, len(g.Movements))
+	rows := make([]movement.MovementRow, 0, len(g.Movements))
 	ids := make([]string, 0, len(g.Movements))
 	for _, m := range g.Movements {
 		rows = append(rows, movementToRow(m))

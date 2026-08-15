@@ -4,6 +4,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/movement"
 )
 
 const (
@@ -26,8 +27,8 @@ func onAccountCreateEscape(value string, data conversation.Data) conversation.Da
 	if value != optionCancel {
 		return data
 	}
-	next := copyData(data)
-	setFlag(next, keyCancelled)
+	next := conversation.CopyData(data)
+	conversation.SetFlag(next, conversation.KeyCancelled)
 	return next
 }
 
@@ -40,7 +41,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepAccountCreateAskName: conversation.TextStep{
 			PromptText: msgAskAccountCreateName,
-			DataKey:    keyAccountName,
+			DataKey:    conversation.KeyAccountName,
 			Validate: func(text string, _ conversation.Data) string {
 				if text == "" {
 					return msgInvalidAccountCreateName
@@ -50,7 +51,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 			NextStep:      stepAccountCreateAskCurrency,
 			EscapeOptions: []conversation.ChoiceOption{cancelOption},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				name := stringOrEmpty(data[keyAccountName])
+				name := conversation.StringOrEmpty(data[conversation.KeyAccountName])
 				if name == "" {
 					return nil
 				}
@@ -85,17 +86,17 @@ func NewAccountCreateFlow() *conversation.Flow {
 				if value == optionCancel || value == optionBack {
 					return onAccountCreateEscape(value, data)
 				}
-				next := copyData(data)
-				next[keyAccountCurrency] = value
+				next := conversation.CopyData(data)
+				next[conversation.KeyAccountCurrency] = value
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
 		},
 		stepAccountCreateAskBalance: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
-				return account.MsgAskInitialBalance(stringOrEmpty(data[keyAccountName]), stringOrEmpty(data[keyAccountCurrency]))
+				return account.MsgAskInitialBalance(conversation.StringOrEmpty(data[conversation.KeyAccountName]), conversation.StringOrEmpty(data[conversation.KeyAccountCurrency]))
 			},
-			DataKey:  keyAccountBalance,
+			DataKey:  conversation.KeyAccountBalance,
 			Validate: validateBalanceAmount,
 			NextStep: stepAccountCreateConfirm,
 			EscapeOptions: []conversation.ChoiceOption{
@@ -103,12 +104,12 @@ func NewAccountCreateFlow() *conversation.Flow {
 				cancelOption,
 			},
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				bal := stringOrEmpty(data[keyAccountBalance])
+				bal := conversation.StringOrEmpty(data[conversation.KeyAccountBalance])
 				if bal == "" {
 					return nil
 				}
 				label := "✅ Usar " + bal
-				if cur := stringOrEmpty(data[keyAccountCurrency]); cur != "" {
+				if cur := conversation.StringOrEmpty(data[conversation.KeyAccountCurrency]); cur != "" {
 					label += " " + cur
 				}
 				return []conversation.ChoiceOption{
@@ -139,7 +140,7 @@ func NewAccountCreateFlow() *conversation.Flow {
 // validateBalanceAmount validates that text is a valid decimal amount
 // (non-negative). Used in account creation and initial balance flows.
 func validateBalanceAmount(text string, _ conversation.Data) string {
-	amount, err := parseARAmount(text)
+	amount, err := movement.ParseARAmount(text)
 	if err != nil || amount.IsNegative() {
 		return account.MsgInvalidAmount
 	}

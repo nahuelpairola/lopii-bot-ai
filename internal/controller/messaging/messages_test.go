@@ -11,11 +11,11 @@ import (
 )
 
 func TestMsgConfirmUpdateDiff_ShowsAccountChange(t *testing.T) {
-	before := []movementRow{{Amount: "610503", Currency: "ARS", AccountName: "Efectivo"}}
-	after := []movementRow{{Category: "Deudas", Subcategory: "Tarjeta", Amount: "610503", Currency: "ARS", Description: "Pago tarjeta", Date: "2026-07-14", AccountName: "Galicia"}}
+	before := []movement.MovementRow{{Amount: "610503", Currency: "ARS", AccountName: "Efectivo"}}
+	after := []movement.MovementRow{{Category: "Deudas", Subcategory: "Tarjeta", Amount: "610503", Currency: "ARS", Description: "Pago tarjeta", Date: "2026-07-14", AccountName: "Galicia"}}
 	data := conversation.Data{
-		"before_movements": encodeMovementRows(before),
-		"movements":        encodeMovementRows(after),
+		"before_movements": movement.EncodeMovementRows(before),
+		"movements":        movement.EncodeMovementRows(after),
 	}
 
 	msg := msgConfirmUpdateDiff(data)
@@ -29,8 +29,8 @@ func TestMsgConfirmUpdateDiff_ShowsAccountChange(t *testing.T) {
 // Desde el fold de merchant la description es la unica fuente del descriptor:
 // es un campo requerido del Call 2 CREATE, asi que siempre viene poblada.
 func TestMovementGapDescriptor_UsesDescription(t *testing.T) {
-	row := movementRow{Amount: "5000", Description: "compra en el super"}
-	if got := movementGapDescriptor(row); got != "$5000 · compra en el super" {
+	row := movement.MovementRow{Amount: "5000", Description: "compra en el super"}
+	if got := movement.MovementGapDescriptor(row); got != "$5000 · compra en el super" {
 		t.Errorf("want description, got %q", got)
 	}
 }
@@ -39,13 +39,13 @@ func TestMovementGapDescriptor_UsesDescription(t *testing.T) {
 // a compound message with 2 gapped rows must never show the same
 // category/subcategory ask-prompt twice — each has to name its own row.
 func TestAskPrompts_DistinguishRows(t *testing.T) {
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Amount: "5000", Description: "compra en Coto", Category: "PENDING_REVIEW"},
 		{Amount: "50000", AccountNameGuess: "Mercado Pago", Description: "transferencia a Mercado Pago", Category: "PENDING_REVIEW"},
 	}
 	data := conversation.Data{
-		keyMovements:           encodeMovementRows(rows),
-		keyPendingCategoryGaps: encodeStringSlice([]string{"0", "1"}),
+		conversation.KeyMovements:           movement.EncodeMovementRows(rows),
+		conversation.KeyPendingCategoryGaps: conversation.EncodeStringSlice([]string{"0", "1"}),
 	}
 
 	prompt0 := msgAskCategory(data)
@@ -58,7 +58,7 @@ func TestAskPrompts_DistinguishRows(t *testing.T) {
 
 	// Advance past row 0 (mirrors stepResolveCategory's OnChoice: gap stays
 	// queued until the paired subcategory answer pops it).
-	data[keyPendingCategoryGaps] = encodeStringSlice([]string{"1"})
+	data[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice([]string{"1"})
 	prompt1 := msgAskCategory(data)
 	if prompt1 == prompt0 {
 		t.Fatalf("row 1 prompt identical to row 0's — this is the reported bug")
@@ -73,7 +73,7 @@ func TestAskPrompts_DistinguishRows(t *testing.T) {
 	// Subcategory prompt for row 0, once its category was chosen.
 	data["gap_active_row"] = "0"
 	rows[0].Category = "Alimentación"
-	data[keyMovements] = encodeMovementRows(rows)
+	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
 	subPrompt := msgAskSubcategory(data)
 	if !strings.Contains(subPrompt, "Coto") || !strings.Contains(subPrompt, "Alimentación") {
 		t.Errorf("subcategory prompt missing row+category context: %q", subPrompt)
@@ -122,11 +122,11 @@ func TestMovementReceiptLine_IncludesCategorySubcategoryDescriptionDate(t *testi
 }
 
 func TestMsgConfirmUpdateDiff_IncludesSubcategoryDescriptionDate(t *testing.T) {
-	before := []movementRow{{Amount: "3000", Currency: "ARS"}}
-	after := []movementRow{{Category: "Alimentación", Subcategory: "Café", Amount: "3500", Currency: "ARS", Description: "Café con Juan", Date: "2026-07-04"}}
+	before := []movement.MovementRow{{Amount: "3000", Currency: "ARS"}}
+	after := []movement.MovementRow{{Category: "Alimentación", Subcategory: "Café", Amount: "3500", Currency: "ARS", Description: "Café con Juan", Date: "2026-07-04"}}
 	data := conversation.Data{
-		"before_movements": encodeMovementRows(before),
-		"movements":        encodeMovementRows(after),
+		"before_movements": movement.EncodeMovementRows(before),
+		"movements":        movement.EncodeMovementRows(after),
 	}
 
 	msg := msgConfirmUpdateDiff(data)

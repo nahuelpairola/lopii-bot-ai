@@ -3,10 +3,12 @@ package messaging
 import (
 	"errors"
 	"testing"
+
+	"lopiibot.com/internal/movement"
 )
 
-func transferPair() []movementRow {
-	return []movementRow{
+func transferPair() []movement.MovementRow {
+	return []movement.MovementRow{
 		{Type: "transfer", Amount: "5000", AccountID: "1", Currency: "ARS"},
 		{Type: "transfer", Amount: "5000", AccountID: "2", Currency: "ARS"},
 	}
@@ -36,7 +38,7 @@ func TestApplyChanges_TransferRejectsAccountChange(t *testing.T) {
 
 // Un movimiento suelto SÍ puede cambiar de cuenta: la restricción es del grupo.
 func TestApplyChanges_SingleMovementAcceptsAccountChange(t *testing.T) {
-	rows := []movementRow{{Type: "expense", Amount: "1000", AccountID: "1", Currency: "ARS"}}
+	rows := []movement.MovementRow{{Type: "expense", Amount: "1000", AccountID: "1", Currency: "ARS"}}
 	got, err := applyChanges(rows, []correctionChange{{fieldAccount, opSet, "Galicia"}})
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +61,7 @@ func TestApplyChanges_DoesNotMutateInput(t *testing.T) {
 // "poné todos en 1500" no es algo que un usuario quiera decir: es un scope mal
 // completado. Preguntar cuál es mejor que aplanar n montos al mismo número.
 func TestApplyChangesToSet_SetAmountOnManyIsRefused(t *testing.T) {
-	groups := [][]movementRow{
+	groups := [][]movement.MovementRow{
 		{{Type: "expense", Amount: "1000", Currency: "ARS"}},
 		{{Type: "expense", Amount: "2000", Currency: "ARS"}},
 	}
@@ -72,7 +74,7 @@ func TestApplyChangesToSet_SetAmountOnManyIsRefused(t *testing.T) {
 // El mismo set con multiply SÍ pasa: cada fila queda en un valor distinto, que
 // es justo el punto de hacer la cuenta del lado de la app.
 func TestApplyChangesToSet_MultiplyOnManyIsFine(t *testing.T) {
-	groups := [][]movementRow{
+	groups := [][]movement.MovementRow{
 		{{Type: "expense", Amount: "1000", Currency: "ARS"}},
 		{{Type: "expense", Amount: "2400", Currency: "ARS"}},
 		{{Type: "expense", Amount: "80000", Currency: "ARS"}},
@@ -93,7 +95,7 @@ func TestApplyChangesToSet_MultiplyOnManyIsFine(t *testing.T) {
 // una corrección. Restarlo del gasto original sube el saldo de la cuenta que
 // pagó y deja la otra intacta — dos saldos mal.
 func TestApplyChangesToSet_RefundIntoAnotherAccountIsRefused(t *testing.T) {
-	groups := [][]movementRow{{{Type: "expense", Amount: "1000", AccountName: "Galicia", Currency: "ARS"}}}
+	groups := [][]movement.MovementRow{{{Type: "expense", Amount: "1000", AccountName: "Galicia", Currency: "ARS"}}}
 
 	_, err := applyChangesToSet(groups, []correctionChange{{fieldAmount, opSubtract, "1000"}},
 		guardContext{NamedAccount: "Mercado Pago", Scope: scopeOne})
@@ -103,7 +105,7 @@ func TestApplyChangesToSet_RefundIntoAnotherAccountIsRefused(t *testing.T) {
 }
 
 func TestApplyChangesToSet_RefundIntoTheSameAccountIsACorrection(t *testing.T) {
-	groups := [][]movementRow{{{Type: "expense", Amount: "1000", AccountName: "Galicia", Currency: "ARS"}}}
+	groups := [][]movement.MovementRow{{{Type: "expense", Amount: "1000", AccountName: "Galicia", Currency: "ARS"}}}
 
 	got, err := applyChangesToSet(groups, []correctionChange{{fieldAmount, opSubtract, "300"}},
 		guardContext{NamedAccount: "Galicia", Scope: scopeOne})
@@ -117,7 +119,7 @@ func TestApplyChangesToSet_RefundIntoTheSameAccountIsACorrection(t *testing.T) {
 
 // El default abrumador: el usuario no dice a dónde volvió la plata.
 func TestApplyChangesToSet_RefundWithNoAccountNamedIsACorrection(t *testing.T) {
-	groups := [][]movementRow{{{Type: "expense", Amount: "1000", AccountName: "Galicia", Currency: "ARS"}}}
+	groups := [][]movement.MovementRow{{{Type: "expense", Amount: "1000", AccountName: "Galicia", Currency: "ARS"}}}
 
 	if _, err := applyChangesToSet(groups, []correctionChange{{fieldAmount, opSubtract, "300"}},
 		guardContext{Scope: scopeOne}); err != nil {
@@ -128,7 +130,7 @@ func TestApplyChangesToSet_RefundWithNoAccountNamedIsACorrection(t *testing.T) {
 // La guarda del reintegro mira SOLO subtract/multiply: un set de monto o un
 // cambio de categoría que mencione una cuenta no tiene por qué rechazarse.
 func TestApplyChangesToSet_RefundGuardOnlyAppliesToRefunds(t *testing.T) {
-	groups := [][]movementRow{{{Type: "expense", Amount: "1000", AccountName: "Galicia", Currency: "ARS"}}}
+	groups := [][]movement.MovementRow{{{Type: "expense", Amount: "1000", AccountName: "Galicia", Currency: "ARS"}}}
 
 	if _, err := applyChangesToSet(groups, []correctionChange{{fieldCategory, opSet, "Ocio"}},
 		guardContext{NamedAccount: "Mercado Pago", Scope: scopeOne}); err != nil {
@@ -143,7 +145,7 @@ func TestApplyChangesToSet_RefundGuardOnlyAppliesToRefunds(t *testing.T) {
 // La app lo escribió porque ninguna guarda miraba la DIRECCIÓN. El usuario
 // confirma un diff que se ve plausible y el error queda en la base.
 func TestGuardRefundDirection_RejectsAnAddOnARefund(t *testing.T) {
-	rows := []movementRow{{Type: "expense", Amount: "15000", Currency: "ARS", Description: "Nafta"}}
+	rows := []movement.MovementRow{{Type: "expense", Amount: "15000", Currency: "ARS", Description: "Nafta"}}
 	changes := []correctionChange{{fieldAmount, opAdd, "7500"}}
 
 	err := guardRefundDirection(rows, changes, "De la nafta me devolvieron la mitad")
@@ -155,7 +157,7 @@ func TestGuardRefundDirection_RejectsAnAddOnARefund(t *testing.T) {
 // Un multiply por 1.5 también hace crecer el gasto, y la guarda no mira el `op`
 // sino el RESULTADO contra la fila real.
 func TestGuardRefundDirection_RejectsAnyChangeThatGrows(t *testing.T) {
-	rows := []movementRow{{Type: "expense", Amount: "15000", Currency: "ARS"}}
+	rows := []movement.MovementRow{{Type: "expense", Amount: "15000", Currency: "ARS"}}
 	for _, ch := range []correctionChange{
 		{fieldAmount, opMultiply, "1.5"},
 		{fieldAmount, opSet, "99999"},
@@ -168,7 +170,7 @@ func TestGuardRefundDirection_RejectsAnyChangeThatGrows(t *testing.T) {
 
 // Lo que SÍ tiene que pasar: un reintegro que reduce.
 func TestGuardRefundDirection_AllowsAChangeThatShrinks(t *testing.T) {
-	rows := []movementRow{{Type: "expense", Amount: "15000", Currency: "ARS"}}
+	rows := []movement.MovementRow{{Type: "expense", Amount: "15000", Currency: "ARS"}}
 	for _, ch := range []correctionChange{
 		{fieldAmount, opMultiply, "0.5"},
 		{fieldAmount, opSubtract, "7500"},
@@ -182,7 +184,7 @@ func TestGuardRefundDirection_AllowsAChangeThatShrinks(t *testing.T) {
 // Y sin devolución de por medio, sumar es perfectamente válido: "sumale 1070"
 // es el caso más común de corrección que hay.
 func TestGuardRefundDirection_IgnoresMessagesWithoutARefund(t *testing.T) {
-	rows := []movementRow{{Type: "expense", Amount: "12700", Currency: "ARS"}}
+	rows := []movement.MovementRow{{Type: "expense", Amount: "12700", Currency: "ARS"}}
 	changes := []correctionChange{{fieldAmount, opAdd, "1070"}}
 
 	if err := guardRefundDirection(rows, changes, "al café de hoy sumale 1070"); err != nil {

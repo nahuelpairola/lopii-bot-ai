@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
+	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -187,7 +188,7 @@ func TestAgentExecutor_InsufficientFundsParksTheGate(t *testing.T) {
 	if e.wrote {
 		t.Error("wrote quedó en true sin haber insertado: bloquearía la cola del 429 sin razón")
 	}
-	if len(e.parked) != 1 || e.parked[0].Payload.Seed[keyGatePrompt] == nil {
+	if len(e.parked) != 1 || e.parked[0].Payload.Seed[conversation.KeyGatePrompt] == nil {
 		t.Fatalf("tenía que parkear el gate con su copy: %+v", e.parked)
 	}
 	// Y retoma como CREATE: es lo que hace que el drenaje sepa a qué flujo ir.

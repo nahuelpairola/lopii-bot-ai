@@ -3,6 +3,8 @@ package messaging
 import (
 	"errors"
 	"testing"
+
+	"lopiibot.com/internal/movement"
 )
 
 func TestApplyChange_Amount(t *testing.T) {
@@ -37,7 +39,7 @@ func TestApplyChange_Amount(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := applyChange(movementRow{Type: "expense", Amount: tc.start, Currency: "ARS"}, tc.ch)
+			got, err := applyChange(movement.MovementRow{Type: "expense", Amount: tc.start, Currency: "ARS"}, tc.ch)
 			if !errors.Is(err, tc.wantErr) {
 				t.Fatalf("err = %v, want %v", err, tc.wantErr)
 			}
@@ -51,7 +53,7 @@ func TestApplyChange_Amount(t *testing.T) {
 // Sólo amount acepta aritmética. Sin esta guarda un `add` sobre currency o date
 // compila, corre y hace cualquier cosa.
 func TestApplyChange_ArithmeticOnlyOnAmount(t *testing.T) {
-	row := movementRow{Amount: "1000", Description: "Café"}
+	row := movement.MovementRow{Amount: "1000", Description: "Café"}
 	for _, f := range []changeField{fieldCategory, fieldAccount, fieldDate, fieldCurrency, fieldDescription, fieldType} {
 		for _, op := range []changeOp{opAdd, opSubtract, opMultiply} {
 			if _, err := applyChange(row, correctionChange{f, op, "1"}); !errors.Is(err, errOpNotForField) {
@@ -62,7 +64,7 @@ func TestApplyChange_ArithmeticOnlyOnAmount(t *testing.T) {
 }
 
 func TestApplyChange_SetFields(t *testing.T) {
-	base := movementRow{
+	base := movement.MovementRow{
 		Type: "expense", Amount: "1000", Currency: "ARS",
 		Category: "Alimentación", Subcategory: "Supermercado",
 		AccountID: "7", AccountNameGuess: "", Date: "2026-08-01", Description: "super",
@@ -113,14 +115,14 @@ func TestApplyChange_SetFields(t *testing.T) {
 // transfer necesita dos patas y una contraparte: convertir un gasto en
 // transferencia es un delete + create, no una corrección.
 func TestApplyChange_TypeRejectsTransfer(t *testing.T) {
-	row := movementRow{Type: "expense", Amount: "1000"}
+	row := movement.MovementRow{Type: "expense", Amount: "1000"}
 	if _, err := applyChange(row, correctionChange{fieldType, opSet, "transfer"}); !errors.Is(err, errTransferNotACorrection) {
 		t.Errorf("err = %v, want errTransferNotACorrection", err)
 	}
 }
 
 func TestApplyChange_DoesNotMutateInput(t *testing.T) {
-	row := movementRow{Type: "expense", Amount: "1000", Currency: "ARS"}
+	row := movement.MovementRow{Type: "expense", Amount: "1000", Currency: "ARS"}
 	if _, err := applyChange(row, correctionChange{fieldAmount, opSet, "9999"}); err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +146,7 @@ func TestDefaultChangeOps_FillsTheOmittedSet(t *testing.T) {
 	if changes[0].Op != opSet {
 		t.Fatalf("op = %q, want %q", changes[0].Op, opSet)
 	}
-	got, err := applyChange(movementRow{Type: "expense", Amount: "3500", Description: "Café"}, changes[0])
+	got, err := applyChange(movement.MovementRow{Type: "expense", Amount: "3500", Description: "Café"}, changes[0])
 	if err != nil {
 		t.Fatalf("applyChange: %v", err)
 	}

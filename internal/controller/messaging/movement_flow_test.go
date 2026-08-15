@@ -8,17 +8,18 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
 
 func TestEncodeDecodeMovementRows_RoundTrip(t *testing.T) {
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"},
 		{Type: "transfer", Amount: "100", Currency: "USD", AccountID: "5"},
 	}
 
-	data := conversation.Data{"movements": encodeMovementRows(rows)}
-	got := decodeMovementRows(data)
+	data := conversation.Data{"movements": movement.EncodeMovementRows(rows)}
+	got := movement.DecodeMovementRows(data)
 
 	if len(got) != 2 {
 		t.Fatalf("got %d rows, want 2", len(got))
@@ -32,8 +33,8 @@ func TestEncodeDecodeMovementRows_RoundTrip(t *testing.T) {
 }
 
 func TestEncodeDecodeStringSlice_RoundTrip(t *testing.T) {
-	data := conversation.Data{"gaps": encodeStringSlice([]string{"0", "2"})}
-	got := decodeStringSlice(data, "gaps")
+	data := conversation.Data{"gaps": conversation.EncodeStringSlice([]string{"0", "2"})}
+	got := conversation.DecodeStringSlice(data, "gaps")
 
 	if len(got) != 2 || got[0] != "0" || got[1] != "2" {
 		t.Errorf("got %v, want [0 2]", got)
@@ -41,7 +42,7 @@ func TestEncodeDecodeStringSlice_RoundTrip(t *testing.T) {
 }
 
 func TestDecodeStringSlice_MissingKey_ReturnsEmpty(t *testing.T) {
-	got := decodeStringSlice(conversation.Data{}, "missing")
+	got := conversation.DecodeStringSlice(conversation.Data{}, "missing")
 	if len(got) != 0 {
 		t.Errorf("got %v, want empty", got)
 	}
@@ -57,11 +58,11 @@ func TestBuildCreateSeed_QueuesCategoryAndAccountGaps(t *testing.T) {
 
 	data := buildCreateSeed(result, nil, nil)
 
-	categoryGaps := decodeStringSlice(data, "pending_category_gaps")
+	categoryGaps := conversation.DecodeStringSlice(data, "pending_category_gaps")
 	if len(categoryGaps) != 1 || categoryGaps[0] != "0" {
 		t.Errorf("category gaps = %v, want [0]", categoryGaps)
 	}
-	accountGaps := decodeStringSlice(data, "pending_account_gaps")
+	accountGaps := conversation.DecodeStringSlice(data, "pending_account_gaps")
 	if len(accountGaps) != 1 || accountGaps[0] != "1" {
 		t.Errorf("account gaps = %v, want [1]", accountGaps)
 	}
@@ -79,10 +80,10 @@ func TestBuildCreateSeed_NoGaps_EmptyQueues(t *testing.T) {
 
 	data := buildCreateSeed(result, nil, nil)
 
-	if len(decodeStringSlice(data, "pending_category_gaps")) != 0 {
+	if len(conversation.DecodeStringSlice(data, "pending_category_gaps")) != 0 {
 		t.Error("expected no category gaps")
 	}
-	if len(decodeStringSlice(data, "pending_account_gaps")) != 0 {
+	if len(conversation.DecodeStringSlice(data, "pending_account_gaps")) != 0 {
 		t.Error("expected no account gaps")
 	}
 }
@@ -107,7 +108,7 @@ func TestBuildCreateSeed_UnknownCategoryPair_QueuesGap(t *testing.T) {
 
 	data := buildCreateSeed(result, taxonomy, nil)
 
-	gaps := decodeStringSlice(data, "pending_category_gaps")
+	gaps := conversation.DecodeStringSlice(data, "pending_category_gaps")
 	if len(gaps) != 1 || gaps[0] != "0" {
 		t.Errorf("category gaps = %v, want [0]: un par inexistente debe caer al gap-fill, no al insert", gaps)
 	}
@@ -128,7 +129,7 @@ func TestBuildCreateSeed_KnownCategoryPair_NoGap(t *testing.T) {
 
 	data := buildCreateSeed(result, taxonomy, nil)
 
-	if gaps := decodeStringSlice(data, "pending_category_gaps"); len(gaps) != 0 {
+	if gaps := conversation.DecodeStringSlice(data, "pending_category_gaps"); len(gaps) != 0 {
 		t.Errorf("category gaps = %v, want []: un par que existe no debe preguntar nada", gaps)
 	}
 }
@@ -150,7 +151,7 @@ func TestBuildCreateSeed_NonTransferWithUnmatchedAccountName_QueuesAccountGap(t 
 
 	data := buildCreateSeed(result, nil, nil)
 
-	accountGaps := decodeStringSlice(data, "pending_account_gaps")
+	accountGaps := conversation.DecodeStringSlice(data, "pending_account_gaps")
 	if len(accountGaps) != 1 || accountGaps[0] != "0" {
 		t.Errorf("account gaps = %v, want [0]", accountGaps)
 	}
@@ -171,7 +172,7 @@ func TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap(t *testing.T
 
 	data := buildCreateSeed(result, nil, nil)
 
-	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
+	if gaps := conversation.DecodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
 		t.Errorf("account gaps = %v, want []: sin cuenta nombrada no se pregunta nada", gaps)
 	}
 }
@@ -195,7 +196,7 @@ func TestBuildCreateSeed_CounterpartyInDescription_NoAccountGap(t *testing.T) {
 
 	data := buildCreateSeed(result, nil, nil)
 
-	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
+	if gaps := conversation.DecodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
 		t.Errorf("account gaps = %v, want []: el nombre de la contraparte no es una cuenta", gaps)
 	}
 }
@@ -216,7 +217,7 @@ func TestBuildCreateSeed_OwnAccountNotInDescription_OpensGap(t *testing.T) {
 
 	data := buildCreateSeed(result, nil, nil)
 
-	if gaps := decodeStringSlice(data, "pending_account_gaps"); len(gaps) != 1 {
+	if gaps := conversation.DecodeStringSlice(data, "pending_account_gaps"); len(gaps) != 1 {
 		t.Errorf("account gaps = %v, want 1: 'pagué el curso con Brubank' tiene que preguntar", gaps)
 	}
 }
@@ -244,9 +245,9 @@ func TestParseUintSlice_ErrorsOnGarbage(t *testing.T) {
 }
 
 func TestMovementRow_GroupRoundTrip(t *testing.T) {
-	rows := []movementRow{{Type: "transfer", Amount: "100", Currency: "ARS", Group: "g1"}}
-	data := conversation.Data{"movements": encodeMovementRows(rows)}
-	got := decodeMovementRows(data)
+	rows := []movement.MovementRow{{Type: "transfer", Amount: "100", Currency: "ARS", Group: "g1"}}
+	data := conversation.Data{"movements": movement.EncodeMovementRows(rows)}
+	got := movement.DecodeMovementRows(data)
 	if len(got) != 1 || got[0].Group != "g1" {
 		t.Fatalf("group round trip = %+v, want Group=g1", got)
 	}
@@ -255,15 +256,15 @@ func TestMovementRow_GroupRoundTrip(t *testing.T) {
 // TestCopyDataNeverReturnsNil — mismo invariante que conversation.cloneData:
 // los ~36 call sites escriben sobre la copia, así que devolver nil paniquea.
 func TestCopyDataNeverReturnsNil(t *testing.T) {
-	got := copyData(nil)
+	got := conversation.CopyData(nil)
 	if got == nil {
-		t.Fatal("copyData(nil) devolvió nil: el próximo write va a paniquear")
+		t.Fatal("conversation.CopyData(nil) devolvió nil: el próximo write va a paniquear")
 	}
-	got[keyCancelled] = "true" // no debe paniquear
+	got[conversation.KeyCancelled] = "true" // no debe paniquear
 }
 
 // categoryGapsFor es la paridad que a UPDATE le faltaba: hasta el 2026-08-12
-// seedAndStartUpdateConfirm escribía keyPendingCategoryGaps en nil hardcodeado,
+// seedAndStartUpdateConfirm escribía conversation.KeyPendingCategoryGaps en nil hardcodeado,
 // así que una corrección que nombraba una categoría inexistente no marcaba gap,
 // insertaba derecho y FindByCategoryAndSubcategory fallaba — el movimiento se
 // perdía con un error genérico.
@@ -275,20 +276,20 @@ func TestCategoryGapsFor(t *testing.T) {
 
 	cases := []struct {
 		name     string
-		rows     []movementRow
+		rows     []movement.MovementRow
 		taxonomy []orchestrator.TaxonomyEntry
 		want     []string
 	}{
 		{"par conocido no abre gap",
-			[]movementRow{{Category: "Alimentación", Subcategory: "Supermercado"}}, taxonomy, nil},
+			[]movement.MovementRow{{Category: "Alimentación", Subcategory: "Supermercado"}}, taxonomy, nil},
 		{"par inventado abre gap",
-			[]movementRow{{Category: "proyecto hogar", Subcategory: "agua"}}, taxonomy, []string{"0"}},
+			[]movement.MovementRow{{Category: "proyecto hogar", Subcategory: "agua"}}, taxonomy, []string{"0"}},
 		{"categoría real con subcategoría inventada abre gap",
-			[]movementRow{{Category: "Alimentación", Subcategory: "no existe"}}, taxonomy, []string{"0"}},
+			[]movement.MovementRow{{Category: "Alimentación", Subcategory: "no existe"}}, taxonomy, []string{"0"}},
 		{"PENDING_REVIEW abre gap",
-			[]movementRow{{Category: constants.PendingReview, Subcategory: ""}}, taxonomy, []string{"0"}},
+			[]movement.MovementRow{{Category: constants.PendingReview, Subcategory: ""}}, taxonomy, []string{"0"}},
 		{"sólo las filas malas, con su índice",
-			[]movementRow{
+			[]movement.MovementRow{
 				{Category: "Alimentación", Subcategory: "Supermercado"},
 				{Category: "inventada", Subcategory: "x"},
 				{Category: "Ocio y salidas", Subcategory: "Salir a comer"},
@@ -297,7 +298,7 @@ func TestCategoryGapsFor(t *testing.T) {
 		// Sin con qué comparar no se inventan gaps: preguntar por TODO sería peor
 		// que no validar.
 		{"taxonomía vacía no valida",
-			[]movementRow{{Category: "cualquier cosa", Subcategory: "x"}}, nil, nil},
+			[]movement.MovementRow{{Category: "cualquier cosa", Subcategory: "x"}}, nil, nil},
 	}
 
 	for _, tc := range cases {
@@ -333,10 +334,10 @@ func TestBuildCreateSeed_NamedAccountThatExistsResolvesWithoutAsking(t *testing.
 
 	data := buildCreateSeed(result, nil, accounts)
 
-	if gaps := decodeStringSlice(data, keyPendingAccountGaps); len(gaps) != 0 {
+	if gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps); len(gaps) != 0 {
 		t.Fatalf("se abrió un gap de cuenta pese a que la nombró: %v", gaps)
 	}
-	rows := decodeMovementRows(data)
+	rows := movement.DecodeMovementRows(data)
 	if rows[0].AccountID != "46" {
 		t.Errorf("account_id = %q, want 46", rows[0].AccountID)
 	}
@@ -355,7 +356,7 @@ func TestBuildCreateSeed_PartialAccountNameStillAsks(t *testing.T) {
 
 	data := buildCreateSeed(result, nil, accounts)
 
-	if gaps := decodeStringSlice(data, keyPendingAccountGaps); len(gaps) != 1 {
+	if gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps); len(gaps) != 1 {
 		t.Errorf("un nombre parcial tiene que preguntar, gaps = %v", gaps)
 	}
 }
@@ -373,7 +374,7 @@ func TestBuildCreateSeed_SameNameDifferentCurrencyPicksByCurrency(t *testing.T) 
 		Description:      "algo", Date: "2026-08-12",
 	}}}
 
-	rows := decodeMovementRows(buildCreateSeed(result, nil, accounts))
+	rows := movement.DecodeMovementRows(buildCreateSeed(result, nil, accounts))
 	if rows[0].AccountID != "11" {
 		t.Errorf("account_id = %q, want 11 (la de USD)", rows[0].AccountID)
 	}

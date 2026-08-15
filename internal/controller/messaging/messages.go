@@ -140,21 +140,21 @@ func gapPosition(idx, total int) string {
 }
 
 func msgAskCategory(data conversation.Data) string {
-	rows := decodeMovementRows(data)
-	idx, _ := strconv.Atoi(decodeStringSlice(data, keyPendingCategoryGaps)[0])
-	return "¿A qué categoría pertenece " + movementGapDescriptor(rows[idx]) + "?" + gapPosition(idx, len(rows))
+	rows := movement.DecodeMovementRows(data)
+	idx, _ := strconv.Atoi(conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)[0])
+	return "¿A qué categoría pertenece " + movement.MovementGapDescriptor(rows[idx]) + "?" + gapPosition(idx, len(rows))
 }
 
 func msgAskSubcategory(data conversation.Data) string {
-	rows := decodeMovementRows(data)
-	idx, _ := strconv.Atoi(stringOrEmpty(data[keyGapActiveRow]))
-	return "¿Y la subcategoría de " + movementGapDescriptor(rows[idx]) + ", dentro de " + rows[idx].Category + "?" + gapPosition(idx, len(rows))
+	rows := movement.DecodeMovementRows(data)
+	idx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyGapActiveRow]))
+	return "¿Y la subcategoría de " + movement.MovementGapDescriptor(rows[idx]) + ", dentro de " + rows[idx].Category + "?" + gapPosition(idx, len(rows))
 }
 
 func msgAskAccount(data conversation.Data) string {
-	rows := decodeMovementRows(data)
-	idx, _ := strconv.Atoi(decodeStringSlice(data, keyPendingAccountGaps)[0])
-	return "¿A qué cuenta corresponde " + movementGapDescriptor(rows[idx]) + "?" + gapPosition(idx, len(rows))
+	rows := movement.DecodeMovementRows(data)
+	idx, _ := strconv.Atoi(conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)[0])
+	return "¿A qué cuenta corresponde " + movement.MovementGapDescriptor(rows[idx]) + "?" + gapPosition(idx, len(rows))
 }
 
 // Los tres mensajes del alta lazy-create nombran la MONEDA, porque el default
@@ -225,10 +225,10 @@ func movementReceiptLine(m movement.Movement) string {
 	amount := currency.FormatMoney(m.Amount.Abs(), m.Currency)
 	if m.Account != nil && m.Account.Name != "" {
 		return fmt.Sprintf("%s %s › %s — %s · %s · %s (%s)",
-			movement.IconForType(m.Type), category, sub, amount, desc, m.Account.Name, relativeDate(m.Date))
+			movement.IconForType(m.Type), category, sub, amount, desc, m.Account.Name, movement.RelativeDate(m.Date))
 	}
 	return fmt.Sprintf("%s %s › %s — %s · %s (%s)",
-		movement.IconForType(m.Type), category, sub, amount, desc, relativeDate(m.Date))
+		movement.IconForType(m.Type), category, sub, amount, desc, movement.RelativeDate(m.Date))
 }
 
 // displayAmount renders a movement amount for any audience outside storage —
@@ -246,8 +246,8 @@ func displayAmount(d decimal.Decimal) string {
 // carga el monto como string (viaja por JSONB hacia conversation_states), así
 // que hay que reparsearlo. Si no parsea se muestra crudo: un monto raro no debe
 // romper el mensaje entero.
-func rowMoney(r movementRow) string {
-	amt, err := parseARAmount(r.Amount)
+func rowMoney(r movement.MovementRow) string {
+	amt, err := movement.ParseARAmount(r.Amount)
 	if err != nil {
 		return r.Amount + " " + currency.Currency(r.Currency).Label()
 	}
@@ -255,12 +255,12 @@ func rowMoney(r movementRow) string {
 }
 
 // rowDate rinde la fecha de una fila en relativo ("hoy"/"ayer"/"04/07").
-func rowDate(r movementRow) string {
+func rowDate(r movement.MovementRow) string {
 	d, err := time.Parse("2006-01-02", r.Date)
 	if err != nil {
 		return r.Date
 	}
-	return relativeDate(d)
+	return movement.RelativeDate(d)
 }
 
 func msgPickUpdateCandidate(data conversation.Data) string {
@@ -268,11 +268,11 @@ func msgPickUpdateCandidate(data conversation.Data) string {
 }
 
 func msgConfirmUpdateDiff(data conversation.Data) string {
-	before := decodeMovementRows(conversation.Data{keyMovements: data[keyBeforeMovements]})
+	before := movement.DecodeMovementRows(conversation.Data{conversation.KeyMovements: data[conversation.KeyBeforeMovements]})
 
 	// regalo/gratis total: the correction zeroes the movement, so it's a
 	// deletion — show what will be removed, not a "corregiría a 0" diff.
-	if flag(data, keyDeleteInstead) {
+	if conversation.Flag(data, conversation.KeyDeleteInstead) {
 		lines := []string{"🗑️ Quedó gratis, así que lo voy a borrar:"}
 		for _, b := range before {
 			lines = append(lines, fmt.Sprintf("%s %s › %s — %s · %s (%s)",
@@ -281,11 +281,11 @@ func msgConfirmUpdateDiff(data conversation.Data) string {
 		return strings.Join(lines, "\n") + "\n\n¿Confirmás?"
 	}
 
-	after := decodeMovementRows(data)
+	after := movement.DecodeMovementRows(data)
 
 	lines := []string{"✏️ Se corregiría así:"}
 	for i, a := range after {
-		var b movementRow
+		var b movement.MovementRow
 		if i < len(before) {
 			b = before[i]
 		}
@@ -355,12 +355,12 @@ const (
 //
 // Arranca por el monto porque es lo que se corrige casi siempre; el resto entra
 // igual por el mismo texto libre.
-func msgAskWhatToChange(rows []movementRow) string {
+func msgAskWhatToChange(rows []movement.MovementRow) string {
 	const ask = "¿Cuánto era? Escribime el monto — o tocá abajo si lo que está mal es otra cosa."
 	if len(rows) == 0 {
 		return ask
 	}
-	return "Encontré " + movementGapDescriptor(rows[0]) + ". " + ask
+	return "Encontré " + movement.MovementGapDescriptor(rows[0]) + ". " + ask
 }
 
 // changeFieldOptions son los botones de la pregunta de qué cambiar. NO incluyen
@@ -408,7 +408,7 @@ func msgPickDeleteCandidate(data conversation.Data) string {
 }
 
 func msgConfirmDelete(data conversation.Data) string {
-	idx, _ := strconv.Atoi(stringOrEmpty(data[keyResolvedIndex]))
+	idx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyResolvedIndex]))
 	candidates := decodeCandidateGroups(data)
 	if idx < 0 || idx >= len(candidates) {
 		return "¿Confirmás el borrado?"
@@ -457,9 +457,9 @@ func msgAskAccountCreateCurrency(data conversation.Data) string {
 }
 
 func msgConfirmAccountCreate(data conversation.Data) string {
-	name := stringOrEmpty(data[keyAccountName])
-	cur := stringOrEmpty(data[keyAccountCurrency])
-	balance := stringOrEmpty(data[keyAccountBalance])
+	name := conversation.StringOrEmpty(data[conversation.KeyAccountName])
+	cur := conversation.StringOrEmpty(data[conversation.KeyAccountCurrency])
+	balance := conversation.StringOrEmpty(data[conversation.KeyAccountBalance])
 	return "Confirmá la cuenta nueva:\n\n" +
 		"📛 Nombre: " + name + "\n" +
 		"💱 Moneda: " + currency.Currency(cur).Label() + "\n" +
@@ -538,12 +538,12 @@ func msgAskSubcategoryDescription(sub string) string {
 // request to an existing taxonomy entry — offer to reuse it instead of
 // creating a duplicate.
 func msgCategoryMatchOffer(data conversation.Data) string {
-	icon := stringOrEmpty(data[keyCategoryIcon])
+	icon := conversation.StringOrEmpty(data[conversation.KeyCategoryIcon])
 	if icon == "" {
 		icon = "📂"
 	}
-	out := "Ya tenés una parecida: " + icon + " " + stringOrEmpty(data[keyCategory]) + " › " + stringOrEmpty(data[keySubcategory])
-	if desc := stringOrEmpty(data[keySubcategoryDescription]); desc != "" {
+	out := "Ya tenés una parecida: " + icon + " " + conversation.StringOrEmpty(data[conversation.KeyCategory]) + " › " + conversation.StringOrEmpty(data[conversation.KeySubcategory])
+	if desc := conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription]); desc != "" {
 		out += "\n📝 " + desc
 	}
 	return out + "\n\n¿Te sirve o creás una distinta?"
@@ -552,15 +552,15 @@ func msgCategoryMatchOffer(data conversation.Data) string {
 // msgCategoryProposalConfirm shows the LLM's complete proposal for a new
 // subcategory as one confirmation.
 func msgCategoryProposalConfirm(data conversation.Data) string {
-	icon := stringOrEmpty(data[keyCategoryIcon])
+	icon := conversation.StringOrEmpty(data[conversation.KeyCategoryIcon])
 	if icon == "" {
 		icon = "📂"
 	}
-	line := icon + " " + stringOrEmpty(data[keyCategory]) + " › " + stringOrEmpty(data[keySubcategory])
-	if flag(data, keyCategoryIsNew) {
+	line := icon + " " + conversation.StringOrEmpty(data[conversation.KeyCategory]) + " › " + conversation.StringOrEmpty(data[conversation.KeySubcategory])
+	if conversation.Flag(data, conversation.KeyCategoryIsNew) {
 		line += " (categoría nueva)"
 	}
-	return "Te propongo:\n" + line + "\n📝 " + stringOrEmpty(data[keySubcategoryDescription]) + "\n\n¿La creo?"
+	return "Te propongo:\n" + line + "\n📝 " + conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription]) + "\n\n¿La creo?"
 }
 
 const msgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae ahí solo (ej: \"gasté 5000 en un regalo\")."

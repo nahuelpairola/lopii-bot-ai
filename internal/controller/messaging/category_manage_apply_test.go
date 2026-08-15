@@ -14,19 +14,19 @@ import (
 // vacío = la rama de borrado simple (la categoría no tenía movimientos).
 func applyData(count, targetID string, confirmed bool) conversation.Data {
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
-		keyMovementCount:       count,
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
+		conversation.KeyMovementCount:       count,
 	}
 	if targetID != "" {
-		data[keyTargetSubcategoryID] = targetID
-		data[keyTargetCategory] = "Alimentos"
-		data[keyTargetSubcategory] = "Delivery"
+		data[conversation.KeyTargetSubcategoryID] = targetID
+		data[conversation.KeyTargetCategory] = "Alimentos"
+		data[conversation.KeyTargetSubcategory] = "Delivery"
 	}
 	if confirmed {
-		setFlag(data, keyConfirmed)
+		conversation.SetFlag(data, conversation.KeyConfirmed)
 	}
 	return data
 }
@@ -81,7 +81,7 @@ func TestFinishCategoryManage_Cancelled_WritesNothing(t *testing.T) {
 	c, movs, subs := newApplyController()
 
 	data := applyData("3", "3", false)
-	setFlag(data, keyCancelled)
+	conversation.SetFlag(data, conversation.KeyCancelled)
 	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, data)
 
 	if movs.reassignSubCalls != 0 || subs.deleteCalls != 0 {
@@ -89,7 +89,7 @@ func TestFinishCategoryManage_Cancelled_WritesNothing(t *testing.T) {
 	}
 }
 
-// Sin keyConfirmed tampoco se escribe: un flujo que termina por cualquier otra
+// Sin conversation.KeyConfirmed tampoco se escribe: un flujo que termina por cualquier otra
 // vía no puede borrar nada.
 func TestFinishCategoryManage_NotConfirmed_WritesNothing(t *testing.T) {
 	c, movs, subs := newApplyController()
@@ -131,7 +131,7 @@ func TestFinishCategoryManage_BadSourceID_WritesNothing(t *testing.T) {
 	c, movs, subs := newApplyController()
 
 	data := applyData("3", "3", true)
-	data[keySourceSubcategoryID] = "no-es-un-numero"
+	data[conversation.KeySourceSubcategoryID] = "no-es-un-numero"
 	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, data)
 
 	if movs.reassignSubCalls != 0 || subs.deleteCalls != 0 {
@@ -143,7 +143,7 @@ func TestFinishCategoryManage_BadTargetID_WritesNothing(t *testing.T) {
 	c, movs, subs := newApplyController()
 
 	data := applyData("3", "3", true)
-	data[keyTargetSubcategoryID] = "tampoco"
+	data[conversation.KeyTargetSubcategoryID] = "tampoco"
 	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, data)
 
 	if movs.reassignSubCalls != 0 || subs.deleteCalls != 0 {

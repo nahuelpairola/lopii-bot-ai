@@ -1,4 +1,4 @@
-package messaging
+package movement
 
 import (
 	"errors"
@@ -8,25 +8,25 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// errAmountHasLetters rechaza un input que trae una letra — "30k", "10 mil",
+// ErrAmountHasLetters rechaza un input que trae una letra — "30k", "10 mil",
 // "100 xyz". El comportamiento anterior borraba esos caracteres en silencio, así
 // que "100k" se convertía en 100: un monto mal, sin error, en un path de plata.
 // La app nunca adivina un número.
-var errAmountHasLetters = errors.New("amount contains letters")
+var ErrAmountHasLetters = errors.New("amount contains letters")
 
-// parseARAmount parses a user-typed money string into a decimal, tolerant of
+// ParseARAmount parses a user-typed money string into a decimal, tolerant of
 // how a real person writes it: currency symbols ($), internal spaces, Argentine
 // convention (comma = decimal, dots = thousands) AND plain intl dot-decimals.
 // The ambiguous "single/multiple dot, no comma" case is disambiguated by a
 // heuristic: a lone dot followed by 1–2 digits is a decimal (5694.08, 1.5);
 // dots followed by 3 digits, or multiple dots, are thousands (1.000, 1.000.000).
 // Abbreviations and words ("30k", "10 mil") are REJECTED, never expanded.
-func parseARAmount(s string) (decimal.Decimal, error) {
+func ParseARAmount(s string) (decimal.Decimal, error) {
 	// Una letra significa abreviatura o texto libre ("30k", "10 mil"): se
 	// rechaza en vez de recortarla y devolver un número equivocado.
 	for _, r := range s {
 		if unicode.IsLetter(r) {
-			return decimal.Zero, errAmountHasLetters
+			return decimal.Zero, ErrAmountHasLetters
 		}
 	}
 

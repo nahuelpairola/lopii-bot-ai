@@ -64,13 +64,13 @@ func TestResolveMetric_PassesMovementIDs(t *testing.T) {
 // movimiento y quedó como create_inserted, que es la columna que lee el portón
 // de la etapa.
 func TestWriteOutcomeFor(t *testing.T) {
-	if got := writeOutcomeFor(conversation.Data{keyMode: modeUpdate}); got != outcomeUpdateConfirmed {
+	if got := writeOutcomeFor(conversation.Data{conversation.KeyMode: modeUpdate}); got != outcomeUpdateConfirmed {
 		t.Errorf("modo update escribió %q, want %q", got, outcomeUpdateConfirmed)
 	}
 	if got := writeOutcomeFor(conversation.Data{}); got != outcomeCreateInserted {
 		t.Errorf("sin modo escribió %q, want %q", got, outcomeCreateInserted)
 	}
-	if got := failureOutcomeFor(conversation.Data{keyMode: modeUpdate}); got != outcomeWriteFailed {
+	if got := failureOutcomeFor(conversation.Data{conversation.KeyMode: modeUpdate}); got != outcomeWriteFailed {
 		t.Errorf("falla en modo update escribió %q, want %q", got, outcomeWriteFailed)
 	}
 	if got := failureOutcomeFor(conversation.Data{}); got != outcomeCreateFailed {

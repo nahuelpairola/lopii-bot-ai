@@ -67,7 +67,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			PromptText: func(data conversation.Data) string {
 				return msgAskFirstAccountName(firstAccountCurrency(data, hasDefaultFor(accounts, data)))
 			},
-			DataKey: keyFirstAccountName,
+			DataKey: conversation.KeyFirstAccountName,
 			SkipIf: func(data conversation.Data) (string, bool) {
 				if needsFirstAccount(data, hasDefaultFor(accounts, data)) {
 					return "", false // hay que preguntar
@@ -86,27 +86,27 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				if value != optionCancel {
 					return data
 				}
-				next := copyData(data)
-				setFlag(next, keyCancelled)
+				next := conversation.CopyData(data)
+				conversation.SetFlag(next, conversation.KeyCancelled)
 				return next
 			},
 		},
 		stepFirstAccountBalance: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
 				return msgAskFirstAccountBalance(
-					stringOrEmpty(data[keyFirstAccountName]),
+					conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]),
 					firstAccountCurrency(data, hasDefaultFor(accounts, data)),
 				)
 			},
-			DataKey: keyFirstAccountBalance,
+			DataKey: conversation.KeyFirstAccountBalance,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if stringOrEmpty(data[keyFirstAccountName]) == "" {
+				if conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]) == "" {
 					return stepResolveCategory, true // no hubo first-account
 				}
 				return "", false
 			},
 			Validate: func(text string, _ conversation.Data) string {
-				if _, err := parseARAmount(text); err != nil {
+				if _, err := movement.ParseARAmount(text); err != nil {
 					return account.MsgInvalidAmount
 				}
 				return ""
@@ -118,9 +118,9 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				cancelOption,
 			},
 			OnEscape: func(value string, data conversation.Data) conversation.Data {
-				next := copyData(data)
+				next := conversation.CopyData(data)
 				if value == optionCancel {
-					setFlag(next, keyCancelled)
+					conversation.SetFlag(next, conversation.KeyCancelled)
 				}
 				return next
 			},
@@ -128,7 +128,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		stepResolveCategory: conversation.ChoiceStep{
 			PromptText: msgAskCategory,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if len(decodeStringSlice(data, keyPendingCategoryGaps)) == 0 {
+				if len(conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)) == 0 {
 					return stepResolveAccount, true
 				}
 				return "", false
@@ -149,20 +149,20 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			DeclaredNextSteps: []string{stepResolveSubcategory},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				if value == optionCancel {
-					next := copyData(data)
-					setFlag(next, keyCancelled)
+					next := conversation.CopyData(data)
+					conversation.SetFlag(next, conversation.KeyCancelled)
 					return next
 				}
-				gaps := decodeStringSlice(data, keyPendingCategoryGaps)
+				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)
 				if len(gaps) == 0 {
 					return data
 				}
-				next := copyData(data)
-				next[keyGapActiveRow] = gaps[0]
-				rows := decodeMovementRows(data)
+				next := conversation.CopyData(data)
+				next[conversation.KeyGapActiveRow] = gaps[0]
+				rows := movement.DecodeMovementRows(data)
 				idx, _ := strconv.Atoi(gaps[0])
 				rows[idx].Category = value
-				next[keyMovements] = encodeMovementRows(rows)
+				next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -170,8 +170,8 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		stepResolveSubcategory: conversation.ChoiceStep{
 			PromptText: msgAskSubcategory,
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				rowIdx, _ := strconv.Atoi(stringOrEmpty(data[keyGapActiveRow]))
-				rows := decodeMovementRows(data)
+				rowIdx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyGapActiveRow]))
+				rows := movement.DecodeMovementRows(data)
 				category := rows[rowIdx].Category
 
 				subs, _ := subcategories.FindAllForUser(data.UserID())
@@ -192,21 +192,21 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			DeclaredNextSteps: []string{stepResolveCategory},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				if value == optionCancel {
-					next := copyData(data)
-					setFlag(next, keyCancelled)
+					next := conversation.CopyData(data)
+					conversation.SetFlag(next, conversation.KeyCancelled)
 					return next
 				}
-				next := copyData(data)
-				gaps := decodeStringSlice(data, keyPendingCategoryGaps)
-				rowIdx, _ := strconv.Atoi(stringOrEmpty(data[keyGapActiveRow]))
+				next := conversation.CopyData(data)
+				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)
+				rowIdx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyGapActiveRow]))
 
-				rows := decodeMovementRows(data)
+				rows := movement.DecodeMovementRows(data)
 				rows[rowIdx].Subcategory = value
-				next[keyMovements] = encodeMovementRows(rows)
+				next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
 				if len(gaps) > 0 {
-					next[keyPendingCategoryGaps] = encodeStringSlice(gaps[1:])
+					next[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice(gaps[1:])
 				}
-				next[keyGapActiveRow] = ""
+				next[conversation.KeyGapActiveRow] = ""
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -214,18 +214,18 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		stepResolveAccount: conversation.ChoiceStep{
 			PromptText: msgAskAccount,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if len(decodeStringSlice(data, keyPendingAccountGaps)) == 0 {
+				if len(conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)) == 0 {
 					return "", true // nothing left — the flow is complete
 				}
 				return "", false
 			},
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				gaps := decodeStringSlice(data, keyPendingAccountGaps)
+				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)
 				if len(gaps) == 0 {
 					return nil
 				}
 				rowIdx, _ := strconv.Atoi(gaps[0])
-				rows := decodeMovementRows(data)
+				rows := movement.DecodeMovementRows(data)
 
 				accs, _ := accounts.FindByUserID(data.UserID())
 				var opts []conversation.ChoiceOption
@@ -250,25 +250,25 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			DeclaredNextSteps: []string{stepResolveAccount},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				if value == optionCancel {
-					next := copyData(data)
-					setFlag(next, keyCancelled)
+					next := conversation.CopyData(data)
+					conversation.SetFlag(next, conversation.KeyCancelled)
 					return next
 				}
-				next := copyData(data)
-				gaps := decodeStringSlice(data, keyPendingAccountGaps)
+				next := conversation.CopyData(data)
+				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)
 				if len(gaps) == 0 {
 					return next
 				}
 				rowIdx, _ := strconv.Atoi(gaps[0])
 
-				rows := decodeMovementRows(data)
+				rows := movement.DecodeMovementRows(data)
 				if value == optionAccountCreate {
 					rows[rowIdx].AccountID = accountPendingCreate
 				} else {
 					rows[rowIdx].AccountID = strings.TrimPrefix(value, accountChoiceExistingPrefix)
 				}
-				next[keyMovements] = encodeMovementRows(rows)
-				next[keyPendingAccountGaps] = encodeStringSlice(gaps[1:])
+				next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
+				next[conversation.KeyPendingAccountGaps] = conversation.EncodeStringSlice(gaps[1:])
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -286,7 +286,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 // resolveAndInsertMovements — same split for testability as
 // finishInitialBalanceFlow/insertInitialBalanceMovements.
 func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if flag(data, keyCancelled) {
+	if conversation.Flag(data, conversation.KeyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCreateCancelled)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgCreateCancelled})
@@ -301,8 +301,8 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 		// hacían; éste no, y se comía el movimiento con un error genérico.
 		var short *insufficientFunds
 		if errors.As(err, &short) {
-			gateSeed := copyData(data)
-			gateSeed[keyGatePrompt] = msgInsufficientFunds(short.shortfalls)
+			gateSeed := conversation.CopyData(data)
+			gateSeed[conversation.KeyGatePrompt] = msgInsufficientFunds(short.shortfalls)
 			if serr := c.startFlow(ctx, b, chatID, data.UserID(), movementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow"); serr != nil {
 				slog.ErrorContext(ctx, "negative-confirm flow failed to start", "user_id", data.UserID(), "error", serr)
 			}
@@ -318,8 +318,8 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 	c.resolveMetric(ctx, data.UserID(), writeOutcomeFor(data), collectMovementIDs(inserted)...)
 	if b != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgConfirmMovements(inserted)})
-		if name := stringOrEmpty(data[keyFirstAccountName]); name != "" {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgFirstAccountDefault(name, decodeStringSlice(data, keyFirstAccountCurrencies))})
+		if name := conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]); name != "" {
+			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgFirstAccountDefault(name, conversation.DecodeStringSlice(data, conversation.KeyFirstAccountCurrencies))})
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgInviteMoreAccounts})
 			// R1/R2 just fired — mark correct_tip sent (not delivered) so the
 			// post-message nudge hook doesn't stack a 3rd tip on this same turn.
@@ -337,7 +337,7 @@ func (c *controller) finishMovementCreateFlow(ctx context.Context, b *bot.Bot, c
 // apuntar a algo), después se arman los movimientos, después se aplican las
 // reglas sobre el set completo, y recién al final se escribe.
 func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error) {
-	userID, rows := data.UserID(), decodeMovementRows(data)
+	userID, rows := data.UserID(), movement.DecodeMovementRows(data)
 
 	idx, err := c.loadAccountIndex(userID)
 	if err != nil {
@@ -349,7 +349,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	// (ver movement_negative_confirm_flow.go), y createFirstAccount lo devuelve
 	// cuando creó la primera cuenta sin saldo de apertura. Mirar solo uno haría
 	// que confirmar el gate vuelva a disparar el gate.
-	skipBalanceCheck := flag(data, keySkipBalanceCheck)
+	skipBalanceCheck := conversation.Flag(data, conversation.KeySkipBalanceCheck)
 
 	openedWithoutBalance, err := c.createFirstAccount(data, rows, idx)
 	if err != nil {
@@ -366,7 +366,7 @@ func (c *controller) resolveAndInsertMovements(data conversation.Data) ([]moveme
 	// REINTENTAR sobre el mismo data: el gate de saldo insuficiente parkea y
 	// vuelve a entrar acá al confirmar. Sin esto el reintento ve las filas
 	// originales, sin cuenta, y crea la cuenta y su apertura por segunda vez.
-	data[keyMovements] = encodeMovementRows(rows)
+	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
 
 	movements, groups, err := c.buildMovements(userID, rows)
 	if err != nil {
@@ -465,8 +465,8 @@ func (c *controller) loadAccountIndex(userID uint64) (*accountIndex, error) {
 // Itera MONEDAS, no filas: se abre una cuenta por moneda que no tenga default,
 // y todas las filas de esa moneda van a esa misma cuenta. Una moneda que YA
 // tiene default no se toca — sus filas caen ahí solas en movement.Normalize.
-func (c *controller) createFirstAccount(data conversation.Data, rows []movementRow, idx *accountIndex) (skipBalanceCheck bool, err error) {
-	name := stringOrEmpty(data[keyFirstAccountName])
+func (c *controller) createFirstAccount(data conversation.Data, rows []movement.MovementRow, idx *accountIndex) (skipBalanceCheck bool, err error) {
+	name := conversation.StringOrEmpty(data[conversation.KeyFirstAccountName])
 	if name == "" {
 		return false, nil
 	}
@@ -482,7 +482,7 @@ func (c *controller) createFirstAccount(data conversation.Data, rows []movementR
 	netDelta := firstAccountNetDelta(rows, asked)
 	// Las monedas se anotan para el mensaje de confirmación: cuando éste corre,
 	// las filas ya tienen account_id y no hay forma de saber qué monedas se
-	// acaban de crear. Ver keyFirstAccountCurrencies.
+	// acaban de crear. Ver conversation.KeyFirstAccountCurrencies.
 	var created []string
 	byCurrency := map[string]*account.Account{}
 
@@ -503,7 +503,7 @@ func (c *controller) createFirstAccount(data conversation.Data, rows []movementR
 			idx.add(*acc)
 			byCurrency[row.Currency] = acc
 			created = append(created, row.Currency)
-			data[keyFirstAccountCurrencies] = encodeStringSlice(created)
+			data[conversation.KeyFirstAccountCurrencies] = conversation.EncodeStringSlice(created)
 		}
 		rows[i].AccountID = strconv.FormatUint(uint64(acc.ID), 10)
 	}
@@ -523,11 +523,11 @@ func (c *controller) openFirstAccountBalance(data conversation.Data, acc *accoun
 	if acc == nil {
 		return false, nil
 	}
-	bal := stringOrEmpty(data[keyFirstAccountBalance])
+	bal := conversation.StringOrEmpty(data[conversation.KeyFirstAccountBalance])
 	if bal == "" {
 		return false, nil
 	}
-	amt, err := parseARAmount(bal)
+	amt, err := movement.ParseARAmount(bal)
 	if err != nil || amt.IsNegative() {
 		return false, nil
 	}
@@ -547,13 +547,13 @@ func (c *controller) openFirstAccountBalance(data conversation.Data, acc *accoun
 // El filtro por moneda no es un detalle: sumar un gasto en pesos contra un saldo
 // declarado en dólares abre la cuenta con un número que no existe, y como el
 // balance es la suma de los movimientos, ese error no se corrige nunca solo.
-func firstAccountNetDelta(rows []movementRow, cur string) decimal.Decimal {
+func firstAccountNetDelta(rows []movement.MovementRow, cur string) decimal.Decimal {
 	var netDelta decimal.Decimal
 	for _, row := range rows {
 		if row.AccountID != "" || row.Currency != cur || movement.TypeFromString(row.Type) == movement.Transfer {
 			continue
 		}
-		amt, err := parseARAmount(row.Amount)
+		amt, err := movement.ParseARAmount(row.Amount)
 		if err != nil {
 			continue
 		}
@@ -584,7 +584,7 @@ func (c *controller) insertOpeningMovement(acc *account.Account, amount decimal.
 		UserID:        acc.UserID,
 		AccountID:     &accountID,
 		SubcategoryID: uint64(sub.ID),
-		Date:          todayCivil(),
+		Date:          movement.TodayCivil(),
 		Type:          movement.Transfer,
 		Amount:        amount,
 		Currency:      acc.Currency,
@@ -602,7 +602,7 @@ func (c *controller) insertOpeningMovement(acc *account.Account, amount decimal.
 // fila que nombró una cuenta propia que no aparece en la description — "pagué
 // con Brubank" —, que desde que buildCreateSeed le abre gap llega hasta acá; sin
 // esto el bot preguntaría, ofrecería crearla y después tiraría la respuesta.
-func (c *controller) createCounterpartyAccounts(userID uint64, rows []movementRow, idx *accountIndex) error {
+func (c *controller) createCounterpartyAccounts(userID uint64, rows []movement.MovementRow, idx *accountIndex) error {
 	created := make(map[string]uint64) // "nombre|moneda" -> id, para no crear dos veces la misma
 	for i, row := range rows {
 		if row.AccountID != accountPendingCreate {
@@ -634,7 +634,7 @@ func (c *controller) createCounterpartyAccounts(userID uint64, rows []movementRo
 	return nil
 }
 
-// buildMovements traduce cada movementRow (todo strings, por el round-trip de
+// buildMovements traduce cada movement.MovementRow (todo strings, por el round-trip de
 // JSONB) al movement.Movement real. No aplica ninguna regla de plata: resuelve
 // la subcategoría, parsea monto y fecha, y devuelve en paralelo los tags de
 // grupo que después usa assignTransactionIDs.
@@ -642,7 +642,7 @@ func (c *controller) createCounterpartyAccounts(userID uint64, rows []movementRo
 // Cada error dice qué campo lo causó: antes todos estos fallos llegaban al log
 // como "other" (ver guardReason), o sea que una subcategoría inexistente y una
 // fecha mal parseada eran indistinguibles en producción.
-func (c *controller) buildMovements(userID uint64, rows []movementRow) ([]movement.Movement, []string, error) {
+func (c *controller) buildMovements(userID uint64, rows []movement.MovementRow) ([]movement.Movement, []string, error) {
 	movements := make([]movement.Movement, 0, len(rows)+1)
 	groups := make([]string, 0, len(rows)+1)
 	for _, row := range rows {
@@ -650,7 +650,7 @@ func (c *controller) buildMovements(userID uint64, rows []movementRow) ([]moveme
 		if err != nil {
 			return nil, nil, fmt.Errorf("subcategoría %q/%q: %w", row.Category, row.Subcategory, err)
 		}
-		amount, err := parseARAmount(row.Amount)
+		amount, err := movement.ParseARAmount(row.Amount)
 		if err != nil {
 			return nil, nil, fmt.Errorf("monto %q: %w", row.Amount, err)
 		}
@@ -692,8 +692,8 @@ func (c *controller) buildMovements(userID uint64, rows []movementRow) ([]moveme
 // ninguna cuenta en negativo — salvo que ese chequeo ya se haya salteado
 // explícitamente (ver skipBalanceCheck en resolveAndInsertMovements).
 func (c *controller) persistMovements(data conversation.Data, movs []movement.Movement, idx *accountIndex, skipBalanceCheck bool) ([]movement.Movement, error) {
-	if stringOrEmpty(data[keyMode]) == modeUpdate {
-		oldIDs, err := parseUintSlice(decodeStringSlice(data, keyOldMovementIDs))
+	if conversation.StringOrEmpty(data[conversation.KeyMode]) == modeUpdate {
+		oldIDs, err := parseUintSlice(conversation.DecodeStringSlice(data, conversation.KeyOldMovementIDs))
 		if err != nil {
 			return nil, fmt.Errorf("parse old movement ids: %w", err)
 		}

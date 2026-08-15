@@ -5,6 +5,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/movement"
 )
 
 func TestParseARAmount(t *testing.T) {
@@ -21,20 +22,20 @@ func TestParseARAmount(t *testing.T) {
 		{"abc", "0", true},             // malformed
 	}
 	for _, c := range cases {
-		got, err := parseARAmount(c.in)
+		got, err := movement.ParseARAmount(c.in)
 		if c.wantErr {
 			if err == nil {
-				t.Errorf("parseARAmount(%q): want error, got nil", c.in)
+				t.Errorf("movement.ParseARAmount(%q): want error, got nil", c.in)
 			}
 			continue
 		}
 		if err != nil {
-			t.Errorf("parseARAmount(%q): unexpected error %v", c.in, err)
+			t.Errorf("movement.ParseARAmount(%q): unexpected error %v", c.in, err)
 			continue
 		}
 		want := decimal.RequireFromString(c.want)
 		if !got.Equal(want) {
-			t.Errorf("parseARAmount(%q) = %s, want %s", c.in, got, want)
+			t.Errorf("movement.ParseARAmount(%q) = %s, want %s", c.in, got, want)
 		}
 	}
 }
@@ -58,12 +59,12 @@ func TestParseARAmount_UserFormats(t *testing.T) {
 		{"", "", false},
 	}
 	for _, c := range cases {
-		got, err := parseARAmount(c.in)
+		got, err := movement.ParseARAmount(c.in)
 		if c.ok && (err != nil || got.String() != c.want) {
-			t.Errorf("parseARAmount(%q) = %v, %v; want %s", c.in, got, err, c.want)
+			t.Errorf("movement.ParseARAmount(%q) = %v, %v; want %s", c.in, got, err, c.want)
 		}
 		if !c.ok && err == nil {
-			t.Errorf("parseARAmount(%q) expected error, got %v", c.in, got)
+			t.Errorf("movement.ParseARAmount(%q) expected error, got %v", c.in, got)
 		}
 	}
 }
@@ -72,8 +73,8 @@ func TestParseARAmount_RejectsLetters(t *testing.T) {
 	// Antes estas entradas se "limpiaban" en silencio ("100k" -> 100), lo que
 	// producía un monto mal en un path de plata. Ahora tienen que fallar.
 	for _, in := range []string{"30k", "100k", "10 mil", "1.5m", "100 xyz", "2 millones", "cien"} {
-		if got, err := parseARAmount(in); err == nil {
-			t.Errorf("parseARAmount(%q) = %s, want error", in, got)
+		if got, err := movement.ParseARAmount(in); err == nil {
+			t.Errorf("movement.ParseARAmount(%q) = %s, want error", in, got)
 		}
 	}
 }
@@ -91,13 +92,13 @@ func TestParseARAmount_AcceptsValidNumbers(t *testing.T) {
 		"1.5":          "1.5",
 	}
 	for in, want := range cases {
-		got, err := parseARAmount(in)
+		got, err := movement.ParseARAmount(in)
 		if err != nil {
-			t.Errorf("parseARAmount(%q): unexpected error %v", in, err)
+			t.Errorf("movement.ParseARAmount(%q): unexpected error %v", in, err)
 			continue
 		}
 		if got.String() != want {
-			t.Errorf("parseARAmount(%q) = %s, want %s", in, got, want)
+			t.Errorf("movement.ParseARAmount(%q) = %s, want %s", in, got, want)
 		}
 	}
 }

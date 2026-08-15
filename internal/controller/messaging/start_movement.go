@@ -35,7 +35,7 @@ func hasDefaultFor(accounts accountRepository, data conversation.Data) func(curr
 // nombrar la moneda es ambiguo con dos cuentas y directamente falso con dos
 // monedas: la nueva cuenta en USD no va a recibir ningún movimiento en pesos.
 func firstAccountCurrency(seed conversation.Data, has func(cur currency.Currency) bool) string {
-	for _, r := range decodeMovementRows(seed) {
+	for _, r := range movement.DecodeMovementRows(seed) {
 		if movement.TypeFromString(r.Type) == movement.Transfer {
 			continue
 		}
@@ -57,11 +57,11 @@ func (c *controller) startMovementDeleteFlowFor(ctx context.Context, b *bot.Bot,
 	}
 
 	seed := conversation.Data{
-		keyCandidateLabels: encodeStringSlice(labels),
-		keyCandidateGroups: encodeCandidateGroups(candidates),
+		conversation.KeyCandidateLabels: conversation.EncodeStringSlice(labels),
+		conversation.KeyCandidateGroups: encodeCandidateGroups(candidates),
 	}
 	if resolvedIndex >= 0 {
-		seed[keyResolvedIndex] = strconv.Itoa(resolvedIndex)
+		seed[conversation.KeyResolvedIndex] = strconv.Itoa(resolvedIndex)
 	}
 
 	return c.startFlow(ctx, b, chatID, userID, movementDeleteFlowName, seed, "delete: start movement_delete flow")

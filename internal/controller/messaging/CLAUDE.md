@@ -12,15 +12,17 @@ matters here is that **you never index `Data` directly**:
 
 | Need | Use | Not |
 |---|---|---|
-| a string | `stringOrEmpty(data[k])` | `data[k].(string)` |
-| a bool flag | `flag(data, k)` / `setFlag(data, k)` | `data[k] == true` |
-| a `[]string` | `decodeStringSlice` / `encodeStringSlice` | a plain cast |
-| movement rows | `decodeMovementRows` / `encodeMovementRows` | a plain cast |
-| a copy | `copyData` (nil-safe) | `maps.Clone` |
+| a string | `conversation.StringOrEmpty(data[k])` | `data[k].(string)` |
+| a bool flag | `conversation.Flag(data, k)` / `conversation.SetFlag(data, k)` | `data[k] == true` |
+| a `[]string` | `conversation.DecodeStringSlice` / `conversation.EncodeStringSlice` | a plain cast |
+| movement rows | `movement.DecodeMovementRows` / `movement.EncodeMovementRows` | a plain cast |
+| a copy | `conversation.CopyData` (nil-safe) | `maps.Clone` |
 
-Helpers live in `movement_flow.go:65-159` and `data_keys.go:120-123`. Every key is a const in
-`data_keys.go` — one const per distinct *meaning*, even when two strings collide. A structure of
-your own travels as **one JSON string**, not nested maps (see `encodeOpenQuestions`).
+Helpers live in `internal/conversation/data.go` and `internal/movement/rows.go`. Every key is an
+exported const in `internal/conversation/data.go` (`conversation.KeyX`) — one const per distinct
+*meaning*, even when two strings collide. The reminder-hub keys (`keyHubHasRow` …) are the one
+local exception, scoped to `reminder_setup_flow.go`. A structure of your own travels as
+**one JSON string**, not nested maps (see `encodeOpenQuestions`).
 
 ## Registering a flow touches three places outside its own file
 
@@ -64,7 +66,7 @@ the loop **parks** into a flow when it needs an answer, instead of a router deci
   checked in `startAgentLoop`) — the drain would replay it and register the money twice.
 - **A CREATE that cannot complete inserts nothing at all.** Gaps park an action that resumes
   into `movement_create`; an overdraft parks one that resumes into `movement_negative_confirm`,
-  told apart by `keyGatePrompt` in the seed. All-or-nothing per batch is what keeps a two-leg
+  told apart by `conversation.KeyGatePrompt` in the seed. All-or-nothing per batch is what keeps a two-leg
   transfer from splitting.
 
 `resolveCandidates` (`reference_resolution.go`) is the **only** candidate-search mechanism, and

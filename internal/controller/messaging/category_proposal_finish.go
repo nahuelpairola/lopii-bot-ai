@@ -11,12 +11,12 @@ import (
 // reuse the existing entry, fall through to the classic wizard to create a
 // distinct one, or cancel.
 func (c *controller) finishCategoryMatchOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if flag(data, keyCancelled) {
+	if conversation.Flag(data, conversation.KeyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryCancelled)
 		c.sendText(ctx, b, chatID, msgCreateCancelled)
 		return
 	}
-	switch stringOrEmpty(data[keyMatchChoice]) {
+	switch conversation.StringOrEmpty(data[conversation.KeyMatchChoice]) {
 	case optionUseExisting:
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryMatchUsed)
 		c.sendText(ctx, b, chatID, msgCategoryMatchUse)
@@ -32,18 +32,18 @@ func (c *controller) finishCategoryMatchOffer(ctx context.Context, b *bot.Bot, c
 // as-is, drop into the classic wizard seeded with the proposal to edit, or
 // cancel.
 func (c *controller) finishCategoryProposalConfirm(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if flag(data, keyCancelled) {
+	if conversation.Flag(data, conversation.KeyCancelled) {
 		c.resolveMetric(ctx, data.UserID(), outcomeCategoryCancelled)
 		c.sendText(ctx, b, chatID, msgCreateCancelled)
 		return
 	}
-	if flag(data, keyEditProposal) {
+	if conversation.Flag(data, conversation.KeyEditProposal) {
 		seed := conversation.Data{
-			keyCategory:               stringOrEmpty(data[keyCategory]),
-			keyCategoryIsNew:          stringOrEmpty(data[keyCategoryIsNew]),
-			keyCategoryIcon:           stringOrEmpty(data[keyCategoryIcon]),
-			keySubcategory:            stringOrEmpty(data[keySubcategory]),
-			keySubcategoryDescription: stringOrEmpty(data[keySubcategoryDescription]),
+			conversation.KeyCategory:               conversation.StringOrEmpty(data[conversation.KeyCategory]),
+			conversation.KeyCategoryIsNew:          conversation.StringOrEmpty(data[conversation.KeyCategoryIsNew]),
+			conversation.KeyCategoryIcon:           conversation.StringOrEmpty(data[conversation.KeyCategoryIcon]),
+			conversation.KeySubcategory:            conversation.StringOrEmpty(data[conversation.KeySubcategory]),
+			conversation.KeySubcategoryDescription: conversation.StringOrEmpty(data[conversation.KeySubcategoryDescription]),
 		}
 		prompt, err := c.engine.StartWithData(data.UserID(), subcategorySetupFlowName, seed)
 		if err != nil {

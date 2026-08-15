@@ -20,7 +20,7 @@ const (
 	optionAcceptSuggestion = "accept_suggestion"
 	optionChooseOther      = "choose_other"
 
-	// valores de keyTargetOrigin
+	// valores de conversation.KeyTargetOrigin
 	targetOriginSuggested = "suggested"
 	targetOriginManual    = "manual"
 
@@ -44,8 +44,8 @@ func onCategoryManageCancel(value string, data conversation.Data) conversation.D
 	if value != optionCancel {
 		return data
 	}
-	next := copyData(data)
-	setFlag(next, keyCancelled)
+	next := conversation.CopyData(data)
+	conversation.SetFlag(next, conversation.KeyCancelled)
 	return next
 }
 
@@ -54,7 +54,7 @@ func onCategoryManageCancel(value string, data conversation.Data) conversation.D
 // arrastraría el destino viejo y fusionaría contra la categoría rechazada.
 func clearTarget(data conversation.Data) conversation.Data {
 	next := clearTargetSubcategory(data)
-	delete(next, keyTargetCategory)
+	delete(next, conversation.KeyTargetCategory)
 	return next
 }
 
@@ -64,10 +64,10 @@ func clearTarget(data conversation.Data) conversation.Data {
 // también se borrara la categoría el usuario aterrizaría en un picker vacío,
 // sin nada que elegir y sin entender por qué.
 func clearTargetSubcategory(data conversation.Data) conversation.Data {
-	next := copyData(data)
-	delete(next, keyTargetSubcategoryID)
-	delete(next, keyTargetSubcategory)
-	delete(next, keyTargetOrigin)
+	next := conversation.CopyData(data)
+	delete(next, conversation.KeyTargetSubcategoryID)
+	delete(next, conversation.KeyTargetSubcategory)
+	delete(next, conversation.KeyTargetOrigin)
 	return next
 }
 
@@ -79,15 +79,15 @@ func subcategoryIcon(s subcategory.Subcategory) string {
 }
 
 func sourceLabel(data conversation.Data) string {
-	return stringOrEmpty(data[keySourceCategory]) + " › " + stringOrEmpty(data[keySourceSubcategory])
+	return conversation.StringOrEmpty(data[conversation.KeySourceCategory]) + " › " + conversation.StringOrEmpty(data[conversation.KeySourceSubcategory])
 }
 
 func suggestionLabel(data conversation.Data) string {
-	return stringOrEmpty(data[keySuggestedCategory]) + " › " + stringOrEmpty(data[keySuggestedSubcategory])
+	return conversation.StringOrEmpty(data[conversation.KeySuggestedCategory]) + " › " + conversation.StringOrEmpty(data[conversation.KeySuggestedSubcategory])
 }
 
 func targetLabel(data conversation.Data) string {
-	return stringOrEmpty(data[keyTargetCategory]) + " › " + stringOrEmpty(data[keyTargetSubcategory])
+	return conversation.StringOrEmpty(data[conversation.KeyTargetCategory]) + " › " + conversation.StringOrEmpty(data[conversation.KeyTargetSubcategory])
 }
 
 // NewCategoryManagePickFlow es el flujo 1: un solo paso para elegir cuál de las
@@ -122,10 +122,10 @@ func NewCategoryManagePickFlow(subs ownedSubcategoryLister) *conversation.Flow {
 				owned, _ := subs.FindOwnedByUser(data.UserID())
 				for _, s := range owned {
 					if strconv.FormatUint(uint64(s.ID), 10) == value {
-						next := copyData(data)
-						next[keySourceSubcategoryID] = value
-						next[keySourceCategory] = s.Category
-						next[keySourceSubcategory] = s.Subcategory
+						next := conversation.CopyData(data)
+						next[conversation.KeySourceSubcategoryID] = value
+						next[conversation.KeySourceCategory] = s.Category
+						next[conversation.KeySourceSubcategory] = s.Subcategory
 						return next
 					}
 				}
@@ -158,16 +158,16 @@ type targetSubcategoryLister interface {
 // 90 botones en Telegram es inusable.
 func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flow {
 	hasSuggestion := func(data conversation.Data) bool {
-		return stringOrEmpty(data[keySuggestedSubcategory]) != ""
+		return conversation.StringOrEmpty(data[conversation.KeySuggestedSubcategory]) != ""
 	}
 	isEmpty := func(data conversation.Data) bool {
-		return stringOrEmpty(data[keyMovementCount]) == "0"
+		return conversation.StringOrEmpty(data[conversation.KeyMovementCount]) == "0"
 	}
 
 	steps := map[string]conversation.Step{
 		stepSuggestTarget: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
-				return msgCategoryManageSuggest(sourceLabel(data), stringOrEmpty(data[keyMovementCount]), suggestionLabel(data))
+				return msgCategoryManageSuggest(sourceLabel(data), conversation.StringOrEmpty(data[conversation.KeyMovementCount]), suggestionLabel(data))
 			},
 			// El orden importa: sin movimientos no hay destino que elegir, así
 			// que ese chequeo va primero.
@@ -191,11 +191,11 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				switch value {
 				case optionAcceptSuggestion:
-					next := copyData(data)
-					next[keyTargetSubcategoryID] = stringOrEmpty(data[keySuggestedSubcategoryID])
-					next[keyTargetCategory] = stringOrEmpty(data[keySuggestedCategory])
-					next[keyTargetSubcategory] = stringOrEmpty(data[keySuggestedSubcategory])
-					next[keyTargetOrigin] = targetOriginSuggested
+					next := conversation.CopyData(data)
+					next[conversation.KeyTargetSubcategoryID] = conversation.StringOrEmpty(data[conversation.KeySuggestedSubcategoryID])
+					next[conversation.KeyTargetCategory] = conversation.StringOrEmpty(data[conversation.KeySuggestedCategory])
+					next[conversation.KeyTargetSubcategory] = conversation.StringOrEmpty(data[conversation.KeySuggestedSubcategory])
+					next[conversation.KeyTargetOrigin] = targetOriginSuggested
 					return next
 				case optionChooseOther:
 					return clearTarget(data)
@@ -225,7 +225,7 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 					return clearTarget(data)
 				}
 				next := clearTarget(data)
-				next[keyTargetCategory] = value
+				next[conversation.KeyTargetCategory] = value
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -233,12 +233,12 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 
 		stepPickTargetSubcategory: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
-				return msgCategoryManagePickTargetSub(stringOrEmpty(data[keyTargetCategory]))
+				return msgCategoryManagePickTargetSub(conversation.StringOrEmpty(data[conversation.KeyTargetCategory]))
 			},
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				all, _ := subs.FindAllForUser(data.UserID())
-				wantCategory := stringOrEmpty(data[keyTargetCategory])
-				sourceID := stringOrEmpty(data[keySourceSubcategoryID])
+				wantCategory := conversation.StringOrEmpty(data[conversation.KeyTargetCategory])
+				sourceID := conversation.StringOrEmpty(data[conversation.KeySourceSubcategoryID])
 
 				opts := make([]conversation.ChoiceOption, 0, len(all)+2)
 				for _, s := range all {
@@ -272,10 +272,10 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 					if strconv.FormatUint(uint64(s.ID), 10) != value {
 						continue
 					}
-					next := copyData(data)
-					next[keyTargetSubcategoryID] = value
-					next[keyTargetSubcategory] = s.Subcategory
-					next[keyTargetOrigin] = targetOriginManual
+					next := conversation.CopyData(data)
+					next[conversation.KeyTargetSubcategoryID] = value
+					next[conversation.KeyTargetSubcategory] = s.Subcategory
+					next[conversation.KeyTargetOrigin] = targetOriginManual
 					return next
 				}
 				return data
@@ -288,7 +288,7 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				if isEmpty(data) {
 					return msgCategoryManageConfirmDelete(sourceLabel(data))
 				}
-				return msgCategoryManageConfirmMerge(stringOrEmpty(data[keyMovementCount]), sourceLabel(data), targetLabel(data))
+				return msgCategoryManageConfirmMerge(conversation.StringOrEmpty(data[conversation.KeyMovementCount]), sourceLabel(data), targetLabel(data))
 			},
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				opts := []conversation.ChoiceOption{
@@ -298,7 +298,7 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				// conteo 0 no hubo elección, así que no se ofrece.
 				switch {
 				case isEmpty(data):
-				case stringOrEmpty(data[keyTargetOrigin]) == targetOriginSuggested:
+				case conversation.StringOrEmpty(data[conversation.KeyTargetOrigin]) == targetOriginSuggested:
 					opts = append(opts, backOptionTo(stepSuggestTarget))
 				default:
 					opts = append(opts, backOptionTo(stepPickTargetSubcategory))
@@ -314,13 +314,13 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 					// Volver a la sugerencia descarta el destino entero; volver
 					// al picker de subcategoría conserva la categoría, que es
 					// justo lo que ese step necesita para tener qué listar.
-					if stringOrEmpty(data[keyTargetOrigin]) == targetOriginSuggested {
+					if conversation.StringOrEmpty(data[conversation.KeyTargetOrigin]) == targetOriginSuggested {
 						return clearTarget(data)
 					}
 					return clearTargetSubcategory(data)
 				}
-				next := copyData(data)
-				setFlag(next, keyConfirmed)
+				next := conversation.CopyData(data)
+				conversation.SetFlag(next, conversation.KeyConfirmed)
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,

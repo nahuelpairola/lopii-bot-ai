@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -31,11 +33,11 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 	}}
 
 	data := buildCreateSeed(result, nil, nil)
-	gaps := decodeStringSlice(data, keyPendingCategoryGaps)
+	gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)
 	if len(gaps) != 2 {
 		t.Fatalf("las dos filas tienen que abrir gap, hay %d", len(gaps))
 	}
-	rows := decodeMovementRows(data)
+	rows := movement.DecodeMovementRows(data)
 
 	prompt0 := msgAskCategory(data)
 	idx0, _ := strconv.Atoi(gaps[0])
@@ -50,7 +52,7 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 	// same row (not the other one).
 	data["gap_active_row"] = gaps[0]
 	rows[idx0].Category = "Mascotas"
-	data[keyMovements] = encodeMovementRows(rows)
+	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
 	subPrompt := msgAskSubcategory(data)
 	if !strings.Contains(subPrompt, rows[idx0].Amount) {
 		t.Errorf("subcategory prompt missing row %d's amount: %q", idx0, subPrompt)
@@ -61,7 +63,7 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 
 	// Advance to row 1 — this is the exact failure mode from the bug report:
 	// two consecutive category prompts that read identically.
-	data[keyPendingCategoryGaps] = encodeStringSlice(gaps[1:])
+	data[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice(gaps[1:])
 	prompt1 := msgAskCategory(data)
 	if prompt1 == prompt0 {
 		t.Fatalf("row 1's category prompt is identical to row 0's — this is the reported bug")

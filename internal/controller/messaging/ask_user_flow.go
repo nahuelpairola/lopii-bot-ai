@@ -40,7 +40,7 @@ func NewAskUserFlow() *conversation.Flow {
 				}
 				return q.Prompt
 			},
-			DataKey: keyAskRawAnswer,
+			DataKey: conversation.KeyAskRawAnswer,
 			EscapeOptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				q, ok := nextOpenQuestion(data)
 				if !ok {
@@ -58,8 +58,8 @@ func NewAskUserFlow() *conversation.Flow {
 			},
 			OnEscape: func(value string, data conversation.Data) conversation.Data {
 				if value == optionCancel {
-					next := copyData(data)
-					setFlag(next, keyCancelled)
+					next := conversation.CopyData(data)
+					conversation.SetFlag(next, conversation.KeyCancelled)
 					return next
 				}
 				q, ok := nextOpenQuestion(data)
@@ -79,7 +79,7 @@ func NewAskUserFlow() *conversation.Flow {
 				return answerCurrentQuestion(data, text)
 			},
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if flag(data, keyAskDiscarded) {
+				if conversation.Flag(data, conversation.KeyAskDiscarded) {
 					return "", true
 				}
 				if _, ok := nextOpenQuestion(data); !ok {
@@ -106,8 +106,8 @@ func NewAskUserFlow() *conversation.Flow {
 // nueva. Por eso el techo se congela al parkear (ver pendingaction.PendingAction)
 // — si no, una lista de preguntas que crece se subiría su propio techo.
 func answerCurrentQuestion(data conversation.Data, answer string) conversation.Data {
-	next := copyData(data)
-	delete(next, keyAskRawAnswer)
+	next := conversation.CopyData(data)
+	delete(next, conversation.KeyAskRawAnswer)
 
 	questions := decodeOpenQuestions(next)
 	for i := range questions {
@@ -116,15 +116,15 @@ func answerCurrentQuestion(data conversation.Data, answer string) conversation.D
 			break
 		}
 	}
-	next[keyOpenQuestions] = encodeOpenQuestions(questions)
+	next[conversation.KeyOpenQuestions] = encodeOpenQuestions(questions)
 
 	budget := askBudget(next) - 1
-	next[keyAskBudget] = strconv.Itoa(budget)
+	next[conversation.KeyAskBudget] = strconv.Itoa(budget)
 	if budget <= 0 && hasOpenQuestion(questions) {
 		// Se acabó el techo con preguntas todavía abiertas: la acción se tira
 		// ENTERA. Quien drena es el que le avisa al usuario qué se cayó — tirar
 		// un movimiento en silencio es justo la falla que esto viene a evitar.
-		setFlag(next, keyAskDiscarded)
+		conversation.SetFlag(next, conversation.KeyAskDiscarded)
 	}
 	return next
 }
@@ -158,11 +158,11 @@ func encodeOpenQuestions(questions []pendingaction.OpenQuestion) string {
 
 func decodeOpenQuestions(data conversation.Data) []pendingaction.OpenQuestion {
 	var questions []pendingaction.OpenQuestion
-	_ = json.Unmarshal([]byte(stringOrEmpty(data[keyOpenQuestions])), &questions)
+	_ = json.Unmarshal([]byte(conversation.StringOrEmpty(data[conversation.KeyOpenQuestions])), &questions)
 	return questions
 }
 
 func askBudget(data conversation.Data) int {
-	n, _ := strconv.Atoi(stringOrEmpty(data[keyAskBudget]))
+	n, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyAskBudget]))
 	return n
 }

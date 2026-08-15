@@ -57,15 +57,15 @@ func newTargetEngine() (*conversation.Engine, *fakeStateStore) {
 
 func targetSeed(count string, withSuggestion bool) conversation.Data {
 	seed := conversation.Data{
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
-		keyMovementCount:       count,
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
+		conversation.KeyMovementCount:       count,
 	}
 	if withSuggestion {
-		seed[keySuggestedSubcategoryID] = "3"
-		seed[keySuggestedCategory] = "Alimentos"
-		seed[keySuggestedSubcategory] = "Delivery"
+		seed[conversation.KeySuggestedSubcategoryID] = "3"
+		seed[conversation.KeySuggestedCategory] = "Alimentos"
+		seed[conversation.KeySuggestedSubcategory] = "Delivery"
 	}
 	return seed
 }
@@ -149,14 +149,14 @@ func TestTargetFlow_AcceptSuggestion_SetsTargetAndGoesToConfirm(t *testing.T) {
 	if store.stepName != stepConfirmCategoryManage {
 		t.Fatalf("stepName = %q, want %q", store.stepName, stepConfirmCategoryManage)
 	}
-	if store.data[keyTargetSubcategoryID] != "3" {
-		t.Errorf("target id = %v, want \"3\"", store.data[keyTargetSubcategoryID])
+	if store.data[conversation.KeyTargetSubcategoryID] != "3" {
+		t.Errorf("target id = %v, want \"3\"", store.data[conversation.KeyTargetSubcategoryID])
 	}
-	if store.data[keyTargetCategory] != "Alimentos" {
-		t.Errorf("target category = %v, want Alimentos", store.data[keyTargetCategory])
+	if store.data[conversation.KeyTargetCategory] != "Alimentos" {
+		t.Errorf("target category = %v, want Alimentos", store.data[conversation.KeyTargetCategory])
 	}
-	if store.data[keyTargetOrigin] != targetOriginSuggested {
-		t.Errorf("target origin = %v, want %q", store.data[keyTargetOrigin], targetOriginSuggested)
+	if store.data[conversation.KeyTargetOrigin] != targetOriginSuggested {
+		t.Errorf("target origin = %v, want %q", store.data[conversation.KeyTargetOrigin], targetOriginSuggested)
 	}
 }
 
@@ -214,11 +214,11 @@ func TestTargetFlow_ManualPick_SetsTargetWithManualOrigin(t *testing.T) {
 	if store.stepName != stepConfirmCategoryManage {
 		t.Fatalf("stepName = %q, want %q", store.stepName, stepConfirmCategoryManage)
 	}
-	if store.data[keyTargetSubcategoryID] != "3" {
-		t.Errorf("target id = %v, want \"3\"", store.data[keyTargetSubcategoryID])
+	if store.data[conversation.KeyTargetSubcategoryID] != "3" {
+		t.Errorf("target id = %v, want \"3\"", store.data[conversation.KeyTargetSubcategoryID])
 	}
-	if store.data[keyTargetOrigin] != targetOriginManual {
-		t.Errorf("target origin = %v, want %q", store.data[keyTargetOrigin], targetOriginManual)
+	if store.data[conversation.KeyTargetOrigin] != targetOriginManual {
+		t.Errorf("target origin = %v, want %q", store.data[conversation.KeyTargetOrigin], targetOriginManual)
 	}
 }
 
@@ -229,8 +229,8 @@ func TestTargetFlow_BackFromConfirm_ClearsTarget(t *testing.T) {
 	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
 	engine.Handle(1, conversation.Input{CallbackData: optionAcceptSuggestion})
 
-	if store.data[keyTargetSubcategoryID] != "3" {
-		t.Fatalf("precondición: el destino debería estar seteado, got %v", store.data[keyTargetSubcategoryID])
+	if store.data[conversation.KeyTargetSubcategoryID] != "3" {
+		t.Fatalf("precondición: el destino debería estar seteado, got %v", store.data[conversation.KeyTargetSubcategoryID])
 	}
 	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionBack}); err != nil {
 		t.Fatalf("Handle back: %v", err)
@@ -238,10 +238,10 @@ func TestTargetFlow_BackFromConfirm_ClearsTarget(t *testing.T) {
 	if store.stepName != stepSuggestTarget {
 		t.Errorf("stepName = %q, want %q", store.stepName, stepSuggestTarget)
 	}
-	if got := stringOrEmpty(store.data[keyTargetSubcategoryID]); got != "" {
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategoryID]); got != "" {
 		t.Errorf("target id = %q tras Atrás, want vacío", got)
 	}
-	if got := stringOrEmpty(store.data[keyTargetOrigin]); got != "" {
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetOrigin]); got != "" {
 		t.Errorf("target origin = %q tras Atrás, want vacío", got)
 	}
 }
@@ -255,7 +255,7 @@ func TestTargetFlow_ChooseOtherAfterAccept_ClearsTarget(t *testing.T) {
 	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionChooseOther}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if got := stringOrEmpty(store.data[keyTargetSubcategoryID]); got != "" {
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategoryID]); got != "" {
 		t.Errorf("target id = %q, want vacío tras elegir otra", got)
 	}
 }
@@ -286,10 +286,10 @@ func TestTargetFlow_Confirm_FinishesConfirmed(t *testing.T) {
 	if !result.Finished {
 		t.Fatal("confirmar debería terminar el flujo")
 	}
-	if !flag(result.Data, keyConfirmed) {
-		t.Error("confirmar debería marcar keyConfirmed")
+	if !conversation.Flag(result.Data, conversation.KeyConfirmed) {
+		t.Error("confirmar debería marcar conversation.KeyConfirmed")
 	}
-	if flag(result.Data, keyCancelled) {
+	if conversation.Flag(result.Data, conversation.KeyCancelled) {
 		t.Error("confirmar no debería marcar cancelado")
 	}
 }
@@ -302,10 +302,10 @@ func TestTargetFlow_CancelAtConfirm_MarksCancelledNotConfirmed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if !flag(result.Data, keyCancelled) {
-		t.Error("cancelar debería marcar keyCancelled")
+	if !conversation.Flag(result.Data, conversation.KeyCancelled) {
+		t.Error("cancelar debería marcar conversation.KeyCancelled")
 	}
-	if flag(result.Data, keyConfirmed) {
+	if conversation.Flag(result.Data, conversation.KeyConfirmed) {
 		t.Error("cancelar no debería marcar confirmado")
 	}
 }
@@ -318,8 +318,8 @@ func TestTargetFlow_CancelAtSuggest_MarksCancelled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if !flag(result.Data, keyCancelled) {
-		t.Error("cancelar en la sugerencia debería marcar keyCancelled")
+	if !conversation.Flag(result.Data, conversation.KeyCancelled) {
+		t.Error("cancelar en la sugerencia debería marcar conversation.KeyCancelled")
 	}
 }
 
@@ -366,10 +366,10 @@ func TestProceedToCategoryTarget_ZeroCountSkipsOrchestrator(t *testing.T) {
 	}
 
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
 	}
 	if err := c.proceedToCategoryTarget(context.Background(), nil, 100, data); err != nil {
 		t.Fatalf("proceedToCategoryTarget: %v", err)
@@ -377,8 +377,8 @@ func TestProceedToCategoryTarget_ZeroCountSkipsOrchestrator(t *testing.T) {
 	if orch.calls != 0 {
 		t.Errorf("llamó al orquestador %d veces con conteo 0, want 0", orch.calls)
 	}
-	if store.data[keyMovementCount] != "0" {
-		t.Errorf("movement_count = %v, want \"0\"", store.data[keyMovementCount])
+	if store.data[conversation.KeyMovementCount] != "0" {
+		t.Errorf("movement_count = %v, want \"0\"", store.data[conversation.KeyMovementCount])
 	}
 	// y con conteo 0 el flujo 2 tiene que haber saltado directo al confirm
 	if store.stepName != stepConfirmCategoryManage {
@@ -403,10 +403,10 @@ func TestProceedToCategoryTarget_PositiveCountSeedsSuggestion(t *testing.T) {
 	}
 
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
 	}
 	if err := c.proceedToCategoryTarget(context.Background(), nil, 100, data); err != nil {
 		t.Fatalf("proceedToCategoryTarget: %v", err)
@@ -414,11 +414,11 @@ func TestProceedToCategoryTarget_PositiveCountSeedsSuggestion(t *testing.T) {
 	if orch.calls != 1 {
 		t.Errorf("llamó al orquestador %d veces, want 1", orch.calls)
 	}
-	if store.data[keyMovementCount] != "3" {
-		t.Errorf("movement_count = %v, want \"3\"", store.data[keyMovementCount])
+	if store.data[conversation.KeyMovementCount] != "3" {
+		t.Errorf("movement_count = %v, want \"3\"", store.data[conversation.KeyMovementCount])
 	}
-	if store.data[keySuggestedSubcategoryID] != "3" {
-		t.Errorf("suggested id = %v, want \"3\"", store.data[keySuggestedSubcategoryID])
+	if store.data[conversation.KeySuggestedSubcategoryID] != "3" {
+		t.Errorf("suggested id = %v, want \"3\"", store.data[conversation.KeySuggestedSubcategoryID])
 	}
 	if store.stepName != stepSuggestTarget {
 		t.Errorf("stepName = %q, want %q", store.stepName, stepSuggestTarget)
@@ -437,10 +437,10 @@ func TestProceedToCategoryTarget_OrchestratorErrorStillStartsFlow(t *testing.T) 
 	}
 
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
 	}
 	if err := c.proceedToCategoryTarget(context.Background(), nil, 100, data); err != nil {
 		t.Fatalf("un fallo del LLM no debería romper el flujo: %v", err)
@@ -462,8 +462,8 @@ func TestProceedToCategoryTarget_CountErrorReturnsError(t *testing.T) {
 	}
 
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
 	}
 	if err := c.proceedToCategoryTarget(context.Background(), nil, 100, data); err == nil {
 		t.Error("un error al contar debería propagarse")
@@ -494,11 +494,11 @@ func TestTargetFlow_BackFromConfirm_ManualPath_KeepsCategoryAndListsOptions(t *t
 	if store.stepName != stepPickTargetSubcategory {
 		t.Fatalf("stepName = %q, want %q", store.stepName, stepPickTargetSubcategory)
 	}
-	if got := stringOrEmpty(store.data[keyTargetCategory]); got != "Alimentos" {
-		t.Errorf("keyTargetCategory = %q tras Atrás, want %q conservada", got, "Alimentos")
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetCategory]); got != "Alimentos" {
+		t.Errorf("conversation.KeyTargetCategory = %q tras Atrás, want %q conservada", got, "Alimentos")
 	}
-	if got := stringOrEmpty(store.data[keyTargetSubcategoryID]); got != "" {
-		t.Errorf("keyTargetSubcategoryID = %q tras Atrás, want vacío", got)
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategoryID]); got != "" {
+		t.Errorf("conversation.KeyTargetSubcategoryID = %q tras Atrás, want vacío", got)
 	}
 
 	// lo que realmente importa: el picker tiene algo para elegir
@@ -563,8 +563,8 @@ func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
 
 	engine.Handle(1, conversation.Input{CallbackData: "3"})
 
-	id := stringOrEmpty(store.data[keyTargetSubcategoryID])
-	name := stringOrEmpty(store.data[keyTargetSubcategory])
+	id := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategoryID])
+	name := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategory])
 	if id != "" && name == "" {
 		t.Errorf("destino a medias: ID=%q sin nombre — el confirm mostraría «Alimentos › »", id)
 	}

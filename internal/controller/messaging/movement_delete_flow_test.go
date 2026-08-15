@@ -42,7 +42,7 @@ func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
 	engine.Register(NewMovementDeleteFlow())
 
 	seed := conversation.Data{
-		"candidate_labels": encodeStringSlice([]string{"🔴 3000 ARS · Café", "🔴 3200 ARS · Café"}),
+		"candidate_labels": conversation.EncodeStringSlice([]string{"🔴 3000 ARS · Café", "🔴 3200 ARS · Café"}),
 		"candidate_groups": encodeCandidateGroups(
 			[]transactionGroup{
 				{Movements: []movement.Movement{{}}},

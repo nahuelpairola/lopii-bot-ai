@@ -14,12 +14,12 @@ import (
 func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	userID := data.UserID()
 
-	if flag(data, keyCancelled) {
+	if conversation.Flag(data, conversation.KeyCancelled) {
 		c.sendText(ctx, b, chatID, msgReminderCancelled)
 		return
 	}
 
-	switch stringOrEmpty(data[reminderActionKey]) {
+	switch conversation.StringOrEmpty(data[reminderActionKey]) {
 	case reminderActionOff:
 		if err := c.reminders.Disable(userID); err != nil {
 			c.sendText(ctx, b, chatID, msgCouldNotSave("tu recordatorio"))
@@ -45,8 +45,8 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 		return
 
 	case reminderActionWeeklyOnly:
-		on := flag(data, keyWeeklySummary)
-		if on && !flag(data, keyHubHasRow) {
+		on := conversation.Flag(data, conversation.KeyWeeklySummary)
+		if on && !conversation.Flag(data, keyHubHasRow) {
 			// no row yet: SetWeeklySummary is UPDATE-only and would no-op.
 			// Create a minimal weekly-only row (daily disabled).
 			if err := c.reminders.Upsert(&reminder.Reminder{
@@ -74,10 +74,10 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 
 	// set: a preset stored start/end mins directly; the custom path stored raw
 	// text validated by parseWindow, so re-parsing here cannot fail.
-	startMin, err := strconv.Atoi(stringOrEmpty(data[reminderStartKey]))
-	endMin, err2 := strconv.Atoi(stringOrEmpty(data[reminderEndKey]))
+	startMin, err := strconv.Atoi(conversation.StringOrEmpty(data[reminderStartKey]))
+	endMin, err2 := strconv.Atoi(conversation.StringOrEmpty(data[reminderEndKey]))
 	if err != nil || err2 != nil {
-		startMin, endMin, err = parseWindow(stringOrEmpty(data[reminderCustomKey]))
+		startMin, endMin, err = parseWindow(conversation.StringOrEmpty(data[reminderCustomKey]))
 		if err != nil {
 			c.sendText(ctx, b, chatID, msgSomethingBroke)
 			return
@@ -89,7 +89,7 @@ func (c *controller) finishReminderSetup(ctx context.Context, b *bot.Bot, chatID
 		WindowStartMin:       startMin,
 		WindowEndMin:         endMin,
 		Enabled:              true,
-		WeeklySummaryEnabled: flag(data, keyWeeklySummary),
+		WeeklySummaryEnabled: conversation.Flag(data, conversation.KeyWeeklySummary),
 	}); err != nil {
 		c.sendText(ctx, b, chatID, msgCouldNotSave("tu recordatorio"))
 		return

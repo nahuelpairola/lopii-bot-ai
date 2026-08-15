@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"lopiibot.com/internal/constants"
+	"lopiibot.com/internal/movement"
 )
 
 // changeField y changeOp son el vocabulario de una corrección estructurada: el
@@ -80,7 +81,7 @@ func defaultChangeOps(changes []correctionChange) {
 // La aritmética vive acá y no en el modelo: el modelo dice "restá 100", la app
 // calcula el 900. Esa es la misma regla que ya gobierna el signo — la app posee
 // la escritura, el modelo posee la interpretación.
-func applyChange(row movementRow, ch correctionChange) (movementRow, error) {
+func applyChange(row movement.MovementRow, ch correctionChange) (movement.MovementRow, error) {
 	if ch.Op != opSet && ch.Field != fieldAmount {
 		return row, fmt.Errorf("%w: %s con %s", errOpNotForField, ch.Field, ch.Op)
 	}
@@ -114,12 +115,12 @@ func applyChange(row movementRow, ch correctionChange) (movementRow, error) {
 	return row, nil
 }
 
-func applyAmountChange(row movementRow, ch correctionChange) (movementRow, error) {
-	cur, err := parseARAmount(row.Amount)
+func applyAmountChange(row movement.MovementRow, ch correctionChange) (movement.MovementRow, error) {
+	cur, err := movement.ParseARAmount(row.Amount)
 	if err != nil {
 		return row, errUnparseableValue
 	}
-	val, err := parseARAmount(ch.Value)
+	val, err := movement.ParseARAmount(ch.Value)
 	if err != nil {
 		return row, errUnparseableValue
 	}

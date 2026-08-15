@@ -81,11 +81,11 @@ func (c *controller) startSubcategorySetup(ctx context.Context, b *bot.Bot, chat
 		icon = "" // insertNewSubcategory falls back to IconForCategory / 📂
 	}
 	seed := conversation.Data{
-		keyCategory:               p.Category,
-		keyCategoryIsNew:          isNew,
-		keyCategoryIcon:           icon,
-		keySubcategory:            p.Subcategory,
-		keySubcategoryDescription: strings.TrimSpace(p.Description),
+		conversation.KeyCategory:               p.Category,
+		conversation.KeyCategoryIsNew:          isNew,
+		conversation.KeyCategoryIcon:           icon,
+		conversation.KeySubcategory:            p.Subcategory,
+		conversation.KeySubcategoryDescription: strings.TrimSpace(p.Description),
 	}
 	prompt, err := c.engine.StartWithData(userID, categoryProposalConfirmFlowName, seed)
 	if err != nil {
@@ -122,10 +122,10 @@ func (c *controller) startCategoryManage(ctx context.Context, b *bot.Bot, chatID
 // existing taxonomy row.
 func (c *controller) startCategoryMatchOffer(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, s *subcategory.Subcategory) error {
 	seed := conversation.Data{
-		keyCategory:               s.Category,
-		keySubcategory:            s.Subcategory,
-		keySubcategoryDescription: s.Description,
-		keyCategoryIcon:           s.Icon,
+		conversation.KeyCategory:               s.Category,
+		conversation.KeySubcategory:            s.Subcategory,
+		conversation.KeySubcategoryDescription: s.Description,
+		conversation.KeyCategoryIcon:           s.Icon,
 	}
 	prompt, err := c.engine.StartWithData(userID, categoryMatchOfferFlowName, seed)
 	if err != nil {

@@ -19,9 +19,9 @@ func newAskUserTestEngine(t *testing.T) *conversation.Engine {
 func askSeed(t *testing.T, budget int, questions ...pendingaction.OpenQuestion) conversation.Data {
 	t.Helper()
 	return conversation.Data{
-		keyActionID:      "7",
-		keyOpenQuestions: encodeOpenQuestions(questions),
-		keyAskBudget:     strconv.Itoa(budget),
+		conversation.KeyActionID:      "7",
+		conversation.KeyOpenQuestions: encodeOpenQuestions(questions),
+		conversation.KeyAskBudget:     strconv.Itoa(budget),
 	}
 }
 
@@ -146,10 +146,10 @@ func TestAskUser_CancelMarksCancelled(t *testing.T) {
 	if err != nil || !res.Finished {
 		t.Fatalf("cancel: res=%+v err=%v", res, err)
 	}
-	if !flag(res.Data, keyCancelled) {
+	if !conversation.Flag(res.Data, conversation.KeyCancelled) {
 		t.Errorf("cancelar tiene que dejar la marca: %+v", res.Data)
 	}
-	if flag(res.Data, keyAskDiscarded) {
+	if conversation.Flag(res.Data, conversation.KeyAskDiscarded) {
 		t.Errorf("cancelar NO es lo mismo que quedarse sin presupuesto: %+v", res.Data)
 	}
 }
@@ -187,10 +187,10 @@ func TestAskUser_BudgetExhaustedDiscardsWhole(t *testing.T) {
 	if !res.Finished {
 		t.Fatal("agotado el presupuesto el flujo termina, no sigue preguntando")
 	}
-	if !flag(res.Data, keyAskDiscarded) {
+	if !conversation.Flag(res.Data, conversation.KeyAskDiscarded) {
 		t.Errorf("falta la marca de descarte: %+v", res.Data)
 	}
-	if flag(res.Data, keyCancelled) {
+	if conversation.Flag(res.Data, conversation.KeyCancelled) {
 		t.Errorf("quedarse sin presupuesto NO es que el usuario cancele: %+v", res.Data)
 	}
 	// Lo que sí se contestó tiene que seguir ahí: Task 4 nombra lo que se cae.

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 )
@@ -79,8 +80,8 @@ func twoCandidateAction(t *testing.T) parkedAction {
 		Payload: agentPayload{
 			Change: "eran 2000",
 			Candidates: []candidateGroup{
-				{TransactionID: "", OldIDs: []string{"10"}, Rows: []movementRow{{Amount: "3000", Currency: "ARS"}}},
-				{TransactionID: "", OldIDs: []string{"11"}, Rows: []movementRow{{Amount: "5000", Currency: "ARS"}}},
+				{TransactionID: "", OldIDs: []string{"10"}, Rows: []movement.MovementRow{{Amount: "3000", Currency: "ARS"}}},
+				{TransactionID: "", OldIDs: []string{"11"}, Rows: []movement.MovementRow{{Amount: "5000", Currency: "ARS"}}},
 			},
 			Chosen: -1,
 		},
@@ -138,9 +139,9 @@ func TestDrain_OpensExactlyOneAtATime(t *testing.T) {
 // gap-fill, no el gap-fill.
 func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
 	seed := conversation.Data{
-		keyMovements:           encodeMovementRows([]movementRow{{Type: "expense", Amount: "5000", Currency: "ARS"}}),
-		keyPendingCategoryGaps: encodeStringSlice([]string{"0"}),
-		keyPendingAccountGaps:  encodeStringSlice(nil),
+		conversation.KeyMovements:           movement.EncodeMovementRows([]movement.MovementRow{{Type: "expense", Amount: "5000", Currency: "ARS"}}),
+		conversation.KeyPendingCategoryGaps: conversation.EncodeStringSlice([]string{"0"}),
+		conversation.KeyPendingAccountGaps:  conversation.EncodeStringSlice(nil),
 	}
 	repo := &fakeActionsRepo{}
 	c := newDispatchController(t, repo)
@@ -255,7 +256,7 @@ func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 	action := &pendingaction.PendingAction{
 		UserID: 1, Tool: orchestrator.ToolDeleteMovements,
 		Payload: mustJSON(t, agentPayload{
-			Candidates: []candidateGroup{{OldIDs: []string{"10"}, Rows: []movementRow{{Amount: "3000", Currency: "ARS", Type: "expense"}}}},
+			Candidates: []candidateGroup{{OldIDs: []string{"10"}, Rows: []movement.MovementRow{{Amount: "3000", Currency: "ARS", Type: "expense"}}}},
 			Chosen:     0,
 		}),
 		Questions: []byte(`[]`),
@@ -301,7 +302,7 @@ func TestOpenAction_RefusesAMismatchedID(t *testing.T) {
 	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
-	data := conversation.Data{conversation.UserIDKey: uint64(1), keyActionID: "999"}
+	data := conversation.Data{conversation.UserIDKey: uint64(1), conversation.KeyActionID: "999"}
 	if _, err := c.openAction(1, data); err == nil {
 		t.Fatal("un id que no coincide con la cabeza de la cola no puede resolverse")
 	}
@@ -314,8 +315,8 @@ func TestOpenAction_MatchesTheQueueHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keyActionID:            strconv.FormatUint(repo.rows[0].ID, 10),
+		conversation.UserIDKey:   uint64(1),
+		conversation.KeyActionID: strconv.FormatUint(repo.rows[0].ID, 10),
 	}
 	got, err := c.openAction(1, data)
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -55,19 +56,19 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 		curs = append(curs, a.Currency.String())
 	}
 	seed := conversation.Data{
-		keyMessage:             text,
-		keyCandidateIDs:        encodeStringSlice(ids),
-		keyCandidateLabels:     encodeStringSlice(labels),
-		keyCandidateNames:      encodeStringSlice(names),
-		keyCandidateCurrencies: encodeStringSlice(curs),
+		conversation.KeyMessage:             text,
+		conversation.KeyCandidateIDs:        conversation.EncodeStringSlice(ids),
+		conversation.KeyCandidateLabels:     conversation.EncodeStringSlice(labels),
+		conversation.KeyCandidateNames:      conversation.EncodeStringSlice(names),
+		conversation.KeyCandidateCurrencies: conversation.EncodeStringSlice(curs),
 	}
 	if res.MatchedAccountID != nil {
 		// never trust an LLM id blindly — it must exist in the user's list
 		for _, a := range accs {
 			if uint64(a.ID) == *res.MatchedAccountID {
-				seed[keyAccountID] = strconv.FormatUint(uint64(a.ID), 10)
-				seed[keyAccountName] = a.Name
-				seed[keyAccountCurrency] = a.Currency.String()
+				seed[conversation.KeyAccountID] = strconv.FormatUint(uint64(a.ID), 10)
+				seed[conversation.KeyAccountName] = a.Name
+				seed[conversation.KeyAccountCurrency] = a.Currency.String()
 				break
 			}
 		}
@@ -99,10 +100,10 @@ func (c *controller) accountCreateSeed(ctx context.Context, text string) convers
 	}
 	d := res.Accounts[0]
 	if d.Name != "" {
-		seed[keyAccountName] = d.Name
+		seed[conversation.KeyAccountName] = d.Name
 	}
-	if amt, err := parseARAmount(d.Balance); err == nil && !amt.IsNegative() {
-		seed[keyAccountBalance] = d.Balance
+	if amt, err := movement.ParseARAmount(d.Balance); err == nil && !amt.IsNegative() {
+		seed[conversation.KeyAccountBalance] = d.Balance
 	}
 	return seed
 }

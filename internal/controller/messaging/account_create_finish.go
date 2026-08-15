@@ -19,14 +19,14 @@ import (
 // which already guarantees default ARS/USD wallets exist) and one opening
 // transfer movement, mirroring insertInitialBalanceMovements.
 func (c *controller) finishAccountCreateFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if flag(data, keyCancelled) {
+	if conversation.Flag(data, conversation.KeyCancelled) {
 		c.sendText(ctx, b, chatID, msgAccountCreateCancelled)
 		return
 	}
 
-	name := stringOrEmpty(data[keyAccountName])
-	cur := stringOrEmpty(data[keyAccountCurrency])
-	balance := stringOrEmpty(data[keyAccountBalance])
+	name := conversation.StringOrEmpty(data[conversation.KeyAccountName])
+	cur := conversation.StringOrEmpty(data[conversation.KeyAccountCurrency])
+	balance := conversation.StringOrEmpty(data[conversation.KeyAccountBalance])
 
 	newAccount := &account.Account{
 		UserID:   data.UserID(),
@@ -76,7 +76,7 @@ func (c *controller) insertAccountOpeningMovement(acc *account.Account, balanceT
 	if err != nil {
 		return err
 	}
-	amount, err := parseARAmount(balanceText)
+	amount, err := movement.ParseARAmount(balanceText)
 	if err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func (c *controller) insertAccountOpeningMovement(acc *account.Account, balanceT
 		UserID:        acc.UserID,
 		AccountID:     &accountID,
 		SubcategoryID: uint64(sub.ID),
-		Date:          todayCivil(),
+		Date:          movement.TodayCivil(),
 		Type:          movement.Transfer,
 		Amount:        amount,
 		Currency:      acc.Currency,

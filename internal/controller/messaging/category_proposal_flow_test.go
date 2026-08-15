@@ -33,10 +33,10 @@ func TestCategoryProposalConfirm_ConfirmFinishesWithSeed(t *testing.T) {
 	if err != nil || !found || !res.Finished {
 		t.Fatalf("confirm: res=%+v found=%v err=%v", res, found, err)
 	}
-	if stringOrEmpty(res.Data["category"]) != "Regalos" || stringOrEmpty(res.Data["subcategory_description"]) != "Regalos a terceros." {
+	if conversation.StringOrEmpty(res.Data["category"]) != "Regalos" || conversation.StringOrEmpty(res.Data["subcategory_description"]) != "Regalos a terceros." {
 		t.Errorf("seed lost on finish: %+v", res.Data)
 	}
-	if stringOrEmpty(res.Data["edit_proposal"]) == "true" || stringOrEmpty(res.Data["cancelled"]) == "true" {
+	if conversation.StringOrEmpty(res.Data["edit_proposal"]) == "true" || conversation.StringOrEmpty(res.Data["cancelled"]) == "true" {
 		t.Errorf("confirm must not set edit/cancel markers: %+v", res.Data)
 	}
 }
@@ -51,7 +51,7 @@ func TestCategoryProposalConfirm_EditSetsMarker(t *testing.T) {
 	if err != nil || !res.Finished {
 		t.Fatalf("edit: res=%+v err=%v", res, err)
 	}
-	if stringOrEmpty(res.Data["edit_proposal"]) != "true" {
+	if conversation.StringOrEmpty(res.Data["edit_proposal"]) != "true" {
 		t.Errorf("edit_proposal marker not set: %+v", res.Data)
 	}
 }
@@ -74,7 +74,7 @@ func TestCategoryMatchOffer_UseExistingAndCreateNew(t *testing.T) {
 	if err != nil || !res.Finished {
 		t.Fatalf("use_existing: res=%+v err=%v", res, err)
 	}
-	if stringOrEmpty(res.Data["match_choice"]) != optionUseExisting {
+	if conversation.StringOrEmpty(res.Data["match_choice"]) != optionUseExisting {
 		t.Errorf("match_choice = %q, want %q", res.Data["match_choice"], optionUseExisting)
 	}
 
@@ -86,7 +86,7 @@ func TestCategoryMatchOffer_UseExistingAndCreateNew(t *testing.T) {
 	if err != nil || !res2.Finished {
 		t.Fatalf("create_new: res=%+v err=%v", res2, err)
 	}
-	if stringOrEmpty(res2.Data["match_choice"]) != optionCreateNew {
+	if conversation.StringOrEmpty(res2.Data["match_choice"]) != optionCreateNew {
 		t.Errorf("match_choice = %q, want %q", res2.Data["match_choice"], optionCreateNew)
 	}
 }
@@ -102,7 +102,7 @@ func TestCategoryFlows_CancelSetsCancelled(t *testing.T) {
 		if err != nil || !res.Finished {
 			t.Fatalf("%s cancel: res=%+v err=%v", flow, res, err)
 		}
-		if stringOrEmpty(res.Data["cancelled"]) != "true" {
+		if conversation.StringOrEmpty(res.Data["cancelled"]) != "true" {
 			t.Errorf("%s: cancelled marker not set: %+v", flow, res.Data)
 		}
 	}

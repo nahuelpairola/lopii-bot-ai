@@ -24,13 +24,13 @@ func NewMovementDeleteFlow() *conversation.Flow {
 		stepPickDeleteCandidate: conversation.ChoiceStep{
 			PromptText: msgPickDeleteCandidate,
 			SkipIf: func(data conversation.Data) (string, bool) {
-				if stringOrEmpty(data[keyResolvedIndex]) != "" {
+				if conversation.StringOrEmpty(data[conversation.KeyResolvedIndex]) != "" {
 					return stepConfirmDelete, true
 				}
 				return "", false
 			},
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				labels := decodeStringSlice(data, keyCandidateLabels)
+				labels := conversation.DecodeStringSlice(data, conversation.KeyCandidateLabels)
 				opts := make([]conversation.ChoiceOption, 0, len(labels))
 				for i, label := range labels {
 					opts = append(opts, conversation.ChoiceOption{
@@ -43,8 +43,8 @@ func NewMovementDeleteFlow() *conversation.Flow {
 			},
 			DeclaredNextSteps: []string{stepConfirmDelete},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				next := copyData(data)
-				next[keyResolvedIndex] = value
+				next := conversation.CopyData(data)
+				next[conversation.KeyResolvedIndex] = value
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -56,8 +56,8 @@ func NewMovementDeleteFlow() *conversation.Flow {
 				{Label: "❌ Cancelar", Value: "cancel", Finish: true},
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				next := copyData(data)
-				next[keyConfirmed] = strconv.FormatBool(value == optionConfirm)
+				next := conversation.CopyData(data)
+				next[conversation.KeyConfirmed] = strconv.FormatBool(value == optionConfirm)
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -74,7 +74,7 @@ func NewMovementDeleteFlow() *conversation.Flow {
 // finishMovementDeleteFlow applies (or discards) the delete depending
 // on which button the user pressed.
 func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if !flag(data, keyConfirmed) {
+	if !conversation.Flag(data, conversation.KeyConfirmed) {
 		c.resolveMetric(ctx, data.UserID(), outcomeDeleteCancelled)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgDeleteCancelled})
@@ -82,7 +82,7 @@ func (c *controller) finishMovementDeleteFlow(ctx context.Context, b *bot.Bot, c
 		return
 	}
 
-	idx, err := strconv.Atoi(stringOrEmpty(data[keyResolvedIndex]))
+	idx, err := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyResolvedIndex]))
 	candidates := decodeCandidateGroups(data)
 	if err != nil || idx < 0 || idx >= len(candidates) {
 		if b != nil {

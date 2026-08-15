@@ -123,7 +123,7 @@ func TestMovementToRow_EmitsAbsAmount(t *testing.T) {
 }
 
 func TestRowToDraft_RoundTripsAccountID(t *testing.T) {
-	row := movementRow{Type: "transfer", Amount: "100", Currency: "USD", AccountID: "5"}
+	row := movement.MovementRow{Type: "transfer", Amount: "100", Currency: "USD", AccountID: "5"}
 	draft := rowToDraft(row)
 	if draft.AccountID == nil || *draft.AccountID != 5 {
 		t.Errorf("draft.AccountID = %v, want 5", draft.AccountID)
@@ -170,7 +170,7 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(7, currency.ARS, false)}}
 	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
 
-	beforeRows := []movementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
+	beforeRows := []movement.MovementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
 	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, changeAsk{}); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	}
 
 	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
-		"estaba mal", "", []string{"10"}, []movementRow{{Amount: "3000", Currency: "ARS", Description: "café"}}, changeAsk{})
+		"estaba mal", "", []string{"10"}, []movement.MovementRow{{Amount: "3000", Currency: "ARS", Description: "café"}}, changeAsk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +253,7 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 // real el usuario contestó "El monto" — el campo, que es justo lo que no sirve:
 // ResolveUpdate necesita con qué reemplazar, y la corrección murió ahí.
 func TestMsgAskWhatToChange_AsksForTheValueNotTheField(t *testing.T) {
-	got := msgAskWhatToChange([]movementRow{{Amount: "1800", Description: "Cafe"}})
+	got := msgAskWhatToChange([]movement.MovementRow{{Amount: "1800", Description: "Cafe"}})
 
 	if !strings.Contains(got, "Cuánto era") {
 		t.Errorf("no pide el valor nuevo: %q", got)
@@ -279,7 +279,7 @@ func TestMsgAskWhatToChange_AsksForTheValueNotTheField(t *testing.T) {
 //
 // El chequeo no puede depender de que el modelo se declare incapaz.
 func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
-	before := []movementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
+	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Date: "2026-08-01", Description: "Cafe"}}
 	actions := &fakeActionsRepo{}
 	store := &fakeStoreForController{}
@@ -328,7 +328,7 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 
 	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
 		"El café estaba mal La categoría", "", []string{"127"},
-		[]movementRow{{Amount: "1800", Description: "Cafe"}},
+		[]movement.MovementRow{{Amount: "1800", Description: "Cafe"}},
 		changeAsk{pickedField: true})
 	if err != nil {
 		t.Fatal(err)
@@ -351,11 +351,11 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 }
 
 // TestUpdate_AmountAnswerSkipsTheModel: preguntamos "¿Cuánto era?" y contestó
-// un número. No queda nada que interpretar — parseARAmount ya lo sabe leer— así
+// un número. No queda nada que interpretar — movement.ParseARAmount ya lo sabe leer— así
 // que la corrección se arma del lado de la app. Mandárselo al modelo costaba
 // ~1.500 tokens para que copiara el número.
 func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
-	before := []movementRow{{Type: "expense", Amount: "1800", Currency: "ARS", AccountID: "46",
+	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS", AccountID: "46",
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Description: "Cafe"}}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
@@ -374,7 +374,7 @@ func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 	if store.flowName != movementUpdateConfirmFlowName {
 		t.Fatalf("tenía que abrir el confirm, abrió %q", store.flowName)
 	}
-	after := decodeMovementRows(store.data)
+	after := movement.DecodeMovementRows(store.data)
 	if len(after) != 1 || after[0].Amount != "2000" {
 		t.Fatalf("el monto nuevo no llegó: %+v", after)
 	}
@@ -389,11 +389,11 @@ func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 // del atajo son todas necesarias. Cualquiera que falte vuelve al camino con
 // modelo, que es el que sabe interpretar.
 func TestAmountOnlyCorrection_FallsBackWhenItIsNotJustTheAmount(t *testing.T) {
-	one := []movementRow{{Amount: "1800", Currency: "ARS"}}
-	two := []movementRow{{Amount: "1800"}, {Amount: "1800"}}
+	one := []movement.MovementRow{{Amount: "1800", Currency: "ARS"}}
+	two := []movement.MovementRow{{Amount: "1800"}, {Amount: "1800"}}
 
 	for name, tc := range map[string]struct {
-		rows []movementRow
+		rows []movement.MovementRow
 		ask  changeAsk
 	}{
 		"tocó un botón, el campo no es el monto": {one, changeAsk{gaveValue: true, pickedField: true, answer: "2000"}},
@@ -412,7 +412,7 @@ func TestAmountOnlyCorrection_FallsBackWhenItIsNotJustTheAmount(t *testing.T) {
 // TAMPOCO sale una corrección, se corta. Sin esto cada vuelta parkea una acción
 // nueva con presupuesto entero y el usuario gira para siempre.
 func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
-	before := []movementRow{{Type: "expense", Amount: "1800", Currency: "ARS", Description: "Cafe"}}
+	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS", Description: "Cafe"}}
 	actions := &fakeActionsRepo{}
 	metrics := &fakeMetricRepo{}
 	c := &controller{
@@ -442,7 +442,7 @@ func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
 // el modelo es "no lo tocó", pero uno distinto es un cambio de verdad y tiene
 // que pasar derecho al gate.
 func TestCorrectionIsNoOp_DetectsARealChange(t *testing.T) {
-	before := []movementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
+	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Description: "Cafe"}}
 
 	same := []orchestrator.MovementDraft{{Amount: "1800.00"}} // mismo monto, otro formato
@@ -504,31 +504,31 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 func TestCorrectionIsDeletion(t *testing.T) {
 	cases := []struct {
 		name    string
-		rows    []movementRow
+		rows    []movement.MovementRow
 		message string
 		want    bool
 	}{
 		{"empty set is not a deletion", nil, "salió 0", false},
-		{"single zero row deletes", []movementRow{{Amount: "0"}}, "en realidad fue 0", true},
-		{"zero with decimals deletes", []movementRow{{Amount: "0.00"}}, "0 pesos", true},
-		{"non-zero is a real correction", []movementRow{{Amount: "600"}}, "eran 600", false},
-		{"mixed zero and non-zero is not a deletion", []movementRow{{Amount: "0"}, {Amount: "500"}}, "poné 0 y 500", false},
-		{"unparseable amount is not a deletion", []movementRow{{Amount: ""}}, "gratis", false},
+		{"single zero row deletes", []movement.MovementRow{{Amount: "0"}}, "en realidad fue 0", true},
+		{"zero with decimals deletes", []movement.MovementRow{{Amount: "0.00"}}, "0 pesos", true},
+		{"non-zero is a real correction", []movement.MovementRow{{Amount: "600"}}, "eran 600", false},
+		{"mixed zero and non-zero is not a deletion", []movement.MovementRow{{Amount: "0"}, {Amount: "500"}}, "poné 0 y 500", false},
+		{"unparseable amount is not a deletion", []movement.MovementRow{{Amount: ""}}, "gratis", false},
 
 		// El caso que casi borra datos: el 2026-08-10 "Editá los movimientos de
 		// lote de hoy" no dice ningún cambio, el modelo devolvió montos en 0, y
 		// esto armó un borrado que el usuario confirmó. Sólo no borró porque la
 		// escritura falló — y ese accidente ya no está.
-		{"todo cero SIN monto en el mensaje NO borra", []movementRow{{Amount: "0"}, {Amount: "0"}},
+		{"todo cero SIN monto en el mensaje NO borra", []movement.MovementRow{{Amount: "0"}, {Amount: "0"}},
 			"Editá los movimientos de lote de hoy", false},
-		{"tampoco con un solo movimiento", []movementRow{{Amount: "0"}},
+		{"tampoco con un solo movimiento", []movement.MovementRow{{Amount: "0"}},
 			"editá el café", false},
 
 		// Las formas de decir "no salió nada" que no traen ningún dígito.
-		{"me lo regalaron", []movementRow{{Amount: "0"}}, "me regalaron el helado", true},
-		{"al final fue gratis", []movementRow{{Amount: "0"}}, "al final fue gratis", true},
-		{"no me cobraron nada", []movementRow{{Amount: "0"}}, "no me cobraron nada", true},
-		{"me invitaron, con acento de por medio", []movementRow{{Amount: "0"}}, "me invitó él", true},
+		{"me lo regalaron", []movement.MovementRow{{Amount: "0"}}, "me regalaron el helado", true},
+		{"al final fue gratis", []movement.MovementRow{{Amount: "0"}}, "al final fue gratis", true},
+		{"no me cobraron nada", []movement.MovementRow{{Amount: "0"}}, "no me cobraron nada", true},
+		{"me invitaron, con acento de por medio", []movement.MovementRow{{Amount: "0"}}, "me invitó él", true},
 	}
 	for _, tc := range cases {
 		if got := correctionIsDeletion(tc.rows, tc.message); got != tc.want {

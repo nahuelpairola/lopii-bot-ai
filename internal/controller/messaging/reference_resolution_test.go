@@ -311,7 +311,7 @@ func TestResolveCandidates_Fallback_SkipsSystemMovements(t *testing.T) {
 func TestCandidateLabel(t *testing.T) {
 	// Fecha construida como en produccion: parse de "YYYY-MM-DD", o sea
 	// medianoche UTC. Construirla con startOfTodayArgentina() -el mismo valor
-	// contra el que compara relativeDate- ocultaba el bug de huso que se vio en
+	// contra el que compara movement.RelativeDate- ocultaba el bug de huso que se vio en
 	// Telegram (un movimiento de hoy salia "ayer").
 	nowART := time.Now().In(constants.ArgentinaZone)
 	today, _ := time.Parse("2006-01-02", nowART.Format("2006-01-02"))
@@ -446,8 +446,8 @@ func TestRelativeDate_MovementDateIsCivilNotInstant(t *testing.T) {
 		{now.AddDate(0, 0, -4).Format("2006-01-02"), now.AddDate(0, 0, -4).Format("02/01")},
 	}
 	for _, tc := range cases {
-		if got := relativeDate(parseDay(tc.date)); got != tc.want {
-			t.Errorf("relativeDate(%s) = %q, want %q", tc.date, got, tc.want)
+		if got := movement.RelativeDate(parseDay(tc.date)); got != tc.want {
+			t.Errorf("movement.RelativeDate(%s) = %q, want %q", tc.date, got, tc.want)
 		}
 	}
 }

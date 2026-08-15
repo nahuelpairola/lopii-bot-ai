@@ -34,7 +34,7 @@ func NewMovementUpdatePickFlow() *conversation.Flow {
 		stepPickUpdateCandidate: conversation.ChoiceStep{
 			PromptText: msgPickUpdateCandidate,
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				labels := decodeStringSlice(data, keyCandidateLabels)
+				labels := conversation.DecodeStringSlice(data, conversation.KeyCandidateLabels)
 				opts := make([]conversation.ChoiceOption, 0, len(labels))
 				for i, label := range labels {
 					opts = append(opts, conversation.ChoiceOption{
@@ -46,7 +46,7 @@ func NewMovementUpdatePickFlow() *conversation.Flow {
 				return opts
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				next := copyData(data)
+				next := conversation.CopyData(data)
 				next["chosen_index"] = value
 				return next
 			},
@@ -73,8 +73,8 @@ func NewMovementUpdateConfirmFlow() *conversation.Flow {
 				{Label: "❌ Cancelar", Value: "cancel", Finish: true},
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
-				next := copyData(data)
-				next[keyConfirmed] = strconv.FormatBool(value == optionConfirm)
+				next := conversation.CopyData(data)
+				next[conversation.KeyConfirmed] = strconv.FormatBool(value == optionConfirm)
 				return next
 			},
 			InvalidChoiceMessage: msgInvalidChoice,
@@ -88,8 +88,8 @@ func NewMovementUpdateConfirmFlow() *conversation.Flow {
 	return flow
 }
 
-func movementToRow(m movement.Movement) movementRow {
-	row := movementRow{
+func movementToRow(m movement.Movement) movement.MovementRow {
+	row := movement.MovementRow{
 		Type:     string(m.Type),
 		Amount:   displayAmount(m.Amount),
 		Currency: m.Currency.String(),
@@ -115,7 +115,7 @@ func movementToRow(m movement.Movement) movementRow {
 	return row
 }
 
-func rowToDraft(r movementRow) orchestrator.MovementDraft {
+func rowToDraft(r movement.MovementRow) orchestrator.MovementDraft {
 	draft := orchestrator.MovementDraft{
 		Type:             r.Type,
 		Amount:           r.Amount,
@@ -136,8 +136,8 @@ func rowToDraft(r movementRow) orchestrator.MovementDraft {
 	return draft
 }
 
-func draftToRow(d orchestrator.MovementDraft) movementRow {
-	row := movementRow{
+func draftToRow(d orchestrator.MovementDraft) movement.MovementRow {
+	row := movement.MovementRow{
 		Type:             d.Type,
 		Amount:           d.Amount,
 		Currency:         d.Currency,
@@ -161,7 +161,7 @@ func draftToRow(d orchestrator.MovementDraft) movementRow {
 type candidateGroup struct {
 	TransactionID string
 	OldIDs        []string
-	Rows          []movementRow
+	Rows          []movement.MovementRow
 }
 
 // encodeCandidateGroups converts freshly-searched transactionGroups
@@ -184,22 +184,22 @@ func encodeCandidateGroupList(groups []candidateGroup) []interface{} {
 	for _, g := range groups {
 		encoded = append(encoded, map[string]interface{}{
 			"transaction_id": g.TransactionID,
-			"old_ids":        encodeStringSlice(g.OldIDs),
-			"rows":           encodeMovementRows(g.Rows),
+			"old_ids":        conversation.EncodeStringSlice(g.OldIDs),
+			"rows":           movement.EncodeMovementRows(g.Rows),
 		})
 	}
 	return encoded
 }
 
 func decodeCandidateGroups(data conversation.Data) []candidateGroup {
-	raw, _ := data[keyCandidateGroups].([]interface{})
+	raw, _ := data[conversation.KeyCandidateGroups].([]interface{})
 	groups := make([]candidateGroup, 0, len(raw))
 	for _, r := range raw {
 		m, _ := r.(map[string]interface{})
 		groups = append(groups, candidateGroup{
-			TransactionID: stringOrEmpty(m["transaction_id"]),
-			OldIDs:        decodeStringSlice(conversation.Data{"ids": m["old_ids"]}, "ids"),
-			Rows:          decodeMovementRows(conversation.Data{keyMovements: m["rows"]}),
+			TransactionID: conversation.StringOrEmpty(m["transaction_id"]),
+			OldIDs:        conversation.DecodeStringSlice(conversation.Data{"ids": m["old_ids"]}, "ids"),
+			Rows:          movement.DecodeMovementRows(conversation.Data{conversation.KeyMovements: m["rows"]}),
 		})
 	}
 	return groups
@@ -233,11 +233,11 @@ type changeAsk struct {
 //   - una sola fila: en una transferencia de dos piernas "el monto" es ambiguo
 //   - parsea como monto positivo: un 0 significa borrar, y esa semántica
 //     ("regalo/gratis") la resuelve mejor el camino de siempre
-func amountOnlyCorrection(before []movementRow, ask changeAsk) ([]orchestrator.MovementDraft, bool) {
+func amountOnlyCorrection(before []movement.MovementRow, ask changeAsk) ([]orchestrator.MovementDraft, bool) {
 	if !ask.gaveValue || ask.pickedField || len(before) != 1 {
 		return nil, false
 	}
-	amt, err := parseARAmount(ask.answer)
+	amt, err := movement.ParseARAmount(ask.answer)
 	if err != nil || !amt.IsPositive() {
 		return nil, false
 	}
@@ -252,7 +252,7 @@ func amountOnlyCorrection(before []movementRow, ask changeAsk) ([]orchestrator.M
 // ask lleva en qué punto está la pregunta de "qué cambiar": si nunca se
 // preguntó, si el usuario tocó un botón (nombró el campo, falta el valor) o si
 // ya intentó decir el valor. Sólo el drenaje la manda con algo adentro.
-func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movementRow, ask changeAsk) error {
+func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask changeAsk) error {
 	// Si lo único que se sumó al pedido fue el NOMBRE del campo ("La
 	// categoría"), no hay ningún valor que resolver todavía. Preguntarlo antes
 	// de llamar al modelo ahorra la llamada entera — ~1.100 tokens que iban a
@@ -262,7 +262,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 	}
 
 	// Atajo del monto. La pregunta fue "¿Cuánto era?" y contestó un número: no
-	// queda NADA que interpretar, y parseARAmount ya lo sabe leer. Mandárselo al
+	// queda NADA que interpretar, y movement.ParseARAmount ya lo sabe leer. Mandárselo al
 	// modelo cuesta ~1.500 tokens para que copie el número — y le da la
 	// oportunidad de tocar de paso algo que nadie le pidió.
 	//
@@ -329,7 +329,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 // los dos lados vienen de fuentes distintas: el antes sale de la DB (montos ya
 // formateados, cuenta resuelta) y el después del modelo, que omite lo que no
 // toca. Un DeepEqual daría "cambió" siempre.
-func correctionIsNoOp(before []movementRow, after []orchestrator.MovementDraft) bool {
+func correctionIsNoOp(before []movement.MovementRow, after []orchestrator.MovementDraft) bool {
 	if len(before) == 0 || len(before) != len(after) {
 		return false // otra cantidad de filas ES un cambio (o no hay con qué comparar)
 	}
@@ -346,7 +346,7 @@ func correctionIsNoOp(before []movementRow, after []orchestrator.MovementDraft) 
 // Un campo vacío del lado nuevo se lee como "no lo tocó", no como "lo borró":
 // el modelo devuelve sólo lo que cambia, y tratarlo como borrado haría ver
 // cambios donde no los hay — que es el error que dejaría pasar el no-op.
-func sameMovementForCorrection(before, after movementRow) bool {
+func sameMovementForCorrection(before, after movement.MovementRow) bool {
 	unchanged := func(b, a string) bool { return a == "" || a == b }
 	return sameAmount(before.Amount, after.Amount) &&
 		unchanged(before.Type, after.Type) &&
@@ -369,8 +369,8 @@ func sameAmount(before, after string) bool {
 	if after == "" {
 		return true // no lo tocó
 	}
-	b, berr := parseARAmount(before)
-	a, aerr := parseARAmount(after)
+	b, berr := movement.ParseARAmount(before)
+	a, aerr := movement.ParseARAmount(after)
 	if berr != nil || aerr != nil {
 		return before == after
 	}
@@ -381,7 +381,7 @@ func sameAmount(before, after string) bool {
 // El candidato no se vuelve a buscar: encontrarlo fue la mitad cara, y volver a
 // resolverlo con el texto nuevo ("2000") lo perdería — ese texto no nombra
 // ningún movimiento.
-func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, change, transactionID string, oldIDs []string, rows []movementRow, ask changeAsk) error {
+func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, change, transactionID string, oldIDs []string, rows []movement.MovementRow, ask changeAsk) error {
 	if c.actions == nil {
 		// Sin cola no hay a dónde parkear: el camino viejo sigue siendo mejor
 		// que quedarse mudo.
@@ -451,7 +451,7 @@ func (c *controller) userTaxonomy(userID uint64) []orchestrator.TaxonomyEntry {
 // estaba mal" (traza 317df846). El gate de confirmación NO se saltea: el usuario
 // ve el antes/después igual.
 func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, payload agentPayload, groups []candidateGroup) error {
-	before := make([][]movementRow, 0, len(groups))
+	before := make([][]movement.MovementRow, 0, len(groups))
 	var oldIDs []string
 	for _, g := range groups {
 		before = append(before, g.Rows)
@@ -504,7 +504,7 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 	// con el NOMBRE y sin id, y la escritura la manda a la cuenta por default de
 	// su moneda: el movimiento termina en otra cuenta que la pedida, en silencio.
 	accounts, _ := c.accounts.FindByUserID(userID)
-	beforeRows := make([]movementRow, 0, len(oldIDs))
+	beforeRows := make([]movement.MovementRow, 0, len(oldIDs))
 	for _, g := range before {
 		beforeRows = append(beforeRows, g...)
 	}
@@ -564,14 +564,14 @@ func (c *controller) accountNamedIn(userID uint64, message string) string {
 	return ""
 }
 
-func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, userMessage string, oldIDs []string, beforeRows []movementRow, result orchestrator.UpdateResult) error {
+func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, userMessage string, oldIDs []string, beforeRows []movement.MovementRow, result orchestrator.UpdateResult) error {
 	accs, _ := c.accounts.FindByUserID(userID)
 	nameByID := make(map[string]string, len(accs))
 	for _, a := range accs {
 		nameByID[strconv.FormatUint(uint64(a.ID), 10)] = a.Name
 	}
 
-	afterRows := make([]movementRow, 0, len(result.Movements))
+	afterRows := make([]movement.MovementRow, 0, len(result.Movements))
 	for _, d := range result.Movements {
 		row := draftToRow(d)
 		if sub, err := c.subcategories.FindByCategoryAndSubcategory(userID, row.Category, row.Subcategory); err == nil {
@@ -588,7 +588,7 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	// "no valido" es correcto; degradar a "borro el movimiento" no lo era.
 	taxonomy := c.userTaxonomy(userID)
 
-	// Paridad con CREATE, y era un bug VIVO: acá iba encodeStringSlice(nil)
+	// Paridad con CREATE, y era un bug VIVO: acá iba conversation.EncodeStringSlice(nil)
 	// hardcodeado, así que una corrección que nombraba una categoría inexistente
 	// no marcaba gap, el flujo insertaba derecho y FindByCategoryAndSubcategory
 	// fallaba — el movimiento se perdía con un error genérico. Es exactamente lo
@@ -597,13 +597,13 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	// regla de "no inventes nombres", así que el camino de corrección emite pares
 	// arbitrarios con total libertad.
 	seed := conversation.Data{
-		keyMode:                modeUpdate,
-		keyOldMovementIDs:      encodeStringSlice(oldIDs),
-		keyBeforeMovements:     encodeMovementRows(beforeRows),
-		keyMovements:           encodeMovementRows(afterRows),
-		keyPendingCategoryGaps: encodeStringSlice(categoryGapsFor(afterRows, taxonomy)),
-		keyPendingAccountGaps:  encodeStringSlice(accountGapsFor(afterRows)),
-		keyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows, userMessage)),
+		conversation.KeyMode:                modeUpdate,
+		conversation.KeyOldMovementIDs:      conversation.EncodeStringSlice(oldIDs),
+		conversation.KeyBeforeMovements:     movement.EncodeMovementRows(beforeRows),
+		conversation.KeyMovements:           movement.EncodeMovementRows(afterRows),
+		conversation.KeyPendingCategoryGaps: conversation.EncodeStringSlice(categoryGapsFor(afterRows, taxonomy)),
+		conversation.KeyPendingAccountGaps:  conversation.EncodeStringSlice(accountGapsFor(afterRows)),
+		conversation.KeyDeleteInstead:       strconv.FormatBool(correctionIsDeletion(afterRows, userMessage)),
 	}
 
 	// Con un gap de categoría el destino cambia: al flujo de gap-fill, que es el
@@ -615,8 +615,8 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 	// Se pierde el diff antes/después en ese caso, y es un intercambio a
 	// conciencia: antes el movimiento se PERDÍA con un error genérico.
 	flowName := movementUpdateConfirmFlowName
-	if len(decodeStringSlice(seed, keyPendingCategoryGaps)) > 0 ||
-		len(decodeStringSlice(seed, keyPendingAccountGaps)) > 0 {
+	if len(conversation.DecodeStringSlice(seed, conversation.KeyPendingCategoryGaps)) > 0 ||
+		len(conversation.DecodeStringSlice(seed, conversation.KeyPendingAccountGaps)) > 0 {
 		flowName = movementCreateFlowName
 	}
 
@@ -633,7 +633,7 @@ func (c *controller) seedAndStartUpdateConfirm(ctx context.Context, b *bot.Bot, 
 // full candidate (both were seeded together) and hands off to
 // proceedToUpdateConfirm.
 func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	idx, err := strconv.Atoi(stringOrEmpty(data["chosen_index"]))
+	idx, err := strconv.Atoi(conversation.StringOrEmpty(data["chosen_index"]))
 	if err != nil {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 		return
@@ -646,7 +646,7 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 	}
 	chosen := candidates[idx]
 
-	message := stringOrEmpty(data["message"])
+	message := conversation.StringOrEmpty(data["message"])
 	if err := c.proceedToUpdateConfirm(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{}); err != nil {
 		if c.enqueueUpdatePickIfRateLimited(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
 			return
@@ -660,7 +660,7 @@ func (c *controller) finishMovementUpdatePickFlow(ctx context.Context, b *bot.Bo
 // neither: the confirm ChoiceStep always finishes with "confirmed" set
 // to one of "true"/"false".
 func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	if !flag(data, keyConfirmed) {
+	if !conversation.Flag(data, conversation.KeyConfirmed) {
 		c.resolveMetric(ctx, data.UserID(), outcomeUpdateCancelled)
 		if b != nil {
 			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgUpdateCancelled})
@@ -670,8 +670,8 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot
 
 	// A correction that zeroes the movement (regalo/gratis total) deletes it
 	// instead of storing an illegal amount-0 row — see correctionIsDeletion.
-	if flag(data, keyDeleteInstead) {
-		oldIDs, err := parseUintSlice(decodeStringSlice(data, keyOldMovementIDs))
+	if conversation.Flag(data, conversation.KeyDeleteInstead) {
+		oldIDs, err := parseUintSlice(conversation.DecodeStringSlice(data, conversation.KeyOldMovementIDs))
 		if err == nil {
 			err = c.movements.SoftDeleteByIDs(oldIDs)
 		}
@@ -745,12 +745,12 @@ func messageNamesAnAmount(s string) bool {
 // BORRADO que el usuario confirmó; sólo no borró porque la escritura falló. Si
 // el usuario no habló de plata, unos montos en 0 son un fallo del modelo y no
 // una intención, y borrar seria destruir datos por una alucinación.
-func correctionIsDeletion(rows []movementRow, userMessage string) bool {
+func correctionIsDeletion(rows []movement.MovementRow, userMessage string) bool {
 	if len(rows) == 0 || !messageNamesAnAmount(userMessage) {
 		return false
 	}
 	for _, r := range rows {
-		amt, err := parseARAmount(r.Amount)
+		amt, err := movement.ParseARAmount(r.Amount)
 		if err != nil || !amt.IsZero() {
 			return false
 		}

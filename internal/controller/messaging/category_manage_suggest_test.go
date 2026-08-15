@@ -79,7 +79,7 @@ func TestSuggestMergeTarget_ExcludesSourceFromTaxonomy(t *testing.T) {
 	}
 	c := &controller{orchestrator: orch, subcategories: subs, movements: &fakeMovementRepoFull{}}
 
-	data := conversation.Data{keySourceCategory: "Comida", keySourceSubcategory: "Delivery"}
+	data := conversation.Data{conversation.KeySourceCategory: "Comida", conversation.KeySourceSubcategory: "Delivery"}
 	c.suggestMergeTarget(context.Background(), 1, 7, data)
 
 	for _, e := range orch.gotTaxonomy {

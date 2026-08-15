@@ -306,17 +306,17 @@ func TestResolveAndInsertMovements_PendingAccountCreation(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "transfer", Amount: "-120000", Currency: "ARS", AccountID: "1", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "FCI", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		"old_movement_ids":      conversation.EncodeStringSlice(nil),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
@@ -347,16 +347,16 @@ func TestResolveAndInsertMovements_FirstAccount_WithBalance(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{100: "100000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
-		conversation.UserIDKey:  uint64(1),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
-		keyFirstAccountName:     "Galicia",
-		keyFirstAccountBalance:  "99.500,00",
+		conversation.UserIDKey:              uint64(1),
+		"movements":                         movement.EncodeMovementRows(rows),
+		"pending_category_gaps":             conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":              conversation.EncodeStringSlice(nil),
+		conversation.KeyFirstAccountName:    "Galicia",
+		conversation.KeyFirstAccountBalance: "99.500,00",
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -387,16 +387,16 @@ func TestResolveAndInsertMovements_FirstAccount_SkipBalance(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{} // no balance preset: fresh account starts at 0
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
-		conversation.UserIDKey:  uint64(1),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
-		keyFirstAccountName:     "Galicia",
-		// keyFirstAccountBalance left unset — the user answered "después".
+		conversation.UserIDKey:           uint64(1),
+		"movements":                      movement.EncodeMovementRows(rows),
+		"pending_category_gaps":          conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":           conversation.EncodeStringSlice(nil),
+		conversation.KeyFirstAccountName: "Galicia",
+		// conversation.KeyFirstAccountBalance left unset — the user answered "después".
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -425,17 +425,17 @@ func TestResolveAndInsertMovements_FCIRedemption_GainAboveBalance(t *testing.T) 
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}} // fund has 80000 in it
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		"old_movement_ids":      conversation.EncodeStringSlice(nil),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -474,17 +474,17 @@ func TestResolveAndInsertMovements_FCISubscription_DefaultAccount_NoGain(t *test
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}} // would trigger a false gain under the old logic
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "transfer", Amount: "-120000", Currency: "ARS", AccountID: "7", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 		{Type: "transfer", Amount: "120000", Currency: "ARS", AccountID: "10", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		"old_movement_ids":      conversation.EncodeStringSlice(nil),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 		"_skip_balance_check":   "true", // out of scope here: this test is about gain suppression, not the insufficient-funds gate
 	}
 
@@ -510,17 +510,17 @@ func TestResolveAndInsertMovements_FCIRedemption_PartialNoGain(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "500000"}} // much more than being withdrawn
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		"old_movement_ids":      conversation.EncodeStringSlice(nil),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -540,16 +540,16 @@ func TestResolveAndInsertMovements_InvalidDate_ReturnsError(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "not-a-date"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		"old_movement_ids":      conversation.EncodeStringSlice(nil),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
 	if _, err := c.resolveAndInsertMovements(data); err == nil {
@@ -573,17 +573,17 @@ func TestResolveAndInsertMovements_FCIRedemption_MissingGainSubcategory_ReturnsE
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		"old_movement_ids":      conversation.EncodeStringSlice(nil),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
 	if _, err := c.resolveAndInsertMovements(data); err == nil {
@@ -599,16 +599,16 @@ func TestResolveAndInsertMovements_UpdateMode_CallsReplaceMovements(t *testing.T
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "3500", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Description: "Café", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "update",
-		"old_movement_ids":      encodeStringSlice([]string{"42"}),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		"old_movement_ids":      conversation.EncodeStringSlice([]string{"42"}),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
@@ -662,17 +662,17 @@ func TestResolveAndInsertMovements_FCIRedemption_GainLegHasSubcategory(t *testin
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "transfer", Amount: "-100000", Currency: "ARS", AccountID: "7", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 		{Type: "transfer", Amount: "100000", Currency: "ARS", AccountID: "10", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
+		"old_movement_ids":      conversation.EncodeStringSlice(nil),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
 	inserted, err := c.resolveAndInsertMovements(data)
@@ -693,17 +693,17 @@ func TestResolveAndInsertMovements_CreatesBothPendingAccounts(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "transfer", Amount: "-50000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "Banco", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
 		{Type: "transfer", Amount: "50000", Currency: "ARS", AccountID: accountPendingCreate, AccountNameGuess: "Mercado Pago", Group: "g1", Category: "Inversiones", Subcategory: "FCI", Date: "2026-07-07"},
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:  uint64(1),
 		"mode":                  "create",
-		"old_movement_ids":      encodeStringSlice(nil),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice([]string{"0", "1"}),
+		"old_movement_ids":      conversation.EncodeStringSlice(nil),
+		"movements":             movement.EncodeMovementRows(rows),
+		"pending_category_gaps": conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":  conversation.EncodeStringSlice([]string{"0", "1"}),
 		"_skip_balance_check":   "true", // brand-new accounts have no meaningful prior balance to test against
 	}
 
@@ -769,11 +769,11 @@ func TestResolveAndInsert_IndependentExpensesNotGrouped(t *testing.T) {
 	movs := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subs, accounts: accts, movements: movs}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentos", Subcategory: "Supermercado", Date: "2026-07-07"},
 		{Type: "expense", Amount: "300", Currency: "ARS", Category: "Alimentos", Subcategory: "Supermercado", Date: "2026-07-07"},
 	}
-	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": encodeMovementRows(rows), "old_movement_ids": encodeStringSlice(nil)}
+	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
 		t.Fatalf("resolveAndInsert: %v", err)
@@ -801,11 +801,11 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 	// Desde el fold de merchant la contraparte vive DENTRO de la description
 	// ("pizza con Pablo"), que es la señal que lee guessNamesOwnAccount: el
 	// nombre es parte de qué pasó, así que no es una cuenta.
-	rows := []movementRow{{Type: "expense", Amount: "100000", Currency: "ARS",
+	rows := []movement.MovementRow{{Type: "expense", Amount: "100000", Currency: "ARS",
 		Category: "Ocio y salidas", Subcategory: "Restaurante",
 		Description:      "pizza con Pablo",
 		AccountNameGuess: "Pablo", AccountID: accountPendingCreate, Date: "2026-07-07"}}
-	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": encodeMovementRows(rows), "old_movement_ids": encodeStringSlice(nil)}
+	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
 		t.Fatalf("resolveAndInsert: %v", err)
@@ -837,11 +837,11 @@ func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 	movs := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subs, accounts: accts, movements: movs}
 
-	rows := []movementRow{{Type: "income", Amount: "200000", Currency: "ARS",
+	rows := []movement.MovementRow{{Type: "income", Amount: "200000", Currency: "ARS",
 		Category: "Ingresos", Subcategory: "Sueldo",
 		Description:      "sueldo de julio", // Brubank NO aparece acá: es una cuenta
 		AccountNameGuess: "Brubank", AccountID: accountPendingCreate, Date: "2026-07-07"}}
-	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": encodeMovementRows(rows), "old_movement_ids": encodeStringSlice(nil)}
+	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
 	if _, err := c.resolveAndInsertMovements(data); err != nil {
 		t.Fatalf("resolveAndInsert: %v", err)
@@ -886,15 +886,15 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
-		conversation.UserIDKey:  uint64(1),
-		"movements":             encodeMovementRows(rows),
-		"pending_category_gaps": encodeStringSlice(nil),
-		"pending_account_gaps":  encodeStringSlice(nil),
-		keyFirstAccountName:     "Galicia",
+		conversation.UserIDKey:           uint64(1),
+		"movements":                      movement.EncodeMovementRows(rows),
+		"pending_category_gaps":          conversation.EncodeStringSlice(nil),
+		"pending_account_gaps":           conversation.EncodeStringSlice(nil),
+		conversation.KeyFirstAccountName: "Galicia",
 	}
 
 	rt := &recordingTransport{}
@@ -968,22 +968,22 @@ func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
 func TestFirstAccountNetDelta(t *testing.T) {
 	tests := []struct {
 		name string
-		rows []movementRow
+		rows []movement.MovementRow
 		want string
 	}{
 		{
 			name: "un gasto resta",
-			rows: []movementRow{{Type: "expense", Amount: "500"}},
+			rows: []movement.MovementRow{{Type: "expense", Amount: "500"}},
 			want: "-500",
 		},
 		{
 			name: "un ingreso suma",
-			rows: []movementRow{{Type: "income", Amount: "1000"}},
+			rows: []movement.MovementRow{{Type: "income", Amount: "1000"}},
 			want: "1000",
 		},
 		{
 			name: "gasto e ingreso se netean",
-			rows: []movementRow{
+			rows: []movement.MovementRow{
 				{Type: "income", Amount: "1000"},
 				{Type: "expense", Amount: "300"},
 			},
@@ -991,7 +991,7 @@ func TestFirstAccountNetDelta(t *testing.T) {
 		},
 		{
 			name: "las transferencias no cuentan: no van a la primera cuenta",
-			rows: []movementRow{
+			rows: []movement.MovementRow{
 				{Type: "expense", Amount: "500"},
 				{Type: "transfer", Amount: "9999"},
 			},
@@ -999,7 +999,7 @@ func TestFirstAccountNetDelta(t *testing.T) {
 		},
 		{
 			name: "una fila con cuenta ya asignada no cuenta",
-			rows: []movementRow{
+			rows: []movement.MovementRow{
 				{Type: "expense", Amount: "500"},
 				{Type: "expense", Amount: "9999", AccountID: "42"},
 			},
@@ -1007,7 +1007,7 @@ func TestFirstAccountNetDelta(t *testing.T) {
 		},
 		{
 			name: "un monto ilegible se saltea en vez de romper",
-			rows: []movementRow{
+			rows: []movement.MovementRow{
 				{Type: "expense", Amount: "500"},
 				{Type: "expense", Amount: "no es un número"},
 			},

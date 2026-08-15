@@ -1,13 +1,13 @@
 package messaging
 
 import (
-	"maps"
 	"strconv"
 	"strings"
 
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
 
@@ -42,133 +42,21 @@ func guessNamesOwnAccount(guess, description string) bool {
 	return !tokenAppearsInString(guess, foldAccents(strings.ToLower(description)))
 }
 
-// accountPendingCreate is the sentinel movementRow.AccountID value
+// accountPendingCreate is the sentinel MovementRow.AccountID value
 // meaning "the user chose, mid-flow, to create this account" — real
 // account ids are always numeric strings, so this can never collide.
 const accountPendingCreate = "PENDING_CREATE"
 
 // mode discriminates buildCreateSeed's flow: a fresh CREATE vs a resolved
-// UPDATE reusing the create flow. Stored under keyMode.
+// UPDATE reusing the create flow. Stored under conversation.KeyMode.
 const (
 	modeCreate = "create"
 	modeUpdate = "update"
 )
 
-// movementRow is the JSON-safe, per-row shape carried inside
-// conversation.Data during CREATE's gap-fill flow. Every field is a
-// string: conversation.Data round-trips through Postgres JSONB, and
-// only strings/bools/slices/maps of those survive that round-trip
-// without corruption (numbers decode back as float64 — see
-// conversation.Data.UserID's own float64 fallback for why).
-type movementRow struct {
-	Type             string
-	Amount           string
-	Currency         string
-	AccountID        string
-	AccountNameGuess string
-	AccountName      string
-	Category         string
-	Subcategory      string
-	PaymentMethod    string
-	Description      string
-	Date             string
-	Icon             string
-	Group            string
-}
-
-func stringOrEmpty(v any) string {
-	s, _ := v.(string)
-	return s
-}
-
-// movementGapDescriptor names a movementRow for the gap-fill ask-prompts, so
-// a compound message with several pending rows never asks two identical
-// questions in a row. La description es un campo requerido del Call 2 CREATE
-// —siempre viene poblada, ver orchestrator.MovementDraft—, así que desde el
-// fold de merchant es la única fuente y no hace falta fallback.
-func movementGapDescriptor(row movementRow) string {
-	return "$" + row.Amount + " · " + row.Description
-}
-
-// copyData es maps.Clone con una garantía extra: el resultado nunca es nil.
-// `maps.Clone(nil)` devuelve nil y todos los call sites escriben sobre la copia,
-// así que sin la guarda un Data nil (posible: `data: null` en JSONB deserializa
-// a nil sin error) haría panic. Se queda como wrapper por los ~36 call sites.
-func copyData(data conversation.Data) conversation.Data {
-	if data == nil {
-		return conversation.Data{}
-	}
-	return maps.Clone(data)
-}
-
-func decodeMovementRows(data conversation.Data) []movementRow {
-	raw, _ := data[keyMovements].([]interface{})
-	rows := make([]movementRow, 0, len(raw))
-	for _, r := range raw {
-		m, _ := r.(map[string]interface{})
-		rows = append(rows, movementRow{
-			Type:             stringOrEmpty(m[keyRowType]),
-			Amount:           stringOrEmpty(m[keyRowAmount]),
-			Currency:         stringOrEmpty(m[keyCurrency]),
-			AccountID:        stringOrEmpty(m[keyAccountID]),
-			AccountNameGuess: stringOrEmpty(m[keyAccountNameGuess]),
-			AccountName:      stringOrEmpty(m[keyAccountName]),
-			Category:         stringOrEmpty(m[keyCategory]),
-			Subcategory:      stringOrEmpty(m[keySubcategory]),
-			PaymentMethod:    stringOrEmpty(m[keyPaymentMethod]),
-			Description:      stringOrEmpty(m[keyDescription]),
-			Date:             stringOrEmpty(m[keyDate]),
-			Icon:             stringOrEmpty(m[keyIcon]),
-			Group:            stringOrEmpty(m[keyGroup]),
-		})
-	}
-	return rows
-}
-
-func encodeMovementRows(rows []movementRow) []interface{} {
-	encoded := make([]interface{}, 0, len(rows))
-	for _, r := range rows {
-		encoded = append(encoded, map[string]interface{}{
-			keyRowType:          r.Type,
-			keyRowAmount:        r.Amount,
-			keyCurrency:         r.Currency,
-			keyAccountID:        r.AccountID,
-			keyAccountNameGuess: r.AccountNameGuess,
-			keyAccountName:      r.AccountName,
-			keyCategory:         r.Category,
-			keySubcategory:      r.Subcategory,
-			keyPaymentMethod:    r.PaymentMethod,
-			keyDescription:      r.Description,
-			keyDate:             r.Date,
-			keyIcon:             r.Icon,
-			keyGroup:            r.Group,
-		})
-	}
-	return encoded
-}
-
-func decodeStringSlice(data conversation.Data, key string) []string {
-	raw, _ := data[key].([]interface{})
-	out := make([]string, 0, len(raw))
-	for _, v := range raw {
-		if s, ok := v.(string); ok {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func encodeStringSlice(items []string) []interface{} {
-	out := make([]interface{}, 0, len(items))
-	for _, s := range items {
-		out = append(out, s)
-	}
-	return out
-}
-
 // buildCreateSeed converts a Call 2 CREATE (or a resolved Call 2
 // UPDATE) result into the seed Data for the movement_create flow: one
-// movementRow per draft, plus a queue of row indices whose
+// movement.MovementRow per draft, plus a queue of row indices whose
 // category/subcategory landed in PENDING_REVIEW and a queue of row
 // indices whose transfer referenced an account the LLM couldn't
 // resolve to an existing one. mode is "create" or "update";
@@ -213,7 +101,7 @@ func matchNamedAccount(guess string, accounts []account.Account, cur string) uin
 }
 
 func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry, accounts []account.Account) conversation.Data {
-	rows := make([]movementRow, 0, len(result.Movements))
+	rows := make([]movement.MovementRow, 0, len(result.Movements))
 	var categoryGaps, accountGaps []string
 
 	// known indexa los pares (categoría, subcategoría) que el usuario realmente
@@ -228,7 +116,7 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 	}
 
 	for i, draft := range result.Movements {
-		row := movementRow{
+		row := movement.MovementRow{
 			Type:             draft.Type,
 			Amount:           draft.Amount,
 			Currency:         draft.Currency,
@@ -273,11 +161,11 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 	}
 
 	return conversation.Data{
-		keyMode:                modeCreate,
-		keyOldMovementIDs:      encodeStringSlice(nil),
-		keyMovements:           encodeMovementRows(rows),
-		keyPendingCategoryGaps: encodeStringSlice(categoryGaps),
-		keyPendingAccountGaps:  encodeStringSlice(accountGaps),
+		conversation.KeyMode:                modeCreate,
+		conversation.KeyOldMovementIDs:      conversation.EncodeStringSlice(nil),
+		conversation.KeyMovements:           movement.EncodeMovementRows(rows),
+		conversation.KeyPendingCategoryGaps: conversation.EncodeStringSlice(categoryGaps),
+		conversation.KeyPendingAccountGaps:  conversation.EncodeStringSlice(accountGaps),
 	}
 }
 
@@ -288,7 +176,7 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 // corrección que nombraba una categoría inexistente perdía el movimiento.
 //
 // Taxonomía vacía = no validar: sin con qué comparar, no se inventan gaps.
-func categoryGapsFor(rows []movementRow, taxonomy []orchestrator.TaxonomyEntry) []string {
+func categoryGapsFor(rows []movement.MovementRow, taxonomy []orchestrator.TaxonomyEntry) []string {
 	if len(taxonomy) == 0 {
 		return nil
 	}
@@ -370,14 +258,14 @@ func parseUintSlice(ids []string) ([]uint, error) {
 // se pudo resolver a una real.
 //
 // Es el gemelo de categoryGapsFor, y faltaba: en el camino de corrección
-// `keyPendingAccountGaps` iba hardcodeado en nil — el mismo bug que tenía la
+// `conversation.KeyPendingAccountGaps` iba hardcodeado en nil — el mismo bug que tenía la
 // categoría. Sin gap, una fila con el nombre de la cuenta y sin id sale igual, y
 // la escritura la manda a la cuenta POR DEFAULT de su moneda: el movimiento
 // termina en otra cuenta que la que pidió el usuario, sin que nada avise.
 //
 // Una fila SIN nombre y sin id no es un gap: es el camino normal "usá mi
 // default", y tiene que seguir siendo mudo.
-func accountGapsFor(rows []movementRow) []string {
+func accountGapsFor(rows []movement.MovementRow) []string {
 	var gaps []string
 	for i, r := range rows {
 		if r.AccountID == "" && r.AccountNameGuess != "" {

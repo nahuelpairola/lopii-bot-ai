@@ -79,10 +79,10 @@ var reminderPresets = []conversation.ChoiceOption{
 // "apagar" finish the flow; "otro horario" advances to the text step; cancelar
 // flags cancellation.
 func onReminderPickWindow(value string, data conversation.Data) conversation.Data {
-	next := copyData(data)
+	next := conversation.CopyData(data)
 	switch value {
 	case optionCancel:
-		setFlag(next, keyCancelled)
+		conversation.SetFlag(next, conversation.KeyCancelled)
 	case optionReminderOff:
 		next[reminderActionKey] = reminderActionOff
 	case optionReminderOther:
@@ -102,10 +102,10 @@ func onReminderPickWindow(value string, data conversation.Data) conversation.Dat
 func hubOptions(data conversation.Data) []conversation.ChoiceOption {
 	opts := make([]conversation.ChoiceOption, 0, 4)
 
-	dailyOn := flag(data, keyHubDailyOn)
+	dailyOn := conversation.Flag(data, keyHubDailyOn)
 	if dailyOn {
-		s, _ := strconv.Atoi(stringOrEmpty(data[reminderStartKey]))
-		e, _ := strconv.Atoi(stringOrEmpty(data[reminderEndKey]))
+		s, _ := strconv.Atoi(conversation.StringOrEmpty(data[reminderStartKey]))
+		e, _ := strconv.Atoi(conversation.StringOrEmpty(data[reminderEndKey]))
 		opts = append(opts, conversation.ChoiceOption{
 			Label:    fmt.Sprintf("🌙 Cambiar horario (%d-%d)", s/60, e/60),
 			Value:    optionHubDaily,
@@ -119,7 +119,7 @@ func hubOptions(data conversation.Data) []conversation.ChoiceOption {
 		})
 	}
 
-	weeklyOn := flag(data, keyWeeklySummary)
+	weeklyOn := conversation.Flag(data, conversation.KeyWeeklySummary)
 	if weeklyOn {
 		opts = append(opts, conversation.ChoiceOption{Label: "📊 Desactivar resumen semanal", Value: optionWeeklyOff, Finish: true})
 	} else {
@@ -137,16 +137,16 @@ func hubOptions(data conversation.Data) []conversation.ChoiceOption {
 // yet). Weekly toggles set weekly_only + the explicit on/off flag. Off-all and
 // soft-exit set their terminal actions.
 func onReminderHub(value string, data conversation.Data) conversation.Data {
-	next := copyData(data)
+	next := conversation.CopyData(data)
 	switch value {
 	case optionHubDaily:
 		// no action; advances to the picker which sets window/action
 	case optionWeeklyOn:
 		next[reminderActionKey] = reminderActionWeeklyOnly
-		setFlag(next, keyWeeklySummary)
+		conversation.SetFlag(next, conversation.KeyWeeklySummary)
 	case optionWeeklyOff:
 		next[reminderActionKey] = reminderActionWeeklyOnly
-		next[keyWeeklySummary] = "false"
+		next[conversation.KeyWeeklySummary] = "false"
 	case optionOffAll:
 		next[reminderActionKey] = reminderActionOffAll
 	case optionSoftExit:
@@ -158,7 +158,7 @@ func onReminderHub(value string, data conversation.Data) conversation.Data {
 // skipHubIfSeeded skips the hub screen when the onboarding entry seeded skipHub,
 // landing straight on the band picker.
 func skipHubIfSeeded(data conversation.Data) (string, bool) {
-	if flag(data, keySkipHub) {
+	if conversation.Flag(data, keySkipHub) {
 		return stepReminderPickWindow, true
 	}
 	return "", false
@@ -169,13 +169,13 @@ func skipHubIfSeeded(data conversation.Data) (string, bool) {
 // verbose QUERY-intent format, wrong for a two-line panel.)
 func msgReminderHub(data conversation.Data) string {
 	daily := "❌ desactivado"
-	if flag(data, keyHubDailyOn) {
-		s, _ := strconv.Atoi(stringOrEmpty(data[reminderStartKey]))
-		e, _ := strconv.Atoi(stringOrEmpty(data[reminderEndKey]))
+	if conversation.Flag(data, keyHubDailyOn) {
+		s, _ := strconv.Atoi(conversation.StringOrEmpty(data[reminderStartKey]))
+		e, _ := strconv.Atoi(conversation.StringOrEmpty(data[reminderEndKey]))
 		daily = fmt.Sprintf("✅ %d a %d hs", s/60, e/60)
 	}
 	weekly := "❌ desactivado"
-	if flag(data, keyWeeklySummary) {
+	if conversation.Flag(data, conversation.KeyWeeklySummary) {
 		weekly = "✅ los lunes"
 	}
 	return fmt.Sprintf("🔔 Notificaciones\n\nRecordatorio diario: %s\nResumen semanal: %s\n\n¿Qué querés hacer?", daily, weekly)
@@ -183,9 +183,9 @@ func msgReminderHub(data conversation.Data) string {
 
 // onReminderWeekly records the weekly-summary yes/no into Data.
 func onReminderWeekly(value string, data conversation.Data) conversation.Data {
-	next := copyData(data)
+	next := conversation.CopyData(data)
 	if value == optionWeeklyOn {
-		setFlag(next, keyWeeklySummary)
+		conversation.SetFlag(next, conversation.KeyWeeklySummary)
 	}
 	return next
 }
@@ -220,7 +220,7 @@ func reminderPickOptions(conversation.Data) []conversation.ChoiceOption {
 // seeded askWeekly. Hub entries never re-ask weekly (they toggle it from the
 // hub); returning ("", true) completes the flow.
 func skipWeeklyUnlessAsked(data conversation.Data) (string, bool) {
-	if flag(data, keyAskWeekly) {
+	if conversation.Flag(data, keyAskWeekly) {
 		return "", false
 	}
 	return "", true
@@ -262,8 +262,8 @@ func NewReminderSetupFlow() *conversation.Flow {
 				if value != optionCancel {
 					return data
 				}
-				next := copyData(data)
-				setFlag(next, keyCancelled)
+				next := conversation.CopyData(data)
+				conversation.SetFlag(next, conversation.KeyCancelled)
 				return next
 			},
 		},
@@ -293,14 +293,14 @@ func (c *controller) startReminderSetup(ctx context.Context, b *bot.Bot, chatID 
 	slog.InfoContext(ctx, "flow started", "flow", reminderSetupFlowName, "user_id", userID)
 	seed := conversation.Data{}
 	if rem, err := c.reminders.FindByUserID(userID); err == nil && rem != nil {
-		setFlag(seed, keyHubHasRow)
+		conversation.SetFlag(seed, keyHubHasRow)
 		if rem.Enabled {
-			setFlag(seed, keyHubDailyOn)
+			conversation.SetFlag(seed, keyHubDailyOn)
 			seed[reminderStartKey] = strconv.Itoa(rem.WindowStartMin)
 			seed[reminderEndKey] = strconv.Itoa(rem.WindowEndMin)
 		}
 		if rem.WeeklySummaryEnabled {
-			setFlag(seed, keyWeeklySummary)
+			conversation.SetFlag(seed, conversation.KeyWeeklySummary)
 		}
 	}
 	prompt, err := c.engine.StartWithData(userID, reminderSetupFlowName, seed)

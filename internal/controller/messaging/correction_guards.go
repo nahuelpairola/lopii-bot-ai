@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"lopiibot.com/internal/constants"
+	"lopiibot.com/internal/movement"
 )
 
 var (
@@ -45,13 +46,13 @@ const (
 // aplicado ingenuamente lo rompe: {amount, set, 5000} sobre las dos da +10.000,
 // y sobre una sola deja un grupo que no balancea. El guard lo rechaza al
 // insertar, así que la corrección fallaría — ruidosa pero inútil.
-func applyChanges(rows []movementRow, changes []correctionChange) ([]movementRow, error) {
+func applyChanges(rows []movement.MovementRow, changes []correctionChange) ([]movement.MovementRow, error) {
 	if len(rows) == 0 {
 		return nil, errors.New("correction: no hay filas que corregir")
 	}
 	isTransfer := isTransferGroup(rows)
 
-	out := make([]movementRow, len(rows))
+	out := make([]movement.MovementRow, len(rows))
 	copy(out, rows)
 
 	for _, ch := range changes {
@@ -70,7 +71,7 @@ func applyChanges(rows []movementRow, changes []correctionChange) ([]movementRow
 }
 
 // isTransferGroup: dos patas o más, todas tipadas transfer.
-func isTransferGroup(rows []movementRow) bool {
+func isTransferGroup(rows []movement.MovementRow) bool {
 	if len(rows) < 2 {
 		return false
 	}
@@ -85,7 +86,7 @@ func isTransferGroup(rows []movementRow) bool {
 // applyChangesToSet corre las guardas que dependen del CONJUNTO y del mensaje,
 // no de una fila suelta. Ninguna es una instrucción que el modelo tenga que
 // recordar: todas son chequeos que la app puede hacer sola.
-func applyChangesToSet(groups [][]movementRow, changes []correctionChange, ctx guardContext) ([][]movementRow, error) {
+func applyChangesToSet(groups [][]movement.MovementRow, changes []correctionChange, ctx guardContext) ([][]movement.MovementRow, error) {
 	if len(groups) == 0 {
 		return nil, errors.New("correction: no hay grupos que corregir")
 	}
@@ -104,7 +105,7 @@ func applyChangesToSet(groups [][]movementRow, changes []correctionChange, ctx g
 		}
 	}
 
-	out := make([][]movementRow, 0, len(groups))
+	out := make([][]movement.MovementRow, 0, len(groups))
 	for _, g := range groups {
 		applied, err := applyChanges(g, changes)
 		if err != nil {
@@ -123,7 +124,7 @@ func applyChangesToSet(groups [][]movementRow, changes []correctionChange, ctx g
 // y eso sólo es cierto si la plata volvió a la MISMA cuenta. Disney pagado con
 // Galicia y reintegrado a Mercado Pago: restarlo del gasto original sube el
 // saldo de Galicia y deja Mercado Pago intacto. Los dos saldos quedan mal.
-func guardRefundAccount(groups [][]movementRow, ch correctionChange, ctx guardContext) error {
+func guardRefundAccount(groups [][]movement.MovementRow, ch correctionChange, ctx guardContext) error {
 	if ch.Field != fieldAmount || (ch.Op != opSubtract && ch.Op != opMultiply) {
 		return nil
 	}
@@ -163,7 +164,7 @@ var refundWords = []string{"devolvi", "reintegr", "reembols", "me devolv", "boni
 //
 // El usuario confirma un diff que se ve plausible —dos montos, uno más grande—
 // y el error queda en la base. Por eso corta acá y no en la copy.
-func guardRefundDirection(rows []movementRow, changes []correctionChange, message string) error {
+func guardRefundDirection(rows []movement.MovementRow, changes []correctionChange, message string) error {
 	if !mentionsRefund(message) {
 		return nil
 	}
@@ -191,9 +192,9 @@ func mentionsRefund(message string) bool {
 // grows dice si el cambio deja el movimiento MÁS caro que antes. Se compara
 // contra la fila real y no contra el signo del `op`: un `set` a un número mayor
 // también hace crecer el gasto, y un `multiply` por 1.5 también.
-func grows(rows []movementRow, ch correctionChange) bool {
+func grows(rows []movement.MovementRow, ch correctionChange) bool {
 	for _, row := range rows {
-		antes, err := parseARAmount(row.Amount)
+		antes, err := movement.ParseARAmount(row.Amount)
 		if err != nil {
 			continue // ilegible: no es asunto de esta guarda
 		}
@@ -201,7 +202,7 @@ func grows(rows []movementRow, ch correctionChange) bool {
 		if err != nil {
 			continue // la rechaza otra guarda, con mejor mensaje
 		}
-		despues, err := parseARAmount(corregida.Amount)
+		despues, err := movement.ParseARAmount(corregida.Amount)
 		if err != nil {
 			continue
 		}

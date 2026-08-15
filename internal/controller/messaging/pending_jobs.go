@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingjob"
 )
@@ -27,10 +28,10 @@ type freeTextPayload struct {
 }
 
 type updatePickPayload struct {
-	Message       string        `json:"message"`
-	TransactionID string        `json:"transaction_id"`
-	OldIDs        []string      `json:"old_ids"`
-	BeforeRows    []movementRow `json:"before_rows"`
+	Message       string                 `json:"message"`
+	TransactionID string                 `json:"transaction_id"`
+	OldIDs        []string               `json:"old_ids"`
+	BeforeRows    []movement.MovementRow `json:"before_rows"`
 }
 
 // replayingKey marca un ctx que corre dentro del drain. Las sites de error-Groq
@@ -96,7 +97,7 @@ func (c *controller) enqueueIfRateLimited(ctx context.Context, b *bot.Bot, chatI
 // enqueueUpdatePickIfRateLimited encola un update_pick (preserva el pick del
 // usuario). Solo lo llama finishMovementUpdatePickFlow (webhook-only), así que no
 // necesita el guard de replay.
-func (c *controller) enqueueUpdatePickIfRateLimited(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, txID string, oldIDs []string, beforeRows []movementRow, err error) bool {
+func (c *controller) enqueueUpdatePickIfRateLimited(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, txID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
 	var rl *orchestrator.RateLimitedError
 	if !errors.As(err, &rl) {
 		return false
