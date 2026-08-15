@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -127,7 +128,12 @@ const (
 	// El término sólo matchea movimientos de categorías reservadas, que apply()
 	// esconde de todo total de gastos e ingresos. Sin este mensaje la app diría
 	// que "transferencia" no existe, sobre 12 movimientos reales.
-	msgSearchOnlyInternalFmt = "«%s» sólo aparece en movimientos internos —transferencias entre tus cuentas, saldos iniciales, ajustes—, que no entran en los totales de gastos e ingresos."
+	msgSearchOnlyInternalFmt = "«%s» " + msgOnlyInternalMark + " —transferencias entre tus cuentas, saldos iniciales, ajustes—, que no entran en los totales de gastos e ingresos."
+
+	// msgOnlyInternalMark es la parte del mensaje anterior que lo identifica, y
+	// existe como const separada porque se usa DOS veces: para armarlo y para
+	// reconocerlo a la vuelta en reinstateAppVerdict.
+	msgOnlyInternalMark = "sólo aparece en movimientos internos"
 
 	// El término no matchea NADA. Es lo único que habilita decir que no existe,
 	// y va como ERROR para que el modelo lo pueda corregir en la ronda siguiente:
@@ -170,7 +176,48 @@ func (c *controller) describeEmptyResult(q movement.MovementQuery, args queryToo
 		return fmt.Sprintf(msgSearchOnlyInternalFmt, term), nil
 	}
 
+	// Segunda pasada de la sonda 2, forzando el tipo. Las reservadas que MÁS
+	// importan —Sistema | Transferencia y los saldos iniciales— son todas
+	// type=transfer, y con Type nil apply agrega `type <> transfer`: las esconde
+	// justo cuando hacen falta. Medido el 2026-08-14 contra la base: la sonda con
+	// type=transfer encuentra 12 filas y la misma sonda con Type nil encuentra 0,
+	// y esas 12 se declaraban inexistentes.
+	//
+	// Va como segunda consulta y no reemplazando a la de arriba porque las otras
+	// reservadas —Ajuste de saldo, Rendimiento inversión— NO son transferencias:
+	// una sola pasada, con o sin tipo, siempre deja afuera la mitad.
+	if wide.Type == nil {
+		t := constants.Transfer
+		wide.Type = &t
+		if rows, err := c.movements.ListForUser(wide, 1); err == nil && len(rows) > 0 {
+			return fmt.Sprintf(msgSearchOnlyInternalFmt, term), nil
+		}
+	}
+
 	return "", fmt.Errorf(msgSearchNotFoundFmt, term)
+}
+
+// reinstateAppVerdict devuelve la respuesta con el veredicto de la app pegado atrás,
+// si el modelo lo perdió por el camino.
+//
+// Existe porque el 2026-08-14, en producción, el modelo INVIRTIÓ el veredicto: el
+// ejecutor le entregó "«transferencia» sólo aparece en movimientos internos…" —con 12
+// filas reales detrás, verificadas por la sonda— y el usuario leyó "No se encontraron
+// movimientos que digan transferencia en agosto de 2026". No es un matiz perdido: es la
+// afirmación contraria a la que hizo la app.
+//
+// Este es el único mensaje que se reinstala, y no todos, porque es el único donde el
+// modelo puede leer un resultado vacío y concluir lo opuesto a lo que dice el texto. Los
+// otros tres describen ausencias de verdad: si los aplasta, empobrece la respuesta pero
+// no la vuelve falsa.
+//
+// Se pega SÓLO si la respuesta no habla ya de movimientos internos, para no repetir lo
+// que el modelo sí supo decir.
+func reinstateAppVerdict(answer, verdict string) string {
+	if verdict == "" || strings.Contains(strings.ToLower(answer), "internos") {
+		return answer
+	}
+	return strings.TrimSpace(answer) + "\n\n" + verdict
 }
 
 // handleQuery answers a read-only question via the agent loop. Returns
@@ -182,7 +229,19 @@ func (c *controller) describeEmptyResult(q movement.MovementQuery, args queryToo
 // Solo el caller sabe distinguir un 429 encolado de un fracaso de verdad.
 func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
 	prompt := c.buildQuerySystemPrompt()
-	execute := c.buildQueryExecutor(userID)
+
+	// El wrapper mira lo que DEVOLVIÓ el ejecutor, no lo que el modelo hizo con eso:
+	// es la única forma de enterarse de que la app emitió un veredicto propio sin
+	// cambiarle la firma a buildQueryExecutor, que usan quince tests.
+	var appVerdict string
+	inner := c.buildQueryExecutor(userID)
+	execute := func(name string, raw json.RawMessage) (string, error) {
+		out, err := inner(name, raw)
+		if strings.Contains(out, msgOnlyInternalMark) {
+			appVerdict = out
+		}
+		return out, err
+	}
 
 	// Best-effort: a history load error never fails the query — run stateless.
 	turns, _ := c.chatHistory.Recent(userID)
@@ -195,6 +254,7 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 	if err != nil || strings.TrimSpace(answer) == "" {
 		return false, err
 	}
+	answer = reinstateAppVerdict(answer, appVerdict)
 	c.sendText(ctx, b, chatID, answer)
 	// Best-effort append: a failure here never fails the answer the user already got.
 	_ = c.chatHistory.Append(userID, text, answer)

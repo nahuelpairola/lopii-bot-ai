@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
@@ -573,6 +575,62 @@ func TestExec_ListMovements_EmptyButOnlyInReserved(t *testing.T) {
 	// alguien la escribiera sin activar el flag.
 	if !m.lastQuery.OnlyReserved {
 		t.Error("la última sonda tiene que correr con OnlyReserved = true")
+	}
+}
+
+// El agujero de la sonda 2, encontrado contra el bot el 2026-08-14: hereda el Type de
+// la consulta original, y con Type nil apply agrega `type <> transfer`, que esconde
+// justo las reservadas que más importan — Sistema | Transferencia y los saldos
+// iniciales son TODAS transferencias.
+//
+// Medido contra la base ese día: la sonda con type=transfer encuentra 12 filas y la
+// misma sonda con Type nil encuentra 0, así que esos 12 movimientos se declaraban
+// inexistentes con un error duro.
+func TestExec_ListMovements_ReservedProbeFindsTransfersWhenTypeIsNil(t *testing.T) {
+	m := &fakeQueryMovements{listByCall: [][]movement.Movement{
+		{},       // la consulta real
+		{},       // sonda 1, rango ensanchado
+		{},       // sonda 2 heredando Type nil: no ve las transferencias
+		oneRow(), // sonda 2 forzando type=transfer: ahí están
+	}}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","search":"transferencia"}`))
+	if err != nil {
+		t.Fatalf("las transferencias reservadas existen: no puede cortar con error: %v", err)
+	}
+	if !strings.Contains(out, "internos") {
+		t.Errorf("tiene que explicar que sólo aparece en movimientos internos: %s", out)
+	}
+	if m.lastQuery.Type == nil || *m.lastQuery.Type != constants.Transfer {
+		t.Errorf("la última sonda tiene que forzar type=transfer; quedó %v", m.lastQuery.Type)
+	}
+	if !m.lastQuery.OnlyReserved {
+		t.Error("la última sonda tiene que correr con OnlyReserved = true")
+	}
+}
+
+// El modelo puede INVERTIR el veredicto de la app. El 2026-08-14 el ejecutor entregó
+// "«transferencia» sólo aparece en movimientos internos…" —12 filas reales detrás— y el
+// usuario leyó "No se encontraron movimientos que digan transferencia". La app vuelve a
+// pegar lo suyo cuando eso pasa.
+func TestReinstateAppVerdict(t *testing.T) {
+	verdict := fmt.Sprintf(msgSearchOnlyInternalFmt, "transferencia")
+
+	got := reinstateAppVerdict("No se encontraron movimientos que digan transferencia en agosto.", verdict)
+	if !strings.Contains(got, msgOnlyInternalMark) {
+		t.Errorf("el veredicto de la app tiene que volver a la respuesta: %s", got)
+	}
+
+	// Si el modelo ya lo dijo, no se repite.
+	yaLoDijo := "Esas transferencias son movimientos internos entre tus cuentas."
+	if got := reinstateAppVerdict(yaLoDijo, verdict); got != yaLoDijo {
+		t.Errorf("no puede repetir lo que el modelo ya supo decir: %s", got)
+	}
+
+	// Sin veredicto de la app no se toca nada.
+	if got := reinstateAppVerdict("total: $500", ""); got != "total: $500" {
+		t.Errorf("sin veredicto la respuesta va intacta: %s", got)
 	}
 }
 
