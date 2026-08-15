@@ -544,6 +544,18 @@ func (c *controller) SuggestMergeTarget(ctx context.Context, userID, sourceID ui
 	return c.suggestMergeTarget(ctx, userID, sourceID, data)
 }
 
+func (c *controller) UpsertReminder(rem *reminder.Reminder) error {
+	return c.reminders.Upsert(rem)
+}
+
+func (c *controller) DisableReminder(userID uint64) error {
+	return c.reminders.Disable(userID)
+}
+
+func (c *controller) SetWeeklySummary(userID uint64, enabled bool) error {
+	return c.reminders.SetWeeklySummary(userID, enabled)
+}
+
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
 	if b == nil {
 		return

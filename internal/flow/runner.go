@@ -9,6 +9,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -40,6 +41,10 @@ type runner interface {
 	DeleteSubcategory(userID, id uint64) error
 	CountMovementsBySubcategory(userID, subcategoryID uint64) (int64, error)
 	ReassignSubcategoryMovements(userID, fromID, toID uint64) error
+
+	UpsertReminder(rem *reminder.Reminder) error
+	DisableReminder(userID uint64) error
+	SetWeeklySummary(userID uint64, enabled bool) error
 
 	// Outbound + métricas: lo que un finish de movimiento toca de Telegram y
 	// del borde (intent_events, nudges, borrado físico) y que flow no quiere

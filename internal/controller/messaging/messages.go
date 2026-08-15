@@ -2,7 +2,6 @@ package messaging
 
 import (
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -76,13 +75,13 @@ const (
 
 	msgQueryFailed = "No pude resolver esa consulta ahora. Probá reformularla o intentá de nuevo en un momento."
 
-	msgReminderDisabled  = "Dale, no te jodo más con eso 👍 Si querés que vuelva, avisame cuando quieras."
-	msgReminderCancelled = "Listo, dejé todo como estaba 👌"
-	msgReminderAllOff    = "🔕 Listo, apagué todas las notificaciones: ni recordatorio diario ni resumen semanal. Cuando quieras algo de vuelta, escribime \"notificaciones\"."
-	msgReminderHubExit   = "Listo 👌 Dejé todo como estaba."
+	msgReminderDisabled  = flow.MsgReminderDisabled
+	msgReminderCancelled = flow.MsgReminderCancelled
+	msgReminderAllOff    = flow.MsgReminderAllOff
+	msgReminderHubExit   = flow.MsgReminderHubExit
 
-	msgWeeklySummaryOn  = "📊 Listo, te mando el resumen todos los lunes."
-	msgWeeklySummaryOff = "📊 Ok, no te mando el resumen semanal."
+	msgWeeklySummaryOn  = flow.MsgWeeklySummaryOn
+	msgWeeklySummaryOff = flow.MsgWeeklySummaryOff
 
 	msgSubcategorySetupFinished = flow.MsgSubcategorySetupFinished
 
@@ -119,7 +118,7 @@ func msgCouldNotDelete(cosa string) string {
 // msgReminderSet builds the set/edit receipt. startMin/endMin are minutes
 // since midnight; shown as whole hours.
 func msgReminderSet(startMin, endMin int) string {
-	return fmt.Sprintf("Listo 🙌 Te recuerdo cargar gastos entre las %d y las %d, solo los días que no hayas anotado nada.", startMin/60, endMin/60)
+	return flow.MsgReminderSet(startMin, endMin)
 }
 
 func msgFirstAccountDefault(name string, currencies []string) string {

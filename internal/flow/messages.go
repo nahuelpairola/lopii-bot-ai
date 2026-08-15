@@ -281,6 +281,13 @@ const (
 	MsgSubcategorySetupFinished = "Listo, tu subcategoría está guardada ✅ " +
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 	MsgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae ahí solo (ej: \"gasté 5000 en un regalo\")."
+
+	MsgReminderDisabled  = "Dale, no te jodo más con eso 👍 Si querés que vuelva, avisame cuando quieras."
+	MsgReminderCancelled = "Listo, dejé todo como estaba 👌"
+	MsgReminderAllOff    = "🔕 Listo, apagué todas las notificaciones: ni recordatorio diario ni resumen semanal. Cuando quieras algo de vuelta, escribime \"notificaciones\"."
+	MsgReminderHubExit   = "Listo 👌 Dejé todo como estaba."
+	MsgWeeklySummaryOn   = "📊 Listo, te mando el resumen todos los lunes."
+	MsgWeeklySummaryOff  = "📊 Ok, no te mando el resumen semanal."
 )
 
 // MsgCouldNotSave nombra qué no quedó guardado, para que el usuario sepa que
@@ -297,6 +304,12 @@ func MsgCouldNotDelete(cosa string) string {
 
 func MsgAccountCreateSuccess(name, cur, balance string) string {
 	return "✅ Cuenta \"" + name + "\" creada en " + currency.Currency(cur).Label() + " con saldo inicial " + balance + "."
+}
+
+// MsgReminderSet builds the set/edit receipt. startMin/endMin are minutes
+// since midnight; shown as whole hours.
+func MsgReminderSet(startMin, endMin int) string {
+	return fmt.Sprintf("Listo 🙌 Te recuerdo cargar gastos entre las %d y las %d, solo los días que no hayas anotado nada.", startMin/60, endMin/60)
 }
 
 // MsgFirstAccountDefault nombra las monedas de las cuentas recién creadas. Son
