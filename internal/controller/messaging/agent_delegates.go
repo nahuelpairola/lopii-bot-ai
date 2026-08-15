@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/messages"
 )
 
 // finishAnswerQuery entrega la consulta al loop de query.
@@ -56,7 +57,7 @@ func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatI
 		return c.startReminderSetup(ctx, b, chatID, userID)
 	default:
 		slog.WarnContext(ctx, "manage_settings con área desconocida", "user_id", userID, "area", area)
-		c.sendText(ctx, b, chatID, msgAskRewrite)
+		c.sendText(ctx, b, chatID, messages.MsgAskRewrite)
 		return nil
 	}
 }

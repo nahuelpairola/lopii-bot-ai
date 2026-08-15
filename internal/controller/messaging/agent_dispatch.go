@@ -12,6 +12,7 @@ import (
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/trace"
@@ -339,7 +340,7 @@ func (c *controller) dropAgentAction(ctx context.Context, b *bot.Bot, chatID int
 }
 
 func msgAgentActionDiscarded(what string) string {
-	return fmt.Sprintf(msgAgentActionDiscardedTemplate, what)
+	return fmt.Sprintf(messages.MsgAgentActionDiscardedTemplate, what)
 }
 
 // describeAction rinde la acción en palabras del usuario, para poder decirle qué

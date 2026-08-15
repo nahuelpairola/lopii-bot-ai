@@ -14,6 +14,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
@@ -247,8 +248,8 @@ func TestAgentExecutor_NothingToCorrectDoesNotPark(t *testing.T) {
 		t.Error("falta la marca de que no había candidatos")
 	}
 	// La copy la pone la app: hacérsela narrar al modelo cuesta la vuelta entera.
-	if e.reply != msgNoCandidatesFound {
-		t.Errorf("want %q, got %q", msgNoCandidatesFound, e.reply)
+	if e.reply != messages.MsgNoCandidatesFound {
+		t.Errorf("want %q, got %q", messages.MsgNoCandidatesFound, e.reply)
 	}
 }
 
@@ -279,8 +280,8 @@ func TestAgentExecutor_HelpAndRewriteResolveInTurn(t *testing.T) {
 		tool string
 		want string
 	}{
-		{orchestrator.ToolReplyHelp, msgHelp},
-		{orchestrator.ToolAskRewrite, msgAskRewrite},
+		{orchestrator.ToolReplyHelp, messages.MsgHelp},
+		{orchestrator.ToolAskRewrite, messages.MsgAskRewrite},
 	} {
 		e := newExecutorWith(t, "¿qué podés hacer?")
 		executeDone(t, e, tc.tool, `{}`)

@@ -14,6 +14,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -254,7 +255,7 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 // real el usuario contestó "El monto" — el campo, que es justo lo que no sirve:
 // ResolveUpdate necesita con qué reemplazar, y la corrección murió ahí.
 func TestMsgAskWhatToChange_AsksForTheValueNotTheField(t *testing.T) {
-	got := msgAskWhatToChange([]movement.MovementRow{{Amount: "1800", Description: "Cafe"}})
+	got := messages.MsgAskWhatToChange([]movement.MovementRow{{Amount: "1800", Description: "Cafe"}})
 
 	if !strings.Contains(got, "Cuánto era") {
 		t.Errorf("no pide el valor nuevo: %q", got)
@@ -342,7 +343,7 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 	if err := json.Unmarshal(actions.rows[0].Questions, &qs); err != nil {
 		t.Fatal(err)
 	}
-	if qs[0].Prompt != msgAskChangeValue {
+	if qs[0].Prompt != messages.MsgAskChangeValue {
 		t.Errorf("la segunda vuelta pregunta el valor, no el campo: %q", qs[0].Prompt)
 	}
 	// Y sin botones: el campo ya se eligió, ofrecerlos de nuevo confunde.

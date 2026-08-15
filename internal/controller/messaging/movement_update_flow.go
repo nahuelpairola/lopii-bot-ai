@@ -12,6 +12,7 @@ import (
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -21,7 +22,7 @@ import (
 func movementToRow(m movement.Movement) movement.MovementRow {
 	row := movement.MovementRow{
 		Type:     string(m.Type),
-		Amount:   displayAmount(m.Amount),
+		Amount:   messages.DisplayAmount(m.Amount),
 		Currency: m.Currency.String(),
 		Date:     m.Date.Format("2006-01-02"),
 	}
@@ -217,7 +218,7 @@ func (c *controller) proceedToUpdateConfirm(ctx context.Context, b *bot.Bot, cha
 			// Ya nos dijo el valor por texto y seguimos sin entender: cortar es
 			// más honesto que volver a preguntar lo mismo.
 			c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
-			c.sendText(ctx, b, chatID, msgStillCannotCorrect)
+			c.sendText(ctx, b, chatID, messages.MsgStillCannotCorrect)
 			return nil
 		}
 		// El candidato ya está resuelto acá: lo que falló es entender el CAMBIO.
@@ -310,11 +311,11 @@ func (c *controller) parkChangeQuestion(ctx context.Context, b *bot.Bot, chatID 
 	// el valor — y ahí los botones sobran, cualquiera de ellos ya se usó.
 	question := pendingaction.OpenQuestion{
 		Key:     questionKeyChange,
-		Prompt:  msgAskWhatToChange(rows),
+		Prompt:  messages.MsgAskWhatToChange(rows),
 		Options: changeFieldOptions(),
 	}
 	if ask.pickedField {
-		question.Prompt, question.Options = msgAskChangeValue, nil
+		question.Prompt, question.Options = messages.MsgAskChangeValue, nil
 	}
 	questions, err := json.Marshal([]pendingaction.OpenQuestion{question})
 	if err != nil {
@@ -387,18 +388,18 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 		// acepta, un valor ilegible), no cosas que el usuario pueda arreglar
 		// sabiendo cuál fue.
 		if errors.Is(err, errRefundThatGrows) {
-			c.sendText(ctx, b, chatID, msgRefundWouldGrow)
+			c.sendText(ctx, b, chatID, messages.MsgRefundWouldGrow)
 			return nil
 		}
 		if errors.Is(err, errRefundExceedsAmount) {
-			c.sendText(ctx, b, chatID, msgRefundExceeds)
+			c.sendText(ctx, b, chatID, messages.MsgRefundExceeds)
 			return nil
 		}
 		if errors.Is(err, errAmbiguousSetAll) {
-			c.sendText(ctx, b, chatID, msgAmbiguousSetAll)
+			c.sendText(ctx, b, chatID, messages.MsgAmbiguousSetAll)
 			return nil
 		}
-		c.sendText(ctx, b, chatID, msgStillCannotCorrect)
+		c.sendText(ctx, b, chatID, messages.MsgStillCannotCorrect)
 		return nil
 	}
 
@@ -445,7 +446,7 @@ func (c *controller) applyStructuredCorrection(ctx context.Context, b *bot.Bot, 
 	// que el movimiento YA tenía reemplazó la fila igual.
 	if correctionIsNoOp(beforeRows, drafts) {
 		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
-		c.sendText(ctx, b, chatID, msgCorrectionChangesNothing)
+		c.sendText(ctx, b, chatID, messages.MsgCorrectionChangesNothing)
 		return nil
 	}
 

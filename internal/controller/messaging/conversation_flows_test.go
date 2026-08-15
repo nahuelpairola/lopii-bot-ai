@@ -11,6 +11,7 @@ import (
 
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -248,7 +249,7 @@ func TestConversation_ManageSettingsUnknownArea_AsksForARewrite(t *testing.T) {
 	if flow, _ := h.FlowState(); flow != "" {
 		t.Errorf("un área desconocida abrió el flow %q", flow)
 	}
-	if h.LastMessage() != msgAskRewrite {
+	if h.LastMessage() != messages.MsgAskRewrite {
 		t.Errorf("último mensaje = %q, want msgAskRewrite", h.LastMessage())
 	}
 }

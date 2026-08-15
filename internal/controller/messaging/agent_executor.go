@@ -11,6 +11,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -216,10 +217,10 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		e.settingsArea = a.Area
 		return "ya abriste la configuración que pidió el usuario", orchestrator.ErrAgentTurnDone
 	case orchestrator.ToolReplyHelp:
-		e.reply = msgHelp
+		e.reply = messages.MsgHelp
 		return "ya le mandaste al usuario la explicación de qué podés hacer", orchestrator.ErrAgentTurnDone
 	case orchestrator.ToolAskRewrite:
-		e.reply = msgAskRewrite
+		e.reply = messages.MsgAskRewrite
 		return "ya le pediste al usuario que lo reescriba", orchestrator.ErrAgentTurnDone
 	default:
 		// Etapas 3 y 4 cablean el resto. Decírselo es mejor que fallar: el modelo
@@ -229,7 +230,7 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 }
 
 // resultRecorded es lo que ve el MODELO, no el usuario: el recibo real lo manda
-// la app (msgConfirmMovements). El prompt le pide explícitamente no repetir el
+// la app (messages.MsgConfirmMovements). El prompt le pide explícitamente no repetir el
 // detalle.
 func resultRecorded(n int) string {
 	return fmt.Sprintf("registrados: %d movimientos", n)
@@ -297,7 +298,7 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	// mismo turno ya lo vea puesto y no encole el mensaje.
 	e.wrote = true
 	e.inserted = inserted
-	e.reply = msgConfirmMovements(inserted)
+	e.reply = messages.MsgConfirmMovements(inserted)
 	e.replyButtons = e.c.maybeNearDuplicate(e.userID, inserted)
 	return resultRecorded(len(inserted)), orchestrator.ErrAgentTurnDone
 }
@@ -388,7 +389,7 @@ func (e *agentExecutor) park(req parkRequest) (string, error) {
 	if len(groups) == 0 {
 		e.noCandidates = true
 		// La misma copy que usan los dos sitios pre-loop (start_movement.go).
-		e.reply = msgNoCandidatesFound
+		e.reply = messages.MsgNoCandidatesFound
 		return resultNoCandidates, orchestrator.ErrAgentTurnDone
 	}
 
@@ -460,7 +461,7 @@ func (e *agentExecutor) parkCreate(seed conversation.Data) (string, error) {
 // copy del faltante, y sólo la pone este camino.
 func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *flow.InsufficientFunds) (string, error) {
 	gateSeed := conversation.CopyData(seed)
-	gateSeed[conversation.KeyGatePrompt] = msgInsufficientFunds(short.Shortfalls)
+	gateSeed[conversation.KeyGatePrompt] = messages.MsgInsufficientFunds(short.Shortfalls)
 	e.parked = append(e.parked, parkedAction{
 		Tool:    orchestrator.ToolRecordMovements,
 		Payload: agentPayload{Seed: gateSeed, Chosen: 0},

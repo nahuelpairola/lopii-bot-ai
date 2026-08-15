@@ -7,6 +7,7 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/trace"
@@ -147,9 +148,9 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 		return orchestrator.IntentReminderSet
 	case len(ex.inserted) > 0:
 		return orchestrator.IntentCreate
-	case ex.reply == msgHelp:
+	case ex.reply == messages.MsgHelp:
 		return orchestrator.IntentHelp
-	case ex.reply == msgAskRewrite:
+	case ex.reply == messages.MsgAskRewrite:
 		return orchestrator.IntentUnclear
 	case len(ex.parked) > 0:
 		// El tool del primero parkeado dice qué era. Los TRES casos importan: un

@@ -9,6 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -68,7 +69,7 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		// parcial y se corta ahí. Spec 8.2.
 		if executor.wrote {
 			c.resolveMetric(ctx, userID, outcomeCreateInserted, collectMovementIDs(executor.inserted)...)
-			c.sendText(ctx, b, chatID, msgPartialSuccessAfterWrite)
+			c.sendText(ctx, b, chatID, messages.MsgPartialSuccessAfterWrite)
 			slog.WarnContext(ctx, "agent loop failed after a write: not queued", "user_id", userID, "err", err)
 			return nil
 		}
@@ -160,9 +161,9 @@ func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, 
 		// Va PRIMERO: el reply de un CREATE limpio es el recibo, que no matchea
 		// ninguna de las copys de abajo y caería en el fracaso genérico.
 		c.resolveMetric(ctx, userID, outcomeCreateInserted, collectMovementIDs(ex.inserted)...)
-	case ex.reply == msgHelp:
+	case ex.reply == messages.MsgHelp:
 		c.resolveMetric(ctx, userID, outcomeHelpShown)
-	case ex.reply == msgAskRewrite:
+	case ex.reply == messages.MsgAskRewrite:
 		c.resolveMetric(ctx, userID, outcomeUnclear)
 	case ex.noCandidates:
 		c.resolveMetric(ctx, userID, outcomeNoCandidates)
