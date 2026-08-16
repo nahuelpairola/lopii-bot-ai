@@ -1,4 +1,11 @@
-package messaging
+// Package query es el loop de QUERY (consultas read-only al asistente). Vive
+// en su propio paquete (extraído de messaging en la costura de la etapa 6) y
+// NO sabe nada de Telegram-webhook ni del controller.
+//
+// Lo que el loop necesita del mundo exterior es la interfaz services, que el
+// borde (controller/messaging) implementa con puentes de una línea en
+// query_services.go. Este paquete nunca importa internal/controller/messaging.
+package query
 
 import (
 	"context"
@@ -9,14 +16,35 @@ import (
 	"unicode"
 
 	"github.com/go-telegram/bot"
+	"github.com/shopspring/decimal"
+	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/agent"
+	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/reminder"
+	"lopiibot.com/internal/subcategory"
 )
 
-// queryTools are the read-only tools the QUERY loop composes. Invariants
+// services es la vista del loop de QUERY sobre el controller de messaging.
+// La implementa *controller estructuralmente desde query_services.go — este
+// paquete nunca importa internal/controller/messaging.
+type services interface {
+	QueryAccountsByUserID(userID uint64) ([]account.Account, error)
+	QueryCategoriesByUser(userID uint64) ([]subcategory.Subcategory, error)
+	QueryIconForCategory(userID uint64, category string) string
+	QueryListMovements(q movement.MovementQuery, limit int) ([]movement.Movement, error)
+	QuerySumMovements(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
+	QueryBalanceForAccount(accountID uint64) (decimal.Decimal, error)
+	QueryReminderByUser(userID uint64) (*reminder.Reminder, error)
+	QueryChatRecent(userID uint64) ([]chathistory.Turn, error)
+	QueryChatAppend(userID uint64, question, answer string) error
+	QuerySendText(ctx context.Context, b *bot.Bot, chatID int64, text string)
+	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
+}
+
+// Tools are the read-only tools the QUERY loop composes. Invariants
 // live in the executor (Go), not here — the model only picks tools + ranges.
 // Optional params are declared nullable (`["string","null"]`) — the tool-
 // calling models routinely emit an explicit `null` for an argument they don't
@@ -24,7 +52,7 @@ import (
 // a plain `"string"` type 400s on that null before the executor ever runs.
 // json.Unmarshal of null leaves the Go zero value, so the executor already
 // treats it as "absent". Only from/to/currency are required (never null).
-var queryTools = []orchestrator.AgentTool{
+var Tools = []orchestrator.AgentTool{
 	{
 		Name:        "list_categories",
 		Description: "Lista las categorías y subcategorías disponibles. Sin filtro devuelve el listado completo (categoría | subcategoría). Pasá category para acotarla a una sola categoría: ahí además viene la descripción de cuándo usar cada subcategoría. Usala cuando el usuario pregunta qué categorías existen o para qué sirve una.",
@@ -150,7 +178,7 @@ var (
 //
 // Las sondas corren SÓLO acá, o sea sólo cuando el resultado ya vino vacío, son
 // LIMIT 1, y cuestan cero tokens: son consultas a Postgres, no llamadas a Groq.
-func (c *controller) describeEmptyResult(q movement.MovementQuery, args queryToolArgs) (string, error) {
+func describeEmptyResult(svc services, q movement.MovementQuery, args queryToolArgs) (string, error) {
 	if q.Search == nil {
 		return msgQueryNoRowsInRange, nil
 	}
@@ -158,7 +186,7 @@ func (c *controller) describeEmptyResult(q movement.MovementQuery, args queryToo
 
 	wide := q
 	wide.From, wide.To = searchProbeFrom, searchProbeTo
-	if rows, err := c.movements.ListForUser(wide, 1); err == nil && len(rows) > 0 {
+	if rows, err := svc.QueryListMovements(wide, 1); err == nil && len(rows) > 0 {
 		return fmt.Sprintf(msgSearchOutOfRangeFmt, term, args.From, args.To), nil
 	}
 
@@ -167,42 +195,42 @@ func (c *controller) describeEmptyResult(q movement.MovementQuery, args queryToo
 	// que la consulta real. Sin esto, "transferencia" y "saldo inicial" —12 y 4
 	// movimientos reales en la base local— se declararían inexistentes.
 	wide.OnlyReserved = true
-	if rows, err := c.movements.ListForUser(wide, 1); err == nil && len(rows) > 0 {
+	if rows, err := svc.QueryListMovements(wide, 1); err == nil && len(rows) > 0 {
 		return fmt.Sprintf(msgSearchOnlyInternalFmt, term), nil
 	}
 
 	return "", fmt.Errorf(msgSearchNotFoundFmt, term)
 }
 
-// handleQuery answers a read-only question via the agent loop. Returns
+// Run answers a read-only question via the agent loop. Returns
 // (answered, err): answered=false significa que el loop no produjo respuesta.
 //
 // El fracaso NO manda copy acá — la manda el caller, a propósito. Un 429 se encola
 // y se ackea (handleGroqError); si esta función mandara msgQueryFailed por su cuenta,
 // el usuario leería "no pude responder" Y el ack de la cola por el mismo mensaje.
 // Solo el caller sabe distinguir un 429 encolado de un fracaso de verdad.
-func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
-	prompt := c.buildQuerySystemPrompt()
-	execute := c.buildQueryExecutor(userID)
+func Run(ctx context.Context, svc services, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
+	prompt := SystemPrompt()
+	execute := NewExecutor(svc, userID)
 
 	// Best-effort: a history load error never fails the query — run stateless.
-	turns, _ := c.chatHistory.Recent(userID)
+	turns, _ := svc.QueryChatRecent(userID)
 	history := make([]orchestrator.QueryTurn, len(turns))
 	for i, t := range turns {
 		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
 	}
 
-	answer, err := c.orchestrator.AnswerQuery(ctx, prompt, text, history, queryTools, execute)
+	answer, err := svc.AnswerQuery(ctx, prompt, text, history, Tools, execute)
 	if err != nil || strings.TrimSpace(answer) == "" {
 		return false, err
 	}
-	c.sendText(ctx, b, chatID, answer)
+	svc.QuerySendText(ctx, b, chatID, answer)
 	// Best-effort append: a failure here never fails the answer the user already got.
-	_ = c.chatHistory.Append(userID, text, answer)
+	_ = svc.QueryChatAppend(userID, text, answer)
 	return true, nil
 }
 
-func (c *controller) buildQuerySystemPrompt() string {
+func SystemPrompt() string {
 	today := agent.StartOfTodayArgentina().Format("2006-01-02")
 	return fmt.Sprintf(`Sos el asistente de consultas de un bot de finanzas personales argentino.
 Basá TODA cifra en los datos que devuelven las herramientas — nunca inventes ni estimes un número sin respaldo de una herramienta.
@@ -219,10 +247,10 @@ Para preguntas sobre el recordatorio de carga de gastos (si está activo, a qué
 Si la pregunta no se puede responder con estas herramientas, decilo con amabilidad en una línea.`, today)
 }
 
-// buildQueryExecutor returns the execute closure the loop calls per tool
-// call. It is scoped to userID and owns every invariant (user-scoping, abs
-// amounts, ARS/USD separation) — the LLM can only pick tools and ranges.
-func (c *controller) buildQueryExecutor(userID uint64) func(string, json.RawMessage) (string, error) {
+// NewExecutor returns the execute closure the loop calls per tool call. It is
+// scoped to userID and owns every invariant (user-scoping, abs amounts,
+// ARS/USD separation) — the LLM can only pick tools and ranges.
+func NewExecutor(svc services, userID uint64) func(string, json.RawMessage) (string, error) {
 	return func(name string, raw json.RawMessage) (string, error) {
 		var args queryToolArgs
 		if err := json.Unmarshal(raw, &args); err != nil {
@@ -230,15 +258,15 @@ func (c *controller) buildQueryExecutor(userID uint64) func(string, json.RawMess
 		}
 		switch name {
 		case "list_categories":
-			return c.execListCategories(userID, args)
+			return execListCategories(svc, userID, args)
 		case "sum_movements":
-			return c.execSumMovements(userID, args)
+			return execSumMovements(svc, userID, args)
 		case "list_movements":
-			return c.execListMovements(userID, args)
+			return execListMovements(svc, userID, args)
 		case "account_balance":
-			return c.execAccountBalance(userID, args)
+			return execAccountBalance(svc, userID, args)
 		case "get_reminder":
-			rem, err := c.reminders.FindByUserID(userID)
+			rem, err := svc.QueryReminderByUser(userID)
 			if err != nil {
 				rem = nil // no row (or lookup miss) -> "no configurado"
 			}
@@ -249,8 +277,8 @@ func (c *controller) buildQueryExecutor(userID uint64) func(string, json.RawMess
 	}
 }
 
-func (c *controller) execListCategories(userID uint64, args queryToolArgs) (string, error) {
-	subs, err := c.subcategories.FindAllForUser(userID)
+func execListCategories(svc services, userID uint64, args queryToolArgs) (string, error) {
+	subs, err := svc.QueryCategoriesByUser(userID)
 	if err != nil {
 		return "", err
 	}
@@ -296,18 +324,18 @@ func (c *controller) execListCategories(userID uint64, args queryToolArgs) (stri
 	return header + strings.Join(lines, "\n"), nil
 }
 
-func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string, error) {
-	q, err := c.buildMovementQuery(userID, args)
+func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, error) {
+	q, err := buildMovementQuery(svc, userID, args)
 	if err != nil {
 		return "", err
 	}
 	groupBy := args.GroupBy
-	rows, err := c.movements.SumForUser(q, groupBy)
+	rows, err := svc.QuerySumMovements(q, groupBy)
 	if err != nil {
 		return "", err
 	}
 	if len(rows) == 0 {
-		return c.describeEmptyResult(q, args)
+		return describeEmptyResult(svc, q, args)
 	}
 	cur := q.Currency.String()
 	if groupBy == "" || groupBy == "none" {
@@ -316,7 +344,7 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 	// For account grouping, map account_id labels to names.
 	nameByID := map[string]string{}
 	if groupBy == "account" {
-		accts, _ := c.accounts.FindByUserID(userID)
+		accts, _ := svc.QueryAccountsByUserID(userID)
 		for _, a := range accts {
 			nameByID[fmt.Sprintf("%d", a.ID)] = a.Name
 		}
@@ -330,24 +358,24 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 			}
 		}
 		if groupBy == "category" && label != "" {
-			label = c.subcategories.IconForCategory(userID, label) + " " + label
+			label = svc.QueryIconForCategory(userID, label) + " " + label
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
 	}
 	return strings.Join(lines, "\n"), nil
 }
 
-func (c *controller) execListMovements(userID uint64, args queryToolArgs) (string, error) {
-	q, err := c.buildMovementQuery(userID, args)
+func execListMovements(svc services, userID uint64, args queryToolArgs) (string, error) {
+	q, err := buildMovementQuery(svc, userID, args)
 	if err != nil {
 		return "", err
 	}
-	ms, err := c.movements.ListForUser(q, args.Limit)
+	ms, err := svc.QueryListMovements(q, args.Limit)
 	if err != nil {
 		return "", err
 	}
 	if len(ms) == 0 {
-		return c.describeEmptyResult(q, args)
+		return describeEmptyResult(svc, q, args)
 	}
 	var lines []string
 	for _, m := range ms {
@@ -377,8 +405,8 @@ func queryMovementLine(m movement.Movement) string {
 		m.Date.Format("2006-01-02"))
 }
 
-func (c *controller) execAccountBalance(userID uint64, args queryToolArgs) (string, error) {
-	accts, err := c.accounts.FindByUserID(userID)
+func execAccountBalance(svc services, userID uint64, args queryToolArgs) (string, error) {
+	accts, err := svc.QueryAccountsByUserID(userID)
 	if err != nil {
 		return "", err
 	}
@@ -387,7 +415,7 @@ func (c *controller) execAccountBalance(userID uint64, args queryToolArgs) (stri
 		if args.Account != "" && !strings.EqualFold(a.Name, args.Account) {
 			continue
 		}
-		bal, err := c.movements.SumAmountForAccount(uint64(a.ID))
+		bal, err := svc.QueryBalanceForAccount(uint64(a.ID))
 		if err != nil {
 			return "", err
 		}
@@ -401,7 +429,7 @@ func (c *controller) execAccountBalance(userID uint64, args queryToolArgs) (stri
 
 // buildMovementQuery translates tool args into a movement.MovementQuery,
 // resolving the optional account name to an ID and validating the currency.
-func (c *controller) buildMovementQuery(userID uint64, args queryToolArgs) (movement.MovementQuery, error) {
+func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (movement.MovementQuery, error) {
 	cur := currency.Currency(args.Currency)
 	if cur != currency.ARS && cur != currency.USD {
 		cur = currency.ARS // default per the ARS-if-unspecified convention
@@ -433,7 +461,7 @@ func (c *controller) buildMovementQuery(userID uint64, args queryToolArgs) (move
 		q.Search = &s
 	}
 	if args.Account != "" {
-		accts, err := c.accounts.FindByUserID(userID)
+		accts, err := svc.QueryAccountsByUserID(userID)
 		if err != nil {
 			return movement.MovementQuery{}, err
 		}

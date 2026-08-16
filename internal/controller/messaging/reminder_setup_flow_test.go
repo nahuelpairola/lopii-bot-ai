@@ -384,22 +384,3 @@ func TestReminderFlow_Onboarding_SkipsHubShowsWeekly(t *testing.T) {
 		t.Errorf("expected the weekly-summary question, got %q", res.Prompt.Text)
 	}
 }
-
-func TestExecGetReminder(t *testing.T) {
-	start := 1200
-	active := &reminder.Reminder{UserID: 5, WindowStartMin: start, WindowEndMin: 1260, Enabled: true}
-
-	got := describeReminder(active)
-	if !strings.Contains(got, "20") || !strings.Contains(got, "21") || !strings.Contains(got, "activo") {
-		t.Errorf("active description missing window/estado: %q", got)
-	}
-
-	off := &reminder.Reminder{UserID: 5, WindowStartMin: start, WindowEndMin: 1260, Enabled: false}
-	if !strings.Contains(describeReminder(off), "apagado") {
-		t.Errorf("disabled description should say apagado: %q", describeReminder(off))
-	}
-
-	if describeReminder(nil) == "" {
-		t.Error("nil (no reminder) must return a non-empty description")
-	}
-}

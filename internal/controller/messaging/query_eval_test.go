@@ -17,6 +17,7 @@ import (
 	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/query"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -155,14 +156,14 @@ func TestQueryEval(t *testing.T) {
 	// como "subtest may have called FailNow on a parent test": el subtest queda en
 	// FAIL aunque la intención fuera saltearlo.
 	ask := func(t *testing.T, q string) string {
-		prompt := c.buildQuerySystemPrompt()
-		exec := c.buildQueryExecutor(uid)
+		prompt := query.SystemPrompt()
+		exec := query.NewExecutor(c, uid)
 		if asked > 0 {
 			time.Sleep(12 * time.Second)
 		}
 		asked++
 		for attempt := 0; ; attempt++ {
-			ans, err := c.orchestrator.AnswerQuery(context.Background(), prompt, q, nil, queryTools, exec)
+			ans, err := c.orchestrator.AnswerQuery(context.Background(), prompt, q, nil, query.Tools, exec)
 			if err != nil {
 				if attempt < 4 && strings.Contains(err.Error(), "rate_limit") {
 					t.Logf("rate-limited, backing off 20s (attempt %d)", attempt+1)

@@ -1,9 +1,10 @@
-package messaging
+package query
 
 import (
 	"strings"
 	"testing"
 
+	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -18,13 +19,13 @@ import (
 // desde el recorte de tokens del 2026-08-10: la lista completa ya no las trae, así
 // que ahí el separador colgante es imposible por construcción.
 func TestExecListCategories_OmitsEmptyDescription(t *testing.T) {
-	subs := &fakeSubcategoryRepoFull{all: []subcategory.Subcategory{
+	subs := &fakeQuerySubcats{subs: []subcategory.Subcategory{
 		{Category: "Alimentación", Subcategory: "Supermercado", Description: "Compra grande. NO incluye almacén.", Icon: "🍔"},
 		{Category: "Alimentación", Subcategory: "Sueldo", Icon: "💵"},
 	}}
-	c := &controller{subcategories: subs}
+	svc := &queryTestServices{subcats: subs}
 
-	out, err := c.execListCategories(1, queryToolArgs{Category: "Alimentación"})
+	out, err := execListCategories(svc, 1, queryToolArgs{Category: "Alimentación"})
 	if err != nil {
 		t.Fatalf("execListCategories: %v", err)
 	}
@@ -37,5 +38,24 @@ func TestExecListCategories_OmitsEmptyDescription(t *testing.T) {
 	}
 	if !strings.Contains(out, "Alimentación | Sueldo") {
 		t.Errorf("el par sin nota igual tiene que estar:\n%s", out)
+	}
+}
+
+func TestExecGetReminder(t *testing.T) {
+	start := 1200
+	active := &reminder.Reminder{UserID: 5, WindowStartMin: start, WindowEndMin: 1260, Enabled: true}
+
+	got := describeReminder(active)
+	if !strings.Contains(got, "20") || !strings.Contains(got, "21") || !strings.Contains(got, "activo") {
+		t.Errorf("active description missing window/estado: %q", got)
+	}
+
+	off := &reminder.Reminder{UserID: 5, WindowStartMin: start, WindowEndMin: 1260, Enabled: false}
+	if !strings.Contains(describeReminder(off), "apagado") {
+		t.Errorf("disabled description should say apagado: %q", describeReminder(off))
+	}
+
+	if describeReminder(nil) == "" {
+		t.Error("nil (no reminder) must return a non-empty description")
 	}
 }

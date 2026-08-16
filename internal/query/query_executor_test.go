@@ -1,16 +1,21 @@
-package messaging
+package query
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -108,8 +113,47 @@ func (r *fakeQuerySubcats) FindOwnedByUser(userID uint64) ([]subcategory.Subcate
 	return r.owned, nil
 }
 
-func newQueryController(m *fakeQueryMovements, a *fakeQueryAccounts, s *fakeQuerySubcats) *controller {
-	return &controller{movements: m, accounts: a, subcategories: s}
+// queryTestServices adapta los fakes de repo a la interfaz query.services.
+// Solo los métodos que los tests ejercitan delegan; el resto son stubs.
+type queryTestServices struct {
+	movements *fakeQueryMovements
+	accounts  *fakeQueryAccounts
+	subcats   *fakeQuerySubcats
+}
+
+func (s *queryTestServices) QueryAccountsByUserID(userID uint64) ([]account.Account, error) {
+	return s.accounts.FindByUserID(userID)
+}
+func (s *queryTestServices) QueryCategoriesByUser(userID uint64) ([]subcategory.Subcategory, error) {
+	return s.subcats.FindAllForUser(userID)
+}
+func (s *queryTestServices) QueryIconForCategory(userID uint64, category string) string {
+	return s.subcats.IconForCategory(userID, category)
+}
+func (s *queryTestServices) QueryListMovements(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+	return s.movements.ListForUser(q, limit)
+}
+func (s *queryTestServices) QuerySumMovements(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
+	return s.movements.SumForUser(q, groupBy)
+}
+func (s *queryTestServices) QueryBalanceForAccount(accountID uint64) (decimal.Decimal, error) {
+	return s.movements.SumAmountForAccount(accountID)
+}
+func (s *queryTestServices) QueryReminderByUser(userID uint64) (*reminder.Reminder, error) {
+	return nil, nil
+}
+func (s *queryTestServices) QueryChatRecent(userID uint64) ([]chathistory.Turn, error) {
+	return nil, nil
+}
+func (s *queryTestServices) QueryChatAppend(userID uint64, question, answer string) error { return nil }
+func (s *queryTestServices) QuerySendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
+}
+func (s *queryTestServices) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
+	return "", nil
+}
+
+func newQueryExecutor(m *fakeQueryMovements, a *fakeQueryAccounts, s *fakeQuerySubcats) func(string, json.RawMessage) (string, error) {
+	return NewExecutor(&queryTestServices{movements: m, accounts: a, subcats: s}, 1)
 }
 
 func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }
@@ -128,7 +172,7 @@ func TestExec_ListCategories(t *testing.T) {
 		{Category: "Comida", Subcategory: "Restaurante", Description: "cuando comés afuera"},
 		{Category: "Auto", Subcategory: "Nafta", Description: "combustible del auto"},
 	}}
-	exec := newQueryController(&fakeQueryMovements{}, &fakeQueryAccounts{}, s).buildQueryExecutor(1)
+	exec := newQueryExecutor(&fakeQueryMovements{}, &fakeQueryAccounts{}, s)
 
 	out, err := exec("list_categories", json.RawMessage(`{}`))
 	if err != nil {
@@ -154,7 +198,7 @@ func TestExec_ListCategories_LeadsWithIcon(t *testing.T) {
 	s := &fakeQuerySubcats{subs: []subcategory.Subcategory{
 		{Category: "Comida", Subcategory: "Restaurante", Description: "afuera", Icon: "🍔"},
 	}}
-	exec := newQueryController(&fakeQueryMovements{}, &fakeQueryAccounts{}, s).buildQueryExecutor(1)
+	exec := newQueryExecutor(&fakeQueryMovements{}, &fakeQueryAccounts{}, s)
 
 	out, err := exec("list_categories", json.RawMessage(`{}`))
 	if err != nil {
@@ -168,7 +212,7 @@ func TestExec_ListCategories_LeadsWithIcon(t *testing.T) {
 func TestExec_SumMovements_GroupByCategory_LeadsWithIcon(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Comida", Total: dec("5000")}}}
 	s := &fakeQuerySubcats{} // IconForCategory returns "📂"
-	exec := newQueryController(m, &fakeQueryAccounts{}, s).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, s)
 
 	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","group_by":"category"}`))
 	if !strings.Contains(out, "📂 Comida") {
@@ -180,7 +224,7 @@ func TestExec_SumMovements_GroupByCategory_LeadsWithIcon(t *testing.T) {
 // transfer excluded by default (Type nil).
 func TestExec_SumMovements_FoodInMay(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","search":"Comida"}`))
 	if err != nil {
@@ -206,7 +250,7 @@ func TestExec_SumMovements_FoodInMay(t *testing.T) {
 // Case: "resumen del mes por categoría"
 func TestExec_SumMovements_GroupByCategory(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Comida", Total: dec("5000")}, {Label: "Auto", Total: dec("3000")}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","group_by":"category"}`))
 	if m.lastGroupBy != "category" {
@@ -221,7 +265,7 @@ func TestExec_SumMovements_GroupByCategory(t *testing.T) {
 func TestExec_SumMovements_GroupByAccount_MapsNames(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "7", Total: dec("1000")}}}
 	a := &fakeQueryAccounts{accts: []account.Account{{Model: gorm.Model{ID: 7}, Name: "Banco", Currency: currency.ARS}}}
-	exec := newQueryController(m, a, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, a, &fakeQuerySubcats{})
 
 	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","group_by":"account"}`))
 	if m.lastGroupBy != "account" {
@@ -236,7 +280,7 @@ func TestExec_SumMovements_GroupByAccount_MapsNames(t *testing.T) {
 // día" — the data side. The loop composes these from per-month totals.
 func TestExec_SumMovements_GroupByMonth(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "2026-04", Total: dec("8000")}, {Label: "2026-05", Total: dec("13000")}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-04-01","to":"2026-05-31","currency":"ARS","group_by":"month","search":"Auto"}`))
 	if m.lastGroupBy != "month" {
@@ -252,7 +296,7 @@ func TestExec_SumMovements_GroupByMonth(t *testing.T) {
 func TestExec_SumMovements_BrokerIncome(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("10000")}}}
 	a := &fakeQueryAccounts{accts: []account.Account{{Model: gorm.Model{ID: 3}, Name: "Broker", Currency: currency.ARS}}}
-	exec := newQueryController(m, a, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, a, &fakeQuerySubcats{})
 
 	_, err := exec("sum_movements", json.RawMessage(`{"from":"2026-01-01","to":"2026-12-31","currency":"ARS","type":"income","search":"Rendimiento inversión","account":"Broker"}`))
 	if err != nil {
@@ -280,7 +324,7 @@ func TestExec_ListMovements_SearchFilterAbs(t *testing.T) {
 		Description: &desc,
 		Subcategory: &subcategory.Subcategory{Category: "Comida", Subcategory: "Super"},
 	}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","search":"Carrefour","limit":5}`))
 	if err != nil {
@@ -306,7 +350,7 @@ func TestExec_ListMovements_SearchFilterAbs(t *testing.T) {
 // respuesta sale $0 sobre gastos que existen.
 func TestExec_SumMovements_SearchStripsLeadingIcon(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	_, err := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","search":"🍔 Alimentación"}`))
 	if err != nil {
@@ -321,7 +365,7 @@ func TestExec_SumMovements_SearchStripsLeadingIcon(t *testing.T) {
 func TestExec_ListMovements_AccountAndDefaultLimit(t *testing.T) {
 	m := &fakeQueryMovements{listRows: []movement.Movement{}}
 	a := &fakeQueryAccounts{accts: []account.Account{{Model: gorm.Model{ID: 9}, Name: "Mercado Pago", Currency: currency.ARS}}}
-	exec := newQueryController(m, a, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, a, &fakeQuerySubcats{})
 
 	_, err := exec("list_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","account":"Mercado Pago"}`))
 	if err != nil {
@@ -340,7 +384,7 @@ func TestExec_AccountBalance_AllSignedPerCurrency(t *testing.T) {
 		{Model: gorm.Model{ID: 2}, Name: "Wallet USD", Currency: currency.USD},
 	}}
 	m := &fakeQueryMovements{balances: map[uint64]decimal.Decimal{1: dec("15000"), 2: dec("-200")}}
-	exec := newQueryController(m, a, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, a, &fakeQuerySubcats{})
 
 	out, err := exec("account_balance", json.RawMessage(`{}`))
 	if err != nil {
@@ -364,7 +408,7 @@ func TestExec_AccountBalance_ByName(t *testing.T) {
 		{Model: gorm.Model{ID: 2}, Name: "Wallet USD", Currency: currency.USD},
 	}}
 	m := &fakeQueryMovements{balances: map[uint64]decimal.Decimal{1: dec("15000"), 2: dec("300")}}
-	exec := newQueryController(m, a, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, a, &fakeQuerySubcats{})
 
 	out, _ := exec("account_balance", json.RawMessage(`{"account":"Wallet USD"}`))
 	if strings.Contains(out, "Banco") {
@@ -378,7 +422,7 @@ func TestExec_AccountBalance_ByName(t *testing.T) {
 // Currency defaults to ARS when the model omits it (per the ARS-if-unspecified rule).
 func TestExec_SumMovements_DefaultsCurrencyARS(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("100")}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	_, err := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31"}`))
 	if err != nil {
@@ -401,7 +445,7 @@ func TestExec_SumMovements_DefaultsCurrencyARS(t *testing.T) {
 func TestExec_NoRows_DoesNotAssertThereWereNoExpenses(t *testing.T) {
 	for _, tool := range []string{"sum_movements", "list_movements"} {
 		m := &fakeQueryMovements{} // sin filas: ni la consulta ni las sondas encuentran
-		exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+		exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 		out, err := exec(tool, json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","search":"lote"}`))
 		if err == nil {
@@ -432,7 +476,7 @@ func TestExec_UnknownAccount_FailsInsteadOfQueryingAllAccounts(t *testing.T) {
 		{Model: gorm.Model{ID: 2}, Name: "Wallet", Currency: currency.USD},
 	}}
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("999999")}}}
-	exec := newQueryController(m, a, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, a, &fakeQuerySubcats{})
 
 	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","account":"Galicia"}`))
 	if err == nil {
@@ -467,7 +511,7 @@ func TestExec_UnknownAccount_FailsInsteadOfQueryingAllAccounts(t *testing.T) {
 // taxonomía de las dos tools, en vez de en cada productor de íconos.
 func TestBuildMovementQuery_StripsTheIconWeAddedFromTheFilter(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	_, err := exec("sum_movements", json.RawMessage(
 		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","search":"🍔 Alimentación"}`))
@@ -492,7 +536,7 @@ func TestBuildMovementQuery_StripsTheIconWeAddedFromTheFilter(t *testing.T) {
 // deja como vino y la consulta devuelve cero, que el modelo sí sabe explicar.
 func TestBuildMovementQuery_AnAllIconFilterStillFilters(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("999999")}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	_, err := exec("sum_movements", json.RawMessage(
 		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","search":"🍔"}`))
@@ -511,7 +555,7 @@ func TestBuildMovementQuery_AnAllIconFilterStillFilters(t *testing.T) {
 // préstamos") y no puede recortarse nada de eso.
 func TestBuildMovementQuery_LeavesARealNameAlone(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("1")}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	_, err := exec("sum_movements", json.RawMessage(
 		`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","search":"Deudas / préstamos"}`))
@@ -540,7 +584,7 @@ func TestExec_ListMovements_EmptyInRangeButExistsElsewhere(t *testing.T) {
 		{},       // la consulta real: vacía
 		oneRow(), // sonda 1, rango ensanchado: hay
 	}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-14","currency":"ARS","search":"netflix"}`))
 	if err != nil {
@@ -560,7 +604,7 @@ func TestExec_ListMovements_EmptyButOnlyInReserved(t *testing.T) {
 		{},       // sonda 1, rango ensanchado, sin reservadas: nada
 		oneRow(), // sonda 2, sólo reservadas: hay
 	}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-14","currency":"ARS","search":"transferencia"}`))
 	if err != nil {
@@ -580,7 +624,7 @@ func TestExec_ListMovements_EmptyButOnlyInReserved(t *testing.T) {
 // que cierra el portón — el modelo no tiene con qué afirmar ausencia.
 func TestExec_ListMovements_SearchNotFoundAnywhere_IsError(t *testing.T) {
 	m := &fakeQueryMovements{listByCall: [][]movement.Movement{{}, {}, {}}}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	_, err := exec("list_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-14","currency":"ARS","search":"cochinchina"}`))
 	if err == nil {
@@ -595,7 +639,7 @@ func TestExec_ListMovements_SearchNotFoundAnywhere_IsError(t *testing.T) {
 // hubo movimientos en ese rango. No corresponde sondear nada.
 func TestExec_SumMovements_EmptyWithoutSearch_NoProbes(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: nil}
-	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-14","currency":"ARS"}`))
 	if err != nil {
@@ -610,7 +654,7 @@ func TestExec_SumMovements_EmptyWithoutSearch_NoProbes(t *testing.T) {
 }
 
 func TestExec_UnknownTool(t *testing.T) {
-	exec := newQueryController(&fakeQueryMovements{}, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+	exec := newQueryExecutor(&fakeQueryMovements{}, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 	if _, err := exec("nope", json.RawMessage(`{}`)); err == nil {
 		t.Fatal("expected an error for an unknown tool")
 	}
@@ -640,7 +684,7 @@ func TestQueryMessages_NameNoTool(t *testing.T) {
 		"msgSearchNotFoundFmt":     msgSearchNotFoundFmt,
 	}
 	for name, msg := range msgs {
-		for _, tool := range queryTools {
+		for _, tool := range Tools {
 			if strings.Contains(msg, tool.Name) {
 				t.Errorf("%s nombra la herramienta %q; el modelo la imita y el turno se cae:\n%s", name, tool.Name, msg)
 			}

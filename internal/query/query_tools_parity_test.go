@@ -1,4 +1,4 @@
-package messaging
+package query
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 )
 
 // Los schemas de las read tools están copiados A MANO en dos archivos:
-// messaging/query.go (queryTools, lo que consume AnswerQuery) y
+// internal/query/query.go (Tools, lo que consume AnswerQuery) y
 // orchestrator/agent_tools.go (el toolbox del agente). Sólo un comentario los
 // mantenía sincronizados.
 //
@@ -21,7 +21,7 @@ import (
 // pero por otra puerta.
 //
 // Se comparan sólo los Parameters: el AgentTool del agente además lleva When y
-// Kind, que messaging no usa y no tiene por qué llevar.
+// Kind, que query no usa y no tiene por qué llevar.
 func TestQueryTools_ParametersMatchAgentTools(t *testing.T) {
 	agent := map[string]json.RawMessage{}
 	for _, tool := range orchestrator.AgentTools() {
@@ -29,20 +29,20 @@ func TestQueryTools_ParametersMatchAgentTools(t *testing.T) {
 	}
 
 	checked := 0
-	for _, tool := range queryTools {
+	for _, tool := range Tools {
 		other, ok := agent[tool.Name]
 		if !ok {
 			continue // no toda tool de query vive también en el toolbox del agente
 		}
 		var mine, theirs any
 		if err := json.Unmarshal(tool.Parameters, &mine); err != nil {
-			t.Fatalf("%s: el schema de messaging no parsea: %v", tool.Name, err)
+			t.Fatalf("%s: el schema de query no parsea: %v", tool.Name, err)
 		}
 		if err := json.Unmarshal(other, &theirs); err != nil {
 			t.Fatalf("%s: el schema de orchestrator no parsea: %v", tool.Name, err)
 		}
 		if !reflect.DeepEqual(mine, theirs) {
-			t.Errorf("%s: los dos schemas divergieron.\nmessaging/query.go:\n%s\n\norchestrator/agent_tools.go:\n%s",
+			t.Errorf("%s: los dos schemas divergieron.\ninternal/query/query.go:\n%s\n\norchestrator/agent_tools.go:\n%s",
 				tool.Name, tool.Parameters, other)
 		}
 		checked++
