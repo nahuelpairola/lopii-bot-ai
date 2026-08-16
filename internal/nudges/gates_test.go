@@ -1,4 +1,4 @@
-package messaging
+package nudges
 
 import (
 	"testing"
@@ -14,7 +14,7 @@ func daysAgo(n int, count int) movement.DayCount {
 }
 
 // gateFor devuelve el when de una key, y falla el test si no existe.
-func gateFor(t *testing.T, key string) func(*controller, uint64, *nudgeStats) bool {
+func gateFor(t *testing.T, key string) func(Services, uint64, *nudgeStats) bool {
 	t.Helper()
 	for _, n := range nudges {
 		if n.key == key {
@@ -43,15 +43,15 @@ func TestNudgeStats_MovsSinceCountsMovementsNotDays(t *testing.T) {
 // hace tres semanas NO habilitan "¿cuánto gasté esta semana?", porque la
 // respuesta sería $0.
 func TestQueryTipGate_IgnoresOldMovements(t *testing.T) {
-	c := &controller{movements: &fakeMovementRepoFull{countForUser: 4}}
+	svc := &testServices{counts: 4}
 
 	stale := &nudgeStats{total: 4, days: []movement.DayCount{daysAgo(21, 4)}}
-	if gateFor(t, nudgeQueryTip)(c, 1, stale) {
+	if gateFor(t, nudgeQueryTip)(svc, 1, stale) {
 		t.Error("query_tip no debería dispararse con movimientos de hace tres semanas")
 	}
 
 	fresh := &nudgeStats{total: 9, days: []movement.DayCount{daysAgo(1, 5), daysAgo(3, 4)}}
-	if !gateFor(t, nudgeQueryTip)(c, 1, fresh) {
+	if !gateFor(t, nudgeQueryTip)(svc, 1, fresh) {
 		t.Error("query_tip debería dispararse con 9 movimientos en los últimos 7 días")
 	}
 }
@@ -59,12 +59,12 @@ func TestQueryTipGate_IgnoresOldMovements(t *testing.T) {
 // El gate por dimensión: 8 movimientos del mes no alcanzan si son todos de la
 // misma categoría — "¿en qué gasté más?" no tendría forma de respuesta.
 func TestTopCategoryTipGate_NeedsDistinctCategories(t *testing.T) {
-	cats := func(n int) *fakeMovementRepoFull {
+	cats := func(n int) *testServices {
 		rows := make([]movement.CategorySum, n)
 		for i := range rows {
 			rows[i] = movement.CategorySum{Label: string(rune('A' + i))}
 		}
-		return &fakeMovementRepoFull{
+		return &testServices{
 			sumRows: func(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
 				return rows, nil
 			},
@@ -75,10 +75,10 @@ func TestTopCategoryTipGate_NeedsDistinctCategories(t *testing.T) {
 	// mes, cuando esos días caen en el mes anterior. Hoy siempre es este mes.
 	s := &nudgeStats{total: 20, days: []movement.DayCount{daysAgo(0, 10)}}
 
-	if gateFor(t, nudgeTopCategoryTip)(&controller{movements: cats(2)}, 1, s) {
+	if gateFor(t, nudgeTopCategoryTip)(cats(2), 1, s) {
 		t.Error("top_category_tip no debería dispararse con 2 categorías")
 	}
-	if !gateFor(t, nudgeTopCategoryTip)(&controller{movements: cats(3)}, 1, s) {
+	if !gateFor(t, nudgeTopCategoryTip)(cats(3), 1, s) {
 		t.Error("top_category_tip debería dispararse con 3 categorías")
 	}
 }
@@ -94,7 +94,7 @@ func TestActivityFloor_BlocksDormantUser(t *testing.T) {
 // La regla del calendario: comparar meses un día 5 compararía cinco días
 // contra treinta. El gate lo frena aunque los datos sobren.
 func TestCompareTipGate_RespectsDayOfMonth(t *testing.T) {
-	c := &controller{movements: &fakeMovementRepoFull{}}
+	svc := &testServices{}
 	s := &nudgeStats{
 		total: 60,
 		days: []movement.DayCount{
@@ -107,7 +107,7 @@ func TestCompareTipGate_RespectsDayOfMonth(t *testing.T) {
 		t.Fatalf("el fixture debería tener datos de sobra en el mes pasado, tiene %d", s.movsInMonth(1))
 	}
 
-	got := gateFor(t, nudgeCompareTip)(c, 1, s)
+	got := gateFor(t, nudgeCompareTip)(svc, 1, s)
 	want := dayOfMonth() >= compareTipMinDay
 	if got != want {
 		t.Errorf("compare_tip = %v un día %d; con el umbral en %d debería ser %v",

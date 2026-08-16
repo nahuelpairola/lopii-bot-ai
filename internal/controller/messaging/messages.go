@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
@@ -12,11 +13,6 @@ import (
 
 // Mensajes estáticos, sin variables.
 const (
-	// Menú de preguntas (tip recurrente).
-	msgMenuButton = "Preguntame"
-	msgMenuHeader = "¿Qué querés saber?"
-	msgMenuNoData = "Todavía no tengo suficiente cargado para sacar cuentas. Seguí anotando y en unos días te muestro."
-
 	msgAlreadyHasAccount = "Ya tenés una cuenta activa. Mandame un gasto para registrarlo."
 	msgPrivateBot        = "Este bot es privado. Si tenés una invitación, abrí el link que te compartieron."
 	msgInvalidInvitation = "Esa invitación no es válida."
@@ -57,7 +53,7 @@ const (
 	msgNoAccountCurrency = flow.MsgNoAccountCurrency
 	msgMovementMalformed = flow.MsgMovementMalformed
 
-	msgQueryFailed = "No pude resolver esa consulta ahora. Probá reformularla o intentá de nuevo en un momento."
+	msgQueryFailed = constants.QueryFailed
 
 	msgReminderDisabled  = flow.MsgReminderDisabled
 	msgReminderCancelled = flow.MsgReminderCancelled

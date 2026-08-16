@@ -22,6 +22,7 @@ import (
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/nudges"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
@@ -125,7 +126,7 @@ type traceRepository interface {
 }
 
 // nudgeRepository is the once-ever/cooldown storage for contextual nudges
-// (internal/nudge). Local interface — see nudge.go.
+// (internal/nudge). Local interface — see nudges_services.go.
 type nudgeRepository interface {
 	SentKeys(userID uint64) ([]string, error)
 	MarkSent(userID uint64, key string) error
@@ -291,7 +292,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		// El tap del botón de un tip no pasa por el engine ni por el router.
 		// Va acá arriba para que un flow abierto no se coma el callback como si
 		// fuera una opción suya; la consulta es read-only y lo deja intacto.
-		if c.handleNudgeQuery(ctx, b, chatID, u.ID, input.CallbackData) {
+		if nudges.HandleCallback(ctx, c, b, chatID, u.ID, input.CallbackData) {
 			return &uid, nil
 		}
 		// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
@@ -311,14 +312,14 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 					return &uid, nil
 				}
 				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
-				c.maybeNudge(ctx, b, chatID, u.ID)
+				nudges.Maybe(ctx, c, b, chatID, u.ID)
 				return &uid, err
 			}
 			return &uid, nil
 		}
 		if result.Finished {
 			c.handleFlowFinished(ctx, b, chatID, result)
-			c.maybeNudge(ctx, b, chatID, u.ID)
+			nudges.Maybe(ctx, c, b, chatID, u.ID)
 			return &uid, nil
 		}
 		c.sendPrompt(ctx, b, chatID, result.Prompt)

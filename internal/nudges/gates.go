@@ -1,4 +1,4 @@
-package messaging
+package nudges
 
 import (
 	"time"
@@ -23,19 +23,20 @@ const nudgeStatsWindow = 62
 type nudgeStats struct {
 	days  []movement.DayCount
 	total int64
-	// sent son las keys ya enviadas a este usuario. La llena maybeNudge con lo
+	// sent son las keys ya enviadas a este usuario. La llena Maybe con lo
 	// que ya trajo SentKeys — cero queries extra. Solo la lee el gate del menú.
 	sent map[string]bool
 }
 
-func (c *controller) buildNudgeStats(userID uint64) *nudgeStats {
-	s := &nudgeStats{}
+// buildNudgeStats arma la snapshot de actividad compartida desde los repos.
+func buildNudgeStats(s Services, userID uint64) *nudgeStats {
+	st := &nudgeStats{}
 	today := agent.StartOfTodayArgentina()
 	// Best-effort: si una de las dos falla, el stats queda en cero y ningún
 	// gate de densidad abre. Nunca mandar un tip es el fallo correcto acá.
-	s.days, _ = c.movements.CountByDayForUser(userID, today.AddDate(0, 0, -nudgeStatsWindow), today)
-	s.total, _ = c.movements.CountForUser(userID)
-	return s
+	st.days, _ = s.MovementsCountByDayForUser(userID, today.AddDate(0, 0, -nudgeStatsWindow), today)
+	st.total, _ = s.MovementsCountForUser(userID)
+	return st
 }
 
 // movsSince: cuántos movimientos cargó en los últimos n días.
@@ -118,8 +119,8 @@ func hasActivityFloor(s *nudgeStats) bool {
 // distinctCategoriesThisMonth: cuántas categorías distintas tocó este mes.
 // SumForUser devuelve una fila por grupo, así que la cantidad de filas ES la
 // cantidad de categorías (el Total de cada fila no se usa acá).
-func (c *controller) distinctCategoriesThisMonth(userID uint64) int {
-	rows, err := c.movements.SumForUser(movement.MovementQuery{
+func distinctCategoriesThisMonth(s Services, userID uint64) int {
+	rows, err := s.MovementsSumForUser(movement.MovementQuery{
 		UserID:   userID,
 		From:     startOfMonth(),
 		To:       agent.StartOfTodayArgentina(),
@@ -133,9 +134,9 @@ func (c *controller) distinctCategoriesThisMonth(userID uint64) int {
 
 // hasIncomeThisMonth: ¿entró algo este mes? Sin esto, "¿me alcanzó lo que
 // entró?" no tiene una de sus dos mitades.
-func (c *controller) hasIncomeThisMonth(userID uint64) bool {
+func hasIncomeThisMonth(s Services, userID uint64) bool {
 	income := string(movement.Income)
-	rows, err := c.movements.SumForUser(movement.MovementQuery{
+	rows, err := s.MovementsSumForUser(movement.MovementQuery{
 		UserID:   userID,
 		From:     startOfMonth(),
 		To:       agent.StartOfTodayArgentina(),
@@ -147,15 +148,15 @@ func (c *controller) hasIncomeThisMonth(userID uint64) bool {
 
 // hasEnoughDataForMonthVerdict: hay ingreso y hay gasto suficiente este mes.
 // "¿Me alcanzó?" sin una de las dos mitades no es un veredicto.
-func (c *controller) hasEnoughDataForMonthVerdict(userID uint64, s *nudgeStats) bool {
-	return s.movsInMonth(0) >= topCategoryTipMovs && c.hasIncomeThisMonth(userID)
+func hasEnoughDataForMonthVerdict(s Services, userID uint64, stats *nudgeStats) bool {
+	return stats.movsInMonth(0) >= topCategoryTipMovs && hasIncomeThisMonth(s, userID)
 }
 
 // hasUsdHoldings: tiene una cuenta en dólares con saldo distinto de cero.
 // Tener la cuenta no alcanza: una cuenta USD vacía contesta "cero dólares",
 // que es peor que no preguntar.
-func (c *controller) hasUsdHoldings(userID uint64) bool {
-	accs, err := c.accounts.FindByUserID(userID)
+func hasUsdHoldings(s Services, userID uint64) bool {
+	accs, err := s.AccountsFindByUserID(userID)
 	if err != nil {
 		return false
 	}
@@ -163,7 +164,7 @@ func (c *controller) hasUsdHoldings(userID uint64) bool {
 		if a.Currency != currency.USD {
 			continue
 		}
-		bal, err := c.movements.SumAmountForAccount(uint64(a.ID))
+		bal, err := s.MovementsSumAmountForAccount(uint64(a.ID))
 		if err == nil && !bal.IsZero() {
 			return true
 		}
@@ -173,8 +174,8 @@ func (c *controller) hasUsdHoldings(userID uint64) bool {
 
 // countAccounts es el gate de saldos: con una sola cuenta no hace falta que
 // nadie te enseñe a pedir "cada cuenta".
-func (c *controller) countAccounts(userID uint64) int {
-	accs, err := c.accounts.FindByUserID(userID)
+func countAccounts(s Services, userID uint64) int {
+	accs, err := s.AccountsFindByUserID(userID)
 	if err != nil {
 		return 0
 	}

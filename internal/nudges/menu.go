@@ -1,4 +1,4 @@
-package messaging
+package nudges
 
 import (
 	"context"
@@ -14,13 +14,13 @@ const menuMaxOptions = 4
 // eligibleQuestions devuelve los tips de pregunta cuyo gate pasa AHORA. El
 // menú se arma con los mismos gates que gobiernan los tips, así que nunca
 // ofrece algo que va a contestar vacío.
-func (c *controller) eligibleQuestions(userID uint64, s *nudgeStats) []nudgeDef {
+func eligibleQuestions(s Services, userID uint64, stats *nudgeStats) []nudgeDef {
 	var out []nudgeDef
 	for _, n := range nudges {
 		if n.question == "" || n.recurring {
 			continue
 		}
-		if n.when(c, userID, s) {
+		if n.when(s, userID, stats) {
 			out = append(out, n)
 		}
 	}
@@ -34,10 +34,10 @@ func (c *controller) eligibleQuestions(userID uint64, s *nudgeStats) []nudgeDef 
 // dejar las peores. Y en un menú la predecibilidad vale más que la novedad: los
 // botones que se mueven de lugar rompen la memoria muscular. El menú ES un
 // índice estable; parecer estático es lo que se busca, no lo que se evita.
-func (c *controller) sendQuestionMenu(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) {
-	opts := c.eligibleQuestions(userID, c.buildNudgeStats(userID))
+func sendQuestionMenu(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uint64) {
+	opts := eligibleQuestions(s, userID, buildNudgeStats(s, userID))
 	if len(opts) == 0 {
-		c.sendText(ctx, b, chatID, msgMenuNoData)
+		s.SendText(ctx, b, chatID, msgMenuNoData)
 		return
 	}
 	if len(opts) > menuMaxOptions {
@@ -47,5 +47,5 @@ func (c *controller) sendQuestionMenu(ctx context.Context, b *bot.Bot, chatID in
 	for _, n := range opts {
 		buttons = append(buttons, conversation.Button{Label: n.question, Data: nudgeQueryPrefix + n.key})
 	}
-	c.sendPrompt(ctx, b, chatID, conversation.Prompt{Text: msgMenuHeader, Buttons: buttons})
+	s.SendPrompt(ctx, b, chatID, conversation.Prompt{Text: msgMenuHeader, Buttons: buttons})
 }
