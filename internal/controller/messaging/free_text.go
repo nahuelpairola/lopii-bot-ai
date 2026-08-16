@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/agent"
 )
 
 // sendText is a small helper that guards every b.SendMessage call with a
@@ -29,5 +30,5 @@ func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, tex
 // es cómo se llega — el loop parkea en ellos, en vez de un router que decide de
 // antemano.
 func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	return c.startAgentLoop(ctx, b, chatID, userID, text)
+	return agent.StartLoop(ctx, c, b, chatID, userID, text)
 }

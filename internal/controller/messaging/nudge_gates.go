@@ -3,6 +3,7 @@ package messaging
 import (
 	"time"
 
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 )
@@ -29,7 +30,7 @@ type nudgeStats struct {
 
 func (c *controller) buildNudgeStats(userID uint64) *nudgeStats {
 	s := &nudgeStats{}
-	today := startOfTodayArgentina()
+	today := agent.StartOfTodayArgentina()
 	// Best-effort: si una de las dos falla, el stats queda en cero y ningún
 	// gate de densidad abre. Nunca mandar un tip es el fallo correcto acá.
 	s.days, _ = c.movements.CountByDayForUser(userID, today.AddDate(0, 0, -nudgeStatsWindow), today)
@@ -39,7 +40,7 @@ func (c *controller) buildNudgeStats(userID uint64) *nudgeStats {
 
 // movsSince: cuántos movimientos cargó en los últimos n días.
 func (s *nudgeStats) movsSince(n int) int {
-	cutoff := startOfTodayArgentina().AddDate(0, 0, -n)
+	cutoff := agent.StartOfTodayArgentina().AddDate(0, 0, -n)
 	total := 0
 	for _, d := range s.days {
 		if !d.Date.Before(cutoff) {
@@ -52,7 +53,7 @@ func (s *nudgeStats) movsSince(n int) int {
 // activeDaysSince: en cuántos días DISTINTOS cargó algo en los últimos n días.
 // Es lo que separa "ocho gastos el mismo día" de "ocho gastos en la semana".
 func (s *nudgeStats) activeDaysSince(n int) int {
-	cutoff := startOfTodayArgentina().AddDate(0, 0, -n)
+	cutoff := agent.StartOfTodayArgentina().AddDate(0, 0, -n)
 	days := 0
 	for _, d := range s.days {
 		if !d.Date.Before(cutoff) && d.Count > 0 {
@@ -78,12 +79,12 @@ func (s *nudgeStats) movsInMonth(monthsAgo int) int {
 
 // startOfMonth: primer día del mes en curso, en hora argentina.
 func startOfMonth() time.Time {
-	today := startOfTodayArgentina()
+	today := agent.StartOfTodayArgentina()
 	return time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location())
 }
 
 // dayOfMonth es el día del mes en hora argentina.
-func dayOfMonth() int { return startOfTodayArgentina().Day() }
+func dayOfMonth() int { return agent.StartOfTodayArgentina().Day() }
 
 // Umbrales. Todos juntos: retocar el ritmo de los tips es cambiar un número.
 const (
@@ -121,7 +122,7 @@ func (c *controller) distinctCategoriesThisMonth(userID uint64) int {
 	rows, err := c.movements.SumForUser(movement.MovementQuery{
 		UserID:   userID,
 		From:     startOfMonth(),
-		To:       startOfTodayArgentina(),
+		To:       agent.StartOfTodayArgentina(),
 		Currency: currency.ARS,
 	}, "category")
 	if err != nil {
@@ -137,7 +138,7 @@ func (c *controller) hasIncomeThisMonth(userID uint64) bool {
 	rows, err := c.movements.SumForUser(movement.MovementQuery{
 		UserID:   userID,
 		From:     startOfMonth(),
-		To:       startOfTodayArgentina(),
+		To:       agent.StartOfTodayArgentina(),
 		Currency: currency.ARS,
 		Type:     &income,
 	}, "none")

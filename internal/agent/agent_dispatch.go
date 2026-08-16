@@ -1,4 +1,4 @@
-package messaging
+package agent
 
 import (
 	"context"
@@ -29,7 +29,7 @@ const budgetSlack = 2
 //
 // El presupuesto se congela acá y no se recalcula al drenar: sale de la cantidad
 // de preguntas abiertas EN ESTE MOMENTO. Ver pendingaction.PendingAction.
-func (c *controller) parkAgentActions(ctx context.Context, userID uint64, actions []parkedAction) error {
+func parkAgentActions(ctx context.Context, svc agentServices, userID uint64, actions []parkedAction) error {
 	for i, a := range actions {
 		payload, err := json.Marshal(a.Payload)
 		if err != nil {
@@ -48,7 +48,7 @@ func (c *controller) parkAgentActions(ctx context.Context, userID uint64, action
 			Position:  i,
 			TraceID:   trace.ID(ctx),
 		}
-		if err := c.actions.Insert(row); err != nil {
+		if err := svc.ActionsInsert(row); err != nil {
 			return fmt.Errorf("park %s: %w", a.Tool, err)
 		}
 	}
@@ -62,11 +62,11 @@ func (c *controller) parkAgentActions(ctx context.Context, userID uint64, action
 // vez — de ahí que la métrica se resuelva al drenar y no al parkear: si se
 // registrara al parkear, dos acciones de un mismo mensaje dejarían dos pendientes
 // vivos y el WIP=1 de intent_events se rompería.
-func (c *controller) drainNextAgentAction(ctx context.Context, b *bot.Bot, chatID int64, userID uint64) error {
-	if c.actions == nil {
+func drainNextAgentAction(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64) error {
+	if !svc.ActionsEnabled() {
 		return nil
 	}
-	action, err := c.actions.NextForUser(userID)
+	action, err := svc.ActionsNextForUser(userID)
 	if errors.Is(err, pendingaction.ErrNoPendingAction) {
 		return nil
 	}
@@ -79,48 +79,48 @@ func (c *controller) drainNextAgentAction(ctx context.Context, b *bot.Bot, chatI
 		return fmt.Errorf("drain: questions: %w", err)
 	}
 	if flow.HasOpenQuestion(questions) {
-		return c.openAskUser(ctx, b, chatID, userID, action, action.Budget)
+		return openAskUser(ctx, svc, b, chatID, userID, action, action.Budget)
 	}
-	return c.resumeAgentAction(ctx, b, chatID, userID, action)
+	return resumeAgentAction(ctx, svc, b, chatID, userID, action)
 }
 
 // openAskUser arranca (o vuelve a arrancar) el flujo de preguntas para una
 // acción. El presupuesto viaja en Data y no en la fila: sobrevive a que se
 // reabra la misma pregunta sin tocar la DB.
-func (c *controller) openAskUser(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, action *pendingaction.PendingAction, budget int) error {
+func openAskUser(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, action *pendingaction.PendingAction, budget int) error {
 	if budget <= 0 {
-		return c.discardAgentAction(ctx, b, chatID, userID, action)
+		return discardAgentAction(ctx, svc, b, chatID, userID, action)
 	}
 	seed := conversation.Data{
 		conversation.KeyActionID:      strconv.FormatUint(action.ID, 10),
 		conversation.KeyOpenQuestions: string(action.Questions),
 		conversation.KeyAskBudget:     strconv.Itoa(budget),
 	}
-	prompt, err := c.engine.StartWithData(userID, flow.AskUserFlowName, seed)
+	prompt, err := svc.EngineStartWithData(userID, flow.AskUserFlowName, seed)
 	if err != nil {
 		return fmt.Errorf("drain: start ask_user: %w", err)
 	}
-	c.sendPrompt(ctx, b, chatID, prompt)
+	svc.SendPrompt(ctx, b, chatID, prompt)
 	return nil
 }
 
 // finishAskUserFlow corre cuando el usuario terminó de contestar. Decide entre
 // tres finales: cancelar, descartar por presupuesto, o retomar la acción.
-func (c *controller) finishAskUserFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+func finishAskUserFlow(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, data conversation.Data) {
 	userID := data.UserID()
-	action, err := c.openAction(userID, data)
+	action, err := openAction(svc, userID, data)
 	if err != nil {
 		slog.ErrorContext(ctx, "ask_user finished with no matching action", "err", err, "user_id", userID)
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
 		return
 	}
 
 	if conversation.Flag(data, conversation.KeyCancelled) {
-		c.dropAgentAction(ctx, b, chatID, userID, action, msgUpdateCancelled)
+		dropAgentAction(ctx, svc, b, chatID, userID, action, flow.MsgUpdateCancelled)
 		return
 	}
 	if conversation.Flag(data, conversation.KeyAskDiscarded) {
-		if err := c.discardAgentAction(ctx, b, chatID, userID, action); err != nil {
+		if err := discardAgentAction(ctx, svc, b, chatID, userID, action); err != nil {
 			slog.ErrorContext(ctx, "discard parked action failed", "err", err)
 		}
 		return
@@ -131,9 +131,9 @@ func (c *controller) finishAskUserFlow(ctx context.Context, b *bot.Bot, chatID i
 	if !resolved {
 		// La respuesta no cerró la pregunta (texto libre que no nombra ninguno de
 		// los candidatos). Se vuelve a preguntar con lo que quede de presupuesto.
-		if err := c.openAskUser(ctx, b, chatID, userID, action, flow.AskBudget(data)); err != nil {
+		if err := openAskUser(ctx, svc, b, chatID, userID, action, flow.AskBudget(data)); err != nil {
 			slog.ErrorContext(ctx, "reopen ask_user failed", "err", err)
-			c.sendText(ctx, b, chatID, msgSomethingBroke)
+			svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
 		}
 		return
 	}
@@ -141,24 +141,24 @@ func (c *controller) finishAskUserFlow(ctx context.Context, b *bot.Bot, chatID i
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		slog.ErrorContext(ctx, "marshal resolved payload failed", "err", err)
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
 		return
 	}
 	action.Payload = raw
-	if err := c.resumeAgentAction(ctx, b, chatID, userID, action); err != nil {
+	if err := resumeAgentAction(ctx, svc, b, chatID, userID, action); err != nil {
 		slog.ErrorContext(ctx, "resume parked action failed", "err", err, "tool", action.Tool)
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
 	}
 }
 
 // openAction devuelve la acción que el ask_user abierto estaba resolviendo.
 // Con WIP=1 es siempre la próxima de la cola, pero se verifica el id igual: si
 // no coincide, algo se desincronizó y actuar sería actuar sobre otra cosa.
-func (c *controller) openAction(userID uint64, data conversation.Data) (*pendingaction.PendingAction, error) {
-	if c.actions == nil {
+func openAction(svc agentServices, userID uint64, data conversation.Data) (*pendingaction.PendingAction, error) {
+	if !svc.ActionsEnabled() {
 		return nil, errors.New("no pending action repository")
 	}
-	action, err := c.actions.NextForUser(userID)
+	action, err := svc.ActionsNextForUser(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func indexOf(options []string, want string) int {
 // resumeAgentAction entrega la acción resuelta al gate que ya existe. Ni el
 // confirm de corrección ni el de borrado se tocan: el loop cambia CÓMO se llega
 // hasta ahí, no qué pasa después.
-func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, action *pendingaction.PendingAction) error {
+func resumeAgentAction(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, action *pendingaction.PendingAction) error {
 	var payload agentPayload
 	if err := json.Unmarshal(action.Payload, &payload); err != nil {
 		return fmt.Errorf("resume: payload: %w", err)
@@ -254,7 +254,7 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 	// Se borra ANTES de abrir el gate: si el gate falla, el usuario vuelve a
 	// escribir — pero una acción que quedó en la cola bloquearía la siguiente
 	// para siempre.
-	if err := c.actions.Delete(action.ID); err != nil {
+	if err := svc.ActionsDelete(action.ID); err != nil {
 		return fmt.Errorf("resume: delete action: %w", err)
 	}
 
@@ -273,14 +273,14 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		if _, gated := payload.Seed[conversation.KeyGatePrompt]; gated {
 			flowName = flow.MovementNegativeConfirmFlowName
 		}
-		return c.startFlow(ctx, b, chatID, userID, flowName, seed, "drain: start "+flowName)
+		return svc.StartFlow(ctx, b, chatID, userID, flowName, seed, "drain: start "+flowName)
 	case orchestrator.ToolCorrectMovement:
 		if len(payload.Changes) > 0 {
 			groups := []flow.CandidateGroup{chosen}
 			if isBatchCorrection(payload) {
 				groups = payload.Candidates
 			}
-			return c.applyStructuredCorrection(ctx, b, chatID, userID, payload, groups)
+			return applyStructuredCorrection(ctx, svc, b, chatID, userID, payload, groups)
 		}
 		// `changes` vacío = el usuario dijo QUÉ movimiento pero no QUÉ cambiarle
 		// ("editá los movimientos de hoy"). Se pregunta, que es la primitiva para
@@ -292,16 +292,16 @@ func (c *controller) resumeAgentAction(ctx context.Context, b *bot.Bot, chatID i
 		// se perdió entera por un campo que nadie había pedido tocar. Un diff no
 		// puede fallar así.
 		if len(payload.Changes) == 0 && !payload.GaveChangeValue {
-			return c.parkChangeQuestion(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows,
-				changeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
+			return parkChangeQuestion(ctx, svc, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows,
+				ChangeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
 		}
-		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, changeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
+		return proceedToUpdateConfirm(ctx, svc, b, chatID, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, ChangeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
 	case orchestrator.ToolDeleteMovements:
 		seed := conversation.Data{
 			conversation.KeyCandidateGroups: encodeCandidateGroupList([]flow.CandidateGroup{chosen}),
 			conversation.KeyResolvedIndex:   "0",
 		}
-		return c.startFlow(ctx, b, chatID, userID, flow.MovementDeleteFlowName, seed, "drain: start movement_delete flow")
+		return svc.StartFlow(ctx, b, chatID, userID, flow.MovementDeleteFlowName, seed, "drain: start movement_delete flow")
 	default:
 		return fmt.Errorf("resume: tool %q has no resume path", action.Tool)
 	}
@@ -319,22 +319,22 @@ func chosenCandidate(payload agentPayload) (flow.CandidateGroup, error) {
 
 // discardAgentAction tira la acción entera y NOMBRA lo que se cayó. Tirar un
 // movimiento en silencio es exactamente la falla que todo esto viene a evitar.
-func (c *controller) discardAgentAction(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, action *pendingaction.PendingAction) error {
+func discardAgentAction(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, action *pendingaction.PendingAction) error {
 	slog.InfoContext(ctx, "parked action discarded: budget exhausted",
 		"tool", action.Tool, "user_id", userID, "budget", action.Budget)
-	c.resolveMetric(ctx, userID, outcomeCreateFailed)
-	c.dropAgentAction(ctx, b, chatID, userID, action, msgAgentActionDiscarded(describeAction(action)))
+	resolveMetric(ctx, svc, userID, flow.OutcomeCreateFailed)
+	dropAgentAction(ctx, svc, b, chatID, userID, action, msgAgentActionDiscarded(describeAction(action)))
 	return nil
 }
 
 // dropAgentAction saca la acción de la cola, avisa, y sigue con la que venga
 // atrás — si no, una cancelación dejaría el resto de la cola trabado.
-func (c *controller) dropAgentAction(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, action *pendingaction.PendingAction, message string) {
-	if err := c.actions.Delete(action.ID); err != nil {
+func dropAgentAction(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, action *pendingaction.PendingAction, message string) {
+	if err := svc.ActionsDelete(action.ID); err != nil {
 		slog.ErrorContext(ctx, "delete parked action failed", "err", err)
 	}
-	c.sendText(ctx, b, chatID, message)
-	if err := c.drainNextAgentAction(ctx, b, chatID, userID); err != nil {
+	svc.SendText(ctx, b, chatID, message)
+	if err := drainNextAgentAction(ctx, svc, b, chatID, userID); err != nil {
 		slog.ErrorContext(ctx, "drain after drop failed", "err", err)
 	}
 }

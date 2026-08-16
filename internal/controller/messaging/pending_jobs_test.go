@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingjob"
 )
@@ -143,7 +144,7 @@ func TestHandleFreeText_QueryNonRateLimitError_FailsAndDoesNotEnqueue(t *testing
 func TestCreateCategory_RateLimited_EnqueuesAndSkipsWizard(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{}
 	orch := &fakeFullOrchestrator{
-		runFn:       manageSettingsRun(settingsAreaCategory),
+		runFn:       manageSettingsRun(agent.SettingsAreaCategory),
 		categoryErr: &orchestrator.RateLimitedError{RetryAfter: 15 * time.Second},
 	}
 	jobs := &fakeJobs{}

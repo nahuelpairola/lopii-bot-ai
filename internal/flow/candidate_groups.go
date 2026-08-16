@@ -6,15 +6,30 @@ import (
 )
 
 // CandidateGroup is the row-based shape a picker candidate travels in through
-// conversation.Data — distinct from transactionGroup (edge, agent_executor.go),
-// which holds real movement.Movement rows straight from the DB. El encode (del
-// lado del edge, que parte de transactionGroup) se queda en messaging; acá vive
-// el tipo y el decode, que son puros y los comparten flow (MsgConfirmDelete) y
-// el borde (finish de DELETE, applyStructuredCorrection).
+// conversation.Data — distinct from transactionGroup (agent), which holds real
+// movement.Movement rows straight from the DB. Acá viven el tipo, el encode y el
+// decode, que son puros y los comparten flow (MsgConfirmDelete) y el borde
+// (finish de DELETE, applyStructuredCorrection). El edge parte de
+// transactionGroup y convierte ANTES de encodear.
 type CandidateGroup struct {
 	TransactionID string
 	OldIDs        []string
 	Rows          []movement.MovementRow
+}
+
+// EncodeCandidateGroups serializa grupos a la forma de Data que lee
+// DecodeCandidateGroups. El borde (agent) la usa para seeds del picker y el
+// payload parkeado; flow para los tests del flujo de DELETE.
+func EncodeCandidateGroups(groups []CandidateGroup) []interface{} {
+	encoded := make([]interface{}, 0, len(groups))
+	for _, g := range groups {
+		encoded = append(encoded, map[string]interface{}{
+			"transaction_id": g.TransactionID,
+			"old_ids":        conversation.EncodeStringSlice(g.OldIDs),
+			"rows":           movement.EncodeMovementRows(g.Rows),
+		})
+	}
+	return encoded
 }
 
 func DecodeCandidateGroups(data conversation.Data) []CandidateGroup {

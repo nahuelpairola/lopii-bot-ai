@@ -1,8 +1,7 @@
-package messaging
+package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -14,65 +13,6 @@ import (
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 )
-
-type fakeActionsRepo struct {
-	rows    []*pendingaction.PendingAction
-	nextID  uint64
-	deleted []uint64
-}
-
-func (r *fakeActionsRepo) Insert(a *pendingaction.PendingAction) error {
-	r.nextID++
-	a.ID = r.nextID
-	r.rows = append(r.rows, a)
-	return nil
-}
-
-func (r *fakeActionsRepo) NextForUser(userID uint64) (*pendingaction.PendingAction, error) {
-	var best *pendingaction.PendingAction
-	for _, a := range r.rows {
-		if a.UserID != userID {
-			continue
-		}
-		if best == nil || a.Position < best.Position || (a.Position == best.Position && a.ID < best.ID) {
-			best = a
-		}
-	}
-	if best == nil {
-		return nil, pendingaction.ErrNoPendingAction
-	}
-	return best, nil
-}
-
-func (r *fakeActionsRepo) Delete(id uint64) error {
-	r.deleted = append(r.deleted, id)
-	kept := r.rows[:0]
-	for _, a := range r.rows {
-		if a.ID != id {
-			kept = append(kept, a)
-		}
-	}
-	r.rows = kept
-	return nil
-}
-
-func (r *fakeActionsRepo) CountForUser(userID uint64) (int64, error) {
-	var n int64
-	for _, a := range r.rows {
-		if a.UserID == userID {
-			n++
-		}
-	}
-	return n, nil
-}
-
-func newDispatchController(t *testing.T, repo *fakeActionsRepo) *controller {
-	t.Helper()
-	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
-	engine.Register(flow.NewAskUserFlow())
-	engine.Register(flow.NewMovementDeleteFlow())
-	return &controller{engine: engine, actions: repo, movements: &fakeMovementRepoFull{}}
-}
 
 func twoCandidateAction(t *testing.T) parkedAction {
 	t.Helper()
@@ -94,9 +34,9 @@ func twoCandidateAction(t *testing.T) parkedAction {
 
 func TestParkAgentActions_FreezesTheBudgetAndKeepsOrder(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
+	svc := newDispatchServices(t, repo)
 
-	err := c.parkAgentActions(context.Background(), 1, []parkedAction{
+	err := parkAgentActions(context.Background(), svc, 1, []parkedAction{
 		twoCandidateAction(t),
 		{Tool: orchestrator.ToolDeleteMovements, Payload: agentPayload{Chosen: 0}},
 	})
@@ -118,15 +58,15 @@ func TestParkAgentActions_FreezesTheBudgetAndKeepsOrder(t *testing.T) {
 // TestDrain_WIP1: con dos acciones parkeadas se abre UNA sola.
 func TestDrain_OpensExactlyOneAtATime(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
-	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t), twoCandidateAction(t)}); err != nil {
+	svc := newDispatchServices(t, repo)
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t), twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := c.drainNextAgentAction(context.Background(), nil, 0, 1); err != nil {
+	if err := drainNextAgentAction(context.Background(), svc, nil, 0, 1); err != nil {
 		t.Fatal(err)
 	}
-	inProgress, err := c.engine.InProgress(1)
+	inProgress, err := svc.engine.InProgress(1)
 	if err != nil || !inProgress {
 		t.Fatalf("el drenaje tiene que dejar un flujo abierto: %v %v", inProgress, err)
 	}
@@ -145,34 +85,34 @@ func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
 		conversation.KeyPendingAccountGaps:  conversation.EncodeStringSlice(nil),
 	}
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
-	c.engine.Register(flow.NewMovementCreateFlow(&fakeSubcategoryRepoFull{}, &fakeAccountRepoFull{}))
-	c.accounts, c.subcategories = &fakeAccountRepoFull{}, &fakeSubcategoryRepoFull{}
+	svc := newDispatchServices(t, repo)
+	svc.engine.Register(flow.NewMovementCreateFlow(&fakeSubcategoryRepoFull{}, &fakeAccountRepoFull{}))
+	svc.accounts, svc.subcategories = &fakeAccountRepoFull{}, &fakeSubcategoryRepoFull{}
 
-	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{{
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{{
 		Tool:    orchestrator.ToolRecordMovements,
 		Payload: agentPayload{Seed: seed, Chosen: 0},
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.drainNextAgentAction(context.Background(), nil, 0, 1); err != nil {
+	if err := drainNextAgentAction(context.Background(), svc, nil, 0, 1); err != nil {
 		t.Fatal(err)
 	}
 
 	if len(repo.deleted) != 1 {
 		t.Errorf("la acción tiene que salir de la cola antes de abrir el flujo, deleted=%v", repo.deleted)
 	}
-	if inProgress, _ := c.engine.InProgress(1); !inProgress {
+	if inProgress, _ := svc.engine.InProgress(1); !inProgress {
 		t.Error("tenía que quedar abierto movement_create para preguntar el gap")
 	}
 }
 
 func TestDrain_NothingParkedIsANoOp(t *testing.T) {
-	c := newDispatchController(t, &fakeActionsRepo{})
-	if err := c.drainNextAgentAction(context.Background(), nil, 0, 1); err != nil {
+	svc := newDispatchServices(t, &fakeActionsRepo{})
+	if err := drainNextAgentAction(context.Background(), svc, nil, 0, 1); err != nil {
 		t.Fatalf("sin nada parkeado el drenaje no puede fallar: %v", err)
 	}
-	if inProgress, _ := c.engine.InProgress(1); inProgress {
+	if inProgress, _ := svc.engine.InProgress(1); inProgress {
 		t.Error("no tenía que abrir ningún flujo")
 	}
 }
@@ -211,13 +151,13 @@ func TestApplyAnswers_FreeTextThatNamesNoCandidateStaysUnresolved(t *testing.T) 
 // dice qué se cayó. Tirar algo en silencio es la falla que esto viene a evitar.
 func TestDiscard_NamesWhatWasDropped(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
-	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	svc := newDispatchServices(t, repo)
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	action := repo.rows[0]
 
-	if err := c.discardAgentAction(context.Background(), nil, 0, 1, action); err != nil {
+	if err := discardAgentAction(context.Background(), svc, nil, 0, 1, action); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
@@ -233,18 +173,18 @@ func TestDiscard_NamesWhatWasDropped(t *testing.T) {
 // con presupuesto agotado descarta, no vuelve a preguntar para siempre.
 func TestBudgetExhausted_DiscardsInsteadOfAskingAgain(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
-	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	svc := newDispatchServices(t, repo)
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := c.openAskUser(context.Background(), nil, 0, 1, repo.rows[0], 0); err != nil {
+	if err := openAskUser(context.Background(), svc, nil, 0, 1, repo.rows[0], 0); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
 		t.Errorf("con el presupuesto agotado la acción se descarta, quedan %d", n)
 	}
-	if inProgress, _ := c.engine.InProgress(1); inProgress {
+	if inProgress, _ := svc.engine.InProgress(1); inProgress {
 		t.Error("no puede quedar preguntando con el presupuesto en cero")
 	}
 }
@@ -253,7 +193,7 @@ func TestBudgetExhausted_DiscardsInsteadOfAskingAgain(t *testing.T) {
 // cambia cómo se llega hasta él.
 func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
+	svc := newDispatchServices(t, repo)
 	action := &pendingaction.PendingAction{
 		UserID: 1, Tool: orchestrator.ToolDeleteMovements,
 		Payload: mustJSON(t, agentPayload{
@@ -266,13 +206,13 @@ func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := c.resumeAgentAction(context.Background(), nil, 0, 1, action); err != nil {
+	if err := resumeAgentAction(context.Background(), svc, nil, 0, 1, action); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
 		t.Errorf("retomar saca la acción de la cola, quedan %d", n)
 	}
-	if inProgress, _ := c.engine.InProgress(1); !inProgress {
+	if inProgress, _ := svc.engine.InProgress(1); !inProgress {
 		t.Error("tenía que quedar abierto el confirm de borrado")
 	}
 }
@@ -281,7 +221,7 @@ func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 // existe, aunque el payload venga corrupto.
 func TestResume_RefusesACandidateOutOfRange(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
+	svc := newDispatchServices(t, repo)
 	action := &pendingaction.PendingAction{
 		UserID: 1, Tool: orchestrator.ToolDeleteMovements,
 		Payload: mustJSON(t, agentPayload{Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}}, Chosen: 7}),
@@ -289,7 +229,7 @@ func TestResume_RefusesACandidateOutOfRange(t *testing.T) {
 	if err := repo.Insert(action); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.resumeAgentAction(context.Background(), nil, 0, 1, action); err == nil {
+	if err := resumeAgentAction(context.Background(), svc, nil, 0, 1, action); err == nil {
 		t.Fatal("un índice fuera de rango tiene que fallar, no elegir cualquiera")
 	}
 	if n, _ := repo.CountForUser(1); n != 1 {
@@ -299,27 +239,27 @@ func TestResume_RefusesACandidateOutOfRange(t *testing.T) {
 
 func TestOpenAction_RefusesAMismatchedID(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
-	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	svc := newDispatchServices(t, repo)
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), conversation.KeyActionID: "999"}
-	if _, err := c.openAction(1, data); err == nil {
+	if _, err := openAction(svc, 1, data); err == nil {
 		t.Fatal("un id que no coincide con la cabeza de la cola no puede resolverse")
 	}
 }
 
 func TestOpenAction_MatchesTheQueueHead(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
-	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	svc := newDispatchServices(t, repo)
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:   uint64(1),
 		conversation.KeyActionID: strconv.FormatUint(repo.rows[0].ID, 10),
 	}
-	got, err := c.openAction(1, data)
+	got, err := openAction(svc, 1, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,20 +270,11 @@ func TestOpenAction_MatchesTheQueueHead(t *testing.T) {
 
 func TestNextForUser_IsPerUser(t *testing.T) {
 	repo := &fakeActionsRepo{}
-	c := newDispatchController(t, repo)
-	if err := c.parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	svc := newDispatchServices(t, repo)
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.NextForUser(2); !errors.Is(err, pendingaction.ErrNoPendingAction) {
 		t.Errorf("la cola de otro usuario no puede verse: %v", err)
 	}
-}
-
-func mustJSON(t *testing.T, v any) []byte {
-	t.Helper()
-	raw, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return raw
 }

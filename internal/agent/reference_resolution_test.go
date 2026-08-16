@@ -1,4 +1,4 @@
-package messaging
+package agent
 
 import (
 	"testing"
@@ -176,9 +176,9 @@ func (r *fakeMovementRepoForResolve) TopDescriptionsBySubcategory(userID uint64,
 
 func TestResolveCandidates_NoDate_UsesCreatedAtRecencyWindow(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("Nafta YPF")}}}
-	c := &controller{movements: fake}
+	svc := &fakeServices{movements: fake}
 
-	candidates, err := c.resolveCandidates(42, "che, lo de la nafta ypf era otro monto", "", "")
+	candidates, err := resolveCandidates(svc, 42, "che, lo de la nafta ypf era otro monto", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -201,9 +201,9 @@ func TestResolveCandidates_PastDatedButRecentlyCreated_Resolves(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
 		{Model: gorm.Model{ID: 71}, Date: yesterday, Description: strPtr("Pago a Pablo por asado")},
 	}}
-	c := &controller{movements: fake}
+	svc := &fakeServices{movements: fake}
 
-	candidates, err := c.resolveCandidates(2, "Perdon, el asado eran 15 mil", "", "")
+	candidates, err := resolveCandidates(svc, 2, "Perdon, el asado eran 15 mil", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -219,9 +219,9 @@ func TestResolveCandidates_NoTextMatch_FallsBackToRecentWindow(t *testing.T) {
 		{Model: gorm.Model{ID: 1}, Description: strPtr("Café")},
 		{Model: gorm.Model{ID: 2}, Description: strPtr("Panadería")},
 	}}
-	c := &controller{movements: fake}
+	svc := &fakeServices{movements: fake}
 
-	candidates, err := c.resolveCandidates(42, "era 700", "", "")
+	candidates, err := resolveCandidates(svc, 42, "era 700", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -232,9 +232,9 @@ func TestResolveCandidates_NoTextMatch_FallsBackToRecentWindow(t *testing.T) {
 
 func TestResolveCandidates_EmptyWindow_ReturnsNoCandidates(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: nil}
-	c := &controller{movements: fake}
+	svc := &fakeServices{movements: fake}
 
-	candidates, err := c.resolveCandidates(42, "era 700", "", "")
+	candidates, err := resolveCandidates(svc, 42, "era 700", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -258,9 +258,9 @@ func TestResolveCandidates_NoTextMatch_JustCreated_ResolvesToThatOne(t *testing.
 		{Model: gorm.Model{ID: 8, CreatedAt: now.Add(-5 * time.Hour)}, Description: strPtr("Helado")},
 		{Model: gorm.Model{ID: 7, CreatedAt: now.Add(-6 * time.Hour)}, Description: strPtr("Nafta")},
 	}}
-	c := &controller{movements: fake}
+	svc := &fakeServices{movements: fake}
 
-	candidates, err := c.resolveCandidates(2, "Eran 1500", "", "")
+	candidates, err := resolveCandidates(svc, 2, "Eran 1500", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -291,9 +291,9 @@ func TestResolveCandidates_Fallback_SkipsSystemMovements(t *testing.T) {
 		{Model: gorm.Model{ID: 1, CreatedAt: old}, Description: strPtr("Helado"),
 			Subcategory: &subcategory.Subcategory{Category: "Ocio y salidas", Subcategory: "Salir a comer"}},
 	}}
-	c := &controller{movements: fake}
+	svc := &fakeServices{movements: fake}
 
-	candidates, err := c.resolveCandidates(2, "era 700", "", "")
+	candidates, err := resolveCandidates(svc, 2, "era 700", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -379,9 +379,9 @@ func TestResolveCandidates_ManyTextMatches_IsCapped(t *testing.T) {
 		})
 	}
 	fake := &fakeMovementRepoForResolve{result: many}
-	c := &controller{movements: fake}
+	svc := &fakeServices{movements: fake}
 
-	candidates, err := c.resolveCandidates(2, "el super era 8 mil", "", "")
+	candidates, err := resolveCandidates(svc, 2, "el super era 8 mil", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -405,9 +405,9 @@ func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
 		{Model: gorm.Model{ID: 1}, Description: strPtr("Café")},
 	}}
-	c := &controller{movements: fake}
+	svc := &fakeServices{movements: fake}
 
-	if _, err := c.resolveCandidates(42, "era 700", "", ""); err != nil {
+	if _, err := resolveCandidates(svc, 42, "era 700", "", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 

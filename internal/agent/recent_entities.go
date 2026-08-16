@@ -1,4 +1,4 @@
-package messaging
+package agent
 
 import (
 	"fmt"
@@ -14,13 +14,14 @@ import (
 // cueste nada — cambia CUÁLES 8 filas entran, no cuántas.
 const recentEntitiesCap = 8
 
-// buildRecentEntities arma el bloque estructurado de movimientos recientes que
-// va al prompt del loop.
+// BuildRecentEntities arma el bloque estructurado de movimientos recientes que
+// va al prompt del loop. Exportada porque un test de borde (conversation_flows)
+// la usa para armar su setup.
 //
 // Reemplaza a la transcripción del hilo para resolver referencias: el problema
 // es una anáfora ("el café de hoy"), no memoria conversacional. Best-effort —
 // si la consulta falla, se corre sin bloque, igual que con el historial.
-func (c *controller) buildRecentEntities(userID uint64) string {
+func BuildRecentEntities(svc agentServices, userID uint64) string {
 	// La ventana es HOY, no justCreatedWindow.
 	//
 	// Compartían constante y son dos preguntas distintas: "¿acabás de cargar
@@ -33,8 +34,8 @@ func (c *controller) buildRecentEntities(userID uint64) string {
 	// modelo no tenía NINGÚN peaje al que referirse y pidió el monto para
 	// registrarlo — que es la inferencia correcta con lo que podía ver. No fue
 	// un error del modelo: le faltaba el ancla.
-	movs, err := c.movements.FindRecentlyCreatedForUser(
-		userID, startOfTodayArgentina(), recentEntitiesCap)
+	movs, err := svc.FindRecentlyCreatedForUser(
+		userID, StartOfTodayArgentina(), recentEntitiesCap)
 	if err != nil {
 		return ""
 	}

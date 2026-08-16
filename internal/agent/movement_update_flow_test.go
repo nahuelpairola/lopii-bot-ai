@@ -1,16 +1,14 @@
-package messaging
+package agent
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
@@ -19,88 +17,6 @@ import (
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 )
-
-type fakeOrchestrator struct {
-	updateResult      orchestrator.UpdateResult
-	updateErr         error
-	gotUpdateAccounts []orchestrator.AccountOption
-	// runFn deja que un test maneje el loop unificado. Sin setear, Run falla
-	// fuerte: un camino que llegue ahí sin quererlo migró antes de su etapa.
-	runFn        func(execute func(string, json.RawMessage) (string, error)) (string, error)
-	gotRunPrompt string
-	gotRunTools  []orchestrator.AgentTool
-}
-
-func (o *fakeOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
-	return orchestrator.CreateResult{}, nil
-}
-func (o *fakeOrchestrator) ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error) {
-	o.gotUpdateAccounts = accounts
-	return o.updateResult, o.updateErr
-}
-func (o *fakeOrchestrator) ResolveDelete(ctx context.Context, text string, candidate orchestrator.MovementCandidate) (orchestrator.DeleteResult, error) {
-	return orchestrator.DeleteResult{}, nil
-}
-func (o *fakeOrchestrator) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
-	return orchestrator.OnboardingResult{}, nil
-}
-func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
-	return "", nil
-}
-
-// errRunNotWired es lo que devuelven los fakes cuando el test no programó el
-// loop. Un camino que llegue ahí sin querer migró antes de su etapa, y tiene que
-// fallar fuerte en vez de recibir una respuesta vacía plausible.
-var errRunNotWired = errors.New("Run is not wired in this test")
-
-// swallowTurnDone imita lo que el Run de verdad hace con ErrAgentTurnDone: no es
-// un error, es el executor avisando que la app se queda con el turno. Sin esto
-// cada fake lo propagaría como fallo y el test vería rojo donde el código real
-// ve un turno normal — de una sola vuelta, que es justo el punto.
-func swallowTurnDone(execute func(string, json.RawMessage) (string, error)) func(string, json.RawMessage) (string, error) {
-	return func(name string, args json.RawMessage) (string, error) {
-		result, err := execute(name, args)
-		if errors.Is(err, orchestrator.ErrAgentTurnDone) {
-			return result, nil
-		}
-		return result, err
-	}
-}
-
-func (o *fakeOrchestrator) Run(_ context.Context, systemPrompt, _ string, _ []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(string, json.RawMessage) (string, error)) (string, error) {
-	o.gotRunPrompt = systemPrompt
-	o.gotRunTools = tools
-	if o.runFn == nil {
-		return "", errRunNotWired
-	}
-	return o.runFn(swallowTurnDone(execute))
-}
-func (o *fakeOrchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
-	return orchestrator.CategoryCreateResult{}, nil
-}
-func (o *fakeOrchestrator) ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error) {
-	return orchestrator.AccountManageResult{}, nil
-}
-
-type fakeStoreForController struct {
-	flowName, stepName string
-	data               conversation.Data
-	updatedAt          time.Time
-	found              bool
-}
-
-func (s *fakeStoreForController) Get(userID uint64) (string, string, conversation.Data, time.Time, bool, error) {
-	return s.flowName, s.stepName, s.data, s.updatedAt, s.found, nil
-}
-func (s *fakeStoreForController) Set(userID uint64, flowName, stepName string, data conversation.Data) error {
-	s.flowName, s.stepName, s.data, s.found = flowName, stepName, data, true
-	s.updatedAt = time.Now()
-	return nil
-}
-func (s *fakeStoreForController) Clear(userID uint64) error {
-	s.found = false
-	return nil
-}
 
 func TestMovementToRow_ResolvesCategoryFromSubcategory(t *testing.T) {
 	sub := newSubForTest(3, "Transporte", "Nafta")
@@ -146,7 +62,7 @@ func TestEncodeDecodeCandidateGroups_RoundTrip(t *testing.T) {
 		{TransactionID: "", Movements: []movement.Movement{{SubcategoryID: 1, Subcategory: sub, Amount: mustDecimal(t, "3000"), Currency: "ARS"}}},
 	}
 
-	encoded := encodeCandidateGroups(groups)
+	encoded := EncodeCandidateGroups(groups)
 	decoded := flow.DecodeCandidateGroups(conversation.Data{"candidate_groups": encoded})
 
 	if len(decoded) != 1 {
@@ -165,15 +81,15 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 		},
 	}}
 
-	store := &fakeStoreForController{}
+	store := &fakeConvStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
 
 	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(7, currency.ARS, false)}}
-	c := &controller{orchestrator: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
+	svc := &fakeServices{orch: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
 
 	beforeRows := []movement.MovementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
-	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, changeAsk{}); err != nil {
+	if err := proceedToUpdateConfirm(context.Background(), svc, nil, 0, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, ChangeAsk{}); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
 	}
 	if store.flowName != flow.MovementUpdateConfirmFlowName {
@@ -184,17 +100,22 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	}
 }
 
+// En agent, ActionsEnabled() es SIEMPRE true (fake "siempre cableado"), así que
+// un ResolveUpdate irresuelto parkea la pregunta y la drena al ask_user — el
+// camino correcto — en vez de quedarse mudo. Lo que se asevera es que el flujo
+// de CONFIRM nunca se abre: de haberlo hecho, store.flowName lo diría.
 func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	orch := &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: false}}
-	store := &fakeStoreForController{}
+	actions := &fakeActionsRepo{}
+	store := &fakeConvStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(flow.NewMovementUpdateConfirmFlow())
-	c := &controller{orchestrator: orch, engine: engine, accounts: &fakeAccountRepoFull{}}
+	engine.Register(flow.NewAskUserFlow())
+	svc := &fakeServices{orch: orch, engine: engine, actions: actions, accounts: &fakeAccountRepoFull{}}
 
-	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1, "che no sé", "", nil, nil, changeAsk{}); err != nil {
+	if err := proceedToUpdateConfirm(context.Background(), svc, nil, 0, 1, "che no sé", "", nil, nil, ChangeAsk{}); err != nil {
 		t.Fatalf("proceedToUpdateConfirm: %v", err)
 	}
-	if store.found {
+	if store.flowName == flow.MovementUpdateConfirmFlowName {
 		t.Error("an unresolved result should never start the confirm flow")
 	}
 }
@@ -207,14 +128,15 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	actions := &fakeActionsRepo{}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
 	engine.Register(flow.NewAskUserFlow())
-	c := &controller{
+	svc := &fakeServices{
 		engine: engine, actions: actions,
-		orchestrator: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: false}},
-		movements:    &fakeMovementRepoFull{}, accounts: &fakeAccountRepoFull{},
+		orch:      &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: false}},
+		movements: &fakeMovementRepoFull{},
+		accounts:  &fakeAccountRepoFull{},
 	}
 
-	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
-		"estaba mal", "", []string{"10"}, []movement.MovementRow{{Amount: "3000", Currency: "ARS", Description: "café"}}, changeAsk{})
+	err := proceedToUpdateConfirm(context.Background(), svc, nil, 0, 1,
+		"estaba mal", "", []string{"10"}, []movement.MovementRow{{Amount: "3000", Currency: "ARS", Description: "café"}}, ChangeAsk{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,22 +206,22 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Date: "2026-08-01", Description: "Cafe"}}
 	actions := &fakeActionsRepo{}
-	store := &fakeStoreForController{}
+	store := &fakeConvStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAskUserFlow())
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
-	c := &controller{
+	svc := &fakeServices{
 		engine: engine, actions: actions, movements: &fakeMovementRepoFull{},
 		accounts:      &fakeAccountRepoFull{},
 		subcategories: &fakeSubcategoryRepoFull{},
-		orchestrator: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{
+		orch: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{
 			Resolved:  true,                                                // el modelo dice que sí...
 			Movements: []orchestrator.MovementDraft{rowToDraft(before[0])}, // ...y no cambió nada
 		}},
 	}
 
-	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
-		"El café estaba mal", "", []string{"127"}, before, changeAsk{}); err != nil {
+	if err := proceedToUpdateConfirm(context.Background(), svc, nil, 0, 1,
+		"El café estaba mal", "", []string{"127"}, before, ChangeAsk{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -325,13 +247,13 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 	actions := &fakeActionsRepo{}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
 	engine.Register(flow.NewAskUserFlow())
-	// orchestrator nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
-	c := &controller{engine: engine, actions: actions, accounts: &fakeAccountRepoFull{}}
+	// orch nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
+	svc := &fakeServices{engine: engine, actions: actions, accounts: &fakeAccountRepoFull{}}
 
-	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
+	err := proceedToUpdateConfirm(context.Background(), svc, nil, 0, 1,
 		"El café estaba mal La categoría", "", []string{"127"},
 		[]movement.MovementRow{{Amount: "1800", Description: "Cafe"}},
-		changeAsk{pickedField: true})
+		ChangeAsk{pickedField: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,15 +281,15 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS", AccountID: "46",
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Description: "Cafe"}}
-	store := &fakeStoreForController{}
+	store := &fakeConvStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
-	// orchestrator nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
-	c := &controller{engine: engine, accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{}}
+	// orch nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
+	svc := &fakeServices{engine: engine, accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{}}
 
-	err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
+	err := proceedToUpdateConfirm(context.Background(), svc, nil, 0, 1,
 		"el café estaba mal 2000", "", []string{"127"}, before,
-		changeAsk{gaveValue: true, answer: "2000"})
+		ChangeAsk{gaveValue: true, answer: "2000"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,13 +318,13 @@ func TestAmountOnlyCorrection_FallsBackWhenItIsNotJustTheAmount(t *testing.T) {
 
 	for name, tc := range map[string]struct {
 		rows []movement.MovementRow
-		ask  changeAsk
+		ask  ChangeAsk
 	}{
-		"tocó un botón, el campo no es el monto": {one, changeAsk{gaveValue: true, pickedField: true, answer: "2000"}},
-		"no es un número":                        {one, changeAsk{gaveValue: true, answer: "era en Delivery"}},
-		"transferencia de dos piernas":           {two, changeAsk{gaveValue: true, answer: "2000"}},
-		"monto cero (es un borrado)":             {one, changeAsk{gaveValue: true, answer: "0"}},
-		"todavía no contestó nada":               {one, changeAsk{}},
+		"tocó un botón, el campo no es el monto": {one, ChangeAsk{gaveValue: true, pickedField: true, answer: "2000"}},
+		"no es un número":                        {one, ChangeAsk{gaveValue: true, answer: "era en Delivery"}},
+		"transferencia de dos piernas":           {two, ChangeAsk{gaveValue: true, answer: "2000"}},
+		"monto cero (es un borrado)":             {one, ChangeAsk{gaveValue: true, answer: "0"}},
+		"todavía no contestó nada":               {one, ChangeAsk{}},
 	} {
 		if _, ok := amountOnlyCorrection(tc.rows, tc.ask); ok {
 			t.Errorf("%s: no puede tomar el atajo", name)
@@ -417,18 +339,18 @@ func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
 	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS", Description: "Cafe"}}
 	actions := &fakeActionsRepo{}
 	metrics := &fakeMetricRepo{}
-	c := &controller{
-		engine:  conversation.NewEngine(&fakeStoreForController{}, func(string) string { return "algo" }),
+	svc := &fakeServices{
+		engine:  conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" }),
 		actions: actions, metrics: metrics, movements: &fakeMovementRepoFull{},
 		accounts:      &fakeAccountRepoFull{},
 		subcategories: &fakeSubcategoryRepoFull{},
-		orchestrator: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{
+		orch: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{
 			Resolved: true, Movements: []orchestrator.MovementDraft{rowToDraft(before[0])},
 		}},
 	}
 
-	if err := c.proceedToUpdateConfirm(context.Background(), nil, 0, 1,
-		"El café estaba mal no sé", "", []string{"127"}, before, changeAsk{gaveValue: true}); err != nil {
+	if err := proceedToUpdateConfirm(context.Background(), svc, nil, 0, 1,
+		"El café estaba mal no sé", "", []string{"127"}, before, ChangeAsk{gaveValue: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -486,16 +408,16 @@ func TestApplyAnswers_ChangeAnswerIsAppended(t *testing.T) {
 }
 
 func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
-	// orchestrator is deliberately nil — this function must not call it.
-	store := &fakeStoreForController{}
+	// orch is deliberately nil — this function must not call it.
+	store := &fakeConvStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
-	c := &controller{engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: &fakeAccountRepoFull{}}
+	svc := &fakeServices{engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: &fakeAccountRepoFull{}}
 
 	result := orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3500", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},
 	}}
-	if err := c.seedAndStartUpdateConfirm(context.Background(), nil, 0, 1, "eran 3500", []string{"7"}, nil, result); err != nil {
+	if err := seedAndStartUpdateConfirm(context.Background(), svc, nil, 0, 1, "eran 3500", []string{"7"}, nil, result); err != nil {
 		t.Fatalf("seedAndStartUpdateConfirm: %v", err)
 	}
 	if store.flowName != flow.MovementUpdateConfirmFlowName {
@@ -537,17 +459,6 @@ func TestCorrectionIsDeletion(t *testing.T) {
 			t.Errorf("%s: correctionIsDeletion(%q) = %v, want %v", tc.name, tc.message, got, tc.want)
 		}
 	}
-}
-
-// Este fake no clasifica: los tests que lo usan van por el camino de UPDATE,
-// que trae el par de la fila vieja. Devolver PENDING_REVIEW en todo es lo mismo
-// que hace el real cuando falla.
-func (o *fakeOrchestrator) ClassifyCategories(_ context.Context, _ string, rows []orchestrator.ClassifyRow, _ []orchestrator.TaxonomyEntry) []orchestrator.Pair {
-	out := make([]orchestrator.Pair, len(rows))
-	for i := range out {
-		out[i] = orchestrator.Pair{Category: constants.PendingReview}
-	}
-	return out
 }
 
 // El botón dice el CAMPO y el texto dice el VALOR: con los dos, la app arma la

@@ -1,4 +1,4 @@
-package messaging
+package agent
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -19,28 +20,28 @@ import (
 // Desde la etapa 5 lo alcanza TODO: handleFreeText no hace otra cosa que llamar
 // acá. No hay router que filtre antes, así que este es el único lugar donde se
 // decide qué se hace con un mensaje, y lo decide el loop eligiendo herramienta.
-func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+func startAgentLoop(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	// El loop tarda más que una sola llamada, y el silencio se lee como colgado.
-	c.sendTyping(ctx, b, chatID)
+	sendTyping(ctx, b, chatID)
 
 	// El toolbox y el prompt salen de la MISMA lista: el prompt no puede nombrar
 	// una tool que no se manda. Ver wiredAgentTools.
 	tools := wiredAgentTools()
-	prompt, taxonomy, err := c.buildAgentSystemPrompt(userID, tools)
+	prompt, taxonomy, err := buildAgentSystemPrompt(svc, userID, tools)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgCouldNotLoad)
+		svc.SendText(ctx, b, chatID, flow.MsgCouldNotLoad)
 		return err
 	}
 
 	// Best-effort, igual que en QUERY: si el historial no carga, se corre sin él.
-	turns, _ := c.chatHistory.Recent(userID)
+	turns, _ := svc.ChatHistoryRecent(userID)
 	history := make([]orchestrator.QueryTurn, len(turns))
 	for i, t := range turns {
 		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
 	}
 
-	executor := newAgentExecutor(ctx, c, userID, text, taxonomy)
-	answer, err := c.orchestrator.Run(ctx, prompt, text, history, tools, executor.execute)
+	executor := newAgentExecutor(ctx, svc, userID, text, taxonomy)
+	answer, err := svc.Run(ctx, prompt, text, history, tools, executor.execute)
 
 	// El intent_event se ABRE acá, después del loop, porque ya no hay router que
 	// diga el intent de antemano — lo dice la primera tool que el loop eligió.
@@ -54,13 +55,13 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	// cada uno, antes de siquiera procesarse. Es ruido puro en la única columna
 	// que lee el portón de la etapa, y hace que el bot se vea peor cuanto más
 	// apretado esté el cupo.
-	if isReplaying(ctx) {
+	if svc.IsReplaying(ctx) {
 		// El replay NO abre un evento nuevo: el del mensaje ya existe y sigue
 		// pendiente. Lo que sí hace es completarle el intent, que al encolarse no
 		// se sabía — el cupo cortó antes de que el modelo eligiera herramienta.
-		c.setQueuedIntent(ctx, userID, intentForExecutor(executor, err))
+		setQueuedIntent(ctx, svc, userID, intentForExecutor(executor, err))
 	} else {
-		c.logIntent(ctx, userID, text, intentForExecutor(executor, err), err)
+		logIntent(ctx, svc, userID, text, intentForExecutor(executor, err), err)
 	}
 
 	if err != nil {
@@ -68,48 +69,48 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 		// mensaje y la plata quedaría registrada dos veces. Se informa el éxito
 		// parcial y se corta ahí. Spec 8.2.
 		if executor.wrote {
-			c.resolveMetric(ctx, userID, outcomeCreateInserted, collectMovementIDs(executor.inserted)...)
-			c.sendText(ctx, b, chatID, messages.MsgPartialSuccessAfterWrite)
+			resolveMetric(ctx, svc, userID, flow.OutcomeCreateInserted, collectMovementIDs(executor.inserted)...)
+			svc.SendText(ctx, b, chatID, messages.MsgPartialSuccessAfterWrite)
 			slog.WarnContext(ctx, "agent loop failed after a write: not queued", "user_id", userID, "err", err)
 			return nil
 		}
 		// El 429 encola el mensaje para reintentarlo: ahí el intent_event tiene
 		// que seguir pendiente, porque la historia no terminó.
-		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+		if handled, oerr := svc.HandleGroqError(ctx, b, chatID, userID, text, err); handled {
 			return oerr
 		}
-		c.resolveMetric(ctx, userID, outcomeLoopErrored)
+		resolveMetric(ctx, svc, userID, outcomeLoopErrored)
 		slog.ErrorContext(ctx, "agent loop failed", "user_id", userID, "err", err)
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
 		return fmt.Errorf("agent loop: %w", err)
 	}
 
 	// Las dos tools que delegan a otro subsistema. Van antes de la narración: la
 	// respuesta se la da el que atiende, no el loop.
 	if executor.answerQuery {
-		return c.finishAnswerQuery(ctx, b, chatID, userID, text)
+		return svc.FinishAnswerQuery(ctx, b, chatID, userID, text)
 	}
 	if executor.settingsArea != "" {
-		return c.finishManageSettings(ctx, b, chatID, userID, text, executor.settingsArea)
+		return svc.FinishManageSettings(ctx, b, chatID, userID, text, executor.settingsArea)
 	}
 
 	// La copia nuestra (ayuda, pedir reescritura) le gana a la narración del
 	// modelo: es texto tuneado y tiene que salir textual.
 	if executor.reply != "" {
 		if len(executor.replyButtons) > 0 {
-			c.sendPrompt(ctx, b, chatID, conversation.Prompt{Text: executor.reply, Buttons: executor.replyButtons})
+			svc.SendPrompt(ctx, b, chatID, conversation.Prompt{Text: executor.reply, Buttons: executor.replyButtons})
 		} else {
-			c.sendText(ctx, b, chatID, executor.reply)
+			svc.SendText(ctx, b, chatID, executor.reply)
 		}
 	} else if narration := strings.TrimSpace(answer); narration != "" {
-		c.sendText(ctx, b, chatID, narration)
+		svc.SendText(ctx, b, chatID, narration)
 	}
 
 	if len(executor.parked) > 0 {
-		if err := c.parkAgentActions(ctx, userID, executor.parked); err != nil {
-			c.resolveMetric(ctx, userID, outcomeParkFailed)
+		if err := parkAgentActions(ctx, svc, userID, executor.parked); err != nil {
+			resolveMetric(ctx, svc, userID, outcomeParkFailed)
 			slog.ErrorContext(ctx, "park agent actions failed", "user_id", userID, "err", err)
-			c.sendText(ctx, b, chatID, msgSomethingBroke)
+			svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
 			return err
 		}
 	}
@@ -122,16 +123,16 @@ func (c *controller) startAgentLoop(ctx context.Context, b *bot.Bot, chatID int6
 	// entidades recientes, que se reconstruye desde la base y no se desordena con
 	// un replay); el hilo es para el resto del contexto conversacional.
 	if reply := firstNonEmpty(executor.reply, strings.TrimSpace(answer)); reply != "" {
-		if err := c.chatHistory.Append(userID, text, reply); err != nil {
+		if err := svc.ChatHistoryAppend(userID, text, reply); err != nil {
 			slog.WarnContext(ctx, "chat history append failed", "user_id", userID, "err", err)
 		}
 	}
 
-	c.resolveAgentLoopMetric(ctx, userID, executor)
+	resolveAgentLoopMetric(ctx, svc, userID, executor)
 
 	// Destapa la cola acá mismo: este mensaje no abrió ningún flujo, así que no
 	// va a haber un terminal que dispare el drenaje más tarde.
-	return c.drainNextAgentAction(ctx, b, chatID, userID)
+	return drainNextAgentAction(ctx, svc, b, chatID, userID)
 }
 
 // firstNonEmpty devuelve el primero que no esté vacío.
@@ -150,7 +151,7 @@ func firstNonEmpty(vals ...string) string {
 // 'abandoned'. El portón de la etapa es "update_confirmed sube y abandoned no
 // sube": dejarlo pendiente hace que cada turno del loop que no parkea nada
 // cuente como un abandono, y el portón daría negativo aunque todo funcione.
-func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, ex *agentExecutor) {
+func resolveAgentLoopMetric(ctx context.Context, svc agentServices, userID uint64, ex *agentExecutor) {
 	if len(ex.parked) > 0 {
 		// Hay algo abierto: lo resuelve el gate cuando el usuario decida. Ese es
 		// el WIP=1 — un solo pendiente vivo por vez.
@@ -160,17 +161,17 @@ func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, 
 	case len(ex.inserted) > 0:
 		// Va PRIMERO: el reply de un CREATE limpio es el recibo, que no matchea
 		// ninguna de las copys de abajo y caería en el fracaso genérico.
-		c.resolveMetric(ctx, userID, outcomeCreateInserted, collectMovementIDs(ex.inserted)...)
+		resolveMetric(ctx, svc, userID, flow.OutcomeCreateInserted, collectMovementIDs(ex.inserted)...)
 	case ex.reply == messages.MsgHelp:
-		c.resolveMetric(ctx, userID, outcomeHelpShown)
+		resolveMetric(ctx, svc, userID, outcomeHelpShown)
 	case ex.reply == messages.MsgAskRewrite:
-		c.resolveMetric(ctx, userID, outcomeUnclear)
+		resolveMetric(ctx, svc, userID, outcomeUnclear)
 	case ex.noCandidates:
-		c.resolveMetric(ctx, userID, outcomeNoCandidates)
+		resolveMetric(ctx, svc, userID, outcomeNoCandidates)
 	default:
 		// El loop narró sin hacer nada. Es un fracaso, y tiene que verse como
 		// tal: es justo el caso que hay que poder contar.
-		c.resolveMetric(ctx, userID, outcomeLoopDidNothing)
+		resolveMetric(ctx, svc, userID, outcomeLoopDidNothing)
 	}
 }
 
@@ -182,8 +183,8 @@ func (c *controller) resolveAgentLoopMetric(ctx context.Context, userID uint64, 
 // buildCreateSeed. Traerla dos veces serían dos queries por turno y —peor— dos
 // listas que pueden diferir: el modelo clasificaría contra una y el gap se
 // marcaría contra la otra.
-func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.AgentTool) (string, []orchestrator.TaxonomyEntry, error) {
-	subs, err := c.subcategories.FindAllForUser(userID)
+func buildAgentSystemPrompt(svc agentServices, userID uint64, tools []orchestrator.AgentTool) (string, []orchestrator.TaxonomyEntry, error) {
+	subs, err := svc.SubcategoriesFindAllForUser(userID)
 	if err != nil {
 		return "", nil, fmt.Errorf("agent loop: find subcategories: %w", err)
 	}
@@ -192,7 +193,7 @@ func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.
 		taxonomy = append(taxonomy, orchestrator.TaxonomyEntry{Category: s.Category, Subcategory: s.Subcategory, Description: s.Description})
 	}
 
-	accs, err := c.accounts.FindByUserID(userID)
+	accs, err := svc.FindUserAccounts(userID)
 	if err != nil {
 		return "", nil, fmt.Errorf("agent loop: find accounts: %w", err)
 	}
@@ -202,12 +203,12 @@ func (c *controller) buildAgentSystemPrompt(userID uint64, tools []orchestrator.
 	}
 
 	return orchestrator.BuildAgentPrompt(movement.TodayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools,
-		c.buildRecentEntities(userID)), taxonomy, nil
+		BuildRecentEntities(svc, userID)), taxonomy, nil
 }
 
 // sendTyping avisa que el bot está pensando. Best-effort: que falle el aviso no
 // puede tumbar el pedido real.
-func (c *controller) sendTyping(ctx context.Context, b *bot.Bot, chatID int64) {
+func sendTyping(ctx context.Context, b *bot.Bot, chatID int64) {
 	if b == nil {
 		return
 	}

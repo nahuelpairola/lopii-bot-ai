@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
@@ -119,7 +120,7 @@ func manageSettingsRun(area string) func(func(string, json.RawMessage) (string, 
 func TestCreateCategory_MatchStartsMatchOfferFlow(t *testing.T) {
 	existing := newSubForTest(9, "Otros", "Regalos / donaciones")
 	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Otros|Regalos / donaciones": existing}}
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(settingsAreaCategory), categoryResult: orchestrator.CategoryCreateResult{
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory), categoryResult: orchestrator.CategoryCreateResult{
 		Match: &orchestrator.CategoryMatch{Category: "Otros", Subcategory: "Regalos / donaciones"},
 	}}
 	c, store := newCreateCategoryController(orch, subs)
@@ -135,7 +136,7 @@ func TestCreateCategory_MatchStartsMatchOfferFlow(t *testing.T) {
 
 func TestCreateCategory_ProposalStartsConfirmFlow(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{categories: []string{"Alimentación"}}
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(settingsAreaCategory), categoryResult: orchestrator.CategoryCreateResult{
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory), categoryResult: orchestrator.CategoryCreateResult{
 		Proposal: &orchestrator.CategoryProposal{Category: "Regalos", Subcategory: "Regalos", Icon: "🎁", Description: "Regalos a terceros."},
 	}}
 	c, store := newCreateCategoryController(orch, subs)
@@ -153,7 +154,7 @@ func TestCreateCategory_ProposalStartsConfirmFlow(t *testing.T) {
 func TestCreateCategory_ProposalDuplicateFallsToMatch(t *testing.T) {
 	existing := newSubForTest(9, "Otros", "Regalos / donaciones")
 	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Otros|Regalos / donaciones": existing}}
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(settingsAreaCategory), categoryResult: orchestrator.CategoryCreateResult{
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory), categoryResult: orchestrator.CategoryCreateResult{
 		Proposal: &orchestrator.CategoryProposal{Category: "Otros", Subcategory: "Regalos / donaciones", Icon: "🎁", Description: "x"},
 	}}
 	c, store := newCreateCategoryController(orch, subs)
@@ -167,7 +168,7 @@ func TestCreateCategory_ProposalDuplicateFallsToMatch(t *testing.T) {
 
 func TestCreateCategory_ReservedProposalFallsToWizard(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{}
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(settingsAreaCategory), categoryResult: orchestrator.CategoryCreateResult{
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory), categoryResult: orchestrator.CategoryCreateResult{
 		Proposal: &orchestrator.CategoryProposal{Category: "Sistema", Subcategory: "Cualquiera", Icon: "⚙️", Description: "x"},
 	}}
 	c, store := newCreateCategoryController(orch, subs)
@@ -181,7 +182,7 @@ func TestCreateCategory_ReservedProposalFallsToWizard(t *testing.T) {
 
 func TestCreateCategory_LLMErrorFallsToWizard(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{}
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(settingsAreaCategory), categoryErr: context.Canceled}
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory), categoryErr: context.Canceled}
 	c, store := newCreateCategoryController(orch, subs)
 
 	c.handleFreeText(context.Background(), nil, 0, 1, "categoría lo que sea")
@@ -202,7 +203,7 @@ func newManageDispatchEngine() (*conversation.Engine, *fakeStoreForController) {
 // (a) wants_new → the create flow (prefill-seeded).
 func TestHandleFreeText_AccountManage_WantsNew_StartsCreate(t *testing.T) {
 	orch := &fakeFullOrchestrator{
-		runFn:               manageSettingsRun(settingsAreaAccount),
+		runFn:               manageSettingsRun(agent.SettingsAreaAccount),
 		accountManageResult: orchestrator.AccountManageResult{WantsNewAccount: true},
 	}
 	engine, store := newManageDispatchEngine()
@@ -221,7 +222,7 @@ func TestHandleFreeText_AccountManage_WantsNew_StartsCreate(t *testing.T) {
 func TestHandleFreeText_AccountManage_Matched_StartsMenu(t *testing.T) {
 	id := uint64(2)
 	orch := &fakeFullOrchestrator{
-		runFn:               manageSettingsRun(settingsAreaAccount),
+		runFn:               manageSettingsRun(agent.SettingsAreaAccount),
 		accountManageResult: orchestrator.AccountManageResult{MatchedAccountID: &id},
 	}
 	engine, store := newManageDispatchEngine()
@@ -241,7 +242,7 @@ func TestHandleFreeText_AccountManage_Matched_StartsMenu(t *testing.T) {
 
 // (c) no match → manage flow at the candidate picker.
 func TestHandleFreeText_AccountManage_NoMatch_StartsPick(t *testing.T) {
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(settingsAreaAccount)} // zero result: nil id, no wants_new
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaAccount)} // zero result: nil id, no wants_new
 	engine, store := newManageDispatchEngine()
 	accs := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(2, currency.ARS, false)}}
 	c := &controller{orchestrator: orch, engine: engine, accounts: accs,
@@ -258,7 +259,7 @@ func TestHandleFreeText_AccountManage_NoMatch_StartsPick(t *testing.T) {
 func TestHandleFreeText_AccountManage_HallucinatedID_StartsPick(t *testing.T) {
 	id := uint64(999)
 	orch := &fakeFullOrchestrator{
-		runFn:               manageSettingsRun(settingsAreaAccount),
+		runFn:               manageSettingsRun(agent.SettingsAreaAccount),
 		accountManageResult: orchestrator.AccountManageResult{MatchedAccountID: &id},
 	}
 	engine, store := newManageDispatchEngine()
@@ -275,7 +276,7 @@ func TestHandleFreeText_AccountManage_HallucinatedID_StartsPick(t *testing.T) {
 
 // (e) a user with no accounts skips Call 2 and goes straight to create.
 func TestHandleFreeText_AccountManage_NoAccounts_StartsCreate(t *testing.T) {
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(settingsAreaAccount)}
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaAccount)}
 	engine, store := newManageDispatchEngine()
 	accs := &fakeAccountRepoFull{byUserID: nil}
 	c := &controller{orchestrator: orch, engine: engine, accounts: accs,
@@ -292,7 +293,7 @@ func TestHandleFreeText_AccountManage_NoAccounts_StartsCreate(t *testing.T) {
 // falls back to the classic wizard rather than a dead end.
 func TestHandleFreeText_CreateCategory_FallsBackToWizard(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{}
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(settingsAreaCategory)} // empty categoryResult
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory)} // empty categoryResult
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })

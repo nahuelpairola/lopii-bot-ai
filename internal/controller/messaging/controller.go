@@ -15,6 +15,7 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -339,11 +340,11 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	// destapan la cola: es el único momento en que se sabe que no hay nada
 	// abierto, y por eso el WIP=1 se sostiene solo.
 	if result.FlowName == flow.AskUserFlowName {
-		c.finishAskUserFlow(ctx, b, chatID, result.Data)
+		agent.FinishAskUser(ctx, c, b, chatID, result.Data)
 		return
 	}
 	defer func() {
-		if err := c.drainNextAgentAction(ctx, b, chatID, result.Data.UserID()); err != nil {
+		if err := agent.DrainNextAction(ctx, c, b, chatID, result.Data.UserID()); err != nil {
 			slog.ErrorContext(ctx, "drain parked actions failed", "err", err)
 		}
 	}()
@@ -352,7 +353,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	case flow.MovementCreateFlowName:
 		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
 	case flow.MovementUpdatePickFlowName:
-		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
+		agent.FinishMovementUpdatePick(ctx, c, b, chatID, result.Data)
 	case flow.MovementUpdateConfirmFlowName:
 		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
 	case flow.MovementDeleteFlowName:
@@ -380,6 +381,13 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 	}
+}
+
+// finishMovementUpdateConfirmFlow es el puente al finish que ahora vive en flow
+// (FinishMovementUpdateConfirm). Los tests del borde lo llaman por este nombre;
+// el puente se borra al cerrar la costura.
+func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	flow.FinishMovementUpdateConfirm(ctx, c, b, chatID, data)
 }
 
 // buttonsPerRow caps how many inline-keyboard buttons Telegram renders

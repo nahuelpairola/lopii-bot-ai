@@ -1,0 +1,406 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
+)
+
+// correctInTheLoop programa un loop que pide corregir sin nombrar cuál.
+// correctInTheLoop emite la corrección tal como la pide el schema desde el
+// 2026-08-12: `changes` es REQUERIDO. Antes iba sólo el texto libre y la app
+// hacía una segunda llamada al modelo para interpretarlo; esa llamada ya no
+// existe (ver applyStructuredCorrection).
+func correctInTheLoop() *fakeOrchestrator {
+	return &fakeOrchestrator{
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			// El texto nombra la panadería: sin eso resolveCandidates cae al atajo
+			// de "lo último que cargaste" y devuelve uno solo, nunca dos.
+			_, err := execute(orchestrator.ToolCorrectMovement, json.RawMessage(
+				`{"change":"la panaderia era 2000","changes":[{"field":"amount","op":"set","value":"2000"}]}`))
+			return "", err
+		},
+	}
+}
+
+// Con `changes` VACÍO el usuario dijo qué movimiento pero no qué cambiarle
+// ("editá los movimientos de hoy"). No se llama al modelo: se pregunta.
+//
+// Antes de esto la app llamaba a ResolveUpdate, que le pedía re-emitir la fila
+// entera — y el 2026-08-12 devolvió las once columnas menos `date`, Groq la
+// rechazó con un 400, y la corrección se perdió completa.
+func TestLoop_EmptyChangesAsksWhatToChange(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	movements := &fakeMovementRepoFull{similar: []movement.Movement{
+		candidateMovement(10, nil, "compra en panadería", 3000),
+	}}
+	orch := &fakeOrchestrator{
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, err := execute(orchestrator.ToolCorrectMovement, json.RawMessage(
+				`{"change":"editá la panaderia","changes":[]}`))
+			return "", err
+		},
+	}
+	svc := newLoopServices(t)
+	svc.orch = orch
+	svc.actions = repo
+	svc.movements = movements
+
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "editá la panaderia"); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.rows) != 1 {
+		t.Fatalf("tenía que quedar parkeada la pregunta de qué cambiar, quedan %d", len(repo.rows))
+	}
+	if orch.updateCalled {
+		t.Error("se llamó a ResolveUpdate: con changes vacío se PREGUNTA, no se interpreta")
+	}
+}
+
+// TestLoop_AmbiguousCorrectionParksAndAsks: con dos candidatos la acción queda
+// en la cola y el mismo turno abre la pregunta.
+func TestLoop_AmbiguousCorrectionParksAndAsks(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	movements := &fakeMovementRepoFull{similar: []movement.Movement{
+		candidateMovement(10, nil, "compra en panadería", 3000),
+		candidateMovement(11, nil, "panadería del barrio", 5000),
+	}}
+	svc := newLoopServices(t)
+	svc.orch = correctInTheLoop()
+	svc.actions = repo
+	svc.movements = movements
+
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "la panaderia era 2000"); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.rows) != 1 {
+		t.Fatalf("want 1 parked action, got %d", len(repo.rows))
+	}
+	if repo.rows[0].Tool != orchestrator.ToolCorrectMovement {
+		t.Errorf("tool equivocada: %q", repo.rows[0].Tool)
+	}
+	if inProgress, _ := svc.engine.InProgress(1); !inProgress {
+		t.Error("el turno tenía que dejar la pregunta abierta")
+	}
+}
+
+// TestLoop_SingleCandidateGoesStraightToTheGate: con un solo candidato no hay
+// nada que preguntar, así que la acción se parkea y se consume en el mismo
+// turno — y termina en el confirm de corrección, que no se tocó.
+func TestLoop_SingleCandidateGoesStraightToTheGate(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	movements := &fakeMovementRepoFull{similar: []movement.Movement{
+		candidateMovement(10, nil, "compra en panadería", 3000),
+	}}
+	orch := correctInTheLoop()
+	orch.updateResult = orchestrator.UpdateResult{
+		Resolved:  true,
+		Movements: []orchestrator.MovementDraft{{Type: "expense", Amount: "2000", Currency: "ARS", Category: "Comida", Subcategory: "Supermercado", Date: "2026-08-01"}},
+	}
+	svc := newLoopServices(t)
+	svc.orch = orch
+	svc.actions = repo
+	svc.movements = movements
+
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "la panaderia era 2000"); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.rows) != 0 {
+		t.Errorf("sin preguntas la acción se consume en el turno, quedan %d", len(repo.rows))
+	}
+	if inProgress, _ := svc.engine.InProgress(1); !inProgress {
+		t.Error("tenía que quedar abierto el confirm de corrección")
+	}
+}
+
+// TestLoop_OurCopyBeatsTheModelNarration: la ayuda es texto tuneado y sale
+// textual, no lo que el modelo haya querido decir arriba.
+func TestLoop_OurCopyBeatsTheModelNarration(t *testing.T) {
+	orch := &fakeOrchestrator{
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			if _, err := execute(orchestrator.ToolReplyHelp, json.RawMessage(`{}`)); err != nil {
+				return "", err
+			}
+			return "yo te explico a mi manera", nil
+		},
+	}
+	svc := newLoopServices(t)
+	svc.orch = orch
+
+	// Sin bot no se puede leer lo enviado; lo que se verifica es que el executor
+	// deje la copia nuestra cargada y que el turno cierre limpio.
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "¿qué podés hacer?"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
+	orch := &fakeOrchestrator{
+		runFn: func(func(string, json.RawMessage) (string, error)) (string, error) { return "ok", nil },
+	}
+	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine.Register(flow.NewAskUserFlow())
+	svc := &fakeServices{
+		engine: engine, orch: orch, actions: &fakeActionsRepo{},
+		accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{},
+		chatHistory: &stubChatHistory{}, movements: &fakeMovementRepoFull{},
+		metrics: &fakeMetricRepo{},
+	}
+
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "corregí el asado"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(orch.gotRunPrompt, "CUENTAS DEL USUARIO") {
+		t.Errorf("el prompt no lleva las cuentas:\n%s", orch.gotRunPrompt)
+	}
+	// Sólo las tools que el ejecutor sabe correr. En la etapa 5 son 7: se suman
+	// answer_query y manage_settings, que reemplaza a las cinco de configuración.
+	if len(orch.gotRunTools) != 7 {
+		t.Errorf("want las 7 tools cableadas, got %d", len(orch.gotRunTools))
+	}
+	// Y el prompt tiene que hablar de ESAS, no de las 14: si nombra una que no
+	// se manda, el modelo la pide igual y el turno se cae.
+	for _, t2 := range orch.gotRunTools {
+		if !strings.Contains(orch.gotRunPrompt, t2.Name) {
+			t.Errorf("el prompt no nombra %s", t2.Name)
+		}
+	}
+	for _, absent := range []string{orchestrator.ToolManageAccount, orchestrator.ToolSumMovements} {
+		if strings.Contains(orch.gotRunPrompt, absent) {
+			t.Errorf("el prompt nombra %s, que no está en el toolbox de esta etapa", absent)
+		}
+	}
+}
+
+// TestWiredTools_CorrectionStillPicksCorrectMovement: con record_movements a la
+// vista, una corrección tiene que seguir eligiendo correct_movement. Es la
+// regresión de la traza 84322077, donde el router dijo UPDATE y el agente
+// registró de nuevo. Lo que lo evita ya no es la ausencia de la tool sino el
+// desempate, así que el desempate es lo que se fija acá.
+func TestWiredTools_CorrectionStillPicksCorrectMovement(t *testing.T) {
+	names := make([]string, 0, 5)
+	for _, tool := range wiredAgentTools() {
+		names = append(names, tool.Name)
+	}
+	if !slices.Contains(names, orchestrator.ToolRecordMovements) {
+		t.Fatal("record_movements tiene que estar cableada")
+	}
+	if len(names) != 7 {
+		t.Errorf("toolbox = %v, want las 7 de la etapa 5", names)
+	}
+
+	prompt := orchestrator.BuildAgentPrompt("2026-08-01", nil, nil, "", wiredAgentTools(), "")
+	if !strings.Contains(prompt, "era, eran, fue") {
+		t.Error("falta el copulativo en pasado: es lo único que separa corregir de registrar")
+	}
+	if !strings.Contains(prompt, orchestrator.ToolRecordMovements) {
+		t.Error("el prompt tiene que nombrar record_movements ahora que se manda")
+	}
+}
+
+// TestWiredAgentTools_MatchesTheExecutorSwitch: la lista de tools que se manda y
+// el switch de execute son la misma cosa dicha dos veces. Si se separan, o el
+// modelo pide algo que nadie corre (vuelta extra y 429), o hay una tool cableada
+// que nunca se le ofrece.
+func TestWiredAgentTools_MatchesTheExecutorSwitch(t *testing.T) {
+	e := newExecutorWith(t, "cualquier cosa")
+	for _, tool := range wiredAgentTools() {
+		if out, _ := e.execute(tool.Name, json.RawMessage(`{}`)); out == resultNotWiredYet {
+			t.Errorf("%s se manda pero el ejecutor no la corre", tool.Name)
+		}
+	}
+}
+
+// TestLoop_AlwaysResolvesTheMetric es la regresión más cara de todas. Un
+// intent_event que queda 'pending' lo pisa a 'abandoned' el próximo mensaje del
+// usuario, y el portón de esta etapa es exactamente "update_confirmed sube y
+// abandoned NO sube". Sin esto, cada turno del loop que no parkea nada cuenta
+// como un abandono y el portón da negativo aunque todo funcione.
+func TestLoop_AlwaysResolvesTheMetric(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		tool string
+		want string
+	}{
+		{"ayuda", orchestrator.ToolReplyHelp, outcomeHelpShown},
+		{"pedir reescritura", orchestrator.ToolAskRewrite, outcomeUnclear},
+		{"sin candidatos", orchestrator.ToolCorrectMovement, outcomeNoCandidates},
+		{"narró sin hacer nada", orchestrator.ToolSumMovements, outcomeLoopDidNothing},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			metrics := &fakeMetricRepo{}
+			tool := tc.tool
+			orch := &fakeOrchestrator{
+				runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+					_, err := execute(tool, json.RawMessage(`{}`))
+					return "listo", err
+				},
+			}
+			// Sin movimientos: correct_movement no encuentra candidatos.
+			svc := newLoopServices(t)
+			svc.orch = orch
+			svc.metrics = metrics
+
+			if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "algo"); err != nil {
+				t.Fatal(err)
+			}
+			if len(metrics.resolved) != 1 || metrics.resolved[0] != tc.want {
+				t.Fatalf("want el evento resuelto como %q, got %v", tc.want, metrics.resolved)
+			}
+		})
+	}
+}
+
+// TestLoop_LeavesTheMetricPendingWhenSomethingIsOpen: si quedó una acción
+// parkeada, el que resuelve es el gate cuando el usuario decida. Resolverla acá
+// contaría el turno dos veces.
+func TestLoop_LeavesTheMetricPendingWhenSomethingIsOpen(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	movements := &fakeMovementRepoFull{similar: []movement.Movement{
+		candidateMovement(10, nil, "compra en panadería", 3000),
+		candidateMovement(11, nil, "panadería del barrio", 5000),
+	}}
+	svc := newLoopServices(t)
+	svc.orch = correctInTheLoop()
+	svc.metrics = metrics
+	svc.movements = movements
+
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "la panaderia estaba mal"); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.resolved) != 0 {
+		t.Errorf("con una acción abierta el evento sigue pendiente, got %v", metrics.resolved)
+	}
+}
+
+// TestLoop_InsertedResolvesCreateInserted: un CREATE por el loop tiene que
+// cerrar el intent_event como create_inserted. Sin este caso cae en el fracaso
+// genérico —el reply es el recibo, no matchea ninguna copy— y el portón de la
+// etapa (create_inserted ≥ 74%) daría negativo con todo funcionando.
+func TestLoop_InsertedResolvesCreateInserted(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeOrchestrator{
+		// Sin el par scripteado la fila sale en PENDING_REVIEW, abre gap y el
+		// turno parkea en vez de insertar: mediria el gap-fill, no esto.
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, err := execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
+				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
+				 "subcategory":"Supermercado","date":"2026-08-01","description":"super",
+				 "payment_method":"transfer"}]}`))
+			return "", err
+		},
+	}
+	svc := newLoopServices(t)
+	svc.orch = orch
+	svc.metrics = metrics
+	svc.accounts = accountsWithDefault()
+	svc.subcategories = subcategoriesForTest()
+	svc.movements = movementsWithBalance("100000")
+
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "gasté 5000 en el super"); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.resolved) != 1 || metrics.resolved[0] != flow.OutcomeCreateInserted {
+		t.Fatalf("want el evento resuelto como %q, got %v", flow.OutcomeCreateInserted, metrics.resolved)
+	}
+}
+
+// TestLoop_NoQueueAfterAWrite: si el turno ya escribió, un 429 posterior NO
+// puede encolar el mensaje — el drenaje lo reinsertaría y la plata quedaría
+// registrada dos veces. Spec 8.2.
+func TestLoop_NoQueueAfterAWrite(t *testing.T) {
+	// El turno escribe y RECIÉN DESPUÉS se come el 429 — que es el único orden
+	// en que el bug existe. Por eso el runFn llama al ejecutor antes de fallar,
+	// en vez de setear el flag a mano.
+	orch := &fakeOrchestrator{
+		// Sin el par scripteado la fila sale en PENDING_REVIEW, abre gap y el
+		// turno parkea en vez de insertar: mediria el gap-fill, no esto.
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			_, _ = execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
+				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
+				 "subcategory":"Supermercado","date":"2026-08-01","description":"super",
+				 "payment_method":"transfer"}]}`))
+			return "", &orchestrator.RateLimitedError{RetryAfter: time.Second}
+		},
+	}
+	svc := newLoopServices(t)
+	svc.orch = orch
+	svc.accounts = accountsWithDefault()
+	svc.subcategories = subcategoriesForTest()
+	svc.movements = movementsWithBalance("100000")
+
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "gasté 5000 en el super"); err != nil {
+		t.Fatal(err)
+	}
+	if svc.enqueued != 0 {
+		t.Errorf("encoló %d jobs después de escribir: el drenaje los duplicaría", svc.enqueued)
+	}
+}
+
+func TestDrainAfterLoop_OpensTheQuestion(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	svc := newLoopServices(t)
+	svc.actions = repo
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{{
+		Tool:    orchestrator.ToolCorrectMovement,
+		Payload: agentPayload{Change: "eran 2000", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}}, Chosen: -1},
+		Questions: []pendingaction.OpenQuestion{{
+			Key: questionKeyCandidate, Prompt: "¿Cuál es?", Options: []string{"a", "b"},
+		}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := drainNextAgentAction(context.Background(), svc, nil, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	if inProgress, _ := svc.engine.InProgress(1); !inProgress {
+		t.Error("el drenaje tenía que dejar la pregunta abierta")
+	}
+}
+
+// Un replay del drenaje NO abre un intent_event nuevo: el del mensaje original
+// sigue pendiente, esperando que este mismo replay lo resuelva.
+//
+// Medido en vivo el 2026-08-12: "10k panaderia" acumuló TRES eventos `unclear`
+// de 0 tokens cada uno —los reintentos del 429— antes de siquiera procesarse.
+// Es ruido en la única columna que lee el portón de la etapa.
+func TestLoop_ReplayDoesNotOpenANewIntentEvent(t *testing.T) {
+	metrics := &fakeMetricRepo{}
+	orch := &fakeOrchestrator{runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+		_, err := execute(orchestrator.ToolReplyHelp, json.RawMessage(`{}`))
+		return "", err
+	}}
+	svc := newLoopServices(t)
+	svc.orch = orch
+	svc.metrics = metrics
+
+	// Turno normal del webhook: abre el evento.
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "que podés hacer"); err != nil {
+		t.Fatal(err)
+	}
+	afterWebhook := len(metrics.logged)
+
+	// El mismo mensaje, ahora drenado: no puede abrir otro.
+	svc.replaying = true
+	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "que podés hacer"); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.logged) != afterWebhook {
+		t.Errorf("el replay abrió %d eventos de más", len(metrics.logged)-afterWebhook)
+	}
+	// Pero SÍ completa el intent: el evento original se encoló sin saber qué era.
+	if len(metrics.queuedIntents) != 1 || metrics.queuedIntents[0] != string(orchestrator.IntentHelp) {
+		t.Errorf("el replay tenía que corregir el intent a HELP, corrigió %v", metrics.queuedIntents)
+	}
+}

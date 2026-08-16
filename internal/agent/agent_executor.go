@@ -1,4 +1,4 @@
-package messaging
+package agent
 
 import (
 	"context"
@@ -103,7 +103,7 @@ type agentExecutor struct {
 	// llamadas del clasificador entraban con trace_id vacío, y son UNA POR
 	// TURNO: la correlación de las tres capas se caía justo en la llamada nueva.
 	ctx    context.Context
-	c      *controller
+	svc    agentServices
 	userID uint64
 	// userText es el mensaje tal cual lo escribió el usuario. Es lo que se usa
 	// para buscar candidatos y para armar la corrección — NO la paráfrasis del
@@ -144,8 +144,8 @@ type agentExecutor struct {
 	inserted []movement.Movement
 }
 
-func newAgentExecutor(ctx context.Context, c *controller, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
-	return &agentExecutor{ctx: ctx, c: c, userID: userID, userText: userText, taxonomy: taxonomy}
+func newAgentExecutor(ctx context.Context, svc agentServices, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
+	return &agentExecutor{ctx: ctx, svc: svc, userID: userID, userText: userText, taxonomy: taxonomy}
 }
 
 // wiredAgentTools son las únicas tools que este ejecutor sabe correr hoy. Es la
@@ -273,20 +273,20 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	// una cuenta real ANTES de decidir que hay que preguntar. Un error de lectura
 	// acá no puede inventar un gap: matchNamedAccount devuelve 0 y sigue el
 	// camino de hoy.
-	accounts, _ := e.c.accounts.FindByUserID(e.userID)
+	accounts, _ := e.svc.FindUserAccounts(e.userID)
 	seed := buildCreateSeed(result, e.taxonomy, accounts)
 	seed[conversation.UserIDKey] = e.userID
 
 	hasGaps := len(conversation.DecodeStringSlice(seed, conversation.KeyPendingCategoryGaps)) > 0 ||
 		len(conversation.DecodeStringSlice(seed, conversation.KeyPendingAccountGaps)) > 0
 	hasFirst := flow.NeedsFirstAccount(seed, func(cur currency.Currency) bool {
-		return e.c.accounts.HasDefaultForCurrency(e.userID, cur)
+		return e.svc.AccountsHasDefaultForCurrency(e.userID, cur)
 	})
 	if hasGaps || hasFirst {
 		return e.parkCreate(seed)
 	}
 
-	inserted, err := e.c.resolveAndInsertMovements(seed)
+	inserted, err := e.svc.ResolveAndInsertMovements(seed)
 	if err != nil {
 		var short *flow.InsufficientFunds
 		if errors.As(err, &short) {
@@ -299,7 +299,7 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	e.wrote = true
 	e.inserted = inserted
 	e.reply = messages.MsgConfirmMovements(inserted)
-	e.replyButtons = e.c.maybeNearDuplicate(e.userID, inserted)
+	e.replyButtons = e.svc.MaybeNearDuplicate(e.userID, inserted)
 	return resultRecorded(len(inserted)), orchestrator.ErrAgentTurnDone
 }
 
@@ -346,7 +346,7 @@ func (e *agentExecutor) classify(movements []orchestrator.MovementDraft) {
 			AccountName: m.AccountNameGuess,
 		})
 	}
-	pairs := e.c.orchestrator.ClassifyCategories(e.ctx, e.userText, rows, e.taxonomy)
+	pairs := e.svc.ClassifyCategories(e.ctx, e.userText, rows, e.taxonomy)
 	for i := range movements {
 		cat, sub := "", ""
 		if i < len(pairs) {
@@ -382,7 +382,7 @@ type parkRequest struct {
 
 func (e *agentExecutor) park(req parkRequest) (string, error) {
 	tool, change, question := req.tool, req.change, req.question
-	groups, err := e.c.resolveCandidates(e.userID, e.userText, "", "")
+	groups, err := resolveCandidates(e.svc, e.userID, e.userText, "", "")
 	if err != nil {
 		return "", fmt.Errorf("%s: resolve candidates: %w", tool, err)
 	}

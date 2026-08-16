@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"testing"
 
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
@@ -120,7 +121,7 @@ func TestMoney_UsdAndArsNeverMix(t *testing.T) {
 func TestMoney_CancelledCorrectionWritesNothing(t *testing.T) {
 	h := newConversationHarness(t)
 	super := h.subID("Alimentación", "Supermercado")
-	id := h.SeedMovementOn("Carrefour", "-12700", super, startOfTodayArgentina())
+	id := h.SeedMovementOn("Carrefour", "-12700", super, agent.StartOfTodayArgentina())
 	antes := h.Balance("Banco Test")
 
 	h.ScriptToolCalls(correctMovementCall(`{
@@ -155,7 +156,7 @@ func itoa(id uint64) string { return strconv.FormatUint(id, 10) }
 func TestMoney_ChangingTheAccountMovesBothBalances(t *testing.T) {
 	h := newConversationHarness(t)
 	h.SeedAccount("Galicia Test", currency.ARS, "0")
-	h.SeedMovementOn("Peaje", "-2500", h.subID("Transporte", "Peaje"), startOfTodayArgentina())
+	h.SeedMovementOn("Peaje", "-2500", h.subID("Transporte", "Peaje"), agent.StartOfTodayArgentina())
 
 	origenAntes := h.Balance("Banco Test")
 	destinoAntes := h.Balance("Galicia Test")

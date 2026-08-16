@@ -1,4 +1,4 @@
-package messaging
+package agent
 
 import (
 	"fmt"
@@ -13,10 +13,12 @@ import (
 
 // foldAccents y tokenAppearsInString viven en flow (movement_text.go), junto al
 // foldAccents del matcher de nombres de cuenta; acá quedan los puentes que usa
-// la resolución de referencias del borde.
+// la resolución de referencias.
 func foldAccents(s string) string { return flow.FoldAccents(s) }
 
-func startOfTodayArgentina() time.Time {
+// StartOfTodayArgentina es el inicio del día de hoy en la zona de Argentina.
+// Exportada porque los tests de borde (que quedaron en messaging) la usan.
+func StartOfTodayArgentina() time.Time {
 	now := time.Now().In(constants.ArgentinaZone)
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, constants.ArgentinaZone)
 }
@@ -134,16 +136,16 @@ func dropReservedGroups(groups []transactionGroup) []transactionGroup {
 // it returns the window's most-recent groups (capped) so the caller can
 // ask "¿cuál?". It never auto-picks: the caller still confirms (1) or
 // shows a picker (2+).
-func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo string) ([]transactionGroup, error) {
+func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, dateTo string) ([]transactionGroup, error) {
 	var matches []movement.Movement
 	var err error
 	if dateFrom == "" && dateTo == "" {
 		// No date named → "what did I just do": recency of ENTRY (created_at),
 		// not business date. A movement entered now but dated in the past
 		// ("le pagué el asado de ayer") must still be a candidate.
-		matches, err = c.movements.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow), recencyLimit)
+		matches, err = svc.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow), recencyLimit)
 	} else {
-		since := startOfTodayArgentina()
+		since := StartOfTodayArgentina()
 		if dateFrom != "" {
 			if anchor, perr := time.Parse("2006-01-02", dateFrom); perr == nil {
 				since = anchor.Add(-dateAnchorMargin)
@@ -156,7 +158,7 @@ func (c *controller) resolveCandidates(userID uint64, message, dateFrom, dateTo 
 				until = &u
 			}
 		}
-		matches, err = c.movements.FindSimilarForUser(userID, message, since, until)
+		matches, err = svc.MovementsFindSimilarForUser(userID, message, since, until)
 	}
 	if err != nil {
 		return nil, err

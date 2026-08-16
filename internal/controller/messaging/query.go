@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -202,7 +203,7 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 }
 
 func (c *controller) buildQuerySystemPrompt() string {
-	today := startOfTodayArgentina().Format("2006-01-02")
+	today := agent.StartOfTodayArgentina().Format("2006-01-02")
 	return fmt.Sprintf(`Sos el asistente de consultas de un bot de finanzas personales argentino.
 Basá TODA cifra en los datos que devuelven las herramientas — nunca inventes ni estimes un número sin respaldo de una herramienta.
 Sí podés hacer aritmética SOBRE esos datos: sumar, restar, promediar o sacar tasas por día/mes. Para un promedio mensual, pedí los totales por mes (group_by=month) y dividí. Para comparar dos períodos ("cuánto más que el mes pasado"), pedí cada total y restá. Para una tasa diaria, dividí el total por la cantidad de días del rango.

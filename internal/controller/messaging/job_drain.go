@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingjob"
 )
@@ -122,7 +123,7 @@ func (c *controller) replayJob(ctx context.Context, b *bot.Bot, chatID int64, us
 		if err := json.Unmarshal(job.Payload, &p); err != nil {
 			return nil
 		}
-		return c.proceedToUpdateConfirm(ctx, b, chatID, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows, changeAsk{})
+		return agent.ProceedToUpdateConfirm(ctx, c, b, chatID, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows, agent.ChangeAsk{})
 	default:
 		slog.WarnContext(ctx, "drain: unknown kind", "kind", job.Kind)
 		return nil

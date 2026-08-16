@@ -3,17 +3,10 @@ package messaging
 import (
 	"testing"
 
-	"gorm.io/gorm"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 )
-
-func movementModelWithID(t *testing.T, id uint) (m gorm.Model) {
-	t.Helper()
-	m.ID = id
-	return m
-}
 
 func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 	store := &fakeStoreForController{}
@@ -22,8 +15,8 @@ func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 
 	seed := conversation.Data{
 		"resolved_index": "0",
-		"candidate_groups": encodeCandidateGroups(
-			[]transactionGroup{{Movements: []movement.Movement{{}}}},
+		"candidate_groups": flow.EncodeCandidateGroups(
+			[]flow.CandidateGroup{{OldIDs: []string{"1"}, Rows: []movement.MovementRow{{}}}},
 		),
 	}
 
@@ -44,10 +37,10 @@ func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
 
 	seed := conversation.Data{
 		"candidate_labels": conversation.EncodeStringSlice([]string{"🔴 3000 ARS · Café", "🔴 3200 ARS · Café"}),
-		"candidate_groups": encodeCandidateGroups(
-			[]transactionGroup{
-				{Movements: []movement.Movement{{}}},
-				{Movements: []movement.Movement{{}}},
+		"candidate_groups": flow.EncodeCandidateGroups(
+			[]flow.CandidateGroup{
+				{OldIDs: []string{"1"}, Rows: []movement.MovementRow{{}}},
+				{OldIDs: []string{"2"}, Rows: []movement.MovementRow{{}}},
 			},
 		),
 	}
@@ -69,8 +62,8 @@ func TestFinishMovementDeleteFlow_Confirmed_Deletes(t *testing.T) {
 		conversation.UserIDKey: uint64(1),
 		"confirmed":            "true",
 		"resolved_index":       "0",
-		"candidate_groups": encodeCandidateGroups(
-			[]transactionGroup{{Movements: []movement.Movement{{Model: movementModelWithID(t, 42)}}}},
+		"candidate_groups": flow.EncodeCandidateGroups(
+			[]flow.CandidateGroup{{OldIDs: []string{"42"}, Rows: []movement.MovementRow{{}}}},
 		),
 	}
 

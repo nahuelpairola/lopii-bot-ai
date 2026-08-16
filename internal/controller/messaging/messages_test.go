@@ -144,25 +144,3 @@ func TestMsgConfirmUpdateDiff_IncludesSubcategoryDescriptionDate(t *testing.T) {
 		}
 	}
 }
-
-func TestMsgConfirmDelete_IncludesSubcategoryDescriptionDate(t *testing.T) {
-	groups := []transactionGroup{{Movements: []movement.Movement{{
-		SubcategoryID: 1,
-		Subcategory:   &subcategory.Subcategory{Category: "Transporte", Subcategory: "Nafta"},
-		Amount:        mustDecimal(t, "15000"),
-		Currency:      "ARS",
-		Description:   strPtr("Nafta YPF"),
-		Date:          mustDate(t, "2026-07-04"),
-	}}}}
-	data := conversation.Data{
-		"resolved_index":   "0",
-		"candidate_groups": encodeCandidateGroups(groups),
-	}
-
-	msg := flow.MsgConfirmDelete(data)
-	for _, want := range []string{"Transporte", "Nafta", "Nafta YPF", "2026-07-04"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("delete confirm message %q missing %q", msg, want)
-		}
-	}
-}

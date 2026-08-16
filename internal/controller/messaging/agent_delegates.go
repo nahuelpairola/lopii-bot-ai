@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/messages"
 )
 
@@ -42,18 +43,18 @@ func (c *controller) finishAnswerQuery(ctx context.Context, b *bot.Bot, chatID i
 // tenga que reescribir.
 func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text, area string) error {
 	switch area {
-	case settingsAreaAccount:
+	case agent.SettingsAreaAccount:
 		return c.startAccountManage(ctx, b, chatID, userID, text)
-	case settingsAreaCategory:
+	case agent.SettingsAreaCategory:
 		return c.startSubcategorySetup(ctx, b, chatID, userID, text)
-	case settingsAreaCategoryManage:
+	case agent.SettingsAreaCategoryManage:
 		// Sacar o fusionar una categoría propia es OTRO wizard, y hasta el
 		// 2026-08-12 era inalcanzable: las dos cosas compartían área y el área
 		// entera iba al wizard de ALTA. "Elimina subcategorias" abría "crear
 		// categoría nueva". Al morir el router, category_manage_pick se quedó sin
 		// ningún camino que lo abriera.
 		return c.startCategoryManage(ctx, b, chatID, userID)
-	case settingsAreaReminder:
+	case agent.SettingsAreaReminder:
 		return c.startReminderSetup(ctx, b, chatID, userID)
 	default:
 		slog.WarnContext(ctx, "manage_settings con área desconocida", "user_id", userID, "area", area)
@@ -62,15 +63,6 @@ func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatI
 	}
 }
 
-// Las áreas de manage_settings. Son el enum del schema: si divergen, el modelo
-// manda un área que el switch no conoce y el pedido muere en ask_rewrite.
-const (
-	settingsAreaAccount = "cuenta"
-	// settingsAreaCategory es ALTA de categoría; settingsAreaCategoryManage es
-	// sacar o fusionar una que el usuario ya creó. Son dos wizards distintos y
-	// ninguno sabe hacer lo del otro, así que la distinción tiene que llegar
-	// desde el modelo — que la tiene fácil: la dice el verbo.
-	settingsAreaCategory       = "categoria"
-	settingsAreaCategoryManage = "categoria_administrar"
-	settingsAreaReminder       = "recordatorio"
-)
+// Las áreas de manage_settings son el enum del schema y viven en agent
+// (agent.SettingsArea*), el dueño del tool manage_settings que el modelo elige.
+

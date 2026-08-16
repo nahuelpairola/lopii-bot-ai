@@ -3,13 +3,14 @@ package messaging
 import (
 	"testing"
 
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/movement"
 )
 
 // daysAgo arma un DayCount a N días de hoy, en la zona en la que trabaja el
 // resto del paquete.
 func daysAgo(n int, count int) movement.DayCount {
-	return movement.DayCount{Date: startOfTodayArgentina().AddDate(0, 0, -n), Count: count}
+	return movement.DayCount{Date: agent.StartOfTodayArgentina().AddDate(0, 0, -n), Count: count}
 }
 
 // gateFor devuelve el when de una key, y falla el test si no existe.

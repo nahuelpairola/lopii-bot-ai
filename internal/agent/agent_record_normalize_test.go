@@ -1,4 +1,4 @@
-package messaging
+package agent
 
 import (
 	"encoding/json"
@@ -30,14 +30,14 @@ func TestAgentRecord_NormalizesTheCategoryPair(t *testing.T) {
 	// El par mal formado lo devuelve ahora el CLASIFICADOR: desde que la
 	// clasificación salió del loop, es el único que puede meter "Vivienda | Luz"
 	// entero en el campo categoría.
-	c := &controller{accounts: accRepo, subcategories: subRepo, movements: &fakeMovementRepoFull{
+	svc := &fakeServices{accounts: accRepo, subcategories: subRepo, movements: &fakeMovementRepoFull{
 		balances: map[uint64]string{46: "500000"},
-	}, orchestrator: &fakeFullOrchestrator{
+	}, orch: &fakeOrchestrator{
 		classifyPairs: []orchestrator.Pair{{Category: "Vivienda | Luz", Subcategory: "Luz"}},
 	}}
 
 	e := &agentExecutor{
-		c:        c,
+		svc:      svc,
 		userID:   1,
 		userText: "pagué 12000 de luz",
 		taxonomy: []orchestrator.TaxonomyEntry{{Category: "Vivienda", Subcategory: "Luz"}},
