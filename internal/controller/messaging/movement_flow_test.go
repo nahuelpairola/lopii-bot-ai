@@ -43,28 +43,6 @@ func TestDecodeStringSlice_MissingKey_ReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestParseUintSlice(t *testing.T) {
-	got, err := parseUintSlice([]string{"1", "2", "30"})
-	if err != nil {
-		t.Fatalf("parseUintSlice: %v", err)
-	}
-	want := []uint{1, 2, 30}
-	if len(got) != len(want) {
-		t.Fatalf("got %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("got[%d] = %d, want %d", i, got[i], want[i])
-		}
-	}
-}
-
-func TestParseUintSlice_ErrorsOnGarbage(t *testing.T) {
-	if _, err := parseUintSlice([]string{"not-a-number"}); err == nil {
-		t.Fatal("expected an error for a non-numeric id")
-	}
-}
-
 func TestMovementRow_GroupRoundTrip(t *testing.T) {
 	rows := []movement.MovementRow{{Type: "transfer", Amount: "100", Currency: "ARS", Group: "g1"}}
 	data := conversation.Data{"movements": movement.EncodeMovementRows(rows)}

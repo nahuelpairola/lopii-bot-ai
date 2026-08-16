@@ -7,6 +7,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -26,7 +27,7 @@ func TestNegativeConfirm_RegisterIgualInserts(t *testing.T) {
 	}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil), "_gate_choice": "register"}
 
-	c.finishMovementNegativeConfirmFlow(context.Background(), nil, 0, data)
+	flow.FinishMovementNegativeConfirm(context.Background(), c, nil, 0, data)
 	if len(movs.inserted) != 2 {
 		t.Fatalf("Registrar igual must insert; got %d movements", len(movs.inserted))
 	}

@@ -387,7 +387,7 @@ func TestFinishMovementCreateFlow_Cancelled_ResolvesCancelled(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	c := &controller{metrics: metrics}
 
-	c.finishMovementCreateFlow(context.Background(), nil, 0, conversation.Data{"cancelled": "true"})
+	flow.FinishMovementCreate(context.Background(), c, nil, 0, conversation.Data{"cancelled": "true"})
 
 	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateCancelled {
 		t.Fatalf("expected resolve create_cancelled, got %+v", metrics.resolved)
@@ -422,7 +422,7 @@ func TestFinishMovementUpdateConfirmFlow_Error_NilBotNoPanic(t *testing.T) {
 		"old_movement_ids": conversation.EncodeStringSlice([]string{"42"}),
 	}
 
-	// Must not panic with b == nil, even though resolveAndInsertMovements fails
+	// Must not panic with b == nil, even though flow.ResolveAndInsertMovements fails
 	c.finishMovementUpdateConfirmFlow(context.Background(), nil, 123, data)
 }
 
@@ -443,7 +443,7 @@ func TestFinishMovementUpdateConfirmFlow_Success_NilBotNoPanic(t *testing.T) {
 		"old_movement_ids": conversation.EncodeStringSlice([]string{"42"}),
 	}
 
-	// Must not panic with b == nil, even though resolveAndInsertMovements succeeds and tries to send a message
+	// Must not panic with b == nil, even though flow.ResolveAndInsertMovements succeeds and tries to send a message
 	c.finishMovementUpdateConfirmFlow(context.Background(), nil, 123, data)
 }
 
@@ -451,7 +451,7 @@ func TestFinishMovementDeleteFlow_Cancelled_ResolvesCancelled(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	c := &controller{metrics: metrics}
 
-	c.finishMovementDeleteFlow(context.Background(), nil, 0, conversation.Data{"confirmed": "false"})
+	flow.FinishMovementDelete(context.Background(), c, nil, 0, conversation.Data{"confirmed": "false"})
 
 	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeDeleteCancelled {
 		t.Fatalf("expected resolve delete_cancelled, got %+v", metrics.resolved)

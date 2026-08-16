@@ -296,7 +296,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
 		// una opción de ningún flow, y un flow abierto no puede comérselo.
-		if c.handleNearDuplicateChoice(ctx, b, chatID, u.ID, input.CallbackData) {
+		if flow.HandleNearDuplicateChoice(ctx, c, b, chatID, u.ID, input.CallbackData) {
 			return &uid, nil
 		}
 
@@ -351,13 +351,13 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 
 	switch result.FlowName {
 	case flow.MovementCreateFlowName:
-		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
+		flow.FinishMovementCreate(ctx, c, b, chatID, result.Data)
 	case flow.MovementUpdatePickFlowName:
 		agent.FinishMovementUpdatePick(ctx, c, b, chatID, result.Data)
 	case flow.MovementUpdateConfirmFlowName:
 		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
 	case flow.MovementDeleteFlowName:
-		c.finishMovementDeleteFlow(ctx, b, chatID, result.Data)
+		flow.FinishMovementDelete(ctx, c, b, chatID, result.Data)
 	case flow.AccountCreateFlowName:
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
 	case flow.AccountManageFlowName:
@@ -375,7 +375,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	case flow.CategoryManageTargetFlowName:
 		c.finishCategoryManageTargetFlow(ctx, b, chatID, result.Data)
 	case flow.MovementNegativeConfirmFlowName:
-		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
+		flow.FinishMovementNegativeConfirm(ctx, c, b, chatID, result.Data)
 	case flow.ReminderSetupFlowName:
 		c.finishReminderSetup(ctx, b, chatID, result.Data)
 	default:

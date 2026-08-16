@@ -69,11 +69,11 @@ func TestCreateFirstAccount_SkipsCurrenciesThatAlreadyHaveADefault(t *testing.T)
 		t.Fatalf("la pregunta fue por %q, want USD", got)
 	}
 
-	idx, err := c.loadAccountIndex(1)
+	idx, err := flow.LoadAccountIndex(c, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skip, err := c.createFirstAccount(data, rows, idx)
+	skip, err := flow.CreateFirstAccount(c, data, rows, idx)
 	if err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
@@ -121,11 +121,11 @@ func TestCreateFirstAccount_SameCurrencyTwiceCreatesOneAccount(t *testing.T) {
 	}
 	data := firstAccountData(rows, "Galicia", "1.000")
 
-	idx, err := c.loadAccountIndex(1)
+	idx, err := flow.LoadAccountIndex(c, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.createFirstAccount(data, rows, idx); err != nil {
+	if _, err := flow.CreateFirstAccount(c, data, rows, idx); err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
 
@@ -161,11 +161,11 @@ func TestCreateFirstAccount_ZeroAccountsMixed_BalanceOnlyToTheAskedCurrency(t *t
 		t.Fatalf("la pregunta fue por %q, want ARS (la primera fila sin default)", got)
 	}
 
-	idx, err := c.loadAccountIndex(1)
+	idx, err := flow.LoadAccountIndex(c, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skip, err := c.createFirstAccount(data, rows, idx)
+	skip, err := flow.CreateFirstAccount(c, data, rows, idx)
 	if err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 		conversation.KeyFirstAccountBalance: "10.000",
 	}
 
-	if _, err := c.resolveAndInsertMovements(data); err != nil {
+	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
 		t.Fatalf("primera pasada: %v", err)
 	}
 	if len(accRepo.inserted) != 1 {
@@ -230,7 +230,7 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 
 	// Segunda pasada sobre el MISMO data, como hace el gate al confirmar.
 	conversation.SetFlag(data, conversation.KeySkipBalanceCheck)
-	if _, err := c.resolveAndInsertMovements(data); err != nil {
+	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
 		t.Fatalf("reintento: %v", err)
 	}
 
@@ -261,10 +261,10 @@ func TestFirstAccountNetDelta_IgnoresOtherCurrencies(t *testing.T) {
 		{Type: "income", Amount: "200", Currency: "USD"},
 	}
 
-	if got := firstAccountNetDelta(rows, "USD"); !got.Equal(decimal.RequireFromString("200")) {
+	if got := flow.FirstAccountNetDelta(rows, "USD"); !got.Equal(decimal.RequireFromString("200")) {
 		t.Errorf("netDelta(USD) = %s, want 200", got)
 	}
-	if got := firstAccountNetDelta(rows, "ARS"); !got.Equal(decimal.RequireFromString("-5000")) {
+	if got := flow.FirstAccountNetDelta(rows, "ARS"); !got.Equal(decimal.RequireFromString("-5000")) {
 		t.Errorf("netDelta(ARS) = %s, want -5000", got)
 	}
 }

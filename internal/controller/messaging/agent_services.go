@@ -111,7 +111,7 @@ func (c *controller) MaybeNearDuplicate(userID uint64, inserted []movement.Movem
 }
 
 func (c *controller) ResolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error) {
-	return c.resolveAndInsertMovements(data)
+	return flow.ResolveAndInsertMovements(c, data)
 }
 
 func (c *controller) HandleGroqError(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, err error) (bool, error) {
