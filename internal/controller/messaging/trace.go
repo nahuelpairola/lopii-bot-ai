@@ -54,12 +54,6 @@ func (c *controller) traced(ctx context.Context, kind, raw string, fn func(ctx c
 	}
 }
 
-// updateTypeReplay es el update_type de un job drenado. Se distingue de text /
-// callback / command a propósito: sin eso, un replay se lee en request_traces
-// como si el usuario hubiera escrito de nuevo, y la latencia de la cola queda
-// mezclada con la de los mensajes reales.
-const updateTypeReplay = "replay"
-
 // updateType clasifica el update para la columna update_type.
 func updateType(u *models.Update) string {
 	switch {

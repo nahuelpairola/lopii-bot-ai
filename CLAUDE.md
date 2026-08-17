@@ -37,8 +37,8 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `metric` | Model + repository: `Log`, `Resolve` — LLM accuracy metrics (`intent_events` table) |
 | `middleware` | `RequireAdmin(adminID)` |
 | `conversation` | Engine: `Engine`, `Flow`, `TextStep`, `ChoiceStep`, `repository` |
-| `pendingjob` | Model + repository: durable queue (`pending_llm_jobs`) for a message cached after a terminal Groq 429 — `Insert`, `ListByUserOrdered`, `ListPendingUserIDs`, `Delete`, `CountByUser` |
-| `orchestrator` | Groq tool-calling HTTP client (plain `net/http`, no SDK). One chokepoint `Client.send` with retry/backoff + `RateLimitedError`. **`Run` is the unified agent loop and the only path a free-text message takes** — it walks a model fallback chain on 429 (never on 400). Around it: `ClassifyCategories` (taxonomy, own model + own TPM bucket), `AnswerQuery` (read-only loop, reached via the `answer_query` tool), and the wizard-side single-shot calls `ClassifyOnboarding` / `ClassifyCategoryCreate` / `ResolveAccountManage` / `ResolveUpdate`. The router (`ClassifyIntent`), `ClassifyCreate` and `ResolveDelete` were deleted in stage 5 |
+| `pendingjob` | The 429-queue cluster, storage **and** behaviour: model + `Repository` (`pending_llm_jobs`), the enqueue side (`EnqueueFreeText`, `EnqueueUpdatePick`, `EnqueueBehindPending`, `HandleGroqError`, the `WithReplaying`/`IsReplaying` ctx flag) and the drain worker (`Run`, gated by an in-process `nextDrainAt`). Its `Services` interface is implemented by `*controller` via `pendingjob_services.go` |
+| `orchestrator` | Groq tool-calling HTTP client (plain `net/http`, no SDK). One chokepoint `Client.send` with retry/backoff + `RateLimitedError`. **`Run` is the unified agent loop and the only path a free-text message takes** — it walks a model fallback chain on 429 (never on 400). Around it: `ClassifyCategories` (taxonomy, own model + own TPM bucket), `AnswerQuery` (read-only loop, reached via the `answer_query` tool), and the wizard-side single-shot calls `ClassifyOnboarding` / `ClassifyCategoryCreate` / `ResolveAccountManage` / `ResolveUpdate`. The router (`ClassifyIntent`), `ClassifyCreate` and `ResolveDelete` were deleted in stage 5. Repo-free by design: the controller-side delegates of its loops live in the `agent`/`query` clusters |
 | `chathistory` | Model + repository: ephemeral conversation thread shared by every intent (`Append`, `Recent`), hard-pruned by TTL, no `deleted_at`. Renamed from `queryhistory` — it was never QUERY-only |
 | `pendingaction` | Model + repository: durable queue (`pending_actions`) of agent-loop actions waiting on an answer from the user — `Insert`, `NextForUser`, `Delete`, `CountForUser`. Drained one at a time (WIP=1) |
 | `reminder` | Model + repository: one row per user, minutes-since-ART-midnight window + weekly-summary flags. `Upsert`, `Disable`, `ListDue`, `ListWeeklyDue`, `SetWeeklySummary` |
@@ -48,9 +48,14 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `summary` | Weekly-summary builder + its Spanish copy. Consumer-local `MovementReader`/`AccountReader` interfaces |
 | `trace` | `NewID` (crypto/rand, 32 hex) + ctx carrier for the correlation id shared by `request_traces`/`llm_calls`/`intent_events` |
 | `logging` | Installs the process-wide `slog` logger; its handler stamps the ctx `trace_id` onto every record |
+| `agent` | The unified-agent-loop cluster, consumer side (delegate of `orchestrator.Run`): `StartLoop`, `DrainNextAction`, `FinishAskUser` / `FinishMovementUpdatePick` / `ProceedToUpdateConfirm` (update-flow continuations), `BuildRecentEntities`, `SettingsArea` + consts, `StartOfTodayArgentina`. Its `agentServices` interface is implemented structurally by `*controller` via the one-line bridges in `agent_services.go` |
+| `query` | QUERY feature cluster (free-text reads, extracted from messaging): exported `Run`, `SystemPrompt`, `NewExecutor`, `Tools`; unexported `services` interface (11 `Query-*` methods + `AnswerQuery`) implemented by `*controller` via `query_services.go`. Read-only — never writes. Depends on `agent.StartOfTodayArgentina` |
+| `flow` | Every conversation flow, built and finished: the 15 `New*Flow` builders registered in `server.go`, their steps/options/copy, the movement write pipeline (`ResolveAndInsertMovements`, the opening/counterparty logic), the finishes, and the near-duplicate gate. Talks to the DB through the narrow `runner` interface (`flow/runner.go`), implemented by `*controller` — that is why `runner`'s methods are exported |
+| `nudges` | Contextual-tip dispatcher (`Maybe`, `HandleCallback`): decides *which* tip fires and when. Separate from `nudge`, which is only its storage — the dispatcher reaches it through the `Services` interface, never directly |
+| `messages` | The few copy strings shared by more than one cluster. Everything else lives with its own cluster |
 | `controller/health` | HTTP: `/health/internal`, `/health/external` |
 | `controller/admin` | HTTP: `POST /admin/users/:telegramID/reset` (admin-only) |
-| `controller/messaging` | Telegram: `/start`, catch-all for free text and callbacks |
+| `controller/messaging` | Telegram: `/start`, catch-all for free text and callbacks. Free text is delegated to the `agent` and `query` clusters via one-line bridges + delegates; `userLocks` (in-memory per-user write mutex), the build-tagged eval suites and the wizard flows stay here |
 | `controller/miniapp` | Telegram Mini App: templ-rendered HTML views (overview, accounts, categories, period, evolution, admin) + the two **movement leaves** that end each drill (`AccountLeaf`, `SubcategoryLeaf`) + `auth.go` initData validation and the `requireAdmin` gate |
 | `server` | Bootstrap: DB, migrations, bot, webhook, controllers, Gin |
 
@@ -161,10 +166,11 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
   amount. They take the whole `*account.Account` instead, which makes a currency mismatch
   unrepresentable. This is a decision, not debt; it is documented in the anti-pattern in
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#anti-patterns--what-not-to-do).
-- `internal/controller/messaging` is ~10k non-test lines across 52 files, **4.1× the next
-  package** (`orchestrator`, 2.4k). Splitting it is the real fix (see `docs/decisions.md`); the
-  per-package `CLAUDE.md` is the stopgap. Stage 5 was supposed to settle the seams and instead
-  grew the package by 2.5k lines, so this is now the largest open piece of debt in the repo.
+- `internal/controller/messaging` was ~10k non-test lines across 52 files — the driver of this split. Extracting one cluster at a time (copy→`messages`, flows→`flow`, loop→`agent`, QUERY→`query`, tips→`nudges`, 429 queue→`pendingjob`) cut it to **2.0k non-test lines across 22 files**. For scale: `flow` 4.4k, `agent` 2.9k, `orchestrator` 2.6k, `nudges` 0.7k, `query` 0.5k, `pendingjob` 0.4k.
+  Open debt from the split, all of it docs or tests, none of it behaviour:
+  - `messaging/CLAUDE.md` still describes the package as it was before (52 files) and names symbols that moved — `stripLeadingIcon`, `describeEmptyResult`, `enqueueBehindPending`, `replayJob`. `orchestrator`'s doc comments still point at `messaging/query.go`. One doc pass covers both, together with `docs/ARCHITECTURE.md` and `docs/decisions.md`.
+  - **`flow` has ~4.4k lines of code and only ~250 lines of its own tests**: its 26 test files stayed in `messaging`, exercising it through `*controller` and the one-line delegators (`finishAccountCreateFlow`, `finishReminderSetup`, …). Those delegators exist *for the tests* — moving the tests is what deletes them. `agent`/`query`/`nudges`/`pendingjob` did take their tests with them.
+  - Still in `messaging` and planned as C3c: the onboarding wizards (`start*.go`) and what is left of the finishes.
 - `orchestrator.AgentTool.Kind` is **vestigial**: `orderCallsByKind`/`kindRank` were deleted in
   stage 5 and nothing reads the field. It matters only as a warning — if read tools ever return
   to `Run`, ordering must come back with them, and the zero value must be made unrepresentable

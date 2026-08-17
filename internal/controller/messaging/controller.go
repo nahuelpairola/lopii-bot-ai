@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -135,16 +134,6 @@ type nudgeRepository interface {
 	LastSentAt(userID uint64) (*time.Time, error)
 }
 
-// jobsRepository is the pending_llm_jobs storage (internal/pendingjob) —
-// the durable cache for a user message that hit a terminal Groq 429.
-type jobsRepository interface {
-	Insert(job *pendingjob.PendingJob) error
-	ListByUserOrdered(userID uint64) ([]pendingjob.PendingJob, error)
-	ListPendingUserIDs() ([]uint64, error)
-	Delete(id uint64) error
-	CountByUser(userID uint64) (int64, error)
-}
-
 // actionsRepository is the pending_actions storage (internal/pendingaction) —
 // the durable queue of agent-loop actions waiting on an answer from the user.
 type actionsRepository interface {
@@ -167,10 +156,8 @@ type controller struct {
 	reminders     reminderRepository
 	traces        traceRepository
 	nudges        nudgeRepository
-	jobs          jobsRepository
+	jobs          pendingjob.Repository
 	actions       actionsRepository
-	nextDrainAt   time.Time
-	drainMu       sync.Mutex
 	// locks serializa los updates de un mismo usuario. Ver user_lock.go.
 	locks userLocks
 }
@@ -188,7 +175,7 @@ func NewController(
 	reminders reminderRepository,
 	traces traceRepository,
 	nudges nudgeRepository,
-	jobs jobsRepository,
+	jobs pendingjob.Repository,
 	actions actionsRepository,
 ) *controller {
 	return &controller{
@@ -308,7 +295,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
-				if c.enqueueBehindPending(ctx, b, chatID, u.ID, input.Text) {
+				if pendingjob.EnqueueBehindPending(ctx, c, c.jobs, b, chatID, u.ID, input.Text) {
 					return &uid, nil
 				}
 				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)

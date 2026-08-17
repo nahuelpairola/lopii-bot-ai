@@ -13,6 +13,7 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
+	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -103,7 +104,7 @@ func (c *controller) EngineStartWithData(userID uint64, flowName string, seed co
 }
 
 func (c *controller) IsReplaying(ctx context.Context) bool {
-	return isReplaying(ctx)
+	return pendingjob.IsReplaying(ctx)
 }
 
 func (c *controller) MaybeNearDuplicate(userID uint64, inserted []movement.Movement) []conversation.Button {
@@ -115,11 +116,11 @@ func (c *controller) ResolveAndInsertMovements(data conversation.Data) ([]moveme
 }
 
 func (c *controller) HandleGroqError(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, err error) (bool, error) {
-	return c.handleGroqError(ctx, b, chatID, userID, text, err)
+	return pendingjob.HandleGroqError(ctx, c, c.jobs, b, chatID, userID, text, err)
 }
 
 func (c *controller) EnqueueUpdatePickIfRateLimited(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
-	return c.enqueueUpdatePickIfRateLimited(ctx, b, chatID, userID, message, transactionID, oldIDs, beforeRows, err)
+	return pendingjob.EnqueueUpdatePick(ctx, c, c.jobs, b, chatID, userID, message, transactionID, oldIDs, beforeRows, err)
 }
 
 func (c *controller) FinishAnswerQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
@@ -141,10 +142,11 @@ func TestQueueEval_DrainReplaysFreeText(t *testing.T) {
 	engine.Register(flow.NewMovementCreateFlow(cache, accRepo))
 
 	orch := orchestrator.New(cfg)
-	c := &controller{users: userRepo, accounts: accRepo, movements: movRepo, subcategories: cache, engine: engine, orchestrator: orch, jobs: jobsRepo}
+	chatHist := chathistory.InitRepository(conn, 24*time.Hour, 20)
+	c := &controller{users: userRepo, accounts: accRepo, movements: movRepo, subcategories: cache, engine: engine, orchestrator: orch, jobs: jobsRepo, chatHistory: chatHist}
 
-	payload, _ := json.Marshal(freeTextPayload{Text: "gasté 500 en el super"})
-	job := &pendingjob.PendingJob{UserID: uid, Kind: kindFreeText, Payload: payload}
+	payload, _ := json.Marshal(pendingjob.FreeTextPayload{Text: "gasté 500 en el super"})
+	job := &pendingjob.PendingJob{UserID: uid, Kind: pendingjob.KindFreeText, Payload: payload}
 	if err := jobsRepo.Insert(job); err != nil {
 		t.Fatalf("insert pending job: %v", err)
 	}
@@ -154,9 +156,12 @@ func TestQueueEval_DrainReplaysFreeText(t *testing.T) {
 	// a bug, but it means one drainTick isn't guaranteed to finish under real
 	// conditions. Retry for up to 90s, same tolerance query_eval_test.go uses
 	// for real-Groq flakiness.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go pendingjob.Run(ctx, c, jobsRepo, nil, 100*time.Millisecond)
+
 	deadline := time.Now().Add(90 * time.Second)
 	for {
-		c.drainTick(context.Background(), nil, time.Now())
 		n, err := jobsRepo.CountByUser(uid)
 		if err != nil {
 			t.Fatalf("count pending jobs: %v", err)
@@ -193,8 +198,8 @@ func TestQueueEval_GiveUp_DoesNotCallOrchestrator(t *testing.T) {
 	uid, cleanup := queueEvalUser(t, conn)
 	t.Cleanup(cleanup)
 
-	payload, _ := json.Marshal(freeTextPayload{Text: "gasté 999 en el super"})
-	job := &pendingjob.PendingJob{UserID: uid, Kind: kindFreeText, Payload: payload}
+	payload, _ := json.Marshal(pendingjob.FreeTextPayload{Text: "gasté 999 en el super"})
+	job := &pendingjob.PendingJob{UserID: uid, Kind: pendingjob.KindFreeText, Payload: payload}
 	if err := jobsRepo.Insert(job); err != nil {
 		t.Fatalf("insert pending job: %v", err)
 	}
@@ -206,7 +211,12 @@ func TestQueueEval_GiveUp_DoesNotCallOrchestrator(t *testing.T) {
 	}
 
 	c := &controller{users: userRepo, jobs: jobsRepo}
-	c.drainTick(context.Background(), nil, time.Now())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go pendingjob.Run(ctx, c, jobsRepo, nil, 100*time.Millisecond)
+	time.Sleep(500 * time.Millisecond) // one tick
+	cancel()
 
 	if n, err := jobsRepo.CountByUser(uid); err != nil || n != 0 {
 		t.Fatalf("want gave-up job deleted, got count=%d err=%v", n, err)

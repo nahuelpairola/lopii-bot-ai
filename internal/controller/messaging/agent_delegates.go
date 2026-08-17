@@ -7,6 +7,7 @@ import (
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/messages"
+	"lopiibot.com/internal/pendingjob"
 )
 
 // finishAnswerQuery entrega la consulta al loop de query.
@@ -24,7 +25,7 @@ func (c *controller) finishAnswerQuery(ctx context.Context, b *bot.Bot, chatID i
 	// Un 429 encola y ackea: el intent_event sigue pendiente porque la historia
 	// no terminó, la termina el drain. QUERY es el intent más seguro de
 	// replayar: es read-only, no puede registrar la misma plata dos veces.
-	if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, qErr); handled {
+	if handled, oerr := pendingjob.HandleGroqError(ctx, c, c.jobs, b, chatID, userID, text, qErr); handled {
 		return oerr
 	}
 	if qErr != nil {
@@ -65,4 +66,3 @@ func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatI
 
 // Las áreas de manage_settings son el enum del schema y viven en agent
 // (agent.SettingsArea*), el dueño del tool manage_settings que el modelo elige.
-

@@ -11,6 +11,7 @@ import (
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingjob"
 )
 
 // startAccountManage runs Call 2 account-match and branches: matched →
@@ -35,7 +36,7 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 	}
 	res, err := c.orchestrator.ResolveAccountManage(ctx, text, opts)
 	if err != nil {
-		if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+		if handled, oerr := pendingjob.HandleGroqError(ctx, c, c.jobs, b, chatID, userID, text, err); handled {
 			return oerr
 		}
 		c.sendText(ctx, b, chatID, msgSomethingBroke)

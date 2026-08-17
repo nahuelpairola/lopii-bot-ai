@@ -1,14 +1,12 @@
 package messaging
 
 import (
-	"encoding/json"
 	"time"
 
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/pendingjob"
 )
 
 // Mensajes estáticos, sin variables.
@@ -34,14 +32,8 @@ const (
 	msgCouldNotLoad   = flow.MsgCouldNotLoad
 	msgSomethingBroke = flow.MsgSomethingBroke
 
-	// Ack de la cola de pending jobs (429 terminal de Groq). Nunca silencioso:
-	// ackShortWaitThreshold decide cuál de las dos rinde (pending_jobs.go).
-	msgAckShortWait   = "Dame un segundo, ya te lo cargo 🙌"
-	msgAckLongWaitFmt = "Estoy sin cupo por ~%d min 🙏 lo cargo apenas se libere y te aviso."
-
-	// msgQueuedBehindPending: distinto del ack del 429 (no repetir), plural implica
-	// que ambos van juntos; sin jerga de cola/pendiente.
-	msgQueuedBehindPending = "Ese también, ya te los cargo 🙌"
+	// msgAckShortWait / msgAckLongWaitFmt / msgQueuedBehindPending viven en
+	// internal/pendingjob/messages.go (dominio del drain, no del borde).
 
 	// MsgAccountReset is exported so the admin reset endpoint
 	// (controller/admin) can send it before re-firing onboarding — the
@@ -72,23 +64,6 @@ const (
 // corto para los callers del borde que aún no se migran.
 func msgCouldNotSave(cosa string) string {
 	return flow.MsgCouldNotSave(cosa)
-}
-
-// msgJobGaveUp: el drain se rindió con un job (429 permanente). Reusa
-// msgCouldNotSave — el caso es exactamente el suyo ("no se guardó nada") y así
-// hereda el tono de los 5 mensajes por-significado en vez de inventar copy
-// paralela. Para free_text echoa el texto para que el usuario copie y pegue.
-func msgJobGaveUp(job pendingjob.PendingJob) string {
-	if job.Kind != kindFreeText {
-		return msgCouldNotSave("el cambio")
-	}
-	var p freeTextPayload
-	_ = json.Unmarshal(job.Payload, &p)
-	txt := p.Text
-	if len([]rune(txt)) > 40 {
-		txt = string([]rune(txt)[:40]) + "…"
-	}
-	return msgCouldNotSave("«" + txt + "»")
 }
 
 func msgCouldNotDelete(cosa string) string {
