@@ -26,13 +26,9 @@ createModel = "openai/gpt-oss-120b"
 updateModel = "openai/gpt-oss-20b"
 queryModel = "openai/gpt-oss-120b"
 agentModel = "openai/gpt-oss-20b"
-# La narración forzada de una consulta corre en OTRO modelo a proposito: comparte
-# turno con el agente (ambos en 20b por default), y el techo de TPM es por modelo.
-# Lo defiende TestEveryConfigFile_HasNoSameTurnModelCollision.
-narrationModel = "llama-3.3-70b-versatile"
 # El clasificador va en OTRO modelo a proposito: el techo de TPM de Groq es por
 # modelo, y el loop ya entra al suyo una vez por minuto y medio.
-classifierModel = "llama-3.3-70b-versatile"
+classifierModel = "openai/gpt-oss-20b"
 timeoutSeconds = 10
 
 [query]

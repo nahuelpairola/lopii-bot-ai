@@ -141,9 +141,21 @@ func TestQueryEval(t *testing.T) {
 	t.Logf("queryModel = %s", queryModel)
 	// El eval tiene que reflejar la config de producción (server.go/config.go) o no
 	// gatea nada: sin NarrationModel, la narración forzada cae al QueryModel y nunca
-	// se ejerce el modelo que esta spec existe para probar.
+	// se ejerce el modelo que esta spec existe para probar. Por eso el default sigue
+	// al de config/*.toml — estaba clavado en llama-3.3-70b-versatile, que Groq dio
+	// de baja, y el eval entero moría con un 404.
+	//
+	// No da lo mismo cuál: con openai/gpt-oss-120b acá, "filtro_inexistente" falla
+	// 4 de 4 veces (narra "gastaste $0" sobre una categoría que no existe), y con
+	// qwen/qwen3.6-27b la narración vuelve vacía. Si cambia el de config, hay que
+	// medir de nuevo, no asumir.
+	narrationModel := os.Getenv("GROQ_NARRATION_MODEL")
+	if narrationModel == "" {
+		narrationModel = "openai/gpt-oss-20b"
+	}
+	t.Logf("narrationModel = %s", narrationModel)
 	orch := orchestrator.New(orchestrator.Config{
-		APIKey: key, BaseURL: baseURL, QueryModel: queryModel, NarrationModel: "llama-3.3-70b-versatile", TimeoutSeconds: 30,
+		APIKey: key, BaseURL: baseURL, QueryModel: queryModel, NarrationModel: narrationModel, TimeoutSeconds: 30,
 		Recorder: evalRecorder{t: t},
 	})
 	c := &controller{accounts: accRepo, movements: movRepo, subcategories: cache, orchestrator: orch}
