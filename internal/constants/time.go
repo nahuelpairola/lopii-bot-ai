@@ -9,3 +9,9 @@ import "time"
 // ponytail: fixed -3; if Argentina ever restores DST, switch to
 // time.LoadLocation + embedded time/tzdata.
 var ArgentinaZone = time.FixedZone("ART", -3*60*60)
+
+// MonthLongEs are the Spanish month names, indexed by time.Month()-1. Shared
+// because two surfaces render a month to the user: the Mini App period header
+// and the weekly summary.
+var MonthLongEs = [...]string{"enero", "febrero", "marzo", "abril", "mayo", "junio",
+	"julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"}

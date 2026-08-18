@@ -84,7 +84,7 @@ touching the others. Only the legs of a genuinely atomic operation (below) share
 - The first account per currency is flagged `IsDefault=true` — a throwaway seed that satisfies the partial unique index `(user_id, currency) WHERE is_default = TRUE AND deleted_at IS NULL`. This default may be reset to `false` later by the user if they create additional accounts in that currency.
 - Additional accounts beyond the onboarding flow are created organically via the ACCOUNT_MANAGE intent (user explicitly asks to create an account, never `IsDefault=true`). ACCOUNT_MANAGE (umbrella that replaced ACCOUNT_CREATE) also renames an account, adjusts its balance and changes the per-currency default.
 - **Balance adjustment never writes a saldo.** The user states the account's current TOTAL; the app inserts one movement for the delta vs `SUM(amount)` — income `+Abs` / expense `-Abs`, sign owned by the app — under the global subcategory `Sistema | Ajuste de saldo` (never shown to the user, never LLM-proposable; `IsReserved` covers it). Balance stays `SUM(amount)`, no exception.
-- **An adjustment is not a transaction, and never counts as spending or earning.** It corrects the model to match reality; whatever caused the gap (a market move on a CEDEAR/FCI account, a forgotten expense, a bank fee) already happened and the app never saw it, so booking it as income or expense double-counts an unknown cause. `movement.SumForUser` excludes every reserved category from the money aggregates by default — the exclusion is in the query, not in each view. What the balances did without a real transaction behind them surfaces separately as **"Variación de saldos"** (`Sistema | Ajuste de saldo` + `Sistema | Rendimiento inversión`, signed), in the Mini App overview and the weekly summary, and only when non-zero. `MovementQuery.OnlyReserved` is how that figure is built. The confirm copy states this before the user commits.
+- **An adjustment is not a transaction, and never counts as spending or earning.** It corrects the model to match reality; whatever caused the gap (a market move on a CEDEAR/FCI account, a forgotten expense, a bank fee) already happened and the app never saw it, so booking it as income or expense double-counts an unknown cause. `movement.SumForUser` excludes every reserved category from the money aggregates by default — the exclusion is in the query, not in each view. What the balances did without a real transaction behind them surfaces separately, signed (`Sistema | Ajuste de saldo` + `Sistema | Rendimiento inversión`), and only when non-zero: as **"Variación de saldos"** in the Mini App overview, and as **"Tus saldos subieron/bajaron … por rendimientos y ajustes"** in the weekly summary — same figure, same `MovementQuery.OnlyReserved` query, different register. `MovementQuery.OnlyReserved` is how that figure is built. The confirm copy states this before the user commits.
 - **Default change offers to consolidate.** Switching the default for a currency captures the previous default first, then `UnsetDefault`+`SetDefault`; if the previous default is a *different* account with a non-zero balance, the bot offers `movement.ReassignAccount(from, to)` — which re-points external movements but **soft-deletes internal from↔to transfers whole** (both legs net to zero; re-pointing one leg would violate the 2-distinct-accounts transfer invariant). Same-currency is the caller's precondition.
 - Unique index: `(user_id, name, currency) WHERE deleted_at IS NULL` (case-insensitive)
 - Unique index: `(user_id, currency) WHERE is_default = TRUE AND deleted_at IS NULL`
@@ -143,3 +143,39 @@ one — different candidate query, different cadence, different copy. `last_summ
 idempotence guard, exactly like `last_reminded_on`: one summary per period, whatever the ticker
 does. Built by `internal/summary`, which declares its own consumer-local `MovementReader` /
 `AccountReader` interfaces rather than importing the concrete repositories.
+
+The message is a **reading, not a statement of account**. Three rules keep it that way, and
+each has a guard that is easy to drop when editing the copy:
+
+- **Every amount goes through `currency.FormatMoney`.** No `StringFixed` anywhere in the
+  package. This is what separates `$453.775` from `$453774.78`, and it is the single biggest
+  reason the old version read like a spreadsheet.
+- **Comparisons are money, never percent**, and rounded (`roundNice`) once past $10.000:
+  "$268.000 menos que la semana pasada" is a magnitude, "↓37%" is an indicator. Exactly **one**
+  category is annotated per block — the biggest jump that also cleared `jumpThreshold` — because
+  the annotation only carries weight while it is exceptional.
+- **The month-end projection is a range, and it lies without its two guards.** It comes from the
+  p25/p75 of the user's own daily spending this month, stretched over the days left. Days with
+  no spending must be seeded as `$0` — `SumForUser` only returns days that had movements, so a
+  sample built from the returned rows alone skews the floor upward and the projection inflates.
+  And it is suppressed before day `projectionMinDay` of the month, where the sample is three or
+  four days and the range is noise wearing a number's clothes.
+
+Its **tone** is carried by three formatting rules, not by adjectives:
+
+- **Bold is the answer, italics are the aside.** Bold marks the figure a line exists to deliver;
+  every comparison, caveat and the closing day count go in `<i>`. Four bolds in a row stop
+  resembling emphasis, so the account balances are the ceiling for how much bold one block gets.
+- **Category icons come from `subcategory.Cache.IconForCategory`** via the consumer-local
+  `IconReader`. The summary was the only surface in the bot rendering a bare category name; the
+  cache never returns empty (`📂` fallback), so the lines cannot lose their alignment.
+- **The footer is a `<blockquote>`** — verified against the live Bot API, which echoes back a
+  `blockquote` entity. It replaced a hand-drawn `—` separator.
+
+`moodLine` is the one sentence under the header, and it is **derived and prioritised, never
+random**: cara / tranquila / more came in than went out, else nothing. A line that rotates on its
+own every Monday stops reading as an observation and starts reading as decoration, so an
+unremarkable week gets no line at all.
+
+`daysBlock` is the honesty valve: the money lines say "gastaste $X" as though it were the whole
+week, so the message states how many of the seven days were actually logged.

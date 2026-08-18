@@ -175,7 +175,7 @@ func InitServer(conf *config.Config) error {
 	messagingController.RegisterHandlers(tgBot)
 	miniappController.RegisterRoutes(ginEngine)
 
-	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo)
+	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo, subcategoryCache)
 	quoteRepo := quote.NewRepository(conn)
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
 	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)

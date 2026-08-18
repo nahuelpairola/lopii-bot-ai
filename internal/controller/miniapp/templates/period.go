@@ -39,7 +39,6 @@ var (
 )
 
 var monthShortEs = [...]string{"ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"}
-var monthLongEs = [...]string{"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"}
 
 // Period is the window every view renders against, plus the links its header
 // controls point at. Built by NewPeriod; the handlers only parse query params.
@@ -177,7 +176,7 @@ func periodLabel(from, anchor time.Time, months int) string {
 	var s string
 	switch {
 	case months == 1:
-		s = fmt.Sprintf("%s %d", monthLongEs[anchor.Month()-1], anchor.Year())
+		s = fmt.Sprintf("%s %d", constants.MonthLongEs[anchor.Month()-1], anchor.Year())
 	case from.Year() == anchor.Year():
 		s = fmt.Sprintf("%s – %s %d", monthShortEs[from.Month()-1], monthShortEs[anchor.Month()-1], anchor.Year())
 	default:
