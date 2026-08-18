@@ -705,3 +705,53 @@ func TestQueryMessages_NameNoTool(t *testing.T) {
 		}
 	}
 }
+
+// El bug: el 2026-08-14, contra la base real, el modelo recibió dos filas
+// agrupadas —Supermercado 2.031.070 y Almacén 34.000— y contestó 2.031.070.
+// Leyó la primera y tiró la segunda. La casa ya tiene la regla de que la
+// aritmética es de la app y nunca del modelo; acá no se estaba aplicando.
+func TestExec_SumMovements_GroupedCarriesTheTotal(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "Supermercado", Total: dec("2031070")},
+		{Label: "Almacén", Total: dec("34000")},
+	}}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","group_by":"subcategory"}`))
+	if !strings.Contains(out, "2065070.00") {
+		t.Errorf("falta el total de las filas agrupadas: %s", out)
+	}
+}
+
+// group_by=type es la excepción, y no es un detalle: las filas llegan en valor
+// absoluto (CategorySum.Total es SUM(ABS(amount))), así que sumar el renglón de
+// gastos con el de ingresos da un número que no es ni el gasto, ni el ingreso,
+// ni el neto. La app no puede escribir eso, porque toda la línea existe para
+// que el modelo la cite en vez de sumar él.
+func TestExec_SumMovements_GroupByTypeHasNoTotal(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "expense", Total: dec("500000")},
+		{Label: "income", Total: dec("800000")},
+	}}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","group_by":"type"}`))
+	if strings.Contains(out, "1300000") {
+		t.Errorf("sumó gastos con ingresos en valor absoluto: %s", out)
+	}
+	if strings.Contains(strings.ToLower(out), "total") {
+		t.Errorf("group_by=type no lleva línea de total: %s", out)
+	}
+}
+
+// Una sola fila agrupada no lleva total: el total ES la fila, y repetirlo le
+// hace creer al modelo que hay dos hechos donde hay uno.
+func TestExec_SumMovements_SingleGroupedRowHasNoTotal(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Supermercado", Total: dec("5000")}}}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","group_by":"subcategory"}`))
+	if strings.Contains(strings.ToLower(out), "total") {
+		t.Errorf("una sola fila no lleva total: %s", out)
+	}
+}

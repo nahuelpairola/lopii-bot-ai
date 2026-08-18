@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/go-telegram/bot"
+	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -395,7 +396,37 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
 	}
+	if line, ok := groupedTotalLine(rows, groupBy, cur); ok {
+		lines = append(lines, line)
+	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// groupedTotalLine arma la línea de total de un agrupado, o dice que no va.
+//
+// Existe porque el modelo no suma: el 2026-08-14 recibió dos filas —Supermercado
+// 2.031.070 y Almacén 34.000— y contestó 2.031.070, la primera. Es el mismo
+// principio que ya gobierna las correcciones: la aritmética es de la app, y el
+// modelo sólo cita lo que la app calculó.
+//
+// Dos casos NO llevan total, y los dos son por corrección, no por estética:
+//
+//   - group_by=type. Las filas llegan en valor absoluto (CategorySum.Total es
+//     SUM(ABS(amount))), así que sumar el renglón de gastos con el de ingresos da
+//     un número que no es el gasto, ni el ingreso, ni el neto. Escribirlo sería
+//     peor que no escribir nada: la línea existe justamente para que el modelo la
+//     cite sin revisarla.
+//   - Una sola fila. El total ES la fila, y repetirlo le presenta dos hechos
+//     donde hay uno.
+func groupedTotalLine(rows []movement.CategorySum, groupBy, cur string) (string, bool) {
+	if groupBy == "type" || len(rows) < 2 {
+		return "", false
+	}
+	total := decimal.Zero
+	for _, r := range rows {
+		total = total.Add(r.Total.Abs())
+	}
+	return fmt.Sprintf("total (suma de las %d filas): %s %s", len(rows), total.StringFixed(2), cur), true
 }
 
 func (c *controller) execListMovements(userID uint64, args queryToolArgs) (string, error) {
