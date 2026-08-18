@@ -14,7 +14,7 @@
 
 ## Per-package `CLAUDE.md`
 
-Eight packages carry their own file. They are **not** loaded at session start — Claude Code pulls
+Twelve packages carry their own file. They are **not** loaded at session start — Claude Code pulls
 them in only when it reads a file in that subtree, so they cost nothing on unrelated tasks.
 Each holds one thing only: **rules that compile fine and then behave wrong.** Structure is
 `codegraph_explore`'s job, not theirs.
@@ -28,7 +28,11 @@ Each holds one thing only: **rules that compile fine and then behave wrong.** St
 | `internal/movement` | the guard only covers INSERT; two finders need opposite date binding |
 | `internal/subcategory` | cache writes need a manual `Reload()`; `c.global` is shared |
 | `internal/controller/miniapp` | **auth is which Gin group you register on, and nothing else** |
-| `internal/agent` | the loop is the only entry point; a turn that wrote must never be re-enqueued |
+| `internal/agent` | the loop is the only entry point; a turn that wrote must never be re-enqueued; the two windows of `resolveCandidates` |
+| `internal/query` | one `search` filter, matched in SQL — not to be confused with `resolveCandidates`; the app re-attaches two facts after narration |
+| `internal/settings` | the only caller of three LLM calls; a 429 is answered before the wizard fallback, never after |
+| `internal/pendingjob` | the replay flag is set once at the call site; `EnqueueBehindPending` is webhook-only |
+| `internal/nudges` | dispatcher vs `nudge` storage; a tip's tap jumps the engine on purpose |
 
 For conventions and the condensed money-model warning, see the root `CLAUDE.md` (always loaded).
 

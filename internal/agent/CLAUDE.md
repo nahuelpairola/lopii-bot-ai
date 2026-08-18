@@ -23,6 +23,23 @@ two-leg transfer from splitting. When the turn can't finish it *parks* instead:
 `conversation.KeyGatePrompt` in the seed is what tells the two apart when the action is picked back
 up. Same park, different meaning — read it before adding a third case.
 
+## One reference resolver, and it has two windows
+
+`resolveCandidates` (`reference_resolution.go`) is the **only** candidate-search mechanism, and
+both correction paths share it. Do not add a second. Textual relevance is decided in Go
+(`matchesMessage`, accent-folded), never in SQL. It also has a shortcut worth knowing: when
+nothing matches textually but the user has just recorded something, it returns **exactly one**
+candidate — the recent entry — rather than a picker.
+
+It has **two windows, and picking the wrong one is the whole bug class.** With no date it
+searches by `created_at` ("what did I just enter"); with a date it searches by *business*
+date. A correction naming a date the user entered days later — "el débito del 4 de agosto",
+loaded on the 8th — is invisible to the first window and obvious to the second, which is why
+`correct_movement` carries `date_from`/`date_to` as a **locator** (they never change the
+movement; a date correction travels in `changes` with `field: "date"`). One lone date closes
+the window on *both* sides: an open `until` does not narrow anything, and a lone `date_to`
+used to invert the window outright.
+
 ## The loop parks, it does not route
 
 There is no router (it was deleted in stage 5). When the loop needs an answer from the user it
