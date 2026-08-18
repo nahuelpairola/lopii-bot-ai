@@ -199,3 +199,28 @@ func TestHandleSubcategoryLeaf_ListsMovementsOfThatSubcategory(t *testing.T) {
 		t.Errorf("y también por categoría: dos categorías pueden tener la misma subcategoría, got %v", got.Category)
 	}
 }
+
+func TestHandleCategories_PeriodChipsKeepTheDrill(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovements{rows: map[string][]movement.CategorySum{
+		"category":    {{Label: "Alimentación", Total: decimal.NewFromInt(5000)}},
+		"subcategory": {{Label: "Supermercado", Total: decimal.NewFromInt(5000)}},
+	}}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	// Los dos niveles del drill: la lista de subcategorías de una categoría, y
+	// la hoja de movimientos de una subcategoría.
+	cases := []struct{ url, want string }{
+		{"/app/categories?category=Alimentaci%C3%B3n&p=month&m=2026-07", "&category=Alimentaci%C3%B3n"},
+		{"/app/categories?category=Alimentaci%C3%B3n&subcategory=Supermercado&p=month&m=2026-07", "&category=Alimentaci%C3%B3n&subcategory=Supermercado"},
+	}
+	for _, tc := range cases {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, authedHTMXRequest(t, tc.url))
+		if !leafKeepsDrill(w.Body.String(), tc.want) {
+			t.Errorf("%s: cambiar el rango pierde %s y vuelve al índice", tc.url, tc.want)
+		}
+	}
+}

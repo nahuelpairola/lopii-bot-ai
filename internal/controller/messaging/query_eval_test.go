@@ -347,6 +347,48 @@ func TestQueryEval(t *testing.T) {
 		}
 	})
 
+	// Cuatro entidades, TODAS con datos. Por eso cualquier afirmación de ausencia en
+	// la respuesta es falsa, tome el camino que tome el modelo: si agrupa las cuatro
+	// en una ronda y sale por la puerta 1, o si se queda sin rondas y sale por la
+	// narración forzada.
+	//
+	// Es el control de una decisión de diseño: la garantía de que la narración no
+	// niegue vive en el PROMPT, no en Go. Sin este eval, "el modelo obedece" es una
+	// suposición en vez de una medición.
+	//
+	// El caso real que lo motiva: el 2026-08-14, con TRES entidades y el prompt viejo,
+	// contestó "No hay registros de Cuota préstamo en agosto" sobre $80.000 reales,
+	// habiendo consultado sólo dos.
+	t.Run("multi_entidad_no_niega_lo_que_no_consulto", func(t *testing.T) {
+		ans := ask(t, "¿cuánto gasté en Supermercado, cuánto en Panadería, cuánto en Gimnasio y cuánto en el lote, en julio de 2026?")
+		low := strings.ToLower(ans)
+		// La lista es un blocklist y por lo tanto SIEMPRE está incompleta: la primera
+		// corrida, el 2026-08-14, el modelo esquivó las seis frases originales con una
+		// séptima —"No tengo datos sobre gastos en Panadería"— y el test pasó en verde
+		// sobre una respuesta que negaba tres entidades habiendo consultado una. Por eso
+		// este eval no reemplaza a la prueba manual: acota lo conocido, no lo posible.
+		for _, negacion := range []string{
+			"no hay registros", "sin registros", "no tenés", "no tuviste", "no hubo",
+			"no registraste", "no tengo datos", "no dispongo", "no encontré",
+		} {
+			if strings.Contains(low, negacion) {
+				t.Errorf("las cuatro cosas TIENEN datos (5000/3000/8000/13000), así que %q es falso: %s", negacion, ans)
+			}
+		}
+		// Informativo, sin assert: cuántas alcanzó a contestar. Mide si agrupó las
+		// herramientas. No se assertea porque el objetivo de este eval es que no
+		// MIENTA, no que conteste todo — contestar todo es lo que mide la prueba
+		// manual, contra datos reales.
+		n := normDigits(ans)
+		for _, e := range []struct{ etiqueta, monto string }{
+			{"Supermercado", "5000"}, {"Panadería", "3000"}, {"Gimnasio", "8000"}, {"el lote", "13000"},
+		} {
+			if !strings.Contains(n, e.monto) {
+				t.Logf("no contestó %s (%s)", e.etiqueta, e.monto)
+			}
+		}
+	})
+
 	// La promesa del parámetro: se escribe como se escribe y matchea igual.
 	t.Run("search_sin_acentos", func(t *testing.T) {
 		ans := ask(t, "¿cuánto gasté en alimentacion en julio de 2026?") // sin tilde, a propósito

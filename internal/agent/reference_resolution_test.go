@@ -455,3 +455,52 @@ func TestRelativeDate_MovementDateIsCivilNotInstant(t *testing.T) {
 func (r *fakeMovementRepoForResolve) CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error) {
 	return nil, nil
 }
+
+// El incidente del 2026-08-15: el usuario quiso corregir el débito de tarjeta
+// "del 04 de agosto". El movimiento existía (id 205, cargado el 08/08), pero la
+// ventana por created_at lo dejaba en la posición 36 de 30, así que el picker le
+// ofreció cuatro movimientos que no eran, y los ocho intentos fallaron.
+//
+// La rama de fecha ya existía; nadie le pasaba una fecha. Con una sola fecha, la
+// ventana tiene que cerrarse de los dos lados: abierta hasta hoy no acota nada,
+// que es lo mismo que no haberla pasado.
+func TestResolveCandidates_LoneDateFromAnchorsASingleDay(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{}
+	svc := &fakeServices{movements: fake}
+
+	if _, err := resolveCandidates(svc, 3, "el débito de tarjeta del 04 de agosto", "2026-08-04", ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.recencyCalled {
+		t.Fatal("con fecha no se usa la ventana de created_at")
+	}
+	if want := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC); !fake.capturedSince.Equal(want) {
+		t.Errorf("since = %v, want %v", fake.capturedSince, want)
+	}
+	if fake.capturedUntil == nil {
+		t.Fatal("una fecha sola dejó la ventana abierta hasta hoy: no acota nada")
+	}
+	if want := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC); !fake.capturedUntil.Equal(want) {
+		t.Errorf("until = %v, want %v", *fake.capturedUntil, want)
+	}
+}
+
+// El espejo. Con sólo dateTo, since se quedaba en el arranque de HOY y until en
+// una fecha pasada: la ventana salía invertida y no podía devolver nada.
+func TestResolveCandidates_LoneDateToAnchorsSymmetrically(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{}
+	svc := &fakeServices{movements: fake}
+
+	if _, err := resolveCandidates(svc, 3, "lo de hasta el 4 de agosto", "", "2026-08-04"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if want := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC); !fake.capturedSince.Equal(want) {
+		t.Errorf("since = %v, want %v (la ventana salía invertida)", fake.capturedSince, want)
+	}
+	if fake.capturedUntil == nil {
+		t.Fatal("until = nil")
+	}
+	if want := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC); !fake.capturedUntil.Equal(want) {
+		t.Errorf("until = %v, want %v", *fake.capturedUntil, want)
+	}
+}

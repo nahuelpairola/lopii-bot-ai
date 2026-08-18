@@ -190,6 +190,10 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 			Change  string             `json:"change"`
 			Scope   string             `json:"scope"`
 			Changes []correctionChange `json:"changes"`
+			// DateFrom/DateTo LOCALIZAN el movimiento, no lo modifican. Un cambio
+			// de fecha viaja por Changes con field:date.
+			DateFrom string `json:"date_from"`
+			DateTo   string `json:"date_to"`
 		}
 		// Un argumento ilegible no puede tumbar el turno: el pedido igual se
 		// entiende por el nombre de la tool, y el candidato sale del texto.
@@ -198,6 +202,7 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		return e.park(parkRequest{
 			tool: orchestrator.ToolCorrectMovement, change: a.Change,
 			question: flow.MsgPickUpdateCandidate(nil), scope: a.Scope, changes: a.Changes,
+			dateFrom: a.DateFrom, dateTo: a.DateTo,
 		})
 	case orchestrator.ToolRecordMovements:
 		return e.record(args)
@@ -378,11 +383,17 @@ type parkRequest struct {
 	// caiga sobre TODOS los candidatos, no sobre uno elegido.
 	scope   string
 	changes []correctionChange
+	// dateFrom/dateTo son un LOCALIZADOR: acotan la ventana en la que la app
+	// busca el movimiento del que habla el mensaje. No modifican nada. Vacíos
+	// —el caso de la enorme mayoría de las correcciones— resolveCandidates cae
+	// en su ventana por created_at de siempre.
+	dateFrom string
+	dateTo   string
 }
 
 func (e *agentExecutor) park(req parkRequest) (string, error) {
 	tool, change, question := req.tool, req.change, req.question
-	groups, err := resolveCandidates(e.svc, e.userID, e.userText, "", "")
+	groups, err := resolveCandidates(e.svc, e.userID, e.userText, req.dateFrom, req.dateTo)
 	if err != nil {
 		return "", fmt.Errorf("%s: resolve candidates: %w", tool, err)
 	}

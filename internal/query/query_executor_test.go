@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/chathistory"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -25,9 +27,13 @@ type fakeQueryMovements struct {
 	lastQuery   movement.MovementQuery
 	lastGroupBy string
 	lastLimit   int
-	sumRows     []movement.CategorySum
-	listRows    []movement.Movement
-	balances    map[uint64]decimal.Decimal
+	// OJO con la forma que le ponés a sumRows: SIN agrupar el repo devuelve
+	// SIEMPRE una fila (COALESCE(SUM(...),0) sin GROUP BY), nunca nil. Un fake
+	// que devuelve nil para ese caso prueba una forma que no existe — y así fue
+	// como el cero mudo de execSumMovements sobrevivió a toda la suite.
+	sumRows  []movement.CategorySum
+	listRows []movement.Movement
+	balances map[uint64]decimal.Decimal
 	// listCalls/listByCall existen para el camino del resultado vacío, que hace
 	// hasta dos sondas ADEMÁS de la consulta real: sin poder devolver algo
 	// distinto por llamada no se puede distinguir "no hay en el rango" de "no
@@ -620,6 +626,62 @@ func TestExec_ListMovements_EmptyButOnlyInReserved(t *testing.T) {
 	}
 }
 
+// El agujero de la sonda 2, encontrado contra el bot el 2026-08-14: hereda el Type de
+// la consulta original, y con Type nil apply agrega `type <> transfer`, que esconde
+// justo las reservadas que más importan — Sistema | Transferencia y los saldos
+// iniciales son TODAS transferencias.
+//
+// Medido contra la base ese día: la sonda con type=transfer encuentra 12 filas y la
+// misma sonda con Type nil encuentra 0, así que esos 12 movimientos se declaraban
+// inexistentes con un error duro.
+func TestExec_ListMovements_ReservedProbeFindsTransfersWhenTypeIsNil(t *testing.T) {
+	m := &fakeQueryMovements{listByCall: [][]movement.Movement{
+		{},       // la consulta real
+		{},       // sonda 1, rango ensanchado
+		{},       // sonda 2 heredando Type nil: no ve las transferencias
+		oneRow(), // sonda 2 forzando type=transfer: ahí están
+	}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("list_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","search":"transferencia"}`))
+	if err != nil {
+		t.Fatalf("las transferencias reservadas existen: no puede cortar con error: %v", err)
+	}
+	if !strings.Contains(out, "internos") {
+		t.Errorf("tiene que explicar que sólo aparece en movimientos internos: %s", out)
+	}
+	if m.lastQuery.Type == nil || *m.lastQuery.Type != constants.Transfer {
+		t.Errorf("la última sonda tiene que forzar type=transfer; quedó %v", m.lastQuery.Type)
+	}
+	if !m.lastQuery.OnlyReserved {
+		t.Error("la última sonda tiene que correr con OnlyReserved = true")
+	}
+}
+
+// El modelo puede INVERTIR el veredicto de la app. El 2026-08-14 el ejecutor entregó
+// "«transferencia» sólo aparece en movimientos internos…" —12 filas reales detrás— y el
+// usuario leyó "No se encontraron movimientos que digan transferencia". La app vuelve a
+// pegar lo suyo cuando eso pasa.
+func TestReinstateAppVerdict(t *testing.T) {
+	verdict := fmt.Sprintf(msgSearchOnlyInternalFmt, "transferencia")
+
+	got := reinstateAppVerdict("No se encontraron movimientos que digan transferencia en agosto.", verdict)
+	if !strings.Contains(got, msgOnlyInternalMark) {
+		t.Errorf("el veredicto de la app tiene que volver a la respuesta: %s", got)
+	}
+
+	// Si el modelo ya lo dijo, no se repite.
+	yaLoDijo := "Esas transferencias son movimientos internos entre tus cuentas."
+	if got := reinstateAppVerdict(yaLoDijo, verdict); got != yaLoDijo {
+		t.Errorf("no puede repetir lo que el modelo ya supo decir: %s", got)
+	}
+
+	// Sin veredicto de la app no se toca nada.
+	if got := reinstateAppVerdict("total: $500", ""); got != "total: $500" {
+		t.Errorf("sin veredicto la respuesta va intacta: %s", got)
+	}
+}
+
 // Las tres consultas en cero: el término no existe en ningún lado. ESTE es el
 // que cierra el portón — el modelo no tiene con qué afirmar ausencia.
 func TestExec_ListMovements_SearchNotFoundAnywhere_IsError(t *testing.T) {
@@ -689,5 +751,154 @@ func TestQueryMessages_NameNoTool(t *testing.T) {
 				t.Errorf("%s nombra la herramienta %q; el modelo la imita y el turno se cae:\n%s", name, tool.Name, msg)
 			}
 		}
+	}
+}
+
+// El bug: el 2026-08-14, contra la base real, el modelo recibió dos filas
+// agrupadas —Supermercado 2.031.070 y Almacén 34.000— y contestó 2.031.070.
+// Leyó la primera y tiró la segunda. La casa ya tiene la regla de que la
+// aritmética es de la app y nunca del modelo; acá no se estaba aplicando.
+func TestExec_SumMovements_GroupedCarriesTheTotal(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "Supermercado", Total: dec("2031070")},
+		{Label: "Almacén", Total: dec("34000")},
+	}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","group_by":"subcategory"}`))
+	if !strings.Contains(out, "2065070.00") {
+		t.Errorf("falta el total de las filas agrupadas: %s", out)
+	}
+}
+
+// group_by=type es la excepción, y no es un detalle: las filas llegan en valor
+// absoluto (CategorySum.Total es SUM(ABS(amount))), así que sumar el renglón de
+// gastos con el de ingresos da un número que no es ni el gasto, ni el ingreso,
+// ni el neto. La app no puede escribir eso, porque toda la línea existe para
+// que el modelo la cite en vez de sumar él.
+func TestExec_SumMovements_GroupByTypeHasNoTotal(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "expense", Total: dec("500000")},
+		{Label: "income", Total: dec("800000")},
+	}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","group_by":"type"}`))
+	if strings.Contains(out, "1300000") {
+		t.Errorf("sumó gastos con ingresos en valor absoluto: %s", out)
+	}
+	if strings.Contains(strings.ToLower(out), "total") {
+		t.Errorf("group_by=type no lleva línea de total: %s", out)
+	}
+}
+
+// Una sola fila agrupada no lleva total: el total ES la fila, y repetirlo le
+// hace creer al modelo que hay dos hechos donde hay uno.
+func TestExec_SumMovements_SingleGroupedRowHasNoTotal(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Supermercado", Total: dec("5000")}}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS","group_by":"subcategory"}`))
+	if strings.Contains(strings.ToLower(out), "total") {
+		t.Errorf("una sola fila no lleva total: %s", out)
+	}
+}
+
+// El bug: una consulta vacía por resolver mal el año es INVISIBLE. El ejecutor
+// dice "sin movimientos con «Supermercado» entre 2024-08-01 y 2024-08-31", el
+// modelo redacta "no gastaste en Supermercado" y el rango —el único dato que
+// delata el error— no llega nunca al usuario. Reponerlo no previene la
+// resolución equivocada: la hace visible en el acto.
+func TestAppendConsultedRange_AddsTheWindowTheAppLookedIn(t *testing.T) {
+	got := appendConsultedRange("No encontré gastos en Supermercado.", "01/08/2024", "31/08/2024")
+	if !strings.Contains(got, "01/08/2024") || !strings.Contains(got, "31/08/2024") {
+		t.Errorf("el rango consultado no volvió a la respuesta: %q", got)
+	}
+	if !strings.Contains(got, "No encontré gastos en Supermercado.") {
+		t.Errorf("se comió la respuesta del modelo: %q", got)
+	}
+}
+
+// Si el modelo sí nombró el rango, repetirlo es ruido.
+func TestAppendConsultedRange_SkipsWhenTheAnswerAlreadyNamesIt(t *testing.T) {
+	ya := "Entre 01/08/2024 y 31/08/2024 no hubo gastos en Supermercado."
+	if got := appendConsultedRange(ya, "01/08/2024", "31/08/2024"); got != ya {
+		t.Errorf("repitió un rango que la respuesta ya traía: %q", got)
+	}
+}
+
+// Sin rango capturado no se toca la respuesta: la mayoría de las consultas no
+// terminan vacías y no tienen nada que reponer.
+func TestAppendConsultedRange_SkipsWhenThereIsNoRange(t *testing.T) {
+	if got := appendConsultedRange("total: $500", "", ""); got != "total: $500" {
+		t.Errorf("tocó una respuesta sin rango: %q", got)
+	}
+}
+
+// Las fechas se reponen en formato argentino, no ISO. El prompt le prohíbe al
+// modelo mostrar 2026-07-01, así que la app tampoco puede colarlo por atrás.
+func TestFriendlyDate_RendersArgentineFormat(t *testing.T) {
+	if got := friendlyDate("2024-08-01"); got != "01/08/2024" {
+		t.Errorf("friendlyDate = %q", got)
+	}
+	// Lo que no parsea vuelve tal cual: el rango es informativo y nunca vale
+	// romper una respuesta que ya está lista por una fecha rara.
+	if got := friendlyDate("no es fecha"); got != "no es fecha" {
+		t.Errorf("friendlyDate no respetó lo impareseable: %q", got)
+	}
+}
+
+// Qué resultados vacíos merecen que se reponga el rango. Los dos que sí son los
+// que hablan de una VENTANA: la app miró un período concreto y no encontró nada,
+// y ahí el período es el dato sospechoso. Los otros dos desenlaces no: "sólo
+// aparece en movimientos internos" y "no encontré nada que diga X" son hechos
+// sobre el término, verdaderos en cualquier rango.
+func TestEmptyResultNamesARange(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		out  string
+		want bool
+	}{
+		{"sin filas en el rango", msgQueryNoRowsInRange, true},
+		{"el término existe fuera del rango", fmt.Sprintf(msgSearchOutOfRangeFmt, "Super", "2024-08-01", "2024-08-31"), true},
+		{"sólo movimientos internos", fmt.Sprintf(msgSearchOnlyInternalFmt, "transferencia"), false},
+		{"un resultado con datos", "Supermercado: 5000.00 ARS", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := emptyResultNamesARange(tc.out); got != tc.want {
+				t.Errorf("emptyResultNamesARange(%q) = %v, want %v", tc.out, got, tc.want)
+			}
+		})
+	}
+}
+
+// LA FORMA QUE DEVUELVE EL REPO DE VERDAD. Un sum SIN agrupar hace
+// `COALESCE(SUM(ABS(amount)), 0)` sin GROUP BY, y eso en SQL devuelve SIEMPRE
+// exactamente una fila, con total 0. Nunca cero filas.
+//
+// Por eso describeEmptyResult era inalcanzable desde el camino más común
+// —"¿cuánto gasté en X?"— y ese camino seguía devolviendo el cero mudo que los
+// cuatro mensajes venían a matar. Medido contra el bot el 2026-08-18: preguntar
+// por Supermercado en junio devolvió "total: 0.00 ARS" y el modelo narró "no hay
+// registros", sin sonda, sin veredicto y sin rango.
+//
+// El fake tenía la culpa de que nadie lo viera: devolvía nil, una forma que el
+// repo no produce jamás, así que el test de al lado pasaba con producción rota.
+func TestExec_SumMovements_UngroupedZeroRowIsAnEmptyResult(t *testing.T) {
+	m := &fakeQueryMovements{
+		sumRows:    []movement.CategorySum{{Label: "", Total: dec("0")}},
+		listByCall: [][]movement.Movement{oneRow()}, // la sonda 1 sí encuentra
+	}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-06-01","to":"2026-06-30","currency":"ARS","search":"Supermercado"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "total:") {
+		t.Errorf("un cero sin filas se narró como total: %q", out)
+	}
+	if !strings.Contains(out, msgOutOfRangeMark) {
+		t.Errorf("no corrió el camino de resultado vacío: %q", out)
 	}
 }

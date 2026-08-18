@@ -128,6 +128,17 @@ func dropReservedGroups(groups []transactionGroup) []transactionGroup {
 	return out
 }
 
+// parseDateAnchor devuelve la fecha YYYY-MM-DD, o nil si está vacía o no
+// parsea. Nil y no un error: una fecha que el modelo mandó mal degrada a la
+// ventana por defecto, no rompe la corrección.
+func parseDateAnchor(s string) *time.Time {
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return nil
+	}
+	return &t
+}
+
 // resolveCandidates finds the transaction group(s) a message could refer
 // to for UPDATE/DELETE. Default window is today (America/Argentina/
 // Buenos_Aires); a mentioned dateFrom/dateTo anchors it instead. It fetches
@@ -145,18 +156,28 @@ func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, date
 		// ("le pagué el asado de ayer") must still be a candidate.
 		matches, err = svc.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow), recencyLimit)
 	} else {
-		since := StartOfTodayArgentina()
-		if dateFrom != "" {
-			if anchor, perr := time.Parse("2006-01-02", dateFrom); perr == nil {
-				since = anchor.Add(-dateAnchorMargin)
-			}
+		// Una fecha sola tiene que cerrar la ventana de los DOS lados, y por eso
+		// cada extremo cae de vuelta en el otro:
+		//
+		//   - Sólo dateFrom dejaba until en nil, o sea abierta hasta hoy. Eso no
+		//     acota nada: es lo mismo que no haber pasado fecha, que es justo el
+		//     bug del 2026-08-15 —el movimiento del 04/08 estaba en la posición 36
+		//     de una ventana de 30 y el picker ofrecía cualquier otra cosa—.
+		//   - Sólo dateTo dejaba since en el arranque de HOY contra un until
+		//     pasado: la ventana salía invertida y no podía devolver nada.
+		from, to := parseDateAnchor(dateFrom), parseDateAnchor(dateTo)
+		if from == nil {
+			from = to
 		}
+		if to == nil {
+			to = from
+		}
+		since := StartOfTodayArgentina()
 		var until *time.Time
-		if dateTo != "" {
-			if anchor, perr := time.Parse("2006-01-02", dateTo); perr == nil {
-				u := anchor.Add(dateAnchorMargin)
-				until = &u
-			}
+		if from != nil {
+			since = from.Add(-dateAnchorMargin)
+			u := to.Add(dateAnchorMargin)
+			until = &u
 		}
 		matches, err = svc.MovementsFindSimilarForUser(userID, message, since, until)
 	}

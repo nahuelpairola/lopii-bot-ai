@@ -45,7 +45,7 @@ Personal finance Telegram bot for Argentine users (ARS/USD). Natural-language in
 | `notifier` | `Sweeper` — in-process `time.Ticker` goroutine driving every scheduled job (daily reminder, weekly summary, trace retention, USD quotes, CPI) |
 | `nudge` | Model + repository: once-ever/cooldown storage for contextual tips (`WasSent`, `MarkSent`, `LastSentAt`) |
 | `quote` | Model + repository + `net/http` client for two public series: daily USD rates (`usd_quotes`, one row per date+rate_type, `bid`/`ask`) and monthly CPI (`monthly_cpi`). Write-only so far — ingestion for a later Mini App consumption stage |
-| `summary` | Weekly-summary builder + its Spanish copy. Consumer-local `MovementReader`/`AccountReader` interfaces |
+| `summary` | Weekly-summary builder + its Spanish copy. Consumer-local `MovementReader`/`AccountReader`/`IconReader` interfaces |
 | `trace` | `NewID` (crypto/rand, 32 hex) + ctx carrier for the correlation id shared by `request_traces`/`llm_calls`/`intent_events` |
 | `logging` | Installs the process-wide `slog` logger; its handler stamps the ctx `trace_id` onto every record |
 | `agent` | The unified-agent-loop cluster, consumer side (delegate of `orchestrator.Run`): `StartLoop`, `DrainNextAction`, `FinishAskUser` / `FinishMovementUpdatePick` / `ProceedToUpdateConfirm` (update-flow continuations), `BuildRecentEntities`, `SettingsArea` + consts, `StartOfTodayArgentina`. Its `agentServices` interface is implemented structurally by `*controller` via the one-line bridges in `agent_services.go` |

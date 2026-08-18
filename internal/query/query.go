@@ -20,6 +20,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/chathistory"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -151,12 +152,27 @@ const (
 
 	// El término existe en los datos del usuario, pero no en el rango pedido.
 	// Es una AUSENCIA VERIFICADA: acá el modelo sí puede decir que no gastó.
-	msgSearchOutOfRangeFmt = "sin movimientos con «%s» entre %s y %s. Sí hay con ese texto en otras fechas."
+	msgSearchOutOfRangeFmt = "sin movimientos con «%s» entre %s y %s. " + msgOutOfRangeMark
+
+	// msgOutOfRangeMark identifica el mensaje anterior a la vuelta, para reponer
+	// el rango que el modelo casi siempre tira. Const separada por lo mismo que
+	// msgOnlyInternalMark: se usa para armarlo y para reconocerlo.
+	msgOutOfRangeMark = "Sí hay con ese texto en otras fechas."
+
+	// msgConsultedRangeFmt es la nota al pie que la app le agrega a una respuesta
+	// que salió vacía. No la escribe el modelo: es la ventana que la app CONSULTÓ
+	// de verdad, y es lo único que delata un año mal resuelto.
+	msgConsultedRangeFmt = "(consulté entre %s y %s)"
 
 	// El término sólo matchea movimientos de categorías reservadas, que apply()
 	// esconde de todo total de gastos e ingresos. Sin este mensaje la app diría
 	// que "transferencia" no existe, sobre 12 movimientos reales.
-	msgSearchOnlyInternalFmt = "«%s» sólo aparece en movimientos internos —transferencias entre tus cuentas, saldos iniciales, ajustes—, que no entran en los totales de gastos e ingresos."
+	msgSearchOnlyInternalFmt = "«%s» " + msgOnlyInternalMark + " —transferencias entre tus cuentas, saldos iniciales, ajustes—, que no entran en los totales de gastos e ingresos."
+
+	// msgOnlyInternalMark es la parte del mensaje anterior que lo identifica, y
+	// existe como const separada porque se usa DOS veces: para armarlo y para
+	// reconocerlo a la vuelta en reinstateAppVerdict.
+	msgOnlyInternalMark = "sólo aparece en movimientos internos"
 
 	// El término no matchea NADA. Es lo único que habilita decir que no existe,
 	// y va como ERROR para que el modelo lo pueda corregir en la ronda siguiente:
@@ -199,7 +215,91 @@ func describeEmptyResult(svc services, q movement.MovementQuery, args queryToolA
 		return fmt.Sprintf(msgSearchOnlyInternalFmt, term), nil
 	}
 
+	// Segunda pasada de la sonda 2, forzando el tipo. Las reservadas que MÁS
+	// importan —Sistema | Transferencia y los saldos iniciales— son todas
+	// type=transfer, y con Type nil apply agrega `type <> transfer`: las esconde
+	// justo cuando hacen falta. Medido el 2026-08-14 contra la base: la sonda con
+	// type=transfer encuentra 12 filas y la misma sonda con Type nil encuentra 0,
+	// y esas 12 se declaraban inexistentes.
+	//
+	// Va como segunda consulta y no reemplazando a la de arriba porque las otras
+	// reservadas —Ajuste de saldo, Rendimiento inversión— NO son transferencias:
+	// una sola pasada, con o sin tipo, siempre deja afuera la mitad.
+	if wide.Type == nil {
+		t := constants.Transfer
+		wide.Type = &t
+		if rows, err := svc.QueryListMovements(wide, 1); err == nil && len(rows) > 0 {
+			return fmt.Sprintf(msgSearchOnlyInternalFmt, term), nil
+		}
+	}
+
 	return "", fmt.Errorf(msgSearchNotFoundFmt, term)
+}
+
+// reinstateAppVerdict devuelve la respuesta con el veredicto de la app pegado atrás,
+// si el modelo lo perdió por el camino.
+//
+// Existe porque el 2026-08-14, en producción, el modelo INVIRTIÓ el veredicto: el
+// ejecutor le entregó "«transferencia» sólo aparece en movimientos internos…" —con 12
+// filas reales detrás, verificadas por la sonda— y el usuario leyó "No se encontraron
+// movimientos que digan transferencia en agosto de 2026". No es un matiz perdido: es la
+// afirmación contraria a la que hizo la app.
+//
+// Este es el único mensaje que se reinstala, y no todos, porque es el único donde el
+// modelo puede leer un resultado vacío y concluir lo opuesto a lo que dice el texto. Los
+// otros tres describen ausencias de verdad: si los aplasta, empobrece la respuesta pero
+// no la vuelve falsa.
+//
+// Se pega SÓLO si la respuesta no habla ya de movimientos internos, para no repetir lo
+// que el modelo sí supo decir.
+// emptyResultNamesARange dice si un resultado del ejecutor es uno de los vacíos
+// cuyo rango vale la pena reponer.
+//
+// Son dos de los cuatro desenlaces, los que hablan de una VENTANA: la app miró un
+// período concreto y no encontró nada, así que el período es el dato sospechoso.
+// Los otros dos son hechos sobre el TÉRMINO —"sólo aparece en movimientos
+// internos", "no encontré nada que diga X"—, verdaderos en cualquier rango, y
+// reponerles una ventana sólo agregaría ruido.
+func emptyResultNamesARange(out string) bool {
+	return strings.Contains(out, msgQueryNoRowsInRange) || strings.Contains(out, msgOutOfRangeMark)
+}
+
+// appendConsultedRange le pega a la respuesta la ventana que la app consultó,
+// cuando la consulta volvió vacía.
+//
+// Una consulta que sale vacía porque el modelo resolvió mal el año es INVISIBLE:
+// el ejecutor dice "sin movimientos con «Supermercado» entre 2024-08-01 y
+// 2024-08-31", el modelo redacta "no gastaste en Supermercado", y el rango —el
+// único dato que delata el error— no llega nunca al usuario. Esto no previene la
+// resolución equivocada; la hace visible en el acto.
+//
+// Va como nota al pie propia de la app y no reponiendo el mensaje crudo del
+// ejecutor, por dos razones: el mensaje crudo trae las fechas en ISO, que el
+// prompt le prohíbe mostrar al modelo y por lo tanto la app tampoco puede colar
+// por atrás; y una línea corta no compite con la respuesta que el usuario pidió.
+func appendConsultedRange(answer, from, to string) string {
+	if from == "" || to == "" || strings.Contains(answer, from) {
+		return answer
+	}
+	return strings.TrimSpace(answer) + "\n" + fmt.Sprintf(msgConsultedRangeFmt, from, to)
+}
+
+// friendlyDate pasa una fecha ISO al formato argentino. Lo que no parsea vuelve
+// tal cual: el rango es informativo, y nunca vale romper una respuesta que ya
+// está lista por una fecha rara.
+func friendlyDate(iso string) string {
+	t, err := time.Parse("2006-01-02", iso)
+	if err != nil {
+		return iso
+	}
+	return t.Format("02/01/2006")
+}
+
+func reinstateAppVerdict(answer, verdict string) string {
+	if verdict == "" || strings.Contains(strings.ToLower(answer), "internos") {
+		return answer
+	}
+	return strings.TrimSpace(answer) + "\n\n" + verdict
 }
 
 // Run answers a read-only question via the agent loop. Returns
@@ -211,7 +311,28 @@ func describeEmptyResult(svc services, q movement.MovementQuery, args queryToolA
 // Solo el caller sabe distinguir un 429 encolado de un fracaso de verdad.
 func Run(ctx context.Context, svc services, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
 	prompt := SystemPrompt()
-	execute := NewExecutor(svc, userID)
+
+	// El wrapper mira lo que DEVOLVIÓ el ejecutor, no lo que el modelo hizo con eso:
+	// es la única forma de enterarse de que la app emitió un veredicto propio sin
+	// cambiarle la firma a buildQueryExecutor, que usan quince tests.
+	var appVerdict, rangeFrom, rangeTo string
+	inner := NewExecutor(svc, userID)
+	execute := func(name string, raw json.RawMessage) (string, error) {
+		out, err := inner(name, raw)
+		if strings.Contains(out, msgOnlyInternalMark) {
+			appVerdict = out
+		}
+		// El rango sale de los argumentos con los que el modelo LLAMÓ, que es
+		// justamente el dato en discusión: si resolvió mal el año, acá está el año
+		// equivocado, y reponerlo es lo que lo vuelve visible.
+		if emptyResultNamesARange(out) {
+			var args queryToolArgs
+			if json.Unmarshal(raw, &args) == nil {
+				rangeFrom, rangeTo = friendlyDate(args.From), friendlyDate(args.To)
+			}
+		}
+		return out, err
+	}
 
 	// Best-effort: a history load error never fails the query — run stateless.
 	turns, _ := svc.QueryChatRecent(userID)
@@ -224,6 +345,8 @@ func Run(ctx context.Context, svc services, b *bot.Bot, chatID int64, userID uin
 	if err != nil || strings.TrimSpace(answer) == "" {
 		return false, err
 	}
+	answer = reinstateAppVerdict(answer, appVerdict)
+	answer = appendConsultedRange(answer, rangeFrom, rangeTo)
 	svc.QuerySendText(ctx, b, chatID, answer)
 	// Best-effort append: a failure here never fails the answer the user already got.
 	_ = svc.QueryChatAppend(userID, text, answer)
@@ -237,7 +360,9 @@ Basá TODA cifra en los datos que devuelven las herramientas — nunca inventes 
 Sí podés hacer aritmética SOBRE esos datos: sumar, restar, promediar o sacar tasas por día/mes. Para un promedio mensual, pedí los totales por mes (group_by=month) y dividí. Para comparar dos períodos ("cuánto más que el mes pasado"), pedí cada total y restá. Para una tasa diaria, dividí el total por la cantidad de días del rango.
 Hoy es %s (zona America/Argentina/Buenos_Aires). Resolvé fechas relativas ("hoy", "ayer", "esta semana", "el mes pasado", "mayo") a rangos concretos YYYY-MM-DD antes de llamar una herramienta.
 Los montos se muestran siempre en positivo. ARS y USD son mundos separados: nunca los sumes ni los conviertas; si hacen falta ambos, reportá cada uno por su lado.
-Nunca hagas una pregunta de aclaración — no podés recibir la respuesta del usuario. Si la consulta es ambigua entre varias categorías o cuentas conocidas, resolvela vos: usá list_categories para ver las que aplican y respondé TODAS las interpretaciones plausibles en la misma respuesta, marcando "sin registros" las que no tengan datos.
+Nunca hagas una pregunta de aclaración — no podés recibir la respuesta del usuario. Si la consulta es ambigua entre varias categorías o cuentas conocidas, resolvela vos: usá list_categories para ver las que aplican y respondé TODAS las interpretaciones plausibles en la misma respuesta.
+Una ausencia es un hecho y necesita respaldo igual que un monto: decí que algo no tiene registros SÓLO si lo consultaste y la herramienta volvió vacía. De lo que no llegaste a consultar, decí que no lo averiguaste — nunca que no existe, que no hay, ni que dio cero.
+Si la pregunta nombra varias cosas —varias categorías, varias cuentas, varios períodos—, pedí en la MISMA ronda todas las herramientas que necesites, una por cada cosa. Tenés pocas rondas: de a una no alcanza y te quedás sin averiguar parte de lo que te preguntaron.
 Cuando tengas los datos, respondé en español rioplatense, claro y breve.
 No uses Markdown ni caracteres decorativos: nada de *, **, _, #, ni guiones largos como separadores — Telegram los muestra crudos. Escribí texto plano, prolijo y bien organizado: líneas cortas, un ítem por línea cuando enumeres.
 Montos en formato argentino: separador de miles con punto y símbolo adelante ($5.500, $1.234,56); no muestres los centavos ".00"/",00" cuando el monto es entero de pesos. Aclará la moneda (ARS/USD) cuando haga falta.
@@ -334,11 +459,26 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	if err != nil {
 		return "", err
 	}
-	if len(rows) == 0 {
+	// Un sum SIN agrupar devuelve SIEMPRE una fila —`COALESCE(SUM(ABS(amount)), 0)`
+	// sin GROUP BY es una fila con cero, nunca cero filas—, así que por ese camino
+	// "no encontré nada" llega disfrazado de total en cero y describeEmptyResult
+	// era INALCANZABLE. Y es el camino más común de todos: "¿cuánto gasté en X?".
+	//
+	// Medido contra el bot el 2026-08-18: preguntar por Supermercado en junio
+	// devolvía "total: 0.00 ARS" y el modelo narraba "no hay registros de gastos en
+	// Supermercado" — el mismo cero mudo que los cuatro mensajes vinieron a matar,
+	// vivo en la mitad del tráfico. Los tests no lo veían porque el fake devolvía
+	// nil, una forma que el repo no produce jamás.
+	//
+	// SUM(ABS()) nunca da negativo, así que un cero sale de no haber sumado nada —o
+	// de haber sumado sólo movimientos de monto cero ("me lo regalaron"), que caen
+	// en las sondas y se describen como ausencia. Impreciso en ese borde, y aun así
+	// mejor que el cero mudo.
+	if len(rows) == 0 || (ungroupedSum(groupBy) && rows[0].Total.IsZero()) {
 		return describeEmptyResult(svc, q, args)
 	}
 	cur := q.Currency.String()
-	if groupBy == "" || groupBy == "none" {
+	if ungroupedSum(groupBy) {
 		return fmt.Sprintf("total: %s %s", rows[0].Total.Abs().StringFixed(2), cur), nil
 	}
 	// For account grouping, map account_id labels to names.
@@ -362,7 +502,48 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
 	}
+	if line, ok := groupedTotalLine(rows, groupBy, cur); ok {
+		lines = append(lines, line)
+	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// ungroupedSum dice si el pedido no lleva agrupación. Son dos valores y no uno
+// porque el schema declara "none" explícito y el modelo también puede omitir el
+// campo, y las dos cosas significan lo mismo.
+func ungroupedSum(groupBy string) bool {
+	return groupBy == movement.GroupByNone || groupBy == groupByNoneArg
+}
+
+// groupByNoneArg es el "none" del enum del schema. movement.GroupByNone es el
+// string vacío que entiende el repo; el modelo manda esta otra palabra.
+const groupByNoneArg = "none"
+
+// groupedTotalLine arma la línea de total de un agrupado, o dice que no va.
+//
+// Existe porque el modelo no suma: el 2026-08-14 recibió dos filas —Supermercado
+// 2.031.070 y Almacén 34.000— y contestó 2.031.070, la primera. Es el mismo
+// principio que ya gobierna las correcciones: la aritmética es de la app, y el
+// modelo sólo cita lo que la app calculó.
+//
+// Dos casos NO llevan total, y los dos son por corrección, no por estética:
+//
+//   - group_by=type. Las filas llegan en valor absoluto (CategorySum.Total es
+//     SUM(ABS(amount))), así que sumar el renglón de gastos con el de ingresos da
+//     un número que no es el gasto, ni el ingreso, ni el neto. Escribirlo sería
+//     peor que no escribir nada: la línea existe justamente para que el modelo la
+//     cite sin revisarla.
+//   - Una sola fila. El total ES la fila, y repetirlo le presenta dos hechos
+//     donde hay uno.
+func groupedTotalLine(rows []movement.CategorySum, groupBy, cur string) (string, bool) {
+	if groupBy == "type" || len(rows) < 2 {
+		return "", false
+	}
+	total := decimal.Zero
+	for _, r := range rows {
+		total = total.Add(r.Total.Abs())
+	}
+	return fmt.Sprintf("total (suma de las %d filas): %s %s", len(rows), total.StringFixed(2), cur), true
 }
 
 func execListMovements(svc services, userID uint64, args queryToolArgs) (string, error) {

@@ -162,6 +162,12 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 	}
 	acc := accounts[idx]
 
+	// Recién ahora, con el id validado: los controles del período tienen que
+	// volver a ESTA hoja, no al índice. Va después de la validación para no
+	// reflejar en un link un id que resultó no ser del usuario.
+	p = p.WithDrill("&" + accountParam + "=" + strconv.FormatUint(id, 10))
+	p.HideCurrency = true
+
 	deltas, err := c.movements.MonthlyDeltasForAccount(id)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
