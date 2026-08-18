@@ -73,3 +73,46 @@ func TestStartCategoryManage_NoOwnCategories_ResolvesMetric(t *testing.T) {
 			s.resolved, OutcomeCategoryManageNoOwn)
 	}
 }
+
+// Un 429 en la clasificación NO puede caer al wizard: el usuario pagaría las 7
+// preguntas por un problema de cupo que ya quedó encolado y se resuelve solo.
+// El invariante vive en StartSubcategorySetup —HandleGroqError ANTES del
+// fallback— y este test es su única red: el que lo cuidaba
+// (TestCreateCategory_RateLimited_EnqueuesAndSkipsWizard) se fue con
+// pending_jobs_test.go cuando el split borró ese archivo.
+func TestStartSubcategorySetup_RateLimited_SkipsWizard(t *testing.T) {
+	s := &testServices{
+		engine:      conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" }),
+		classifyErr: errFake,
+		groqHandled: true, // el 429 quedó encolado
+	}
+
+	err := StartSubcategorySetup(context.Background(), s, nil, 100, 1, "creá gastos de regalos")
+
+	// El orden importa: si el guard se rompe, el wizard arranca Y devuelve error
+	// (el engine de este harness no tiene ese flow registrado). Afirmando primero
+	// sobre startedFlow, el rojo dice cuál es el bug en vez de un "flow is not
+	// registered" que manda a buscar al lugar equivocado.
+	if s.startedFlow != "" {
+		t.Fatalf("arrancó %q con el 429 ya encolado; el wizard no tiene que correr", s.startedFlow)
+	}
+	if err != nil {
+		t.Fatalf("StartSubcategorySetup: %v", err)
+	}
+}
+
+// La contracara: un error que NO es de cupo sí tiene que caer al wizard. Sin
+// este par, el test de arriba se puede satisfacer rompiendo el fallback.
+func TestStartSubcategorySetup_OtherError_FallsBackToWizard(t *testing.T) {
+	s := &testServices{
+		engine:      conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" }),
+		classifyErr: errFake,
+		groqHandled: false,
+	}
+
+	_ = StartSubcategorySetup(context.Background(), s, nil, 100, 1, "creá gastos de regalos")
+	if s.startedFlow != flow.SubcategorySetupFlowName {
+		t.Errorf("startedFlow = %q, want %q: un error común no puede dejar al usuario sin camino",
+			s.startedFlow, flow.SubcategorySetupFlowName)
+	}
+}

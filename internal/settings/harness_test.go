@@ -90,6 +90,7 @@ type testServices struct {
 	texts       []string
 	resolved    []string
 	groqHandled bool
+	startedFlow string
 }
 
 func (s *testServices) FindUserAccounts(uint64) ([]account.Account, error) {
@@ -150,6 +151,7 @@ func (s *testServices) SendText(_ context.Context, _ *bot.Bot, _ int64, text str
 func (s *testServices) SendPrompt(context.Context, *bot.Bot, int64, conversation.Prompt) {}
 
 func (s *testServices) StartFlow(_ context.Context, _ *bot.Bot, _ int64, userID uint64, flowName string, seed conversation.Data, _ string) error {
+	s.startedFlow = flowName
 	_, err := s.engine.StartWithData(userID, flowName, seed)
 	return err
 }
