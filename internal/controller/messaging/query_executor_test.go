@@ -22,9 +22,13 @@ type fakeQueryMovements struct {
 	lastQuery   movement.MovementQuery
 	lastGroupBy string
 	lastLimit   int
-	sumRows     []movement.CategorySum
-	listRows    []movement.Movement
-	balances    map[uint64]decimal.Decimal
+	// OJO con la forma que le ponés a sumRows: SIN agrupar el repo devuelve
+	// SIEMPRE una fila (COALESCE(SUM(...),0) sin GROUP BY), nunca nil. Un fake
+	// que devuelve nil para ese caso prueba una forma que no existe — y así fue
+	// como el cero mudo de execSumMovements sobrevivió a toda la suite.
+	sumRows  []movement.CategorySum
+	listRows []movement.Movement
+	balances map[uint64]decimal.Decimal
 	// listCalls/listByCall existen para el camino del resultado vacío, que hace
 	// hasta dos sondas ADEMÁS de la consulta real: sin poder devolver algo
 	// distinto por llamada no se puede distinguir "no hay en el rango" de "no
@@ -821,5 +825,36 @@ func TestEmptyResultNamesARange(t *testing.T) {
 				t.Errorf("emptyResultNamesARange(%q) = %v, want %v", tc.out, got, tc.want)
 			}
 		})
+	}
+}
+
+// LA FORMA QUE DEVUELVE EL REPO DE VERDAD. Un sum SIN agrupar hace
+// `COALESCE(SUM(ABS(amount)), 0)` sin GROUP BY, y eso en SQL devuelve SIEMPRE
+// exactamente una fila, con total 0. Nunca cero filas.
+//
+// Por eso describeEmptyResult era inalcanzable desde el camino más común
+// —"¿cuánto gasté en X?"— y ese camino seguía devolviendo el cero mudo que los
+// cuatro mensajes venían a matar. Medido contra el bot el 2026-08-18: preguntar
+// por Supermercado en junio devolvió "total: 0.00 ARS" y el modelo narró "no hay
+// registros", sin sonda, sin veredicto y sin rango.
+//
+// El fake tenía la culpa de que nadie lo viera: devolvía nil, una forma que el
+// repo no produce jamás, así que el test de al lado pasaba con producción rota.
+func TestExec_SumMovements_UngroupedZeroRowIsAnEmptyResult(t *testing.T) {
+	m := &fakeQueryMovements{
+		sumRows:    []movement.CategorySum{{Label: "", Total: dec("0")}},
+		listByCall: [][]movement.Movement{oneRow()}, // la sonda 1 sí encuentra
+	}
+	exec := newQueryController(m, &fakeQueryAccounts{}, &fakeQuerySubcats{}).buildQueryExecutor(1)
+
+	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-06-01","to":"2026-06-30","currency":"ARS","search":"Supermercado"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "total:") {
+		t.Errorf("un cero sin filas se narró como total: %q", out)
+	}
+	if !strings.Contains(out, msgOutOfRangeMark) {
+		t.Errorf("no corrió el camino de resultado vacío: %q", out)
 	}
 }

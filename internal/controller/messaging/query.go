@@ -431,11 +431,26 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 	if err != nil {
 		return "", err
 	}
-	if len(rows) == 0 {
+	// Un sum SIN agrupar devuelve SIEMPRE una fila —`COALESCE(SUM(ABS(amount)), 0)`
+	// sin GROUP BY es una fila con cero, nunca cero filas—, así que por ese camino
+	// "no encontré nada" llega disfrazado de total en cero y describeEmptyResult
+	// era INALCANZABLE. Y es el camino más común de todos: "¿cuánto gasté en X?".
+	//
+	// Medido contra el bot el 2026-08-18: preguntar por Supermercado en junio
+	// devolvía "total: 0.00 ARS" y el modelo narraba "no hay registros de gastos en
+	// Supermercado" — el mismo cero mudo que los cuatro mensajes vinieron a matar,
+	// vivo en la mitad del tráfico. Los tests no lo veían porque el fake devolvía
+	// nil, una forma que el repo no produce jamás.
+	//
+	// SUM(ABS()) nunca da negativo, así que un cero sale de no haber sumado nada —o
+	// de haber sumado sólo movimientos de monto cero ("me lo regalaron"), que caen
+	// en las sondas y se describen como ausencia. Impreciso en ese borde, y aun así
+	// mejor que el cero mudo.
+	if len(rows) == 0 || (ungroupedSum(groupBy) && rows[0].Total.IsZero()) {
 		return c.describeEmptyResult(q, args)
 	}
 	cur := q.Currency.String()
-	if groupBy == "" || groupBy == "none" {
+	if ungroupedSum(groupBy) {
 		return fmt.Sprintf("total: %s %s", rows[0].Total.Abs().StringFixed(2), cur), nil
 	}
 	// For account grouping, map account_id labels to names.
@@ -464,6 +479,17 @@ func (c *controller) execSumMovements(userID uint64, args queryToolArgs) (string
 	}
 	return strings.Join(lines, "\n"), nil
 }
+
+// ungroupedSum dice si el pedido no lleva agrupación. Son dos valores y no uno
+// porque el schema declara "none" explícito y el modelo también puede omitir el
+// campo, y las dos cosas significan lo mismo.
+func ungroupedSum(groupBy string) bool {
+	return groupBy == movement.GroupByNone || groupBy == groupByNoneArg
+}
+
+// groupByNoneArg es el "none" del enum del schema. movement.GroupByNone es el
+// string vacío que entiende el repo; el modelo manda esta otra palabra.
+const groupByNoneArg = "none"
 
 // groupedTotalLine arma la línea de total de un agrupado, o dice que no va.
 //
