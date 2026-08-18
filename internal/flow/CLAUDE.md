@@ -1,6 +1,6 @@
 # internal/flow
 
-Every conversation flow: the 15 builders `server.go` registers, their steps and options, the
+Every conversation flow: the 15 builders `server/flows.go` registers, their steps and options, the
 movement write pipeline, the finishes, and the near-duplicate gate. **Use `codegraph_explore` for
 structure** — this file is only for what reading the code will not tell you.
 
@@ -8,7 +8,7 @@ structure** — this file is only for what reading the code will not tell you.
 
 Nothing enforces any of them:
 
-1. `server.go` — `conversationEngine.Register(flow.NewXFlow())`
+1. `server/flows.go` — a line in `registerFlows`
 2. `controller/messaging/controller.go` — a case in `handleFlowFinished`'s switch
 3. `controller/messaging/messages.go` — a case in `FlowResumeLabel`
 

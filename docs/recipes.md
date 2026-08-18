@@ -78,7 +78,7 @@ func NewAccountSetupFlow() *conversation.Flow {
 
 | Where | What | If you forget |
 |---|---|---|
-| `server.go` | `conversationEngine.Register(NewAccountSetupFlow())` | server fails at startup — loud, fine |
+| `server/flows.go` | a line in `registerFlows`: `engine.Register(flow.NewAccountSetupFlow())` | server fails at startup — loud, fine |
 | `controller.go` → `handleFlowFinished` | a `case accountSetupFlowName:` | the flow completes into `msgSomethingBroke` |
 | `messages.go` → `FlowResumeLabel` | a `case accountSetupFlowName:` | **silent** — broken copy appears only after a user idles 24h |
 
