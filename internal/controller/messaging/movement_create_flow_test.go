@@ -21,8 +21,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-func uint64Ptr(v uint64) *uint64 { return &v }
-
 type fakeSubcategoryRepoFull struct {
 	byCategoryAndSub map[string]*subcategory.Subcategory
 	all              []subcategory.Subcategory
@@ -73,7 +71,6 @@ type fakeAccountRepoFull struct {
 	byUserIDErr  error
 	byID         map[uint64]*account.Account
 	inserted     []account.Account
-	balances     map[uint64]string
 	insertErr    error
 	renamedID    uint64
 	renamedName  string

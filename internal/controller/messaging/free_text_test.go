@@ -26,13 +26,11 @@ func (stubChatHistory) Recent(userID uint64) ([]chathistory.Turn, error)    { re
 func (stubChatHistory) Append(userID uint64, question, answer string) error { return nil }
 
 type fakeFullOrchestrator struct {
-	intent              orchestrator.Intent
 	createResult        orchestrator.CreateResult
 	onboardingResult    orchestrator.OnboardingResult
 	onboardingErr       error
 	updateResult        orchestrator.UpdateResult
 	deleteResult        orchestrator.DeleteResult
-	intentErr           error
 	queryAnswer         string
 	queryErr            error
 	categoryResult      orchestrator.CategoryCreateResult

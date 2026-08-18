@@ -1,13 +1,16 @@
 package messaging
 
 import (
-	"time"
-
 	"lopiibot.com/internal/constants"
-	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 )
+
+// La copy del borde. Todo lo demás se fue con su cluster: los mensajes de
+// estado de flow a internal/flow, el ack de la cola a internal/pendingjob, el
+// menú de tips a internal/nudges. Acá queda lo que emite el edge mismo —
+// onboarding, invitaciones y el gate de retomar— más los pocos alias que
+// todavía tienen un caller de este lado.
 
 // Mensajes estáticos, sin variables.
 const (
@@ -32,126 +35,27 @@ const (
 	msgCouldNotLoad   = flow.MsgCouldNotLoad
 	msgSomethingBroke = flow.MsgSomethingBroke
 
-	// msgAckShortWait / msgAckLongWaitFmt / msgQueuedBehindPending viven en
-	// internal/pendingjob/messages.go (dominio del drain, no del borde).
-
 	// MsgAccountReset is exported so the admin reset endpoint
 	// (controller/admin) can send it before re-firing onboarding — the
 	// admin package can't reach unexported messaging strings.
 	MsgAccountReset = "🔄 Reseteamos tu cuenta. Arrancamos de nuevo:"
 
-	msgAmountUnclear     = flow.MsgAmountUnclear
-	msgCurrencyMismatch  = flow.MsgCurrencyMismatch
-	msgNoAccountCurrency = flow.MsgNoAccountCurrency
-	msgMovementMalformed = flow.MsgMovementMalformed
-
 	msgQueryFailed = constants.QueryFailed
 
-	msgReminderDisabled  = flow.MsgReminderDisabled
-	msgReminderCancelled = flow.MsgReminderCancelled
-	msgReminderAllOff    = flow.MsgReminderAllOff
-	msgReminderHubExit   = flow.MsgReminderHubExit
-
-	msgWeeklySummaryOn  = flow.MsgWeeklySummaryOn
-	msgWeeklySummaryOff = flow.MsgWeeklySummaryOff
-
-	msgSubcategorySetupFinished = flow.MsgSubcategorySetupFinished
-
-	msgNotUnderstood = flow.MsgNotUnderstood
+	msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 )
 
-// msgCouldNotSave vive en flow (MsgCouldNotSave); el alias conserva el nombre
-// corto para los callers del borde que aún no se migran.
-func msgCouldNotSave(cosa string) string {
-	return flow.MsgCouldNotSave(cosa)
-}
-
-func msgCouldNotDelete(cosa string) string {
-	return flow.MsgCouldNotDelete(cosa)
-}
-
-// msgReminderSet builds the set/edit receipt. startMin/endMin are minutes
-// since midnight; shown as whole hours.
-func msgReminderSet(startMin, endMin int) string {
-	return flow.MsgReminderSet(startMin, endMin)
-}
-
+// Alias con caller vivo en el borde: el finish de la primera cuenta y el
+// recibo que ejercitan los tests de integración.
 func msgFirstAccountDefault(name string, currencies []string) string {
 	return flow.MsgFirstAccountDefault(name, currencies)
 }
 
 const msgInviteMoreAccounts = flow.MsgInviteMoreAccounts
 
-// movementReceiptLine vive en flow (MovementReceiptLine). El alias conserva el
-// nombre corto para los tests del borde que todavía lo ejercitan.
 func movementReceiptLine(m movement.Movement) string {
 	return flow.MovementReceiptLine(m)
 }
-
-// rowMoney formatea el monto de una fila para mostrárselo al usuario. La fila
-// carga el monto como string (viaja por JSONB hacia conversation_states), así
-// que hay que reparsearlo. Si no parsea se muestra crudo: un monto raro no debe
-// romper el mensaje entero.
-func rowMoney(r movement.MovementRow) string {
-	amt, err := movement.ParseARAmount(r.Amount)
-	if err != nil {
-		return r.Amount + " " + currency.Currency(r.Currency).Label()
-	}
-	return currency.FormatMoney(amt.Abs(), currency.Currency(r.Currency))
-}
-
-// rowDate rinde la fecha de una fila en relativo ("hoy"/"ayer"/"04/07").
-func rowDate(r movement.MovementRow) string {
-	d, err := time.Parse("2006-01-02", r.Date)
-	if err != nil {
-		return r.Date
-	}
-	return movement.RelativeDate(d)
-}
-
-const (
-	msgUpdateApplied   = flow.MsgUpdateApplied
-	msgUpdateDeleted   = flow.MsgUpdateDeleted
-	msgUpdateCancelled = flow.MsgUpdateCancelled
-)
-
-// iconOrDefault falls back to the generic folder icon for any row whose
-// Icon never got populated (shouldn't happen post-backfill, but a
-// defensive default costs nothing — same fallback subcategory.Cache uses).
-func iconOrDefault(icon string) string {
-	if icon == "" {
-		return "📂"
-	}
-	return icon
-}
-
-const (
-	msgDeleteApplied   = flow.MsgDeleteApplied
-	msgDeleteCancelled = flow.MsgDeleteCancelled
-)
-
-const (
-	msgCreateCancelled = flow.MsgCreateCancelled
-)
-
-const (
-	msgAccountCreateCancelled = flow.MsgAccountCreateCancelled
-)
-
-func msgAccountCreateSuccess(name, cur, balance string) string {
-	return flow.MsgAccountCreateSuccess(name, cur, balance)
-}
-
-// msgFlowCancelled: "cancelaste, no escribí nada" — no es específico de
-// cuentas ni categorías, cualquier flujo de gestión que se cancela lo usa.
-const msgFlowCancelled = flow.MsgFlowCancelled
-const msgAccountManageNoChange = flow.MsgAccountManageNoChange
-
-const msgCategoryMatchUse = flow.MsgCategoryMatchUse
-
-const msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
-
-const msgLogMissingFirst = flow.MsgLogMissingFirst
 
 // FlowResumeLabel gives the resume gate (conversation.Engine) a short,
 // per-flow description of what the user was doing, for its "¿retomamos o

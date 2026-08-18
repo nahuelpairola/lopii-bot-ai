@@ -2,7 +2,6 @@ package pendingjob
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -27,12 +26,6 @@ func (f *fakeJobs) Delete(uint64) error                            { return nil 
 func (f *fakeJobs) CountByUser(uint64) (int64, error)              { return f.count, nil }
 
 // orchestrator stub que siempre devuelve RateLimitedError en el loop.
-type rateLimitedOrch struct{}
-
-func (rateLimitedOrch) Run(context.Context, string, string, []orchestrator.QueryTurn, []orchestrator.AgentTool, func(string, json.RawMessage) (string, error)) (string, error) {
-	return "", &orchestrator.RateLimitedError{RetryAfter: 8 * time.Second}
-}
-
 type enqueueTestServices struct {
 	texts []string
 }
@@ -68,15 +61,6 @@ func TestEnqueueFreeText_RateLimited_Enqueues(t *testing.T) {
 }
 
 // jobText devuelve el texto que viajó en un job free_text.
-func jobText(t *testing.T, j PendingJob) string {
-	t.Helper()
-	var p FreeTextPayload
-	if err := json.Unmarshal(j.Payload, &p); err != nil {
-		t.Fatalf("payload del job: %v", err)
-	}
-	return p.Text
-}
-
 func TestEnqueueFreeText_NotRateLimited_NoEnqueue(t *testing.T) {
 	jobs := &fakeJobs{}
 	svc := &enqueueTestServices{}

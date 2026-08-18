@@ -502,7 +502,6 @@ type fakeAccountRepoFull struct {
 	byUserIDErr  error
 	byID         map[uint64]*account.Account
 	inserted     []account.Account
-	balances     map[uint64]string
 	insertErr    error
 	renamedID    uint64
 	renamedName  string
@@ -706,15 +705,6 @@ func mustDecimal(t *testing.T, s string) decimal.Decimal {
 	return d
 }
 
-func mustDate(t *testing.T, s string) time.Time {
-	t.Helper()
-	d, err := time.Parse("2006-01-02", s)
-	if err != nil {
-		t.Fatalf("parse date %q: %v", s, err)
-	}
-	return d
-}
-
 func uint64Ptr(v uint64) *uint64 { return &v }
 
 func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {
@@ -730,18 +720,6 @@ func acct(id uint64, cur currency.Currency, def bool) account.Account {
 
 // accountsMap indexa cuentas igual que accountIndex, para los tests que arman
 // los mapas a mano en vez de pasar por loadAccountIndex.
-func accountsMap(accs ...account.Account) (map[uint64]account.Account, map[string]uint64) {
-	byID := map[uint64]account.Account{}
-	def := map[string]uint64{}
-	for _, a := range accs {
-		byID[uint64(a.ID)] = a
-		if a.IsDefault {
-			def[a.Currency.String()] = uint64(a.ID)
-		}
-	}
-	return byID, def
-}
-
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(v)

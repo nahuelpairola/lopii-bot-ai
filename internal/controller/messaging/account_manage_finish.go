@@ -15,10 +15,6 @@ func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, ch
 	flow.FinishAccountManage(ctx, c, b, chatID, data)
 }
 
-func (c *controller) finishAccountRename(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishAccountRename(ctx, c, b, chatID, data)
-}
-
 func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
 	flow.FinishAccountAdjust(ctx, c, b, chatID, data)
 }

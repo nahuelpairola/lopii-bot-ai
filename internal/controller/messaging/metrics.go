@@ -6,16 +6,12 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/settings"
 )
 
 // outcome* son los valores de intent_events.outcome. Los intents de
 // movimiento arrancan en pending y se resuelven en su terminal; el resto es
 // terminal directo.
 const (
-	outcomePending       = "pending"
-	outcomeCreateRewrite = "create_rewrite"
 
 	// Los cuatro que reemplazan a update_failed. Se escribía desde SIETE
 	// lugares con significados opuestos —el loop reventó, el parking falló, el
@@ -41,12 +37,6 @@ const (
 	outcomeAccountAdjusted        = flow.OutcomeAccountAdjusted
 	outcomeAccountDefaultSet      = flow.OutcomeAccountDefaultSet
 	outcomeAccountManageCancelled = flow.OutcomeAccountManageCancelled
-
-	// outcomeCategoryManageNoOwn: el usuario pidió sacar una categoría pero no
-	// creó ninguna. El bot entendió y respondió bien; no es una falla.
-	outcomeCategoryManageNoOwn     = settings.OutcomeCategoryManageNoOwn
-	outcomeCategoryManageApplied   = flow.OutcomeCategoryManageApplied
-	outcomeCategoryManageCancelled = flow.OutcomeCategoryManageCancelled
 )
 
 // Los outcomes de los flujos de movimiento viven en flow (movement_metrics.go);
@@ -96,10 +86,4 @@ func (c *controller) resolveMetric(ctx context.Context, userID uint64, outcome s
 	if err := c.metrics.Resolve(userID, outcome, movementIDs); err != nil {
 		slog.ErrorContext(ctx, "metric resolve failed", "outcome", outcome, "err", err)
 	}
-}
-
-// collectMovementIDs vive en flow (CollectMovementIDs); el alias conserva el
-// nombre corto para los callers del borde que aún no se migran.
-func collectMovementIDs(ms []movement.Movement) []uint {
-	return flow.CollectMovementIDs(ms)
 }
