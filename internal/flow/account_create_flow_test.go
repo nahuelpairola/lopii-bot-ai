@@ -1,4 +1,4 @@
-package messaging
+package flow
 
 import (
 	"testing"
@@ -6,7 +6,6 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
-	"lopiibot.com/internal/flow"
 )
 
 // fakeStateStore es una implementación mínima en memoria de la interfaz
@@ -38,7 +37,7 @@ func (s *fakeStateStore) Clear(userID uint64) error {
 func newAccountCreateTestEngine() (*conversation.Engine, *fakeStateStore) {
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(flow.NewAccountCreateFlow())
+	engine.Register(NewAccountCreateFlow())
 	return engine, store
 }
 
@@ -46,7 +45,7 @@ func TestAccountCreateFlow_HappyPath(t *testing.T) {
 	engine, _ := newAccountCreateTestEngine()
 	const userID = uint64(1)
 
-	if _, err := engine.Start(userID, flow.AccountCreateFlowName); err != nil {
+	if _, err := engine.Start(userID, AccountCreateFlowName); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
@@ -86,7 +85,7 @@ func TestAccountCreateFlow_HappyPath(t *testing.T) {
 func TestAccountCreateFlow_CancelAtName(t *testing.T) {
 	engine, _ := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "cancel"})
 	if err != nil || !result.Finished {
@@ -100,7 +99,7 @@ func TestAccountCreateFlow_CancelAtName(t *testing.T) {
 func TestAccountCreateFlow_CancelAtCurrency(t *testing.T) {
 	engine, _ := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "cancel"})
@@ -115,7 +114,7 @@ func TestAccountCreateFlow_CancelAtCurrency(t *testing.T) {
 func TestAccountCreateFlow_CancelAtBalance(t *testing.T) {
 	engine, _ := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 	engine.Handle(userID, conversation.Input{CallbackData: currency.USD.String()})
 
@@ -131,7 +130,7 @@ func TestAccountCreateFlow_CancelAtBalance(t *testing.T) {
 func TestAccountCreateFlow_CancelAtConfirm(t *testing.T) {
 	engine, _ := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 	engine.Handle(userID, conversation.Input{CallbackData: currency.USD.String()})
 	engine.Handle(userID, conversation.Input{Text: "0"})
@@ -148,22 +147,22 @@ func TestAccountCreateFlow_CancelAtConfirm(t *testing.T) {
 func TestAccountCreateFlow_BackFromCurrencyToName(t *testing.T) {
 	engine, store := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "back"})
 	if err != nil || result.Finished {
 		t.Fatalf("back from ask_currency: result=%+v err=%v", result, err)
 	}
-	if store.stepName != flow.StepAccountCreateAskName {
-		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountCreateAskName)
+	if store.stepName != StepAccountCreateAskName {
+		t.Errorf("stepName = %q, want %q", store.stepName, StepAccountCreateAskName)
 	}
 }
 
 func TestAccountCreateFlow_BackFromBalanceToCurrency(t *testing.T) {
 	engine, store := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()})
 
@@ -171,15 +170,15 @@ func TestAccountCreateFlow_BackFromBalanceToCurrency(t *testing.T) {
 	if err != nil || result.Finished {
 		t.Fatalf("back from ask_balance: result=%+v err=%v", result, err)
 	}
-	if store.stepName != flow.StepAccountCreateAskCurrency {
-		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountCreateAskCurrency)
+	if store.stepName != StepAccountCreateAskCurrency {
+		t.Errorf("stepName = %q, want %q", store.stepName, StepAccountCreateAskCurrency)
 	}
 }
 
 func TestAccountCreateFlow_BackFromConfirmToBalance(t *testing.T) {
 	engine, store := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()})
 	engine.Handle(userID, conversation.Input{Text: "100"})
@@ -188,15 +187,15 @@ func TestAccountCreateFlow_BackFromConfirmToBalance(t *testing.T) {
 	if err != nil || result.Finished {
 		t.Fatalf("back from confirm: result=%+v err=%v", result, err)
 	}
-	if store.stepName != flow.StepAccountCreateAskBalance {
-		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountCreateAskBalance)
+	if store.stepName != StepAccountCreateAskBalance {
+		t.Errorf("stepName = %q, want %q", store.stepName, StepAccountCreateAskBalance)
 	}
 }
 
 func TestAccountCreateFlow_EmptyName_Retries(t *testing.T) {
 	engine, store := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 
 	result, found, err := engine.Handle(userID, conversation.Input{Text: "   "})
 	if err != nil || !found {
@@ -205,15 +204,15 @@ func TestAccountCreateFlow_EmptyName_Retries(t *testing.T) {
 	if result.Finished {
 		t.Fatal("an empty name should not advance the flow")
 	}
-	if store.stepName != flow.StepAccountCreateAskName {
-		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountCreateAskName)
+	if store.stepName != StepAccountCreateAskName {
+		t.Errorf("stepName = %q, want %q", store.stepName, StepAccountCreateAskName)
 	}
 }
 
 func TestAccountCreateFlow_InvalidBalance_Retries(t *testing.T) {
 	engine, store := newAccountCreateTestEngine()
 	const userID = uint64(1)
-	engine.Start(userID, flow.AccountCreateFlowName)
+	engine.Start(userID, AccountCreateFlowName)
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()})
 
@@ -224,8 +223,8 @@ func TestAccountCreateFlow_InvalidBalance_Retries(t *testing.T) {
 	if result.Finished {
 		t.Fatal("an invalid balance should not advance the flow")
 	}
-	if store.stepName != flow.StepAccountCreateAskBalance {
-		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepAccountCreateAskBalance)
+	if store.stepName != StepAccountCreateAskBalance {
+		t.Errorf("stepName = %q, want %q", store.stepName, StepAccountCreateAskBalance)
 	}
 }
 
@@ -234,12 +233,12 @@ func TestAccountCreateFlow_SeededBalance_ConfirmButtonKeepsValue(t *testing.T) {
 	const userID = uint64(1)
 
 	seed := conversation.Data{"account_name": "Cedears", "account_balance": "1041265"}
-	if _, err := engine.StartWithData(userID, flow.AccountCreateFlowName, seed); err != nil {
+	if _, err := engine.StartWithData(userID, AccountCreateFlowName, seed); err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
 
 	// Name step shows the confirm button; tap it to keep "Cedears".
-	prompt, found, err := engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirmSeed})
+	prompt, found, err := engine.Handle(userID, conversation.Input{CallbackData: OptionConfirmSeed})
 	if err != nil || !found || prompt.Finished {
 		t.Fatalf("confirm name: prompt=%+v found=%v err=%v", prompt, found, err)
 	}
@@ -250,7 +249,7 @@ func TestAccountCreateFlow_SeededBalance_ConfirmButtonKeepsValue(t *testing.T) {
 	}
 
 	// Balance step shows the seeded confirm button; tap it to keep "1041265".
-	if _, _, err = engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirmSeed}); err != nil {
+	if _, _, err = engine.Handle(userID, conversation.Input{CallbackData: OptionConfirmSeed}); err != nil {
 		t.Fatalf("confirm balance: %v", err)
 	}
 
@@ -275,9 +274,9 @@ func TestAccountCreateFlow_SeededBalance_TypingOverrides(t *testing.T) {
 	const userID = uint64(1)
 
 	seed := conversation.Data{"account_name": "Cedears", "account_balance": "1041265"}
-	engine.StartWithData(userID, flow.AccountCreateFlowName, seed)
-	engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirmSeed}) // keep name
-	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()})  // currency
+	engine.StartWithData(userID, AccountCreateFlowName, seed)
+	engine.Handle(userID, conversation.Input{CallbackData: OptionConfirmSeed})     // keep name
+	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()}) // currency
 
 	// At the balance step, type a different number instead of tapping confirm.
 	if _, _, err := engine.Handle(userID, conversation.Input{Text: "999"}); err != nil {
@@ -293,9 +292,9 @@ func TestAccountCreateFlow_SeededBalance_TypingOverrides(t *testing.T) {
 }
 
 func TestValidateBalanceAmount_AcceptsARComma(t *testing.T) {
-	// flow.ValidateBalanceAmount returns "" when the input is a valid non-negative
+	// ValidateBalanceAmount returns "" when the input is a valid non-negative
 	// amount, or an error message otherwise. An AR comma-decimal must validate.
-	if msg := flow.ValidateBalanceAmount("45685,9", nil); msg != "" {
-		t.Errorf("flow.ValidateBalanceAmount(\"45685,9\") rejected valid AR amount: %q", msg)
+	if msg := ValidateBalanceAmount("45685,9", nil); msg != "" {
+		t.Errorf("ValidateBalanceAmount(\"45685,9\") rejected valid AR amount: %q", msg)
 	}
 }
