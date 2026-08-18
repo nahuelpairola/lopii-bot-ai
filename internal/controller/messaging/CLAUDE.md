@@ -100,6 +100,17 @@ Three more things that are not obvious from the code:
   apart. The reserved-category probe is not optional: `apply()` hides `Sistema` and
   `PENDING_REVIEW`, so without it a search for "transferencia" — 12 real movements — would be
   reported as not existing at all, which is worse than the mute zero it replaced.
+- **`handleQuery` post-processes the model's answer, and that is deliberate.** Two app-owned
+  facts are re-attached after narration: the reserved-category verdict
+  (`reinstateAppVerdict` — the model once inverted it, telling the user nothing matched while
+  the app had said the opposite) and the consulted date window
+  (`appendConsultedRange`). Both exist because the model reliably *drops or contradicts* a fact
+  the app established with certainty. Do not move either into the prompt: a prompt rule is a
+  request, and these two already failed as requests in production.
+- **The app sums grouped rows, the model never does** (`groupedTotalLine`). `group_by=type` is
+  the one grouping with no total line: `CategorySum.Total` is `SUM(ABS(amount))`, so adding the
+  expense row to the income row yields a number that is neither, and the whole point of the line
+  is that the model quotes it without checking.
 
 ## The 429 queue has an ordering invariant
 
