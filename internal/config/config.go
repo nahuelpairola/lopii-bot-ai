@@ -108,7 +108,7 @@ func applyDefaults(v *viper.Viper) {
 	// los capaces, y llama-3.3-70b —el de mayor techo, 12.000 TPM— va último
 	// porque su prompt cuesta 8 veces más. qwen queda AFUERA a propósito: su
 	// completion sale $3 por millón, diez veces el 20b.
-	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "llama-3.3-70b-versatile"})
+	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "openai/gpt-oss-20b"})
 	// La cadena de query. llama-3.3-70b primero por el techo medido más alto
 	// (12.000 TPM) y bucket propio; gpt-oss-20b último porque es el más barato pero
 	// el más flojo narrando, y a esa altura la alternativa es no contestar.
@@ -117,15 +117,15 @@ func applyDefaults(v *viper.Viper) {
 	// suplente (120b) sea el primario de query: ahora query tiene con qué correrse
 	// de ese choque, e invertir el del agente mandaría todo el tráfico de rescate a
 	// llama-3.3-70b, cuyo prompt cuesta ~8 veces más. Está último por precio.
-	v.SetDefault("Groq.QueryFallbackModels", []string{"llama-3.3-70b-versatile", "openai/gpt-oss-20b"})
-	// llama-3.3-70b-versatile no razona: narra en 35-61 tokens de completion contra
+	v.SetDefault("Groq.QueryFallbackModels", []string{"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
+	// openai/gpt-oss-20b no razona: narra en 35-61 tokens de completion contra
 	// los 174-1.024 de gpt-oss, y por eso no puede quedarse sin presupuesto antes de
 	// escribir. qwen queda afuera: emite su razonamiento DENTRO del contenido.
 	// llama-3.1-8b-instant también: Groq lo da de baja el 2026-08-16.
-	v.SetDefault("Groq.NarrationModel", "llama-3.3-70b-versatile")
-	// llama-3.3-70b-versatile: el techo medido más alto (12.000 TPM), bucket
+	v.SetDefault("Groq.NarrationModel", "openai/gpt-oss-20b")
+	// openai/gpt-oss-20b: el techo medido más alto (12.000 TPM), bucket
 	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
-	v.SetDefault("Groq.ClassifierModel", "llama-3.3-70b-versatile")
+	v.SetDefault("Groq.ClassifierModel", "openai/gpt-oss-20b")
 	v.SetDefault("Log.Level", "info")
 	v.SetDefault("Log.Format", "json")
 }
@@ -142,7 +142,7 @@ func applyDefaults(v *viper.Viper) {
 // agente. Competir entre turnos ya lo cubre la cadena de fallback.
 //
 // Tampoco entran `query`+`create` (hoy los dos en openai/gpt-oss-120b) ni
-// `classifier`+`narration` (hoy los dos en llama-3.3-70b-versatile), aunque en
+// `classifier`+`narration` (hoy los dos en openai/gpt-oss-20b), aunque en
 // teoría podrían chocar: sólo aparecen si se lee la tabla como transitiva
 // (agent-query más agent-create implicando query-create, y análogo para el otro
 // par). No hay un trace que muestre a ninguno de los dos ocurriendo de verdad en
