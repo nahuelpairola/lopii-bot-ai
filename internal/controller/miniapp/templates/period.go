@@ -54,6 +54,14 @@ type Period struct {
 	Allowed   []string
 	PrevQuery string
 	NextQuery string // "" when the anchor is already the current month
+	// Drill is the already-encoded suffix of the leaf being viewed
+	// ("&account=12"). The HEADER links carry it; Query() does not, because
+	// Query() is the link back out.
+	Drill string
+	// HideCurrency drops the ARS/USD chips. Set by the account leaf: an account
+	// holds one currency, so the chip would leave an ARS leaf rendering a USD
+	// period. The subcategory leaf keeps them — a category does span both.
+	HideCurrency bool
 }
 
 // CurrentMonth returns the first instant of now's month on the Argentine wall
@@ -94,12 +102,26 @@ func NewPeriod(route, preset string, anchor, currentMonth time.Time, cur currenc
 // params on top of it.
 func (p Period) Query() string { return periodQuery(p.Route, p.Preset, p.Anchor, p.Currency) }
 
+// WithDrill points the period controls at the leaf we are inside. Without it,
+// tapping a chip or an arrow in a leaf lands on the index: periodQuery only
+// knows about p/m/c, and the drill rides as its own param.
+func (p Period) WithDrill(suffix string) Period {
+	p.Drill = suffix
+	if p.PrevQuery != "" {
+		p.PrevQuery += suffix
+	}
+	if p.NextQuery != "" {
+		p.NextQuery += suffix
+	}
+	return p
+}
+
 func (p Period) WithPreset(preset string) string {
-	return periodQuery(p.Route, preset, p.Anchor, p.Currency)
+	return periodQuery(p.Route, preset, p.Anchor, p.Currency) + p.Drill
 }
 
 func (p Period) WithCurrency(cur currency.Currency) string {
-	return periodQuery(p.Route, p.Preset, p.Anchor, cur)
+	return periodQuery(p.Route, p.Preset, p.Anchor, cur) + p.Drill
 }
 
 func (p Period) IsPreset(preset string) bool { return p.Preset == preset }

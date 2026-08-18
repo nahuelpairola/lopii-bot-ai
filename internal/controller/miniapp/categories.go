@@ -28,10 +28,22 @@ func (c *controller) handleCategories(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
 	p := periodFromQuery(ctx, templates.AllPresets, templates.PresetMonth)
 	drill := ctx.Query(categoryParam)
+	sub := ctx.Query(subcategoryParam)
+
+	// Los controles del período tienen que volver al nivel en el que estamos.
+	// El sufijo se arma entero de una: WithDrill NO es componible, dos llamadas
+	// dejarían el primer param repetido en las flechas.
+	if drill != "" {
+		suffix := "&" + categoryParam + "=" + url.QueryEscape(drill)
+		if sub != "" {
+			suffix += "&" + subcategoryParam + "=" + url.QueryEscape(sub)
+		}
+		p = p.WithDrill(suffix)
+	}
 
 	// Tercer nivel: con categoría Y subcategoría, lo que sigue no es otro
 	// ranking sino los movimientos que forman ese total.
-	if sub := ctx.Query(subcategoryParam); sub != "" && drill != "" {
+	if sub != "" && drill != "" {
 		c.handleSubcategoryLeaf(ctx, userID, p, drill, sub)
 		return
 	}
