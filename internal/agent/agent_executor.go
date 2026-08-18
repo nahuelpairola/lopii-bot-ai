@@ -235,7 +235,7 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 }
 
 // resultRecorded es lo que ve el MODELO, no el usuario: el recibo real lo manda
-// la app (messages.MsgConfirmMovements). El prompt le pide explícitamente no repetir el
+// la app (flow.MsgConfirmMovements). El prompt le pide explícitamente no repetir el
 // detalle.
 func resultRecorded(n int) string {
 	return fmt.Sprintf("registrados: %d movimientos", n)
@@ -303,7 +303,7 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	// mismo turno ya lo vea puesto y no encole el mensaje.
 	e.wrote = true
 	e.inserted = inserted
-	e.reply = messages.MsgConfirmMovements(inserted)
+	e.reply = flow.MsgConfirmMovements(inserted)
 	e.replyButtons = e.svc.MaybeNearDuplicate(e.userID, inserted)
 	return resultRecorded(len(inserted)), orchestrator.ErrAgentTurnDone
 }
@@ -472,7 +472,7 @@ func (e *agentExecutor) parkCreate(seed conversation.Data) (string, error) {
 // copy del faltante, y sólo la pone este camino.
 func (e *agentExecutor) parkFundsGate(seed conversation.Data, short *flow.InsufficientFunds) (string, error) {
 	gateSeed := conversation.CopyData(seed)
-	gateSeed[conversation.KeyGatePrompt] = messages.MsgInsufficientFunds(short.Shortfalls)
+	gateSeed[conversation.KeyGatePrompt] = flow.MsgInsufficientFunds(short.Shortfalls)
 	e.parked = append(e.parked, parkedAction{
 		Tool:    orchestrator.ToolRecordMovements,
 		Payload: agentPayload{Seed: gateSeed, Chosen: 0},

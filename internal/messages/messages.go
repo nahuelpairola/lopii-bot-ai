@@ -2,7 +2,6 @@ package messages
 
 import (
 	"github.com/shopspring/decimal"
-	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 )
 
@@ -33,18 +32,6 @@ const MsgNoCandidatesFound = "No tengo movimientos de ese día para tocar. ¿De 
 // mensaje tiene que dejar claras las dos mitades: lo que entró está guardado,
 // y lo que falte lo tiene que volver a mandar él.
 const MsgPartialSuccessAfterWrite = "Registré lo que me pediste, pero me quedé sin margen para el resto. Mandame de nuevo lo que falte."
-
-// MsgConfirmMovements es el recibo del alta. Vive en flow (MsgConfirmMovements);
-// el alias conserva el nombre corto para el ejecutor del loop.
-func MsgConfirmMovements(movements []movement.Movement) string {
-	return flow.MsgConfirmMovements(movements)
-}
-
-// MsgInsufficientFunds es la copy del gate de saldo negativo. Vive en flow
-// (MsgInsufficientFunds); el alias conserva el nombre corto para el ejecutor.
-func MsgInsufficientFunds(short []movement.AccountShortfall) string {
-	return flow.MsgInsufficientFunds(short)
-}
 
 // MsgAskWhatToChange se usa cuando el movimiento SÍ se encontró pero el mensaje
 // no dice qué cambiarle ("el café estaba mal"). Antes acá iba un "no me quedó
