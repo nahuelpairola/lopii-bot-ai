@@ -5,9 +5,8 @@ import (
 	"log/slog"
 
 	"github.com/go-telegram/bot"
-	"lopiibot.com/internal/agent"
-	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/pendingjob"
+	"lopiibot.com/internal/settings"
 )
 
 // finishAnswerQuery entrega la consulta al loop de query.
@@ -36,33 +35,8 @@ func (c *controller) finishAnswerQuery(ctx context.Context, b *bot.Bot, chatID i
 	return qErr
 }
 
-// finishManageSettings despacha al wizard del área que el loop eligió.
-//
-// El loop ya leyó el mensaje, así que elegir el área no cuesta una llamada
-// extra. Cada especialista de abajo toma el texto crudo, que es la razón por la
-// que manage_settings no lleva un campo de texto: no hay nada que el modelo
-// tenga que reescribir.
+// finishManageSettings entrega al cluster de wizards de configuración. El
+// despacho por área vive en settings.Dispatch (internal/settings).
 func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text, area string) error {
-	switch area {
-	case agent.SettingsAreaAccount:
-		return c.startAccountManage(ctx, b, chatID, userID, text)
-	case agent.SettingsAreaCategory:
-		return c.startSubcategorySetup(ctx, b, chatID, userID, text)
-	case agent.SettingsAreaCategoryManage:
-		// Sacar o fusionar una categoría propia es OTRO wizard, y hasta el
-		// 2026-08-12 era inalcanzable: las dos cosas compartían área y el área
-		// entera iba al wizard de ALTA. "Elimina subcategorias" abría "crear
-		// categoría nueva". Al morir el router, category_manage_pick se quedó sin
-		// ningún camino que lo abriera.
-		return c.startCategoryManage(ctx, b, chatID, userID)
-	case agent.SettingsAreaReminder:
-		return c.startReminderSetup(ctx, b, chatID, userID)
-	default:
-		slog.WarnContext(ctx, "manage_settings con área desconocida", "user_id", userID, "area", area)
-		c.sendText(ctx, b, chatID, messages.MsgAskRewrite)
-		return nil
-	}
+	return settings.Dispatch(ctx, c, b, chatID, userID, text, area)
 }
-
-// Las áreas de manage_settings son el enum del schema y viven en agent
-// (agent.SettingsArea*), el dueño del tool manage_settings que el modelo elige.

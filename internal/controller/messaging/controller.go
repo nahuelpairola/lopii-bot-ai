@@ -26,6 +26,7 @@ import (
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/reminder"
+	"lopiibot.com/internal/settings"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -509,7 +510,7 @@ func (c *controller) ReassignAccountMovements(fromID, toID uint64) error {
 }
 
 func (c *controller) StartAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	return c.startAccountCreate(ctx, b, chatID, userID, text)
+	return settings.StartAccountCreate(ctx, c, b, chatID, userID, text)
 }
 
 func (c *controller) SubcategoryIconForCategory(userID uint64, category string) string {

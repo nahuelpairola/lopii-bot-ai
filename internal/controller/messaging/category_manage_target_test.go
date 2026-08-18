@@ -570,3 +570,26 @@ func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
 		t.Errorf("destino a medias: ID=%q sin nombre — el confirm mostraría «Alimentos › »", id)
 	}
 }
+
+// fakeCategoryOrchestrator embebe movementOrchestrator: los métodos que no se
+// usan quedan nil y explotan si alguien los llama por error. Se quedó en el
+// borde cuando el cluster de settings se fue — lo comparten los tests de
+// category_manage_apply y category_manage_target.
+type fakeCategoryOrchestrator struct {
+	movementOrchestrator
+	match       *orchestrator.CategoryMatch
+	proposal    *orchestrator.CategoryProposal
+	err         error
+	calls       int
+	gotText     string
+	gotTaxonomy []orchestrator.TaxonomyEntry
+}
+
+func (f *fakeCategoryOrchestrator) ClassifyCategoryCreate(_ context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
+	f.calls++
+	f.gotText, f.gotTaxonomy = text, taxonomy
+	if f.err != nil {
+		return orchestrator.CategoryCreateResult{}, f.err
+	}
+	return orchestrator.CategoryCreateResult{Match: f.match, Proposal: f.proposal}, nil
+}

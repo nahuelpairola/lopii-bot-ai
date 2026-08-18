@@ -1,4 +1,4 @@
-package messaging
+package settings
 
 import (
 	"context"
@@ -11,40 +11,39 @@ import (
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/pendingjob"
 )
 
-// startAccountManage runs Call 2 account-match and branches: matched →
+// StartAccountManage runs Call 2 account-match and branches: matched →
 // manage menu; wants-new → the existing (prefill-seeded) create flow;
 // unclear → the candidate picker. Candidates are always seeded — the pick
 // step needs them, the menu path skips it via SkipIf.
-func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+func StartAccountManage(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.AccountManageFlowName, "user_id", userID)
-	accs, err := c.accounts.FindByUserID(userID)
+	accs, err := s.FindUserAccounts(userID)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgCouldNotLoad)
+		s.SendText(ctx, b, chatID, flow.MsgCouldNotLoad)
 		return fmt.Errorf("account manage: find accounts: %w", err)
 	}
 	if len(accs) == 0 {
-		c.resolveMetric(ctx, userID, outcomeAccountCreateRouted)
-		return c.startAccountCreate(ctx, b, chatID, userID, text)
+		s.ResolveMetric(ctx, userID, flow.OutcomeAccountCreateRouted)
+		return StartAccountCreate(ctx, s, b, chatID, userID, text)
 	}
 
 	opts := make([]orchestrator.AccountOption, 0, len(accs))
 	for _, a := range accs {
 		opts = append(opts, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
-	res, err := c.orchestrator.ResolveAccountManage(ctx, text, opts)
+	res, err := s.ResolveAccountManage(ctx, text, opts)
 	if err != nil {
-		if handled, oerr := pendingjob.HandleGroqError(ctx, c, c.jobs, b, chatID, userID, text, err); handled {
+		if handled, oerr := s.HandleGroqError(ctx, b, chatID, userID, text, err); handled {
 			return oerr
 		}
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		s.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
 		return fmt.Errorf("account manage: resolve: %w", err)
 	}
 	if res.WantsNewAccount {
-		c.resolveMetric(ctx, userID, outcomeAccountCreateRouted)
-		return c.startAccountCreate(ctx, b, chatID, userID, text)
+		s.ResolveMetric(ctx, userID, flow.OutcomeAccountCreateRouted)
+		return StartAccountCreate(ctx, s, b, chatID, userID, text)
 	}
 
 	ids := make([]string, 0, len(accs))
@@ -76,13 +75,13 @@ func (c *controller) startAccountManage(ctx context.Context, b *bot.Bot, chatID 
 		}
 	}
 
-	return c.startFlow(ctx, b, chatID, userID, flow.AccountManageFlowName, seed, "account manage: start account_manage flow")
+	return s.StartFlow(ctx, b, chatID, userID, flow.AccountManageFlowName, seed, "account manage: start account_manage flow")
 }
 
-func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+func StartAccountCreate(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.AccountCreateFlowName, "user_id", userID)
-	seed := c.accountCreateSeed(ctx, text)
-	return c.startFlow(ctx, b, chatID, userID, flow.AccountCreateFlowName, seed, "start account_create flow")
+	seed := accountCreateSeed(ctx, s, text)
+	return s.StartFlow(ctx, b, chatID, userID, flow.AccountCreateFlowName, seed, "start account_create flow")
 }
 
 // accountCreateSeed reuses ClassifyOnboarding to prefill the flow when the
@@ -94,9 +93,9 @@ func (c *controller) startAccountCreate(ctx context.Context, b *bot.Bot, chatID 
 // confirms every value.
 //
 // Returns an empty (non-nil) Data when nothing should be prefilled.
-func (c *controller) accountCreateSeed(ctx context.Context, text string) conversation.Data {
+func accountCreateSeed(ctx context.Context, s Services, text string) conversation.Data {
 	seed := conversation.Data{}
-	res, err := c.orchestrator.ClassifyOnboarding(ctx, text)
+	res, err := s.ClassifyOnboarding(ctx, text)
 	if err != nil || len(res.Accounts) != 1 {
 		return seed
 	}

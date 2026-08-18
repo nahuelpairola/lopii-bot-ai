@@ -7,6 +7,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/settings"
 )
 
 // outcome* son los valores de intent_events.outcome. Los intents de
@@ -43,7 +44,7 @@ const (
 
 	// outcomeCategoryManageNoOwn: el usuario pidió sacar una categoría pero no
 	// creó ninguna. El bot entendió y respondió bien; no es una falla.
-	outcomeCategoryManageNoOwn     = "category_manage_no_own"
+	outcomeCategoryManageNoOwn     = settings.OutcomeCategoryManageNoOwn
 	outcomeCategoryManageApplied   = flow.OutcomeCategoryManageApplied
 	outcomeCategoryManageCancelled = flow.OutcomeCategoryManageCancelled
 )

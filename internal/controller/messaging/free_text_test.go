@@ -14,6 +14,7 @@ import (
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/settings"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -337,7 +338,7 @@ func TestStartAccountManage_RepoFailure_IsReported(t *testing.T) {
 	accs := &fakeAccountRepoFull{byUserIDErr: context.DeadlineExceeded}
 	c := &controller{accounts: accs, orchestrator: &fakeFullOrchestrator{}}
 
-	err := c.startAccountManage(context.Background(), nil, 0, 1, "cambiá el monto")
+	err := settings.StartAccountManage(context.Background(), c, nil, 0, 1, "cambiá el monto")
 
 	if err == nil {
 		t.Fatal("startAccountManage returned nil on repo failure; want error surfaced to the spine")
@@ -352,7 +353,7 @@ func TestStartSubcategorySetup_RepoAndWizardFailure_IsReported(t *testing.T) {
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{subcategories: subs, orchestrator: &fakeFullOrchestrator{}, engine: engine}
 
-	err := c.startSubcategorySetup(context.Background(), nil, 0, 1, "categoría nueva")
+	err := settings.StartSubcategorySetup(context.Background(), c, nil, 0, 1, "categoría nueva")
 
 	if err == nil {
 		t.Fatal("startSubcategorySetup returned nil when both the LLM path and the wizard fallback failed")
@@ -364,7 +365,7 @@ func TestStartAccountCreate_FlowNotRegistered_IsReported(t *testing.T) {
 	engine := conversation.NewEngine(store, func(string) string { return "algo" }) // account_create not registered
 	c := &controller{orchestrator: &fakeFullOrchestrator{}, engine: engine}
 
-	err := c.startAccountCreate(context.Background(), nil, 0, 1, "nueva cuenta")
+	err := settings.StartAccountCreate(context.Background(), c, nil, 0, 1, "nueva cuenta")
 
 	if err == nil {
 		t.Fatal("startAccountCreate returned nil when the flow could not start; want error surfaced to the spine")
@@ -376,7 +377,7 @@ func TestStartReminderSetup_FlowNotRegistered_IsReported(t *testing.T) {
 	engine := conversation.NewEngine(store, func(string) string { return "algo" }) // reminder_setup not registered
 	c := &controller{engine: engine, reminders: &fakeReminderRepo{}}
 
-	err := c.startReminderSetup(context.Background(), nil, 0, 1)
+	err := settings.StartReminderSetup(context.Background(), c, nil, 0, 1)
 
 	if err == nil {
 		t.Fatal("startReminderSetup returned nil when the flow could not start; want error surfaced to the spine")
@@ -467,7 +468,7 @@ func TestStartAccountCreate_OneAccount_SeedsNameAndBalance(t *testing.T) {
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
-	c.startAccountCreate(context.Background(), nil, 0, 1, "Nueva cuenta: Cedears tengo 1041265")
+	settings.StartAccountCreate(context.Background(), c, nil, 0, 1, "Nueva cuenta: Cedears tengo 1041265")
 
 	if store.data["account_name"] != "Cedears" {
 		t.Errorf("account_name seed = %v, want %q", store.data["account_name"], "Cedears")
@@ -490,7 +491,7 @@ func TestStartAccountCreate_NoAccounts_NoSeed(t *testing.T) {
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
-	c.startAccountCreate(context.Background(), nil, 0, 1, "quiero crear una cuenta nueva")
+	settings.StartAccountCreate(context.Background(), c, nil, 0, 1, "quiero crear una cuenta nueva")
 
 	if _, ok := store.data["account_name"]; ok {
 		t.Error("no account extracted → account_name must not be seeded")
@@ -515,7 +516,7 @@ func TestStartAccountCreate_MultipleAccounts_NoSeed(t *testing.T) {
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
-	c.startAccountCreate(context.Background(), nil, 0, 1, "tengo el banco con 1000 y efectivo 2000")
+	settings.StartAccountCreate(context.Background(), c, nil, 0, 1, "tengo el banco con 1000 y efectivo 2000")
 
 	if _, ok := store.data["account_name"]; ok {
 		t.Error(">1 account (bulk onboarding misrouted) → seed nothing")
@@ -531,7 +532,7 @@ func TestStartAccountCreate_GarbageBalance_SeedsNameOnly(t *testing.T) {
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
 
-	c.startAccountCreate(context.Background(), nil, 0, 1, "nueva cuenta Cripto")
+	settings.StartAccountCreate(context.Background(), c, nil, 0, 1, "nueva cuenta Cripto")
 
 	if store.data["account_name"] != "Cripto" {
 		t.Errorf("account_name seed = %v, want %q", store.data["account_name"], "Cripto")
