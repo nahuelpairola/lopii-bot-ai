@@ -16,6 +16,29 @@ import (
 //
 // Recorre el directorio en vez de una lista fija para que un entorno nuevo quede
 // cubierto sin que nadie se acuerde de agregarlo.
+//
+// ESTE TEST ESTÁ ROJO A PROPÓSITO desde el 2026-08-17, y se deja rojo por decisión
+// explícita. No lo "arregles" cambiando modelos sin leer esto:
+//
+// Groq dio de baja llama-3.3-70b-versatile (404 model_not_found). Con él se caen a
+// DOS los modelos usables — openai/gpt-oss-120b y openai/gpt-oss-20b; qwen/qwen3.6-27b
+// no sirve porque emite su razonamiento adentro del contenido y la narración vuelve
+// vacía (medido). Y sameTurnCalls pide que `agent` no comparta modelo con `classifier`,
+// `query`, `create` NI `narration`: con dos modelos, los otros cuatro tienen que ir
+// todos en el que no es el del agente. Las tres asignaciones posibles se midieron
+// contra el eval real (`-tags query_eval`):
+//
+//   - narration/classifier en 20b (lo de hoy, y lo que corre en prod): eval VERDE,
+//     este test rojo. Los logs de Render muestran la consecuencia real: el
+//     "modelo sin cupo, probando el siguiente" que se repite desde el deploy del 15/08.
+//   - narration/classifier en 120b: este test verde, pero el eval falla 4 de 4 en
+//     "filtro_inexistente" — el bot narra "gastaste $0" sobre una categoría que NO
+//     EXISTE. Mentirle al usuario es peor que rebotar contra el cupo.
+//   - query+narration en 20b: rompe "saldos" y "cuenta_inexistente".
+//
+// O sea: no hay config que deje verdes al test y al eval a la vez. Se eligió el eval.
+// El rojo queda como recordatorio de que falta un tercer bucket de TPM (otro tier u
+// otro proveedor); el día que exista, esto vuelve solo a verde.
 func TestEveryConfigFile_HasNoSameTurnModelCollision(t *testing.T) {
 	archivos, err := filepath.Glob(filepath.Join("..", "..", "config", "*.toml"))
 	if err != nil {

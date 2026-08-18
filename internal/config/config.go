@@ -146,15 +146,19 @@ func applyDefaults(v *viper.Viper) {
 // teoría podrían chocar: sólo aparecen si se lee la tabla como transitiva
 // (agent-query más agent-create implicando query-create, y análogo para el otro
 // par). No hay un trace que muestre a ninguno de los dos ocurriendo de verdad en
-// el mismo turno —cada par que SÍ está listado, lo tiene—. Y satisfacer la
-// lectura transitiva pediría cinco modelos distintos cuando sólo hay tres
-// usables: qwen emite su razonamiento adentro del contenido que le llega al
-// usuario, y Groq da de baja llama-3.1-8b-instant el 2026-08-16. El costo
-// residual de dejarlos afuera es acotado y mucho menor al que esta tabla existe
-// para evitar: la narración reserva ~850 tokens contra el techo de llama
-// (~12.000 TPM), y las cadenas de fallback cubren un rebote. Si algún día un
-// trace muestra a alguno de estos dos pares chocando en producción, se agrega
-// acá y se cambia de modelo.
+// el mismo turno —cada par que SÍ está listado, lo tiene—. Si algún día un trace
+// muestra a alguno de estos dos pares chocando en producción, se agrega acá y se
+// cambia de modelo.
+//
+// 2026-08-17: los modelos usables bajaron de tres a DOS. Groq dio de baja
+// llama-3.1-8b-instant (2026-08-16) y también llama-3.3-70b-versatile, que era el
+// que sostenía este invariante; quedan openai/gpt-oss-120b y openai/gpt-oss-20b,
+// porque qwen/qwen3.6-27b emite su razonamiento adentro del contenido y deja la
+// narración vacía. Con dos modelos, los cuatro pares de acá abajo NO se pueden
+// satisfacer todos a la vez, así que TestEveryConfigFile_HasNoSameTurnModelCollision
+// está rojo a propósito — el porqué completo, con las tres asignaciones medidas
+// contra el eval real, está en el comentario de ese test. La tabla se deja intacta:
+// describe qué choca de verdad, y esa verdad no cambió porque falte un modelo.
 var sameTurnCalls = [][2]string{
 	{"agent", "classifier"}, // ClassifyCategories sale del propio ejecutor del agente
 	{"agent", "query"},      // el agente delega en answer_query dentro del mismo turno
