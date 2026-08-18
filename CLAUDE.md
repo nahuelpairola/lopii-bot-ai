@@ -108,7 +108,7 @@ A string or number used more than once is a named constant, scoped to its reach:
 One const per distinct value; one const per distinct *meaning* even when strings
 collide (a button value and a Data key that share `"edit_proposal"` are two consts).
 Single-use literals stay inline. In `conversation.Data`, all map keys are consts
-(`internal/controller/messaging/data_keys.go`).
+(`internal/conversation/data.go`).
 
 ## 3. Recipes
 
@@ -169,10 +169,8 @@ Prerequisites, Postgres, config, run, migrations → **[docs/dev-setup.md](docs/
   unrepresentable. This is a decision, not debt; it is documented in the anti-pattern in
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#anti-patterns--what-not-to-do).
 - `internal/controller/messaging` was ~10k non-test lines across 52 files — the driver of this split. Extracting one cluster at a time (copy→`messages`, flows→`flow`, loop→`agent`, QUERY→`query`, tips→`nudges`, 429 queue→`pendingjob`, wizards→`settings`) cut it to **1.7k non-test lines across 20 files**. For scale: `flow` 4.4k, `agent` 2.9k, `orchestrator` 2.6k, `nudges` 0.7k, `query` 0.5k, `settings` 0.4k, `pendingjob` 0.4k.
-  Open debt from the split, all of it docs or tests, none of it behaviour:
-  - `messaging/CLAUDE.md` still describes the package as it was before (52 files) and names symbols that moved — `stripLeadingIcon`, `describeEmptyResult`, `enqueueBehindPending`, `replayJob`. `orchestrator`'s doc comments still point at `messaging/query.go`. One doc pass covers both, together with `docs/ARCHITECTURE.md` and `docs/decisions.md`.
-  - **`flow` has ~4.4k lines of code and only ~250 lines of its own tests**: its 26 test files stayed in `messaging`, exercising it through `*controller` and the one-line delegators (`finishAccountCreateFlow`, `finishReminderSetup`, …). Those delegators exist *for the tests* — moving the tests is what deletes them. `agent`/`query`/`nudges`/`pendingjob` did take their tests with them.
-  - What is left in `messaging` is the Telegram edge itself: the webhook handlers and `handleFlowFinished`'s switch, `/start` + invitations, the bridge files, `userLocks`, tracing, metric outcomes, and the five one-line finish delegators that only the edge tests still name.
+  What is left in `messaging` is the Telegram edge itself: the webhook handlers and `handleFlowFinished`'s switch, `/start` + invitations, the bridge files, `userLocks`, tracing, and the metric outcomes.
+  Tests were split on the same line as the code: the builder/step tests live in `flow`, and the ones that drive a finish through the `*controller` stayed at the edge on purpose — they exercise webhook→engine→finish, which is the edge's job. Using `flow` does not make a test a `flow` test. Those edge tests are why the five one-line finish delegators (`finishAccountCreateFlow`, `finishReminderSetup`, …) still exist.
 - `orchestrator.AgentTool.Kind` is **vestigial**: `orderCallsByKind`/`kindRank` were deleted in
   stage 5 and nothing reads the field. It matters only as a warning — if read tools ever return
   to `Run`, ordering must come back with them, and the zero value must be made unrepresentable

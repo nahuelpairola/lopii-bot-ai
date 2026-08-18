@@ -14,19 +14,21 @@
 
 ## Per-package `CLAUDE.md`
 
-Six packages carry their own file. They are **not** loaded at session start — Claude Code pulls
+Eight packages carry their own file. They are **not** loaded at session start — Claude Code pulls
 them in only when it reads a file in that subtree, so they cost nothing on unrelated tasks.
 Each holds one thing only: **rules that compile fine and then behave wrong.** Structure is
 `codegraph_explore`'s job, not theirs.
 
 | Package | The trap it exists for |
 |---|---|
-| `internal/controller/messaging` | `Data` helpers, the 3 places a flow must be registered, `callback_data`'s 64 bytes |
+| `internal/controller/messaging` | the bridge pattern, the per-user lock, what bypasses the engine |
+| `internal/flow` | the 3 places a flow must be registered, `callback_data`'s 64 bytes, why `runner` is exported |
 | `internal/orchestrator` | four call types silently share `createModel`; `AgentTool.Kind`'s zero value |
 | `internal/conversation` | `Data` round-trips through JSONB — numbers come back `float64` |
 | `internal/movement` | the guard only covers INSERT; two finders need opposite date binding |
 | `internal/subcategory` | cache writes need a manual `Reload()`; `c.global` is shared |
 | `internal/controller/miniapp` | **auth is which Gin group you register on, and nothing else** |
+| `internal/agent` | the loop is the only entry point; a turn that wrote must never be re-enqueued |
 
 For conventions and the condensed money-model warning, see the root `CLAUDE.md` (always loaded).
 
@@ -53,7 +55,7 @@ For conventions and the condensed money-model warning, see the root `CLAUDE.md` 
 - **Never invent category/subcategory names in code or prompts.** The taxonomy lives in the DB, seeded via migrations.
 - **Never use raw strings for currency values.** Use `currency.ARS` / `currency.USD` constants.
 - **Never store a native Go number in `conversation.Data`.** Always encode as a string — the JSONB round-trip silently turns numbers into `float64`, which violates the money rule.
-- **Never duplicate a literal value.** A string or number used more than once is a named constant. Scope it to its reach: an unexported `const` in the package if it's local; `internal/constants` if it's used across packages (typed wrappers may re-export it, as `currency.ARS = constants.ARS`); an **exported** const in the producing package if one package owns the value but another reads it (as `conversation.ResumeCancelledKey`). One const per distinct value; one const per distinct *meaning* even when two values share a string. Single-use literals stay inline. In `internal/controller/messaging`, every `conversation.Data` map key is a const in `data_keys.go`.
+- **Never duplicate a literal value.** A string or number used more than once is a named constant. Scope it to its reach: an unexported `const` in the package if it's local; `internal/constants` if it's used across packages (typed wrappers may re-export it, as `currency.ARS = constants.ARS`); an **exported** const in the producing package if one package owns the value but another reads it (as `conversation.ResumeCancelledKey`). One const per distinct value; one const per distinct *meaning* even when two values share a string. Single-use literals stay inline. Every `conversation.Data` map key is an exported const in `internal/conversation/data.go`.
 - **Never insert a movement without an `account_id`.** Every expense/income/transfer attributes to a real account (see [business-rules.md](business-rules.md#the-accounting-model)). A NULL account means the balance never reflects that movement.
 - **Never let the LLM decide a movement's sign, and never let a stored sign escape storage.** The app normalizes sign by type on write; user and LLM both see `abs`. Feeding a signed amount to the user or to an UPDATE/DELETE candidate is a bug (it caused a real `0.00` corruption).
 - **Never trust the LLM's `amount` sign, `account_id` validity, or currency/account agreement without the guard.** `movement.Normalize` re-derives sign, resolves the account, and rejects `amount == 0` / currency mismatch — for CREATE and UPDATE alike.
@@ -64,7 +66,7 @@ For conventions and the condensed money-model warning, see the root `CLAUDE.md` 
   | An LLM-built set (CREATE/UPDATE) | `movement.Normalize` | Sign, `account_id` and currency are all untrusted — the full guard is the point. |
   | An app-built movement against a known account (balance adjustment) | `movement.Normalize` too | Cheap, and it validates the flow's notion of the account against the DB's. |
   | An account's **opening** movement | Take the `*account.Account` and read both `AccountID` and `Currency` off it | The mismatch becomes unrepresentable — strictly better than checking for it. **Do not route these through `Normalize`**: an opening is a lone leg typed `Transfer` (so it stays out of cash-flow aggregates) with no counterparty and no `transaction_id`, and the guard rejects any transfer that isn't a distinct 2-leg group — it would reject *every* opening, at any amount. Its amount may also legitimately be `0`. |
-- **Never call an orchestrator method from a webhook site without routing its error through `handleGroqError`.** A terminal Groq 429 (`orchestrator.RateLimitedError`) must be enqueued into `pending_llm_jobs` and acked, not shown as `msgSomethingBroke` — a site that skips `handleGroqError` silently drops the user's message on rate limit instead of queuing it for the drain worker (`internal/controller/messaging/pending_jobs.go`/`job_drain.go`). See [recipes.md](recipes.md#recipe-5-wire-a-new-groq-calling-site-into-the-pending-jobs-queue).
+- **Never call an orchestrator method from a webhook site without routing its error through `pendingjob.HandleGroqError`.** A terminal Groq 429 (`orchestrator.RateLimitedError`) must be enqueued into `pending_llm_jobs` and acked, not shown as `msgSomethingBroke` — a site that skips `pendingjob.HandleGroqError` silently drops the user's message on rate limit instead of queuing it for the drain worker (`internal/pendingjob/enqueue.go`/`drain.go`). See [recipes.md](recipes.md#recipe-5-wire-a-new-groq-calling-site-into-the-pending-jobs-queue).
 - **Never fill a gap in `usd_quotes` writer-side, and never read it with `date = D`.** The series is not strictly business days — the source carries the last value into some weekends and not others (verified: Sat 2026-08-01 is absent, Sun 2026-08-02 is present), so gaps are real and irregular. A reader resolves a date with `<= D ORDER BY date DESC LIMIT 1` and displays the quote's own date, never the requested one. `bid`/`ask` are from the exchange house's side: ARS→USD divides by `ask`, USD→ARS multiplies by `bid`. v1 copied the previous day forward on write, which invented prices that never traded.
 - **Never treat `monthly_cpi.value` as an index level.** It is the monthly percentage change (`1.9` = 1.9%) and it can be negative. A deflator is a chained product of `(1 + value/100)` across months, never a ratio between two rows. The current month never has a row — INDEC publishes ~2 weeks after close — so any deflation anchors on the last month present in the table, not on the period's anchor month.
 - **Never type an optional (non-`required`) tool-schema field as a bare scalar.** Groq validates the model's tool-call against the schema we send; the model emits `null` for an absent optional, and a bare `"string"`/`"integer"` 400s on that null (a real prod failure: an optional string field emitted as `null` on "pago tarjeta"). Every property not in the schema's `required` list must be a null-union (`["string", "null"]`). `internal/orchestrator/schema_test.go` enforces this across all tool schemas — see [recipes.md Recipe 3](recipes.md#recipe-3-add-an-llm-intent) before adding or promoting a field.

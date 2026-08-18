@@ -1,0 +1,53 @@
+# internal/flow
+
+Every conversation flow: the 15 builders `server.go` registers, their steps and options, the
+movement write pipeline, the finishes, and the near-duplicate gate. **Use `codegraph_explore` for
+structure** — this file is only for what reading the code will not tell you.
+
+## Registering a flow touches three places, in three packages
+
+Nothing enforces any of them:
+
+1. `server.go` — `conversationEngine.Register(flow.NewXFlow())`
+2. `controller/messaging/controller.go` — a case in `handleFlowFinished`'s switch
+3. `controller/messaging/messages.go` — a case in `FlowResumeLabel`
+
+Miss #1 and the server fails at startup (loud, fine). Miss #2 and the flow completes into
+`msgSomethingBroke`. **Miss #3 and nothing breaks until a user goes idle for 24h**, then the
+resume gate offers them "una conversación anterior" instead of real copy.
+
+Two of the three live in `messaging`, not here: the flow is *built* in this package but *finished*
+at the edge, because a finish needs the repos. That split is the reason the list is easy to
+half-do.
+
+## `callback_data` is 64 bytes — send indices, not labels
+
+Telegram truncates past 64 bytes and the callback stops matching any option, so the button
+silently does nothing.
+
+**This is violated today.** `category_picker.go` and `movement_create_flow.go` put raw category and
+subcategory names into the callback value, and users create their own categories. There is no
+guard anywhere in the repo. `movement_delete_flow.go` and `ask_user_flow.go` show the correct
+shape: `strconv.Itoa(i)`, resolved back on the other side.
+
+## `runner` is exported on purpose
+
+`runner` (`runner.go`) is the narrow interface this package uses to reach the DB and the outbound
+bot, implemented by `messaging`'s `*controller`. Its **methods are exported although the interface
+is not**: an interface with unexported methods can only be implemented from inside its own package,
+and the implementation lives at the edge.
+
+Anything needing the LLM does *not* go through `runner` directly — `flow` never imports
+`orchestrator`. The two cases that need it (`StartAccountCreate`, `SuggestMergeTarget`) are runner
+methods that the edge forwards to `internal/settings`.
+
+## Money
+
+Anything touching amounts, signs or `account_id`: read the root `CLAUDE.md` (§ The accounting
+model) **before** editing — the write pipeline (`movement_write.go`) is where those invariants are
+enforced. Note the one deliberate exception, documented at the call site: the near-duplicate gate
+(`near_duplicate_offer.go`) writes **without** going through `movement.Normalize`, and is only safe
+because the candidate must share type, currency and account. Loosening that rule means putting the
+guard back.
+
+In tests `b` is nil. Use `r.SendText(...)`, which guards; a direct `b.SendMessage` panics.

@@ -69,11 +69,11 @@ types too: `toolSchema` for single-shot calls, `AgentTool` for loop calls.
 
 ## Copies that nothing keeps in sync
 
-The read-tool schemas in `agent_tools.go` are hand-copied **verbatim** from `messaging/query.go`'s
-`queryTools`, because messaging's executor parses those exact argument names (`queryToolArgs`).
+The read-tool schemas in `agent_tools.go` are hand-copied **verbatim** from `internal/query`'s
+`Tools`, because query's executor parses those exact argument names (`queryToolArgs`).
 
 A comment used to be the only thing enforcing it; since 2026-08-14 a test does —
-`TestQueryTools_ParametersMatchAgentTools` (`messaging/query_tools_parity_test.go`) compares
+`TestQueryTools_ParametersMatchAgentTools` (`query/query_tools_parity_test.go`) compares
 the two `Parameters` blocks and fails on any divergence. It exists because the failure mode is
 **silent and wide**: change one file and not the other, and the agent offers the model a
 parameter the executor no longer parses. `json.Unmarshal` drops the unknown field (nothing sets

@@ -170,10 +170,10 @@ if err != nil {
 }
 ```
 
-`handleGroqError` (`internal/controller/messaging/pending_jobs.go`) is context-aware: on the live webhook path it enqueues a `kindFreeText` job + acks (`ackForWait`, never silent); under drain replay (`isReplaying(ctx)`) it propagates the error so the drain re-gates `nextDrainAt` and leaves the job in place, instead of re-enqueuing it.
+`pendingjob.HandleGroqError` (`internal/pendingjob/enqueue.go`) is context-aware: on the live webhook path it enqueues a `KindFreeText` job + acks (`AckForWait`, never silent); under drain replay (`pendingjob.IsReplaying(ctx)`) it propagates the error so the drain re-gates `nextDrainAt` and leaves the job in place, instead of re-enqueuing it.
 
-**For a site that must preserve more than raw text** (today: `finishMovementUpdatePickFlow`'s `update_pick`, which needs the chosen candidate's IDs/rows, not just the message) — add a dedicated payload struct + a dedicated `enqueueXIfRateLimited` helper (see `updatePickPayload`/`enqueueUpdatePickIfRateLimited`), and a `case kindX:` branch in `job_drain.go`'s `replayJob` that unmarshals the payload and calls the same function the webhook would have called.
+**For a site that must preserve more than raw text** (today: `finishMovementUpdatePickFlow`'s `update_pick`, which needs the chosen candidate's IDs/rows, not just the message) — add a dedicated payload struct + a dedicated `enqueueXIfRateLimited` helper (see `pendingjob.UpdatePickPayload`/`EnqueueUpdatePick`), and a `case KindX:` branch in `pendingjob/drain.go`'s `replayJob` that unmarshals the payload and calls the same function the webhook would have called.
 
 **Never:**
-- Skip `handleGroqError`/the dedicated helper and fall straight to `msgSomethingBroke` on a Groq call — that's the anti-pattern this recipe exists to prevent (see [ARCHITECTURE.md](ARCHITECTURE.md#anti-patterns--what-not-to-do)).
-- Add the ordering-invariant guard (`enqueueBehindPending`) anywhere other than `handleConversationInput` — it must never be reachable from the drain's replay path (see [decisions.md](decisions.md)).
+- Skip `pendingjob.HandleGroqError`/the dedicated helper and fall straight to `msgSomethingBroke` on a Groq call — that's the anti-pattern this recipe exists to prevent (see [ARCHITECTURE.md](ARCHITECTURE.md#anti-patterns--what-not-to-do)).
+- Add the ordering-invariant guard (`pendingjob.EnqueueBehindPending`) anywhere other than `handleConversationInput` — it must never be reachable from the drain's replay path (see [decisions.md](decisions.md)).

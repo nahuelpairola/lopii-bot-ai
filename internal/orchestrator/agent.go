@@ -163,7 +163,7 @@ func (o *Orchestrator) Run(ctx context.Context, systemPrompt, userText string, h
 				// ninguna línea que diga por qué. Es lo que pasó el 2026-08-08 con
 				// las transferencias de dos piernas: el guard las rechazaba, el
 				// modelo corregía en la vuelta 1, y entre las dos se pasaban del TPM.
-				// Los sitios pre-loop ya loguean su rechazo (ver messaging.guardReason);
+				// Los sitios pre-loop ya loguean su rechazo (ver flow.GuardReason);
 				// este camino se lo había salteado al migrar.
 				slog.WarnContext(ctx, "agent tool failed",
 					"round", i, "tool", call.Function.Name, "err", execErr)
