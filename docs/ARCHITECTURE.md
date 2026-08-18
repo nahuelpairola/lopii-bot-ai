@@ -32,7 +32,7 @@ Each holds one thing only: **rules that compile fine and then behave wrong.** St
 | `internal/query` | one `search` filter, matched in SQL — not to be confused with `resolveCandidates`; the app re-attaches two facts after narration |
 | `internal/settings` | the only caller of three LLM calls; a 429 is answered before the wizard fallback, never after |
 | `internal/pendingjob` | the replay flag is set once at the call site; `EnqueueBehindPending` is webhook-only |
-| `internal/nudges` | dispatcher vs `nudge` storage; a tip's tap jumps the engine on purpose |
+| `internal/nudges` | dispatcher and its own storage; a tip's tap jumps the engine on purpose |
 
 For conventions and the condensed money-model warning, see the root `CLAUDE.md` (always loaded).
 

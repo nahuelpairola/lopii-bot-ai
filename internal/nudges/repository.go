@@ -1,4 +1,4 @@
-package nudge
+package nudges
 
 import (
 	"errors"

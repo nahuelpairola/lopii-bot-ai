@@ -24,7 +24,7 @@ import (
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/notifier"
-	"lopiibot.com/internal/nudge"
+	"lopiibot.com/internal/nudges"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
@@ -108,7 +108,7 @@ func InitServer(conf *config.Config) error {
 	accountRepo := account.NewRepository(conn)
 	movementRepo := movement.InitRepository(conn)
 	reminderRepo := reminder.NewRepository(conn)
-	nudgeRepo := nudge.NewRepository(conn)
+	nudgeRepo := nudges.NewRepository(conn)
 	jobsRepo := pendingjob.NewRepository(conn)
 	metricRepo := metric.InitRepository(conn)
 	chatHistoryRepo := chathistory.InitRepository(

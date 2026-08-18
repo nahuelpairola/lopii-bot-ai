@@ -4,13 +4,12 @@ The contextual-tip dispatcher: it decides *which* tip fires, *when*, and renders
 questions. **Use `codegraph_explore` for structure** — this file is only for what reading the code
 will not tell you.
 
-## `nudges` and `nudge` are two packages on purpose
+## `MarkSent` is once-ever, `MarkSentAgain` is not
 
-`internal/nudge` is storage only — the `user_nudges` table, once-ever and cooldown bookkeeping.
-This package is the dispatcher, and it reaches that storage **through the `Services` interface**,
-never by importing it. Keeping them apart is what lets the gates be tested without a DB.
-
-Don't merge them because the names look redundant.
+`MarkSent` no-ops on conflict — a tip only ever sends once. The one recurring tip (the question
+menu) needs its `sent_at` to actually advance so the cooldown re-arms, so it calls
+`MarkSentAgain` instead, which upserts. It is used as a method value
+(`mark = s.NudgesMarkSentAgain`) — grepping for a direct call will not find the wiring.
 
 ## A tip's tap must not be eaten by an open flow
 

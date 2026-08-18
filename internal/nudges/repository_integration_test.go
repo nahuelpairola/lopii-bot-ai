@@ -1,6 +1,6 @@
 //go:build integration
 
-package nudge
+package nudges
 
 import (
 	"fmt"
