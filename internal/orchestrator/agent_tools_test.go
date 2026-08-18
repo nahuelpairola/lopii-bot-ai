@@ -164,3 +164,46 @@ func TestCorrectMovement_WhenAnnouncesEveryFieldItAccepts(t *testing.T) {
 		}
 	}
 }
+
+// correct_movement lleva un LOCALIZADOR de fecha, y va en el schema y no en el
+// prompt: Groq valida los argumentos del lado del servidor, así que un campo que
+// el prompt pide y el schema no declara es un campo que el modelo no puede
+// mandar.
+//
+// date_from identifica DE CUÁL movimiento habla el mensaje ("el débito del 4 de
+// agosto"). No es un cambio de fecha: si lo que se corrige ES la fecha, eso va
+// en changes con field:date. La descripción tiene que decirlo, porque es la
+// única confusión posible entre los dos campos.
+func TestAgentTools_CorrectMovementTakesADateLocator(t *testing.T) {
+	var tool AgentTool
+	for _, tl := range AgentTools() {
+		if tl.Name == ToolCorrectMovement {
+			tool = tl
+		}
+	}
+	var schema struct {
+		Properties map[string]struct {
+			Description string `json:"description"`
+		} `json:"properties"`
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(tool.Parameters, &schema); err != nil {
+		t.Fatalf("schema ilegible: %v", err)
+	}
+	for _, field := range []string{"date_from", "date_to"} {
+		p, ok := schema.Properties[field]
+		if !ok {
+			t.Fatalf("%s no está declarado en el schema", field)
+		}
+		if p.Description == "" {
+			t.Errorf("%s sin descripción: el modelo no puede saber cuándo usarlo", field)
+		}
+	}
+	// Ninguno es obligatorio: la enorme mayoría de las correcciones no nombra
+	// fecha, y pedirla obligaría al modelo a inventar uno.
+	for _, r := range schema.Required {
+		if r == "date_from" || r == "date_to" {
+			t.Errorf("%s no puede ser required", r)
+		}
+	}
+}
