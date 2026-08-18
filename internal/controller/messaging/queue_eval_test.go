@@ -59,8 +59,14 @@ func queueEvalOrchestrator(t *testing.T) orchestrator.Config {
 	if model == "" {
 		model = "openai/gpt-oss-20b"
 	}
+	// AgentModel va sí o sí: el replay de un free_text entra por el loop
+	// unificado (orchestrator.Run), no por el camino de CREATE. Sin esto el
+	// request sale con model:"" y Groq contesta 404 «The model `` does not
+	// exist», o sea el eval fallaba sin llegar a probar el drenaje. Es el mismo
+	// descuido que fc300ab: la config del eval quedó atada al modelo que usaba
+	// el camino viejo.
 	return orchestrator.Config{
-		APIKey: key, BaseURL: baseURL, CreateModel: model, TimeoutSeconds: 30,
+		APIKey: key, BaseURL: baseURL, CreateModel: model, AgentModel: model, TimeoutSeconds: 30,
 	}
 }
 
