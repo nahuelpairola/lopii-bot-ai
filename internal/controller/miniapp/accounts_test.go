@@ -2,6 +2,7 @@ package miniapp
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,5 +240,61 @@ func TestTaxonomyNote(t *testing.T) {
 				t.Errorf("taxonomyNote = %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// leafKeepsDrill busca un link de la cabecera que cambie el rango Y conserve la
+// hoja. Ancla en p=6m porque ese preset sale sólo de WithPreset: los links de
+// vuelta y los de las filas llevan el período actual. Desescapa el & primero,
+// que templ escapa dentro de los atributos.
+func leafKeepsDrill(body, drill string) bool {
+	return bodyContains(strings.ReplaceAll(body, "&amp;", "&"), "p=6m"+drill)
+}
+
+func TestHandleAccountLeaf_PeriodChipsKeepTheAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	accountID := uint64(1)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{1: decimal.NewFromInt(50000)},
+		deltas:   map[uint64][]movement.MonthlyDelta{1: {{Month: "2026-07", Delta: decimal.NewFromInt(50000)}}},
+		movements: []movement.Movement{{
+			AccountID: &accountID, Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1000), Currency: currency.ARS,
+		}},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?account=1&p=month&m=2026-07"))
+
+	if !leafKeepsDrill(w.Body.String(), "&account=1") {
+		t.Error("cambiar el rango dentro de la hoja pierde account=1 y vuelve al índice")
+	}
+}
+
+func TestHandleAccountLeaf_HidesTheCurrencyChips(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	accountID := uint64(1)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{1: decimal.NewFromInt(50000)},
+		deltas:   map[uint64][]movement.MonthlyDelta{1: {{Month: "2026-07", Delta: decimal.NewFromInt(50000)}}},
+		movements: []movement.Movement{{
+			AccountID: &accountID, Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1000), Currency: currency.ARS,
+		}},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?account=1&p=month&m=2026-07"))
+
+	// Una cuenta tiene UNA moneda: el chip USD dejaría la hoja de una cuenta en
+	// ARS con el período en USD, que es peor que perder el drill.
+	if bodyContains(strings.ReplaceAll(w.Body.String(), "&amp;", "&"), "c=USD") {
+		t.Error("la hoja de una cuenta no debe ofrecer cambiar de moneda")
 	}
 }

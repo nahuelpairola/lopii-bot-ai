@@ -67,6 +67,30 @@ tool. They differ in completion ceiling (1500 vs 1024), in whether content along
 **Fixing a bug in one and porting it to the other by habit is a live risk.** Same shape, two
 types too: `toolSchema` for single-shot calls, `AgentTool` for loop calls.
 
+## Door 2 is incomplete by construction, and its prompt must say so
+
+`AnswerQuery` has two exits. **Door 1** is the healthy one: the model stops requesting tools
+and its own content is the answer. **Door 2** is the forced narration after the round cap ran
+out — which means it is reached *only* when the model still wanted more tools. Its data is
+therefore incomplete **as a matter of control flow**, and Go knows it without parsing the
+question or guessing which entity is missing.
+
+Say it, or the model fills the hole by **denying**. On 2026-08-14 it answered *"No hay
+registros de Cuota préstamo en agosto"* over $80.000 of real spending, having queried two of
+the three things it was asked about.
+
+The root cause was not a missing instruction but an ambiguous one, in the *query system
+prompt* (`messaging/query.go`): it said to mark anything "without data" as `sin registros`,
+and "without data" conflates *queried and empty* with *never queried*. The model took the wide
+reading and quoted the phrase verbatim. The rule now is the same one that already governed
+amounts — a fact about the world needs a tool behind it — extended to **absences**.
+
+**The guarantee lives in the prompt, not in Go.** That was a deliberate choice over appending
+a fixed sentence from code; the control is the `multi_entidad_no_niega_lo_que_no_consulto`
+eval, which measures compliance instead of assuming it. Its blocklist of denial phrases is
+inherently incomplete — the first version passed green while the model denied three entities
+using a phrasing the list did not have.
+
 ## Copies that nothing keeps in sync
 
 The read-tool schemas in `agent_tools.go` are hand-copied **verbatim** from `messaging/query.go`'s

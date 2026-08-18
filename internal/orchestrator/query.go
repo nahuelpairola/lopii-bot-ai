@@ -51,21 +51,32 @@ type QueryTurn struct {
 }
 
 // maxQueryIterations caps how many tool rounds the loop runs before giving up.
-// Una consulta sana es 1 ronda de tools + 1 narración.
+// Una consulta sana es 1 ronda de herramientas + 1 narración, y sale por la puerta 1.
 //
-// El número NO es libre: es lo que decide cuántas llamadas a Groq puede hacer una
-// consulta, y cada llamada reserva contra el TPM (ver el modelo de costo en
-// client_loop.go). Medido el 2026-08-10 en producción, con prompts de 1.173 a 1.370
-// y maxQueryCompletionTokens en 1.024 → ~2.300 reservados por llamada, TPM 8.000:
+// Estuvo en 2 desde el 2026-08-10 y subió a 3 el 2026-08-14. La aritmética que
+// justificaba el 2 —"cap 3 son 4 llamadas contra un TPM de 8.000, así que la última
+// 429ea siempre"— venció en tres puntos, los tres medidos:
 //
-//	cap 2 → 3 llamadas = ~6.850. Entra, y deja lugar para el router del mensaje siguiente (~670).
-//	cap 3 → 4 llamadas = ~9.200 > 8.000: la última llamada 429ea SIEMPRE, con el bucket lleno.
+//   - La narración forzada SE FUE del bucket: usa narrationChain() (llama-3.3-70b) con
+//     techo 400 y un prompt limpio, 788 tokens medidos. Con cap 3 el bucket de
+//     gpt-oss-120b ve 3 llamadas, no 4.
+//   - El router que reservaba ~670 para el mensaje siguiente lo borró la etapa 5.
+//   - Un 429 dejó de ser fatal: roundWithFallback camina la cadena. El 2026-08-14, 20
+//     de 52 llamadas rebotaron y no se perdió ninguna consulta.
 //
-// Se bajó de 3 a 2 tras el incidente del 2026-08-10, donde cuatro consultas seguidas
-// murieron con 429 sin que hubiera otro tráfico en cuatro horas. No le saca ninguna
-// ronda a ninguna consulta que haya funcionado: en 14 días, ninguna consulta exitosa
-// pasó de 3 llamadas. La 4ª solo existió para fallar.
-const maxQueryIterations = 2
+// Presupuesto con cap 3 contra el bucket de 8.000, caso promedio (prompt de primera
+// ronda 1.209 y +320 por ronda, medidos sobre llm_calls):
+//
+//	(1.209+640) + (1.529+1.024) + (1.849+1.024) = 7.275 → entra con ~9% de aire.
+//
+// En p95 (prompt 2.409) se pasa, y se acepta: la tercera ronda es rara —el prompt pide
+// agrupar las herramientas en una sola ronda— y pasarse cuesta un salto de modelo, no
+// la respuesta.
+//
+// El 21% de los turnos agotaba el cap de 2 (11 de 53 medidos), y en esa puerta vive el
+// bug que este cambio acompaña: la narración forzada afirmaba ausencia sobre lo que
+// nunca se consultó.
+const maxQueryIterations = 3
 
 var ErrQueryMaxIterations = errors.New("orchestrator: query loop exceeded max iterations")
 
@@ -185,18 +196,22 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	var toolResults []string
 
 	for i := 0; i < maxQueryIterations; i++ {
-		// Force a tool call on the first round: los modelos flojos a veces
-		// esquivan ("no puedo darte una respuesta exacta") sin llamar ninguna
-		// tool. Lo midió llama-3.1-8b-instant, que Groq da de baja el
-		// 2026-08-16 y este repo ya no usa en ninguna config; la regla queda
-		// porque aplica a cualquier suplente barato que entre por la cadena.
-		// "required" guarantees the loop gathers real
-		// data before it is allowed to narrate; later rounds go back to "auto".
-		choice := "auto"
+		// La ronda 0 va forzada a llamar una herramienta Y con un techo de completion
+		// más chico: las dos cosas por la misma razón, que ahí no puede haber prosa.
+		//
+		// "required" porque los modelos flojos a veces esquivan ("no puedo darte una
+		// respuesta exacta") sin llamar ninguna tool — lo midió llama-3.1-8b-instant,
+		// que Groq da de baja el 2026-08-16 y este repo ya no usa, pero la regla aplica
+		// a cualquier suplente barato que entre por la cadena. Garantiza que el loop
+		// junte datos reales antes de poder narrar.
+		//
+		// El techo chico se sigue de lo mismo: una ronda que no puede narrar no tiene
+		// respuesta que truncar. Las rondas siguientes vuelven a "auto" y a su techo.
+		choice, capTokens := "auto", maxQueryCompletionTokens
 		if i == 0 {
-			choice = "required"
+			choice, capTokens = "required", maxFirstRoundCompletionTokens
 		}
-		assistant, err := o.roundWithFallback(ctx, callTypeQuery, o.queryChain(), messages, toolDefs, choice, maxQueryCompletionTokens)
+		assistant, err := o.roundWithFallback(ctx, callTypeQuery, o.queryChain(), messages, toolDefs, choice, capTokens)
 		if err != nil {
 			return "", fmt.Errorf("orchestrator: answer query: %w", err)
 		}
@@ -247,7 +262,19 @@ func (o *Orchestrator) AnswerQuery(ctx context.Context, systemPrompt, userText s
 	finalMessages := []loopMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userText},
-		{Role: "user", Content: "Datos obtenidos de las herramientas:\n" + strings.Join(toolResults, "\n") + "\n\nRedactá la respuesta final para el usuario con estos datos."},
+		// Que los datos están INCOMPLETOS no es una precaución: es un hecho que Go sabe
+		// con certeza. A este punto se llega SÓLO si el cap de rondas se agotó con el
+		// modelo todavía pidiendo herramientas, o sea que quedó algo sin averiguar. No
+		// hace falta parsear la pregunta ni adivinar qué faltó.
+		//
+		// Sin decirlo, el modelo rellena el hueco NEGANDO: el 2026-08-14 contestó "No
+		// hay registros de Cuota préstamo en agosto" sobre $80.000 reales, habiendo
+		// consultado dos de las tres cosas que le preguntaron.
+		{Role: "user", Content: "Datos que se juntaron:\n" + strings.Join(toolResults, "\n") +
+			"\n\nOJO: están INCOMPLETOS, quedaron cosas sin averiguar. Redactá la respuesta final " +
+			"para el usuario usando SÓLO lo que está acá arriba. De lo que te hayan preguntado y no " +
+			"aparezca en esta lista, decí que no llegaste a averiguarlo: no afirmes que no existe, " +
+			"que no hay, ni que dio cero."},
 	}
 	final, err := o.roundWithFallback(ctx, callTypeQuery, o.narrationChain(), finalMessages, nil, "none", maxNarrationCompletionTokens)
 	if err != nil {

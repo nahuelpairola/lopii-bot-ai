@@ -9,9 +9,11 @@ const (
 	// y pico, todos a un toque de apagar la función en silencio. Desactivarlo
 	// es algo que se hace una vez en la vida; el hub de recordatorios ya lo
 	// hace, y encima muestra el estado real y deja volver a activarlo.
-	msgNote = "\n—\n📩 Te mando este resumen cada lunes porque lo activaste. No es tu " +
-		"recordatorio diario — son cosas distintas. Si no te suma, escribime " +
-		"«no quiero más el resumen semanal» (el recordatorio diario queda intacto)."
+	//
+	// El paréntesis del recordatorio diario se queda aunque la nota se haya
+	// acortado: sin él, "cortalo" se lee como cortar TODO lo que manda el bot.
+	msgNote = "\n<blockquote>📩 Va cada lunes (no es tu recordatorio diario). Para cortarlo, " +
+		"escribime «no quiero más el resumen semanal».</blockquote>"
 
 	msgEmptyWeek = "📊 Esta semana no registraste movimientos. ¿Arrancamos? 💪" + msgNote
 )

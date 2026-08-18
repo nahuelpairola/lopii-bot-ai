@@ -367,3 +367,27 @@ func executorWithPairs(t *testing.T, userText string, pairs []orchestrator.Pair)
 	}
 	return newAgentExecutor(context.Background(), c, 1, userText, taxonomyForTest())
 }
+
+// La fecha que dice el usuario tiene que LLEGAR a la búsqueda. El 2026-08-15 el
+// mensaje decía "del 04 de agosto", el modelo la tenía, y park() llamaba a
+// resolveCandidates con dos strings vacíos: la rama de fecha existía y era
+// código muerto. Sin esto, el movimiento del 04/08 —cargado el 08/08— quedaba
+// fuera de la ventana por created_at y el picker ofrecía cualquier otra cosa.
+func TestAgentExecutor_CorrectPassesTheDateLocatorToTheSearch(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{}
+	e := newAgentExecutor(context.Background(), &controller{movements: fake}, 3,
+		"el débito de tarjeta del 04 de agosto eran 131306,49", nil)
+
+	executeDone(t, e, orchestrator.ToolCorrectMovement,
+		`{"change":"eran 131306,49","date_from":"2026-08-04"}`)
+
+	if fake.recencyCalled {
+		t.Fatal("con date_from no se busca por created_at: la fecha nunca llegó")
+	}
+	if want := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC); !fake.capturedSince.Equal(want) {
+		t.Errorf("since = %v, want %v", fake.capturedSince, want)
+	}
+	if fake.capturedUntil == nil {
+		t.Fatal("until = nil: la ventana quedó abierta hasta hoy")
+	}
+}

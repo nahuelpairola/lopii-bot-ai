@@ -70,9 +70,19 @@ Consequences worth knowing before touching either:
   That string never reaches the screen raw.
 - The account leaf parses **its own `Period`** (`AllPresets`/`PresetMonth`). The accounts
   index uses `TrendPresets`, which omits "Mes" on purpose; a statement is read by month.
-- Period chips inside a leaf drop the `?account=`/`?subcategory=` param and land back on the
-  index, because `p.Query()` carries no extra params. `SubcategoryDrill` has always behaved
-  this way. Fixing it means changing `Period`, which all four views share.
+- **A leaf must call `p.WithDrill(suffix)` or its own period controls throw the user out.**
+  `periodQuery` encodes `p`/`m`/`c` and nothing else, so every header link — both arrows,
+  every preset chip, both currency chips — used to rebuild a bare index URL and the
+  `?account=`/`?category=`/`?subcategory=` param vanished. `WithDrill` appends the suffix to
+  those links only; `Query()` stays bare on purpose, because that is the link *back out*
+  (`BackQuery`, and the row `Href`s one level up). Two more things it will not do for you:
+  it is **not composable** — the third level builds `&category=X&subcategory=Y` in one
+  string, since a second call would repeat the first suffix inside `PrevQuery`/`NextQuery` —
+  and it is called only **after** the drill target is validated, so a link never echoes an
+  id that turned out not to belong to the user.
+- The account leaf also sets `Period.HideCurrency`. An account holds one currency, so the
+  chip would render an ARS leaf against a USD period — worse than the bug above. The
+  subcategory leaf keeps the chips: a category legitimately spans both.
 
 ## Two smaller traps
 

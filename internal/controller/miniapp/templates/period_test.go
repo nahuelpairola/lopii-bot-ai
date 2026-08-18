@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -102,5 +103,30 @@ func TestPeriod_LinkBuildersAreAbsolute(t *testing.T) {
 	}
 	if !p.IsPreset(Preset6M) || p.IsPreset(Preset3M) {
 		t.Error("IsPreset debe marcar solo el preset activo")
+	}
+}
+
+func TestWithDrill_HeaderLinksKeepTheLeaf(t *testing.T) {
+	// Ancla en junio con julio corriente: así el período tiene flecha para los
+	// dos lados y se prueban las cuatro salidas de la cabecera.
+	p := NewPeriod(RouteAccounts, PresetMonth, art(2026, time.June), art(2026, time.July), currency.ARS, AllPresets).
+		WithDrill("&account=12")
+
+	links := map[string]string{
+		"PrevQuery":    p.PrevQuery,
+		"NextQuery":    p.NextQuery,
+		"WithPreset":   p.WithPreset(Preset6M),
+		"WithCurrency": p.WithCurrency(currency.USD),
+	}
+	for name, link := range links {
+		if !strings.Contains(link, "&account=12") {
+			t.Errorf("%s = %q, le falta el drill: cambiar el rango sale de la hoja", name, link)
+		}
+	}
+
+	// Query() es el link de VUELTA al índice: si arrastrara el drill, "Volver a
+	// Cuentas" te dejaría en la misma hoja.
+	if strings.Contains(p.Query(), "account=") {
+		t.Errorf("Query() = %q, no debería llevar el drill", p.Query())
 	}
 }

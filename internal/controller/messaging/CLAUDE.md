@@ -73,6 +73,15 @@ both correction paths share it. Do not add a second. Textual relevance is decide
 nothing matches textually but the user has just recorded something, it returns **exactly one**
 candidate — the recent entry — rather than a picker.
 
+It has **two windows, and picking the wrong one is the whole bug class.** With no date it
+searches by `created_at` ("what did I just enter"); with a date it searches by *business*
+date. A correction naming a date the user entered days later — "el débito del 4 de agosto",
+loaded on the 8th — is invisible to the first window and obvious to the second, which is why
+`correct_movement` carries `date_from`/`date_to` as a **locator** (they never change the
+movement; a date correction travels in `changes` with `field: "date"`). One lone date closes
+the window on *both* sides: an open `until` does not narrow anything, and a lone `date_to`
+used to invert the window outright.
+
 ## The QUERY tools have ONE text filter, and it is not the only text matcher here
 
 `sum_movements` and `list_movements` take a single `search` (since 2026-08-14; it replaced
@@ -100,6 +109,17 @@ Three more things that are not obvious from the code:
   apart. The reserved-category probe is not optional: `apply()` hides `Sistema` and
   `PENDING_REVIEW`, so without it a search for "transferencia" — 12 real movements — would be
   reported as not existing at all, which is worse than the mute zero it replaced.
+- **`handleQuery` post-processes the model's answer, and that is deliberate.** Two app-owned
+  facts are re-attached after narration: the reserved-category verdict
+  (`reinstateAppVerdict` — the model once inverted it, telling the user nothing matched while
+  the app had said the opposite) and the consulted date window
+  (`appendConsultedRange`). Both exist because the model reliably *drops or contradicts* a fact
+  the app established with certainty. Do not move either into the prompt: a prompt rule is a
+  request, and these two already failed as requests in production.
+- **The app sums grouped rows, the model never does** (`groupedTotalLine`). `group_by=type` is
+  the one grouping with no total line: `CategorySum.Total` is `SUM(ABS(amount))`, so adding the
+  expense row to the income row yields a number that is neither, and the whole point of the line
+  is that the model quotes it without checking.
 
 ## The 429 queue has an ordering invariant
 

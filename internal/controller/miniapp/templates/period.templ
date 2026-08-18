@@ -42,20 +42,22 @@ templ PeriodHeader(p Period) {
 					}
 				>{ PresetLabel(preset) }</a>
 			}
-			<span class="chips-sep"></span>
-			for _, cur := range currency.SupportedCurrencies {
-				<a
-					role="button"
-					class="outline chip"
-					href={ p.WithCurrency(cur) }
-					hx-get={ p.WithCurrency(cur) }
-					hx-target="#content"
-					hx-push-url="true"
-					hx-indicator="#content"
-					if p.Currency == cur {
-						aria-current="page"
-					}
-				>{ cur.String() }</a>
+			if !p.HideCurrency {
+				<span class="chips-sep"></span>
+				for _, cur := range currency.SupportedCurrencies {
+					<a
+						role="button"
+						class="outline chip"
+						href={ p.WithCurrency(cur) }
+						hx-get={ p.WithCurrency(cur) }
+						hx-target="#content"
+						hx-push-url="true"
+						hx-indicator="#content"
+						if p.Currency == cur {
+							aria-current="page"
+						}
+					>{ cur.String() }</a>
+				}
 			}
 		</div>
 	</header>
