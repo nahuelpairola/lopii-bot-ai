@@ -124,7 +124,17 @@ const (
 
 	// El término existe en los datos del usuario, pero no en el rango pedido.
 	// Es una AUSENCIA VERIFICADA: acá el modelo sí puede decir que no gastó.
-	msgSearchOutOfRangeFmt = "sin movimientos con «%s» entre %s y %s. Sí hay con ese texto en otras fechas."
+	msgSearchOutOfRangeFmt = "sin movimientos con «%s» entre %s y %s. " + msgOutOfRangeMark
+
+	// msgOutOfRangeMark identifica el mensaje anterior a la vuelta, para reponer
+	// el rango que el modelo casi siempre tira. Const separada por lo mismo que
+	// msgOnlyInternalMark: se usa para armarlo y para reconocerlo.
+	msgOutOfRangeMark = "Sí hay con ese texto en otras fechas."
+
+	// msgConsultedRangeFmt es la nota al pie que la app le agrega a una respuesta
+	// que salió vacía. No la escribe el modelo: es la ventana que la app CONSULTÓ
+	// de verdad, y es lo único que delata un año mal resuelto.
+	msgConsultedRangeFmt = "(consulté entre %s y %s)"
 
 	// El término sólo matchea movimientos de categorías reservadas, que apply()
 	// esconde de todo total de gastos e ingresos. Sin este mensaje la app diría
@@ -214,6 +224,49 @@ func (c *controller) describeEmptyResult(q movement.MovementQuery, args queryToo
 //
 // Se pega SÓLO si la respuesta no habla ya de movimientos internos, para no repetir lo
 // que el modelo sí supo decir.
+// emptyResultNamesARange dice si un resultado del ejecutor es uno de los vacíos
+// cuyo rango vale la pena reponer.
+//
+// Son dos de los cuatro desenlaces, los que hablan de una VENTANA: la app miró un
+// período concreto y no encontró nada, así que el período es el dato sospechoso.
+// Los otros dos son hechos sobre el TÉRMINO —"sólo aparece en movimientos
+// internos", "no encontré nada que diga X"—, verdaderos en cualquier rango, y
+// reponerles una ventana sólo agregaría ruido.
+func emptyResultNamesARange(out string) bool {
+	return strings.Contains(out, msgQueryNoRowsInRange) || strings.Contains(out, msgOutOfRangeMark)
+}
+
+// appendConsultedRange le pega a la respuesta la ventana que la app consultó,
+// cuando la consulta volvió vacía.
+//
+// Una consulta que sale vacía porque el modelo resolvió mal el año es INVISIBLE:
+// el ejecutor dice "sin movimientos con «Supermercado» entre 2024-08-01 y
+// 2024-08-31", el modelo redacta "no gastaste en Supermercado", y el rango —el
+// único dato que delata el error— no llega nunca al usuario. Esto no previene la
+// resolución equivocada; la hace visible en el acto.
+//
+// Va como nota al pie propia de la app y no reponiendo el mensaje crudo del
+// ejecutor, por dos razones: el mensaje crudo trae las fechas en ISO, que el
+// prompt le prohíbe mostrar al modelo y por lo tanto la app tampoco puede colar
+// por atrás; y una línea corta no compite con la respuesta que el usuario pidió.
+func appendConsultedRange(answer, from, to string) string {
+	if from == "" || to == "" || strings.Contains(answer, from) {
+		return answer
+	}
+	return strings.TrimSpace(answer) + "\n" + fmt.Sprintf(msgConsultedRangeFmt, from, to)
+}
+
+// friendlyDate pasa una fecha ISO al formato argentino. Lo que no parsea vuelve
+// tal cual: el rango es informativo, y nunca vale romper una respuesta que ya
+// está lista por una fecha rara.
+func friendlyDate(iso string) string {
+	t, err := time.Parse("2006-01-02", iso)
+	if err != nil {
+		return iso
+	}
+	return t.Format("02/01/2006")
+}
+
 func reinstateAppVerdict(answer, verdict string) string {
 	if verdict == "" || strings.Contains(strings.ToLower(answer), "internos") {
 		return answer
@@ -234,12 +287,21 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 	// El wrapper mira lo que DEVOLVIÓ el ejecutor, no lo que el modelo hizo con eso:
 	// es la única forma de enterarse de que la app emitió un veredicto propio sin
 	// cambiarle la firma a buildQueryExecutor, que usan quince tests.
-	var appVerdict string
+	var appVerdict, rangeFrom, rangeTo string
 	inner := c.buildQueryExecutor(userID)
 	execute := func(name string, raw json.RawMessage) (string, error) {
 		out, err := inner(name, raw)
 		if strings.Contains(out, msgOnlyInternalMark) {
 			appVerdict = out
+		}
+		// El rango sale de los argumentos con los que el modelo LLAMÓ, que es
+		// justamente el dato en discusión: si resolvió mal el año, acá está el año
+		// equivocado, y reponerlo es lo que lo vuelve visible.
+		if emptyResultNamesARange(out) {
+			var args queryToolArgs
+			if json.Unmarshal(raw, &args) == nil {
+				rangeFrom, rangeTo = friendlyDate(args.From), friendlyDate(args.To)
+			}
 		}
 		return out, err
 	}
@@ -256,6 +318,7 @@ func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, 
 		return false, err
 	}
 	answer = reinstateAppVerdict(answer, appVerdict)
+	answer = appendConsultedRange(answer, rangeFrom, rangeTo)
 	c.sendText(ctx, b, chatID, answer)
 	// Best-effort append: a failure here never fails the answer the user already got.
 	_ = c.chatHistory.Append(userID, text, answer)

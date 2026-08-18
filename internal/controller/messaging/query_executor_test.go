@@ -755,3 +755,71 @@ func TestExec_SumMovements_SingleGroupedRowHasNoTotal(t *testing.T) {
 		t.Errorf("una sola fila no lleva total: %s", out)
 	}
 }
+
+// El bug: una consulta vacía por resolver mal el año es INVISIBLE. El ejecutor
+// dice "sin movimientos con «Supermercado» entre 2024-08-01 y 2024-08-31", el
+// modelo redacta "no gastaste en Supermercado" y el rango —el único dato que
+// delata el error— no llega nunca al usuario. Reponerlo no previene la
+// resolución equivocada: la hace visible en el acto.
+func TestAppendConsultedRange_AddsTheWindowTheAppLookedIn(t *testing.T) {
+	got := appendConsultedRange("No encontré gastos en Supermercado.", "01/08/2024", "31/08/2024")
+	if !strings.Contains(got, "01/08/2024") || !strings.Contains(got, "31/08/2024") {
+		t.Errorf("el rango consultado no volvió a la respuesta: %q", got)
+	}
+	if !strings.Contains(got, "No encontré gastos en Supermercado.") {
+		t.Errorf("se comió la respuesta del modelo: %q", got)
+	}
+}
+
+// Si el modelo sí nombró el rango, repetirlo es ruido.
+func TestAppendConsultedRange_SkipsWhenTheAnswerAlreadyNamesIt(t *testing.T) {
+	ya := "Entre 01/08/2024 y 31/08/2024 no hubo gastos en Supermercado."
+	if got := appendConsultedRange(ya, "01/08/2024", "31/08/2024"); got != ya {
+		t.Errorf("repitió un rango que la respuesta ya traía: %q", got)
+	}
+}
+
+// Sin rango capturado no se toca la respuesta: la mayoría de las consultas no
+// terminan vacías y no tienen nada que reponer.
+func TestAppendConsultedRange_SkipsWhenThereIsNoRange(t *testing.T) {
+	if got := appendConsultedRange("total: $500", "", ""); got != "total: $500" {
+		t.Errorf("tocó una respuesta sin rango: %q", got)
+	}
+}
+
+// Las fechas se reponen en formato argentino, no ISO. El prompt le prohíbe al
+// modelo mostrar 2026-07-01, así que la app tampoco puede colarlo por atrás.
+func TestFriendlyDate_RendersArgentineFormat(t *testing.T) {
+	if got := friendlyDate("2024-08-01"); got != "01/08/2024" {
+		t.Errorf("friendlyDate = %q", got)
+	}
+	// Lo que no parsea vuelve tal cual: el rango es informativo y nunca vale
+	// romper una respuesta que ya está lista por una fecha rara.
+	if got := friendlyDate("no es fecha"); got != "no es fecha" {
+		t.Errorf("friendlyDate no respetó lo impareseable: %q", got)
+	}
+}
+
+// Qué resultados vacíos merecen que se reponga el rango. Los dos que sí son los
+// que hablan de una VENTANA: la app miró un período concreto y no encontró nada,
+// y ahí el período es el dato sospechoso. Los otros dos desenlaces no: "sólo
+// aparece en movimientos internos" y "no encontré nada que diga X" son hechos
+// sobre el término, verdaderos en cualquier rango.
+func TestEmptyResultNamesARange(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		out  string
+		want bool
+	}{
+		{"sin filas en el rango", msgQueryNoRowsInRange, true},
+		{"el término existe fuera del rango", fmt.Sprintf(msgSearchOutOfRangeFmt, "Super", "2024-08-01", "2024-08-31"), true},
+		{"sólo movimientos internos", fmt.Sprintf(msgSearchOnlyInternalFmt, "transferencia"), false},
+		{"un resultado con datos", "Supermercado: 5000.00 ARS", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := emptyResultNamesARange(tc.out); got != tc.want {
+				t.Errorf("emptyResultNamesARange(%q) = %v, want %v", tc.out, got, tc.want)
+			}
+		})
+	}
+}
