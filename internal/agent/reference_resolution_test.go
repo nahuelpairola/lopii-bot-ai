@@ -485,6 +485,30 @@ func TestResolveCandidates_LoneDateFromAnchorsASingleDay(t *testing.T) {
 	}
 }
 
+// Un período nombrado ("la semana pasada") es un TRAMO: con los dos extremos la
+// ventana los cubre enteros. Con date_from solo colapsa a un día — ver
+// TestResolveCandidates_LoneDateFromAnchorsASingleDay.
+func TestResolveCandidates_DateRangeCoversTheWholeSpan(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{}
+	svc := &fakeServices{movements: fake}
+
+	if _, err := resolveCandidates(svc, 3, "la compra de la semana pasada ponela en otra categoría", "2026-08-10", "2026-08-16"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.recencyCalled {
+		t.Fatal("con fecha no se usa la ventana de created_at")
+	}
+	if want := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC); !fake.capturedSince.Equal(want) {
+		t.Errorf("since = %v, want %v", fake.capturedSince, want)
+	}
+	if fake.capturedUntil == nil {
+		t.Fatal("until = nil: la semana quedó abierta")
+	}
+	if want := time.Date(2026, 8, 17, 0, 0, 0, 0, time.UTC); !fake.capturedUntil.Equal(want) {
+		t.Errorf("until = %v, want %v (el tramo se colapsó)", *fake.capturedUntil, want)
+	}
+}
+
 // El espejo. Con sólo dateTo, since se quedaba en el arranque de HOY y until en
 // una fecha pasada: la ventana salía invertida y no podía devolver nada.
 func TestResolveCandidates_LoneDateToAnchorsSymmetrically(t *testing.T) {
