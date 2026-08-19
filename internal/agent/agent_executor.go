@@ -425,6 +425,10 @@ func (e *agentExecutor) park(req parkRequest) (string, error) {
 		// ("mové los movimientos del lote a proyecto hogar"): con el picker el
 		// usuario elegía uno y los otros dos se quedaban donde estaban.
 	default:
+		// Si el primero no matchea, ninguno matchea: la lista es el fallback.
+		if !matchesMessage(groups[0], e.userText) {
+			question = flow.MsgPickRecentFallback
+		}
 		action.Questions = []pendingaction.OpenQuestion{{
 			Key: questionKeyCandidate, Prompt: question, Options: options,
 		}}

@@ -98,6 +98,10 @@ func MsgPickUpdateCandidate(conversation.Data) string {
 	return "Encontré varios movimientos parecidos. ¿Cuál es?"
 }
 
+// Cartel del picker cuando la lista salió del fallback por recencia y no de un
+// match textual.
+const MsgPickRecentFallback = "No encontré nada que se parezca a lo que decís. ¿Es alguno de estos?"
+
 func MsgConfirmUpdateDiff(data conversation.Data) string {
 	before := movement.DecodeMovementRows(conversation.Data{conversation.KeyMovements: data[conversation.KeyBeforeMovements]})
 
