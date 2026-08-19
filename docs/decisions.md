@@ -2,7 +2,7 @@
 
 > Why the code is shaped the way it is: the measurements, the incidents and the rejected
 > alternatives behind each choice. **This is the long form.** A code comment states the
-> conclusion and points here; a package `CLAUDE.md` states the trap. The rationale itself lives
+> conclusion and points here; a package `AGENTS.md` states the trap. The rationale itself lives
 > here, once.
 >
 > For what exists, ask `codegraph_explore` - the feature inventory that used to live here was

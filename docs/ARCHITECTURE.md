@@ -12,11 +12,16 @@
 - **[dev-setup.md](dev-setup.md)** — local Postgres, config, run, migrations.
 - **[grafana/README.md](grafana/README.md)** — admin dashboard: how to import it, how to read it, and the manual verification checklist.
 
-## Per-package `CLAUDE.md`
+## Per-package `AGENTS.md`
 
-Fourteen packages carry their own file. They are **not** loaded at session start — Claude Code
-pulls one in only when it reads a file in that subtree, and `codegraph_explore` does not count as
-reading, so on most tasks you have to open it deliberately.
+Fourteen packages carry their own file, plus a one-line `CLAUDE.md` next to it that imports it
+(Claude Code reads `CLAUDE.md`, not `AGENTS.md`; every other agent reads the nearest `AGENTS.md`).
+The content lives in the `AGENTS.md` and only there — the `CLAUDE.md` is a pointer, never a copy.
+
+They are **not** loaded at session start, and on this repo you should assume they are not loaded
+at all: the automatic path fires only when an agent reads a file in that subtree, and
+`codegraph_explore` — the tool this repo tells you to reach for first — does not count as reading.
+Open the file deliberately.
 
 Each holds one thing only: **rules that compile fine and then behave wrong.** Structure is
 `codegraph_explore`'s job, not theirs.
@@ -63,7 +68,7 @@ For conventions and the money model, see [AGENTS.md](../AGENTS.md) (loaded every
   | An app-built movement against a known account (balance adjustment) | `movement.Normalize` too | Cheap, and it validates the flow's notion of the account against the DB's. |
   | An account's **opening** movement | Take the `*account.Account` and read both `AccountID` and `Currency` off it | The mismatch becomes unrepresentable — strictly better than checking for it. **Do not route these through `Normalize`**: an opening is a lone leg typed `Transfer` (so it stays out of cash-flow aggregates) with no counterparty and no `transaction_id`, and the guard rejects any transfer that isn't a distinct 2-leg group — it would reject *every* opening, at any amount. Its amount may also legitimately be `0`. |
 - **Never call an orchestrator method from a webhook site without routing its error through `pendingjob.HandleGroqError`.** A terminal Groq 429 (`orchestrator.RateLimitedError`) must be enqueued into `pending_llm_jobs` and acked, not shown as `msgSomethingBroke` — a site that skips `pendingjob.HandleGroqError` silently drops the user's message on rate limit instead of queuing it for the drain worker (`internal/pendingjob/enqueue.go`/`drain.go`). See [recipes.md](recipes.md#recipe-5-wire-a-new-groq-calling-site-into-the-pending-jobs-queue).
-- **Never read `usd_quotes` with `date = D`, and never treat `monthly_cpi.value` as an index level.** Both series come from public sources with shapes that produce a plausible wrong number rather than an error — irregular gaps, an inverted spread, a percentage that is not a level. The four traps and how to read around them are in [`internal/quote/CLAUDE.md`](../internal/quote/CLAUDE.md); read it before writing the first reader of either table.
+- **Never read `usd_quotes` with `date = D`, and never treat `monthly_cpi.value` as an index level.** Both series come from public sources with shapes that produce a plausible wrong number rather than an error — irregular gaps, an inverted spread, a percentage that is not a level. The four traps and how to read around them are in [`internal/quote/AGENTS.md`](../internal/quote/AGENTS.md); read it before writing the first reader of either table.
 - **Never type an optional (non-`required`) tool-schema field as a bare scalar.** Groq validates the model's tool-call against the schema we send; the model emits `null` for an absent optional, and a bare `"string"`/`"integer"` 400s on that null (a real prod failure: an optional string field emitted as `null` on "pago tarjeta"). Every property not in the schema's `required` list must be a null-union (`["string", "null"]`). `internal/orchestrator/schema_test.go` enforces this across all tool schemas — see [recipes.md Recipe 3](recipes.md#recipe-3-add-an-llm-intent) before adding or promoting a field.
 - **Never gate an admin route with `middleware.RequireAdmin`.** It authenticates nothing: it sets `user_id = 1` in the Gin context and calls `Next()`, so any route behind it is open to anyone who knows the URL. A real admin surface goes on the Mini App's `authed` group behind `requireAdmin()`, which reads the `is_admin` flag `authInitData` stamped from the users row. `/app/admin` is the worked example; the reset endpoint's use of `RequireAdmin` is debt, not a pattern.
 
@@ -81,7 +86,7 @@ For conventions and the money model, see [AGENTS.md](../AGENTS.md) (loaded every
 | A new recipe (flow type, step type, intent) | `docs/recipes.md` |
 | A new business rule | `docs/business-rules.md` |
 | A new dependency added to `go.mod` | `AGENTS.md` → Stack |
-| A rule that compiles fine and then behaves wrong | that package's `CLAUDE.md` — **not** here |
+| A rule that compiles fine and then behaves wrong | that package's `AGENTS.md` — **not** here |
 | A value reused across files or packages | define a constant scoped per the no-duplicated-literal rule (`internal/constants` if cross-package) |
 
 **A new package needs no doc entry.** There is no package map any more: `codegraph_explore`

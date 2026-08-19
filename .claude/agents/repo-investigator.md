@@ -22,7 +22,7 @@ Locate. Report. Stop. Never edit, never propose fix.
 2. `Grep`/`Glob` only for what codegraph doesn't cover (new/unindexed files, plain-text search across non-code files).
 3. `Read` only specific ranges codegraph didn't already return.
 4. `Bash` for `git log -S`/`git grep` when faster than either.
-5. For curated context codegraph's structural output doesn't carry (the "why", relationships) → that package's own `CLAUDE.md` if it has one, then `docs/data-model.md` / `docs/decisions.md`. There is no package map: codegraph *is* the package map.
+5. For curated context codegraph's structural output doesn't carry (the "why", relationships) → that package's own `AGENTS.md` if it has one, then `docs/data-model.md` / `docs/decisions.md`. There is no package map: codegraph *is* the package map.
 
 ## Output
 

@@ -1,6 +1,6 @@
 # Recipes — lopii-finance-bot
 
-> Step-by-step for the common extension points. Conventions they assume live in `CLAUDE.md`.
+> Step-by-step for the common extension points. Conventions they assume live in `AGENTS.md`.
 
 ### Recipe 1: Add a DB migration
 
@@ -29,8 +29,8 @@ goose -dir ./migrations postgres "<connection_string>" up
 A flow is a graph of steps persisting state in `conversation_states`. The graph is validated at
 construction — a step referencing a non-existent next step fails the server at startup.
 
-> Read `internal/conversation/CLAUDE.md` first for the `Data` contract, and
-> `internal/controller/messaging/CLAUDE.md` for the local helpers. The traps there are the ones
+> Read `internal/conversation/AGENTS.md` first for the `Data` contract, and
+> `internal/controller/messaging/AGENTS.md` for the local helpers. The traps there are the ones
 > that compile.
 
 **1. Step names as constants**, in the target package:
@@ -147,7 +147,7 @@ b.RegisterHandler(bot.HandlerTypeMessageText, "/new-invite", bot.MatchTypePrefix
 adminRoutes := authed.Group("", requireAdmin())
 adminRoutes.GET("/"+templates.AdminPath, c.handleAdmin)
 ```
-`/app/admin` (the invitations view) is the worked example. Getting the user *to* it is the other half: a webview has no address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know who is looking. The tab therefore ships from the first authenticated partial (Resumen) as an `hx-swap-oob` element that lands in the empty `AdminTabSlotID` slot the `TabBar` reserves — see `internal/controller/miniapp/CLAUDE.md`.
+`/app/admin` (the invitations view) is the worked example. Getting the user *to* it is the other half: a webview has no address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know who is looking. The tab therefore ships from the first authenticated partial (Resumen) as an `hx-swap-oob` element that lands in the empty `AdminTabSlotID` slot the `TabBar` reserves — see `internal/controller/miniapp/AGENTS.md`.
 
 3. **Do not copy `middleware.RequireAdmin`.** It authenticates nothing — it sets `user_id = 1` and calls `Next()`. Its one caller (`POST /admin/users/:telegramID/reset`) is technical debt, not a pattern (`AGENTS.md` § Technical debt).
 

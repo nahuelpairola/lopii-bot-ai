@@ -1,6 +1,6 @@
 # Business Rules — lopii-finance-bot
 
-> Domain rules. The money/accounting model below is the load-bearing one — `CLAUDE.md` carries only its condensed warning and links here.
+> Domain rules. The money/accounting model below is the load-bearing one — `AGENTS.md` carries only its condensed warning and links here.
 
 ### Currencies
 - ARS and USD only. No implicit conversion between currencies.

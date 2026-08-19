@@ -19,10 +19,11 @@ Below is only what is.
   against dozens of `Read`/`Grep` round-trips. This applies *mid-skill* (brainstorming,
   writing-plans, systematic-debugging), not just to standalone questions: skills do not know
   codegraph exists, so the substitution has to be made by hand every time.
-- **Codegraph does not load a package's `CLAUDE.md`.** Nested files load when Claude Code *reads*
-  a file in that subtree — and the rule above means it often does not. When a task touches one of
-  the thirteen packages listed in `AGENTS.md`, open its `CLAUDE.md` deliberately. Nothing does it
-  for you, and those files hold the traps that compile fine and behave wrong.
+- **Codegraph does not load a package's `AGENTS.md`.** Each of the fourteen packages listed in
+  `AGENTS.md` keeps its traps in `internal/<pkg>/AGENTS.md`, with a one-line `CLAUDE.md` beside it
+  that imports it. Nested files load when Claude Code *reads* a file in that subtree — and the
+  rule above means it often does not. Open the package's file deliberately: nothing does it for
+  you, and those files hold what compiles fine and behaves wrong.
 - **Stack mandate, always.** Codegraph before manual grep/read. The matching superpowers skill
   (brainstorming / systematic-debugging / writing-plans / TDD) before any feature or fix. Ponytail
   discipline on every diff. Caveman-compressed output. None of these are skippable for a "simple"

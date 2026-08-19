@@ -146,7 +146,7 @@ find the same *reasoning* in two places, one of them is already stale: fix it, d
 |---|---|---|
 | The code | what the system does | always - it is the only source of truth for behaviour |
 | A comment at a line | why *this* line is what it is: the conclusion, 1-3 lines | you are editing that line |
-| `internal/<pkg>/CLAUDE.md` | the traps of that package: what compiles fine and behaves wrong | you touch any file in that package |
+| `internal/<pkg>/AGENTS.md` | the traps of that package: what compiles fine and behaves wrong | you touch any file in that package |
 | [docs/decisions.md](docs/decisions.md) | **why the design is what it is**: measurements, incidents, rejected alternatives | a comment points you there, or you are about to change a design choice |
 
 `docs/decisions.md` is the long form and the one most easily forgotten. It is grouped into nine
@@ -159,8 +159,10 @@ Two more, read on demand: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) indexes e
 **Use `codegraph_explore` for structure** - one call returns verbatim source plus the call graph.
 This repo has `.codegraph/` indexed; prefer it over grep/find to orient.
 
-Fourteen packages carry a `CLAUDE.md`. **If you are editing one, read its file first** - the trap
-is not visible in the code, and nothing loads the file for you:
+Fourteen packages carry their own `AGENTS.md`. **If you are editing one, read its file first** -
+the trap is not visible in the code, and you cannot count on anything loading the file for you.
+Each also has a one-line `CLAUDE.md` that imports it, because Claude Code reads `CLAUDE.md` and
+not `AGENTS.md`; the content lives in the `AGENTS.md` and only there.
 
 | Package | The trap it exists for |
 |---|---|
@@ -183,7 +185,7 @@ Every other package is a plain model + repository. Ask codegraph.
 
 ## Technical debt
 
-Only what no package owns. Anything package-scoped lives in that package's `CLAUDE.md`; the
+Only what no package owns. Anything package-scoped lives in that package's `AGENTS.md`; the
 reasoning behind a design choice lives in [docs/decisions.md](docs/decisions.md).
 
 - `accounts` has a `type DEFAULT 'standard'` column from a prior design - drop with a migration.

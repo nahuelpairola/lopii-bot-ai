@@ -35,7 +35,7 @@ The six you hit most, inline so you never edit without them:
 `pendingjob.HandleGroqError`, null-union tool-schema fields. Touching a money path, a Groq call
 site or a tool schema → `Read` that section first.
 
-Package you're editing has a `CLAUDE.md` → read it too. It holds what compiles fine and behaves
+Package you are editing has an `AGENTS.md` → read it too. It holds what compiles fine and behaves
 wrong, and nothing loads it for you.
 
 For the mechanics of an in-scope change: migrations → `docs/recipes.md` (Recipe 1), admin commands → `docs/recipes.md` (Recipe 4). Money-path edge cases beyond the bullets above → `docs/business-rules.md`.

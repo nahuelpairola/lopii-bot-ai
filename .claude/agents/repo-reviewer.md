@@ -25,7 +25,7 @@ month's rules.
 
 Money-path nuance the bullets state but don't unpack (insufficient-funds confirm gate,
 transfer-group shape, why a sign must never escape storage) → `docs/business-rules.md`.
-A trap specific to one package → that package's own `CLAUDE.md`.
+A trap specific to one package → that package's own `AGENTS.md`.
 
 ## Severity
 
