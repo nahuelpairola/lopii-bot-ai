@@ -132,33 +132,13 @@ func applyDefaults(v *viper.Viper) {
 
 // sameTurnCalls son los pares de llamadas a Groq que pueden ocurrir en UN MISMO turno.
 //
-// Los techos de Groq (TPM, TPD) son POR MODELO, así que dos llamadas del mismo turno
-// apuntando al mismo modelo compiten entre sí: la primera reserva y la segunda rebota.
-// El 2026-08-13 costó ~95 segundos y ~11.000 tokens quemados en reintentos que no
-// podían avanzar, porque `create` estaba en el mismo modelo que `agent`.
+// Los techos de Groq son POR MODELO, así que dos llamadas del mismo turno apuntando al
+// mismo modelo compiten: la primera reserva y la segunda rebota. Ya costó un turno
+// entero en reintentos que no podían avanzar (2026-08-13).
 //
-// Lo que NO entra, y es tan importante como lo que entra: `update` y `onboarding`
-// viven en pasos de flow que llegan en mensajes POSTERIORES, no en el turno del
-// agente. Competir entre turnos ya lo cubre la cadena de fallback.
-//
-// Tampoco entran `query`+`create` (hoy los dos en openai/gpt-oss-120b) ni
-// `classifier`+`narration` (hoy los dos en openai/gpt-oss-20b), aunque en
-// teoría podrían chocar: sólo aparecen si se lee la tabla como transitiva
-// (agent-query más agent-create implicando query-create, y análogo para el otro
-// par). No hay un trace que muestre a ninguno de los dos ocurriendo de verdad en
-// el mismo turno —cada par que SÍ está listado, lo tiene—. Si algún día un trace
-// muestra a alguno de estos dos pares chocando en producción, se agrega acá y se
-// cambia de modelo.
-//
-// 2026-08-17: los modelos usables bajaron de tres a DOS. Groq dio de baja
-// llama-3.1-8b-instant (2026-08-16) y también llama-3.3-70b-versatile, que era el
-// que sostenía este invariante; quedan openai/gpt-oss-120b y openai/gpt-oss-20b,
-// porque qwen/qwen3.6-27b emite su razonamiento adentro del contenido y deja la
-// narración vacía. Con dos modelos, los cuatro pares de acá abajo NO se pueden
-// satisfacer todos a la vez, así que TestEveryConfigFile_HasNoSameTurnModelCollision
-// está rojo a propósito — el porqué completo, con las tres asignaciones medidas
-// contra el eval real, está en el comentario de ese test. La tabla se deja intacta:
-// describe qué choca de verdad, y esa verdad no cambió porque falte un modelo.
+// Un par se agrega cuando un trace lo muestra, no cuando parece posible. Qué queda
+// afuera y por qué, y por qué la tabla se deja intacta con el test en rojo desde el
+// 2026-08-17: docs/decisions.md § Groq quota, the 429 queue and rate limits.
 var sameTurnCalls = [][2]string{
 	{"agent", "classifier"}, // ClassifyCategories sale del propio ejecutor del agente
 	{"agent", "query"},      // el agente delega en answer_query dentro del mismo turno

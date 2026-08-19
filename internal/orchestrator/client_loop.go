@@ -90,45 +90,16 @@ const maxQueryCompletionTokens = 1024
 // 400 deja ~6 veces de margen sobre el caso medido.
 const maxNarrationCompletionTokens = 400
 
-// maxAgentCompletionTokens is Run's own cap. Higher than the query loop's
-// because of the turn cut: one assistant message may carry every tool call of a
-// round plus the final narration.
+// maxAgentCompletionTokens: techo de completion de Run. Groq cobra
+// prompt+max_completion contra el cupo, se use o no, así que este número es
+// cupo gastado en cada llamada.
 //
-// Medido el 2026-08-10 en producción (prompt del agente ≈ 4.190 con 5 tools
-// cableadas, TPM 8.000):
+// 1500 sale del peor lote real medido, con margen para 8-9 movimientos. Por qué
+// NO 1.000 —y las mediciones que fijaron el número—:
+// docs/decisions.md § Groq quota, the 429 queue and rate limits.
 //
-//	cap 3000 → 7.190. Entra, y deja lugar para el router del mensaje siguiente (~660).
-//	cap 4096 → 8.286 > 8.000: TODAS las llamadas 429ean, no algunas.
-//
-// Se subió de 2048 a 3000 porque a 2048 un lote de 7 movimientos quedaba en el
-// filo: el que entró usó 1.949 tokens de completion, y los dos intentos previos
-// del MISMO mensaje volvieron 400 con el JSON cortado a la mitad.
-//
-// MEDIDO contra el peor caso real, el 2026-08-12: el mensaje de 7 movimientos
-// del 10/08 —el más pesado de la base en 45 días— gastó **1.183** tokens de
-// completion. Antes gastaba 1.949; la diferencia es que `record_movements` ya no
-// emite categoría ni subcategoría, o sea ~40% menos salida por movimiento.
-//
-// Distribución de movimientos por mensaje (77 mensajes con movimientos): 84% son
-// de UNO, 13% de dos, y hay exactamente un 5 y un 7. A ~170 tokens por
-// movimiento, 1.500 cubre unos 8-9.
-//
-// Por qué NO 1.000, que es lo que la distribución de completions sugería: esas
-// completions eran casi todas de un movimiento. Medir sobre ellas y cortar en
-// 1.000 habría truncado el lote de 7 — el único caso que importa para este
-// número. Es el mismo error de muestreo que ya costó una vez.
-//
-// Groq cobra `Requested = prompt + max_completion_tokens` contra el cupo, use o
-// no la completion entera. Con prompt ~3.533, bajar de 2.500 a 1.500 son 1.000
-// tokens menos por llamada: **17% menos de cupo diario por mensaje**.
-//
-// Lo que esto NO arregla, y conviene no esperarlo: las RÁFAGAS. Con 8.000 TPM
-// entra una sola llamada por minuto con 2.500 y también con 1.500 — para que
-// entraran dos haría falta un cap por debajo de 500. El techo de minuto lo
-// atiende la cola `pending_llm_jobs`, no este número.
-//
-// Revisar si aparece un mensaje de más de 8 movimientos (una importación en
-// lote, por ejemplo): ahí el 400 con el JSON cortado vuelve.
+// Revisar si aparece un mensaje de más de 8 movimientos: ahí vuelve el 400 con
+// el JSON cortado.
 const maxAgentCompletionTokens = 1500
 
 type loopResponse struct {

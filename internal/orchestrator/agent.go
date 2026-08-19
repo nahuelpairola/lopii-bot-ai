@@ -38,21 +38,18 @@ var ErrAgentMaxIterations = errors.New("orchestrator: agent loop exceeded max it
 // mensaje del usuario terminaba en la cola en vez de en el gate.
 var ErrAgentTurnDone = errors.New("orchestrator: agent turn done")
 
-// El orden lectura-antes-de-escritura se BORRÓ con la etapa 5.
+// El orden lectura-antes-de-escritura se BORRÓ con la etapa 5 (a419524),
+// argumentando que este toolbox no tenía tools de lectura.
 //
-// Existía para que un total no se calculara sin las filas que estaban por
-// insertarse. Este toolbox no tiene NINGUNA tool de lectura —record_movements
-// es la única KindWrite y todo lo demás es una acción—, así que ordenaba un
-// conjunto cuyos elementos comparten rango: no hacía nada.
+// OJO: eso dejó de ser cierto el mismo día. 0b3427a agregó cinco KindRead, y la
+// vuelta ejecuta TODAS las calls en el orden que eligió el modelo (ver el range
+// de abajo), así que un sum_movements y un record_movements en la misma vuelta
+// vuelven a ser la condición que el orden cubría. Sin medir si el modelo las
+// mezcla, no se sabe si muerde: llm_calls.tool_calls tiene la respuesta.
 //
-// Y borrarlo saca una trampa en vez de volver a documentarla: kindRank metía un
-// Kind SIN SETEAR en el mismo bucket que un KindRead explícito, así que una tool
-// de escritura futura declarada sin Kind compilaba, corría, y se ejecutaba
-// DESPUÉS de las lecturas — exactamente el bug contra el que advertía el
-// comentario de la propia función. Ningún test lo cubría.
-//
-// Si una etapa futura vuelve a meter tools de lectura acá (por ejemplo plegando
-// QUERY), esto vuelve CON el valor cero hecho irrepresentable, no como estaba.
+// Si el orden vuelve, el valor cero de Kind tiene que ser irrepresentable: un
+// Kind SIN SETEAR caía en el mismo bucket que un KindRead explícito, así que una
+// tool de escritura declarada sin Kind se ejecutaba DESPUÉS de las lecturas.
 
 // Run drives the unified agent loop: it sends the tools, executes every call a
 // round emits via the caller's execute closure (scoped to the user), feeds each
