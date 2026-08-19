@@ -452,6 +452,83 @@
           }
         }
       },
+      "panel-104": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT nudge_key AS \"tip\", count(*) AS \"mandados\", count(tapped_at) AS \"tocados\", round(100.0 * count(tapped_at) / count(*), 1) AS \"% tap\" FROM user_nudges GROUP BY nudge_key ORDER BY 4 DESC"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Que tip engancha. Sin filtro de tiempo a proposito: es una fila por (usuario, tip) y de bajo volumen, con el rango por defecto la tabla saldria vacia. tocados cuenta usuarios distintos, no taps: tapped_at se sella una sola vez. Un tip que NO aparece aca es un gate que nunca abrio, tambien es informacion. Salvedad del recurrente (query_menu_tip): se manda muchas veces sobre la misma fila, asi que sus mandados son usuarios que lo recibieron alguna vez, no envios.",
+          "id": 104,
+          "links": [],
+          "title": "Tips: mandados vs tocados",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "footer": {
+                      "reducers": []
+                    },
+                    "inspect": false
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "text",
+                        "value": 0
+                      }
+                    ]
+                  }
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "showHeader": true
+              }
+            },
+            "version": "13.2.0-31775358088"
+          }
+        }
+      },
       "panel-2": {
         "kind": "Panel",
         "spec": {
@@ -832,6 +909,375 @@
               "options": {
                 "cellHeight": "sm",
                 "showHeader": true
+              }
+            },
+            "version": "13.2.0-31775358088"
+          }
+        }
+      },
+      "panel-204": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT model AS \"modelo\", count(*) AS \"intentos\", count(*) FILTER (WHERE previo = 429 AND modelo_previo <> model) AS \"entro de respaldo\", count(*) FILTER (WHERE http_status = 200) AS \"atendio\", count(*) FILTER (WHERE http_status = 429) AS \"sin cupo\", round(count(*) FILTER (WHERE http_status = 429)::numeric / count(*), 3) AS \"% sin cupo\", count(*) FILTER (WHERE http_status NOT IN (200,429)) AS \"otro error\", round(avg(latency_ms)) AS \"ms prom\" FROM (SELECT trace_id, model, http_status, latency_ms, lag(http_status) OVER w AS previo, lag(model) OVER w AS modelo_previo FROM llm_calls WHERE call_type = 'agent' AND $__timeFilter(created_at) WINDOW w AS (PARTITION BY trace_id ORDER BY created_at, id)) c GROUP BY model ORDER BY \"entro de respaldo\", \"intentos\" DESC"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Un escalon por fila, solo call_type=agent. Cada intento de modelo escribe su propia fila en llm_calls, asi que \"sin cupo\" de un escalon es lo que empujo al siguiente.\n\n\"Entro de respaldo\" cuenta las veces que ESE modelo atendio justo despues de que otro rebotara: en el principal es 0 por definicion, y en los de respaldo dice cuanto se los esta usando. Es la posicion en la cadena medida, no declarada — el dashboard no lee la config.",
+          "id": 204,
+          "links": [],
+          "title": "Cadena del agente",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "footer": {
+                      "reducers": []
+                    },
+                    "inspect": false
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "text",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "% sin cupo"
+                    },
+                    "properties": [
+                      {
+                        "id": "unit",
+                        "value": "percentunit"
+                      },
+                      {
+                        "id": "custom.cellOptions",
+                        "value": {
+                          "type": "color-text"
+                        }
+                      },
+                      {
+                        "id": "thresholds",
+                        "value": {
+                          "mode": "absolute",
+                          "steps": [
+                            {
+                              "color": "green",
+                              "value": 0
+                            },
+                            {
+                              "color": "orange",
+                              "value": 0.1
+                            },
+                            {
+                              "color": "red",
+                              "value": 0.3
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "cellHeight": "sm",
+                "showHeader": true
+              }
+            },
+            "version": "13.2.0-31775358088"
+          }
+        }
+      },
+      "panel-205": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "time_series",
+                        "rawQuery": true,
+                        "rawSql": "SELECT $__timeGroupAlias(inicio,$__interval,0), count(*) FILTER (WHERE NOT reboto) AS \"de una\", count(*) FILTER (WHERE reboto AND rescatado) AS \"salvados por el respaldo\", count(*) FILTER (WHERE reboto AND NOT rescatado) AS \"a la cola\" FROM (SELECT trace_id, min(created_at) AS inicio, bool_or(http_status = 429) AS reboto, bool_or(http_status = 200 AND previo = 429 AND model <> modelo_previo) AS rescatado FROM (SELECT trace_id, created_at, model, http_status, lag(http_status) OVER w AS previo, lag(model) OVER w AS modelo_previo FROM llm_calls WHERE call_type = 'agent' AND $__timeFilter(created_at) WINDOW w AS (PARTITION BY trace_id ORDER BY created_at, id)) c GROUP BY trace_id) t GROUP BY 1 ORDER BY 1"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Un turno = un trace_id. \"Salvados por el respaldo\" exige que el 200 venga justo despues de un 429 y con OTRO modelo: sin esa condicion, un replay de la cola cuenta como rescate, y no es lo mismo — el rescate es instantaneo y el replay hizo esperar al usuario. \"A la cola\" es el turno que rebotó y ningun escalon salvo. Es la banda que el fallback tiene que achicar.",
+          "id": 205,
+          "links": [],
+          "title": "Turnos del agente: quien los atendio",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "bars",
+                    "fillOpacity": 70,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 0,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "normal"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "text",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": [
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "de una"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "fixedColor": "green",
+                          "mode": "fixed"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "salvados por el respaldo"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "fixedColor": "blue",
+                          "mode": "fixed"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "matcher": {
+                      "id": "byName",
+                      "options": "a la cola"
+                    },
+                    "properties": [
+                      {
+                        "id": "color",
+                        "value": {
+                          "fixedColor": "orange",
+                          "mode": "fixed"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "options": {
+                "annotations": {
+                  "clustering": -1,
+                  "multiLane": false
+                },
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "enableFacetedFilter": false,
+                  "overflow": "ellipsis",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              }
+            },
+            "version": "13.2.0-31775358088"
+          }
+        }
+      },
+      "panel-206": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT count(*) FILTER (WHERE reboto AND NOT rescatado) AS \"turnos perdidos\" FROM (SELECT trace_id, bool_or(http_status = 429) AS reboto, bool_or(http_status = 200 AND previo = 429 AND model <> modelo_previo) AS rescatado FROM (SELECT trace_id, model, http_status, latency_ms, lag(http_status) OVER w AS previo, lag(model) OVER w AS modelo_previo FROM llm_calls WHERE call_type = 'agent' AND $__timeFilter(created_at) WINDOW w AS (PARTITION BY trace_id ORDER BY created_at, id)) c GROUP BY trace_id) t"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Turnos del agente que rebotaron por cupo y que NINGUN escalon de la cadena salvo: se fueron a la cola y el usuario espero. Es el trabajo del fallback, en un solo numero, y tiene que ir a cero.\n\nVa como conteo absoluto y no como tasa a proposito: a menos de 10 usuarios un porcentaje sobre doce requests dice mas del denominador que del sistema.\n\nLinea de base ANTES del fallback (30d al 2026-08-13): 63 rebotes, 0 salvados.",
+          "id": 206,
+          "links": [],
+          "title": "Turnos perdidos por cupo",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "orange",
+                        "value": 1
+                      },
+                      {
+                        "color": "red",
+                        "value": 10
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
               }
             },
             "version": "13.2.0-31775358088"
@@ -1262,6 +1708,540 @@
               }
             },
             "version": "13.2.0-31775358088"
+          }
+        }
+      },
+      "panel-401": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT COALESCE(current_date - max(date), 9999) AS \"días\" FROM usd_quotes"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "current_date - max(date) en usd_quotes. Verde hasta 4: la fuente publica con un dia de atraso y el finde puede no cotizar, asi que un lunes 4 es normal. Naranja desde 5 (finde largo o un tick perdido), rojo desde 8: eso ya es la ingesta cortada. Tabla vacia = 9999.",
+          "id": 401,
+          "links": [],
+          "title": "Días sin cotización",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "orange",
+                        "value": 5
+                      },
+                      {
+                        "color": "red",
+                        "value": 8
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            },
+            "version": "13.2.0-31683987170"
+          }
+        }
+      },
+      "panel-402": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT COALESCE((EXTRACT(YEAR FROM age(date_trunc('month', current_date)::date, max(month))) * 12 + EXTRACT(MONTH FROM age(date_trunc('month', current_date)::date, max(month))))::int, 9999) AS \"meses\" FROM monthly_cpi"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Meses entre el mes en curso y el ultimo mes cargado. INDEC publica ~2 semanas despues del cierre, asi que 1 o 2 es lo normal y el mes en curso NUNCA esta. Rojo desde 4: son dos publicaciones perdidas.",
+          "id": 402,
+          "links": [],
+          "title": "Meses sin IPC",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "orange",
+                        "value": 3
+                      },
+                      {
+                        "color": "red",
+                        "value": 4
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            },
+            "version": "13.2.0-31683987170"
+          }
+        }
+      },
+      "panel-403": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "WITH d AS (SELECT DISTINCT date FROM usd_quotes WHERE date > current_date - 90), g AS (SELECT date - lag(date) OVER (ORDER BY date) AS gap FROM d) SELECT COALESCE(max(gap), 0) AS \"días\" FROM g"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Maxima distancia entre dos fechas consecutivas de usd_quotes en los ultimos 90 dias. Un finde sin cotizar da 3 y un finde largo 4, asi que verde hasta 4. Es el unico panel que detecta un hueco VIEJO: si el backfill se rompe pero el fetch del dia sigue, 'Dias sin cotizacion' queda verde igual.",
+          "id": 403,
+          "links": [],
+          "title": "Hueco más largo (90d)",
+          "vizConfig": {
+            "group": "stat",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0
+                      },
+                      {
+                        "color": "orange",
+                        "value": 5
+                      },
+                      {
+                        "color": "red",
+                        "value": 8
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "percentChangeColorMode": "standard",
+                "reduceOptions": {
+                  "calcs": [
+                    "lastNotNull"
+                  ],
+                  "fields": "",
+                  "values": false
+                },
+                "showPercentChange": false,
+                "textMode": "auto",
+                "wideLayout": true
+              }
+            },
+            "version": "13.2.0-31683987170"
+          }
+        }
+      },
+      "panel-404": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT rate_type AS \"tipo\", to_char(max(date), 'YYYY-MM-DD') AS \"última\", count(*) AS \"filas\" FROM usd_quotes GROUP BY rate_type ORDER BY 2 DESC, 1"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Una fila por rate_type. Detecta la falla PARCIAL: que la fuente deje de publicar un tipo mientras los otros seis siguen llegando, que ningun panel agregado ve porque max(date) global sigue al dia. La fecha va como texto y no como date: el dashboard usa timezone 'browser' y una date cruda se renderiza corrida al dia anterior para cualquiera al oeste de UTC.",
+          "id": 404,
+          "links": [],
+          "title": "Última cotización por tipo",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "footer": {
+                      "reducers": []
+                    },
+                    "inspect": false
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "text",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "showHeader": true
+              }
+            },
+            "version": "13.2.0-31683987170"
+          }
+        }
+      },
+      "panel-405": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT (date + time '12:00')::timestamptz AS \"time\", bid AS \"compra\", ask AS \"venta\" FROM usd_quotes WHERE rate_type = 'bolsa' ORDER BY 1"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "bid/ask del dolar bolsa. Ignora el time picker a proposito: la serie ya esta acotada al ano corriente y con el rango de 24h por defecto se veria un punto suelto. Es el panel que hace obvio un dato absurdo (un 0, un salto de 10x) que los semaforos de frescura no miran. El punto se ancla al MEDIODIA: el dashboard usa timezone 'browser' y a medianoche cada punto diario cae en el dia anterior para un lector en ART.",
+          "id": 405,
+          "links": [],
+          "title": "MEP — toda la serie guardada",
+          "vizConfig": {
+            "group": "timeseries",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "palette-classic"
+                  },
+                  "custom": {
+                    "axisBorderShow": false,
+                    "axisCenteredZero": false,
+                    "axisColorMode": "text",
+                    "axisLabel": "",
+                    "axisPlacement": "auto",
+                    "barAlignment": 0,
+                    "barWidthFactor": 0.6,
+                    "drawStyle": "line",
+                    "fillOpacity": 8,
+                    "gradientMode": "none",
+                    "hideFrom": {
+                      "legend": false,
+                      "tooltip": false,
+                      "viz": false
+                    },
+                    "insertNulls": false,
+                    "lineInterpolation": "linear",
+                    "lineWidth": 2,
+                    "pointSize": 5,
+                    "scaleDistribution": {
+                      "type": "linear"
+                    },
+                    "showPoints": "auto",
+                    "showValues": false,
+                    "spanNulls": false,
+                    "stacking": {
+                      "group": "A",
+                      "mode": "none"
+                    },
+                    "thresholdsStyle": {
+                      "mode": "off"
+                    }
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "text",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "legend": {
+                  "calcs": [],
+                  "displayMode": "list",
+                  "placement": "bottom",
+                  "showLegend": true
+                },
+                "tooltip": {
+                  "hideZeros": false,
+                  "mode": "multi",
+                  "sort": "none"
+                }
+              }
+            },
+            "version": "13.2.0-31683987170"
+          }
+        }
+      },
+      "panel-406": {
+        "kind": "Panel",
+        "spec": {
+          "data": {
+            "kind": "QueryGroup",
+            "spec": {
+              "queries": [
+                {
+                  "kind": "PanelQuery",
+                  "spec": {
+                    "hidden": false,
+                    "query": {
+                      "datasource": {
+                        "name": "${DS_POSTGRES}"
+                      },
+                      "group": "grafana-postgresql-datasource",
+                      "kind": "DataQuery",
+                      "spec": {
+                        "editorMode": "code",
+                        "format": "table",
+                        "rawQuery": true,
+                        "rawSql": "SELECT to_char(month, 'YYYY-MM') AS \"mes\", value AS \"var %\" FROM monthly_cpi ORDER BY month DESC LIMIT 12"
+                      },
+                      "version": "v0"
+                    },
+                    "refId": "A"
+                  }
+                }
+              ],
+              "queryOptions": {},
+              "transformations": []
+            }
+          },
+          "description": "Variacion mensual en %, no numero indice. Puede ser negativa. Complementa a 'Meses sin IPC': una tabla de ceros pasaria ese semaforo en verde.",
+          "id": 406,
+          "links": [],
+          "title": "IPC — últimos 12 meses",
+          "vizConfig": {
+            "group": "table",
+            "kind": "VizConfig",
+            "spec": {
+              "fieldConfig": {
+                "defaults": {
+                  "color": {
+                    "mode": "thresholds"
+                  },
+                  "custom": {
+                    "align": "auto",
+                    "cellOptions": {
+                      "type": "auto"
+                    },
+                    "footer": {
+                      "reducers": []
+                    },
+                    "inspect": false
+                  },
+                  "thresholds": {
+                    "mode": "absolute",
+                    "steps": [
+                      {
+                        "color": "text",
+                        "value": 0
+                      }
+                    ]
+                  },
+                  "unit": "short"
+                },
+                "overrides": []
+              },
+              "options": {
+                "cellHeight": "sm",
+                "showHeader": true
+              }
+            },
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -1988,992 +2968,6 @@
             "version": "13.2.0-31775358088"
           }
         }
-      },
-      "panel-104": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "SELECT nudge_key AS \"tip\", count(*) AS \"mandados\", count(tapped_at) AS \"tocados\", round(100.0 * count(tapped_at) / count(*), 1) AS \"% tap\" FROM user_nudges GROUP BY nudge_key ORDER BY 4 DESC"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "Que tip engancha. Sin filtro de tiempo a proposito: es una fila por (usuario, tip) y de bajo volumen, con el rango por defecto la tabla saldria vacia. tocados cuenta usuarios distintos, no taps: tapped_at se sella una sola vez. Un tip que NO aparece aca es un gate que nunca abrio, tambien es informacion. Salvedad del recurrente (query_menu_tip): se manda muchas veces sobre la misma fila, asi que sus mandados son usuarios que lo recibieron alguna vez, no envios.",
-          "id": 104,
-          "links": [],
-          "title": "Tips: mandados vs tocados",
-          "vizConfig": {
-            "group": "table",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "thresholds"
-                  },
-                  "custom": {
-                    "align": "auto",
-                    "cellOptions": {
-                      "type": "auto"
-                    },
-                    "inspect": false
-                  },
-                  "mappings": [],
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "text",
-                        "value": 0
-                      }
-                    ]
-                  }
-                },
-                "overrides": []
-              },
-              "options": {
-                "cellHeight": "sm",
-                "footer": {
-                  "countRows": false,
-                  "fields": "",
-                  "reducer": [
-                    "sum"
-                  ],
-                  "show": false
-                },
-                "showHeader": true
-              },
-              "version": "v0"
-            },
-            "version": "13.2.0-31775358088"
-          }
-        }
-      },
-      "panel-401": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "SELECT COALESCE(current_date - max(date), 9999) AS \"días\" FROM usd_quotes"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "current_date - max(date) en usd_quotes. Verde hasta 4: la fuente publica con un dia de atraso y el finde puede no cotizar, asi que un lunes 4 es normal. Naranja desde 5 (finde largo o un tick perdido), rojo desde 8: eso ya es la ingesta cortada. Tabla vacia = 9999.",
-          "id": 401,
-          "links": [],
-          "title": "Días sin cotización",
-          "vizConfig": {
-            "group": "stat",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "thresholds"
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": 0
-                      },
-                      {
-                        "color": "orange",
-                        "value": 5
-                      },
-                      {
-                        "color": "red",
-                        "value": 8
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": []
-              },
-              "options": {
-                "colorMode": "value",
-                "graphMode": "none",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                  "calcs": [
-                    "lastNotNull"
-                  ],
-                  "fields": "",
-                  "values": false
-                },
-                "showPercentChange": false,
-                "textMode": "auto",
-                "wideLayout": true
-              }
-            },
-            "version": "13.2.0-31683987170"
-          }
-        }
-      },
-      "panel-402": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "SELECT COALESCE((EXTRACT(YEAR FROM age(date_trunc('month', current_date)::date, max(month))) * 12 + EXTRACT(MONTH FROM age(date_trunc('month', current_date)::date, max(month))))::int, 9999) AS \"meses\" FROM monthly_cpi"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "Meses entre el mes en curso y el ultimo mes cargado. INDEC publica ~2 semanas despues del cierre, asi que 1 o 2 es lo normal y el mes en curso NUNCA esta. Rojo desde 4: son dos publicaciones perdidas.",
-          "id": 402,
-          "links": [],
-          "title": "Meses sin IPC",
-          "vizConfig": {
-            "group": "stat",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "thresholds"
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": 0
-                      },
-                      {
-                        "color": "orange",
-                        "value": 3
-                      },
-                      {
-                        "color": "red",
-                        "value": 4
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": []
-              },
-              "options": {
-                "colorMode": "value",
-                "graphMode": "none",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                  "calcs": [
-                    "lastNotNull"
-                  ],
-                  "fields": "",
-                  "values": false
-                },
-                "showPercentChange": false,
-                "textMode": "auto",
-                "wideLayout": true
-              }
-            },
-            "version": "13.2.0-31683987170"
-          }
-        }
-      },
-      "panel-403": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "WITH d AS (SELECT DISTINCT date FROM usd_quotes WHERE date > current_date - 90), g AS (SELECT date - lag(date) OVER (ORDER BY date) AS gap FROM d) SELECT COALESCE(max(gap), 0) AS \"días\" FROM g"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "Maxima distancia entre dos fechas consecutivas de usd_quotes en los ultimos 90 dias. Un finde sin cotizar da 3 y un finde largo 4, asi que verde hasta 4. Es el unico panel que detecta un hueco VIEJO: si el backfill se rompe pero el fetch del dia sigue, 'Dias sin cotizacion' queda verde igual.",
-          "id": 403,
-          "links": [],
-          "title": "Hueco más largo (90d)",
-          "vizConfig": {
-            "group": "stat",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "thresholds"
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": 0
-                      },
-                      {
-                        "color": "orange",
-                        "value": 5
-                      },
-                      {
-                        "color": "red",
-                        "value": 8
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": []
-              },
-              "options": {
-                "colorMode": "value",
-                "graphMode": "none",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                  "calcs": [
-                    "lastNotNull"
-                  ],
-                  "fields": "",
-                  "values": false
-                },
-                "showPercentChange": false,
-                "textMode": "auto",
-                "wideLayout": true
-              }
-            },
-            "version": "13.2.0-31683987170"
-          }
-        }
-      },
-      "panel-404": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "SELECT rate_type AS \"tipo\", to_char(max(date), 'YYYY-MM-DD') AS \"última\", count(*) AS \"filas\" FROM usd_quotes GROUP BY rate_type ORDER BY 2 DESC, 1"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "Una fila por rate_type. Detecta la falla PARCIAL: que la fuente deje de publicar un tipo mientras los otros seis siguen llegando, que ningun panel agregado ve porque max(date) global sigue al dia. La fecha va como texto y no como date: el dashboard usa timezone 'browser' y una date cruda se renderiza corrida al dia anterior para cualquiera al oeste de UTC.",
-          "id": 404,
-          "links": [],
-          "title": "Última cotización por tipo",
-          "vizConfig": {
-            "group": "table",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "thresholds"
-                  },
-                  "custom": {
-                    "align": "auto",
-                    "cellOptions": {
-                      "type": "auto"
-                    },
-                    "footer": {
-                      "reducers": []
-                    },
-                    "inspect": false
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "text",
-                        "value": 0
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": []
-              },
-              "options": {
-                "cellHeight": "sm",
-                "showHeader": true
-              }
-            },
-            "version": "13.2.0-31683987170"
-          }
-        }
-      },
-      "panel-405": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "SELECT (date + time '12:00')::timestamptz AS \"time\", bid AS \"compra\", ask AS \"venta\" FROM usd_quotes WHERE rate_type = 'bolsa' ORDER BY 1"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "bid/ask del dolar bolsa. Ignora el time picker a proposito: la serie ya esta acotada al ano corriente y con el rango de 24h por defecto se veria un punto suelto. Es el panel que hace obvio un dato absurdo (un 0, un salto de 10x) que los semaforos de frescura no miran. El punto se ancla al MEDIODIA: el dashboard usa timezone 'browser' y a medianoche cada punto diario cae en el dia anterior para un lector en ART.",
-          "id": 405,
-          "links": [],
-          "title": "MEP — toda la serie guardada",
-          "vizConfig": {
-            "group": "timeseries",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "palette-classic"
-                  },
-                  "custom": {
-                    "axisBorderShow": false,
-                    "axisCenteredZero": false,
-                    "axisColorMode": "text",
-                    "axisLabel": "",
-                    "axisPlacement": "auto",
-                    "barAlignment": 0,
-                    "barWidthFactor": 0.6,
-                    "drawStyle": "line",
-                    "fillOpacity": 8,
-                    "gradientMode": "none",
-                    "hideFrom": {
-                      "legend": false,
-                      "tooltip": false,
-                      "viz": false
-                    },
-                    "insertNulls": false,
-                    "lineInterpolation": "linear",
-                    "lineWidth": 2,
-                    "pointSize": 5,
-                    "scaleDistribution": {
-                      "type": "linear"
-                    },
-                    "showPoints": "auto",
-                    "showValues": false,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "none"
-                    },
-                    "thresholdsStyle": {
-                      "mode": "off"
-                    }
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "text",
-                        "value": 0
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": []
-              },
-              "options": {
-                "legend": {
-                  "calcs": [],
-                  "displayMode": "list",
-                  "placement": "bottom",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "hideZeros": false,
-                  "mode": "multi",
-                  "sort": "none"
-                }
-              }
-            },
-            "version": "13.2.0-31683987170"
-          }
-        }
-      },
-      "panel-406": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "SELECT to_char(month, 'YYYY-MM') AS \"mes\", value AS \"var %\" FROM monthly_cpi ORDER BY month DESC LIMIT 12"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "Variacion mensual en %, no numero indice. Puede ser negativa. Complementa a 'Meses sin IPC': una tabla de ceros pasaria ese semaforo en verde.",
-          "id": 406,
-          "links": [],
-          "title": "IPC — últimos 12 meses",
-          "vizConfig": {
-            "group": "table",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "thresholds"
-                  },
-                  "custom": {
-                    "align": "auto",
-                    "cellOptions": {
-                      "type": "auto"
-                    },
-                    "footer": {
-                      "reducers": []
-                    },
-                    "inspect": false
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "text",
-                        "value": 0
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": []
-              },
-              "options": {
-                "cellHeight": "sm",
-                "showHeader": true
-              }
-            },
-            "version": "13.2.0-31683987170"
-          }
-        }
-      },
-      "panel-204": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "SELECT model AS \"modelo\", count(*) AS \"intentos\", count(*) FILTER (WHERE previo = 429 AND modelo_previo <> model) AS \"entro de respaldo\", count(*) FILTER (WHERE http_status = 200) AS \"atendio\", count(*) FILTER (WHERE http_status = 429) AS \"sin cupo\", round(count(*) FILTER (WHERE http_status = 429)::numeric / count(*), 3) AS \"% sin cupo\", count(*) FILTER (WHERE http_status NOT IN (200,429)) AS \"otro error\", round(avg(latency_ms)) AS \"ms prom\" FROM (SELECT trace_id, model, http_status, latency_ms, lag(http_status) OVER w AS previo, lag(model) OVER w AS modelo_previo FROM llm_calls WHERE call_type = 'agent' AND $__timeFilter(created_at) WINDOW w AS (PARTITION BY trace_id ORDER BY created_at, id)) c GROUP BY model ORDER BY \"entro de respaldo\", \"intentos\" DESC"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "Un escalon por fila, solo call_type=agent. Cada intento de modelo escribe su propia fila en llm_calls, asi que \"sin cupo\" de un escalon es lo que empujo al siguiente.\n\n\"Entro de respaldo\" cuenta las veces que ESE modelo atendio justo despues de que otro rebotara: en el principal es 0 por definicion, y en los de respaldo dice cuanto se los esta usando. Es la posicion en la cadena medida, no declarada — el dashboard no lee la config.",
-          "id": 204,
-          "links": [],
-          "title": "Cadena del agente",
-          "vizConfig": {
-            "group": "table",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "thresholds"
-                  },
-                  "custom": {
-                    "align": "auto",
-                    "cellOptions": {
-                      "type": "auto"
-                    },
-                    "footer": {
-                      "reducers": []
-                    },
-                    "inspect": false
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "text",
-                        "value": 0
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": [
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "% sin cupo"
-                    },
-                    "properties": [
-                      {
-                        "id": "unit",
-                        "value": "percentunit"
-                      },
-                      {
-                        "id": "custom.cellOptions",
-                        "value": {
-                          "type": "color-text"
-                        }
-                      },
-                      {
-                        "id": "thresholds",
-                        "value": {
-                          "mode": "absolute",
-                          "steps": [
-                            {
-                              "color": "green",
-                              "value": 0
-                            },
-                            {
-                              "color": "orange",
-                              "value": 0.1
-                            },
-                            {
-                              "color": "red",
-                              "value": 0.3
-                            }
-                          ]
-                        }
-                      }
-                    ]
-                  }
-                ]
-              },
-              "options": {
-                "cellHeight": "sm",
-                "showHeader": true
-              }
-            },
-            "version": "13.2.0-31775358088"
-          }
-        }
-      },
-      "panel-205": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "time_series",
-                        "rawQuery": true,
-                        "rawSql": "SELECT $__timeGroupAlias(inicio,$__interval,0), count(*) FILTER (WHERE NOT reboto) AS \"de una\", count(*) FILTER (WHERE reboto AND rescatado) AS \"salvados por el respaldo\", count(*) FILTER (WHERE reboto AND NOT rescatado) AS \"a la cola\" FROM (SELECT trace_id, min(created_at) AS inicio, bool_or(http_status = 429) AS reboto, bool_or(http_status = 200 AND previo = 429 AND model <> modelo_previo) AS rescatado FROM (SELECT trace_id, created_at, model, http_status, lag(http_status) OVER w AS previo, lag(model) OVER w AS modelo_previo FROM llm_calls WHERE call_type = 'agent' AND $__timeFilter(created_at) WINDOW w AS (PARTITION BY trace_id ORDER BY created_at, id)) c GROUP BY trace_id) t GROUP BY 1 ORDER BY 1"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "Un turno = un trace_id. \"Salvados por el respaldo\" exige que el 200 venga justo despues de un 429 y con OTRO modelo: sin esa condicion, un replay de la cola cuenta como rescate, y no es lo mismo — el rescate es instantaneo y el replay hizo esperar al usuario. \"A la cola\" es el turno que rebotó y ningun escalon salvo. Es la banda que el fallback tiene que achicar.",
-          "id": 205,
-          "links": [],
-          "title": "Turnos del agente: quien los atendio",
-          "vizConfig": {
-            "group": "timeseries",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "palette-classic"
-                  },
-                  "custom": {
-                    "axisBorderShow": false,
-                    "axisCenteredZero": false,
-                    "axisColorMode": "text",
-                    "axisLabel": "",
-                    "axisPlacement": "auto",
-                    "barAlignment": 0,
-                    "barWidthFactor": 0.6,
-                    "drawStyle": "bars",
-                    "fillOpacity": 70,
-                    "gradientMode": "none",
-                    "hideFrom": {
-                      "legend": false,
-                      "tooltip": false,
-                      "viz": false
-                    },
-                    "insertNulls": false,
-                    "lineInterpolation": "linear",
-                    "lineWidth": 0,
-                    "pointSize": 5,
-                    "scaleDistribution": {
-                      "type": "linear"
-                    },
-                    "showPoints": "auto",
-                    "showValues": false,
-                    "spanNulls": false,
-                    "stacking": {
-                      "group": "A",
-                      "mode": "normal"
-                    },
-                    "thresholdsStyle": {
-                      "mode": "off"
-                    }
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "text",
-                        "value": 0
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": [
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "de una"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "green",
-                          "mode": "fixed"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "salvados por el respaldo"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "blue",
-                          "mode": "fixed"
-                        }
-                      }
-                    ]
-                  },
-                  {
-                    "matcher": {
-                      "id": "byName",
-                      "options": "a la cola"
-                    },
-                    "properties": [
-                      {
-                        "id": "color",
-                        "value": {
-                          "fixedColor": "orange",
-                          "mode": "fixed"
-                        }
-                      }
-                    ]
-                  }
-                ]
-              },
-              "options": {
-                "annotations": {
-                  "clustering": -1,
-                  "multiLane": false
-                },
-                "legend": {
-                  "calcs": [],
-                  "displayMode": "list",
-                  "enableFacetedFilter": false,
-                  "overflow": "ellipsis",
-                  "placement": "bottom",
-                  "showLegend": true
-                },
-                "tooltip": {
-                  "hideZeros": false,
-                  "mode": "multi",
-                  "sort": "none"
-                }
-              }
-            },
-            "version": "13.2.0-31775358088"
-          }
-        }
-      },
-      "panel-206": {
-        "kind": "Panel",
-        "spec": {
-          "data": {
-            "kind": "QueryGroup",
-            "spec": {
-              "queries": [
-                {
-                  "kind": "PanelQuery",
-                  "spec": {
-                    "hidden": false,
-                    "query": {
-                      "datasource": {
-                        "name": "${DS_POSTGRES}"
-                      },
-                      "group": "grafana-postgresql-datasource",
-                      "kind": "DataQuery",
-                      "spec": {
-                        "editorMode": "code",
-                        "format": "table",
-                        "rawQuery": true,
-                        "rawSql": "SELECT count(*) FILTER (WHERE reboto AND NOT rescatado) AS \"turnos perdidos\" FROM (SELECT trace_id, bool_or(http_status = 429) AS reboto, bool_or(http_status = 200 AND previo = 429 AND model <> modelo_previo) AS rescatado FROM (SELECT trace_id, model, http_status, latency_ms, lag(http_status) OVER w AS previo, lag(model) OVER w AS modelo_previo FROM llm_calls WHERE call_type = 'agent' AND $__timeFilter(created_at) WINDOW w AS (PARTITION BY trace_id ORDER BY created_at, id)) c GROUP BY trace_id) t"
-                      },
-                      "version": "v0"
-                    },
-                    "refId": "A"
-                  }
-                }
-              ],
-              "queryOptions": {},
-              "transformations": []
-            }
-          },
-          "description": "Turnos del agente que rebotaron por cupo y que NINGUN escalon de la cadena salvo: se fueron a la cola y el usuario espero. Es el trabajo del fallback, en un solo numero, y tiene que ir a cero.\n\nVa como conteo absoluto y no como tasa a proposito: a menos de 10 usuarios un porcentaje sobre doce requests dice mas del denominador que del sistema.\n\nLinea de base ANTES del fallback (30d al 2026-08-13): 63 rebotes, 0 salvados.",
-          "id": 206,
-          "links": [],
-          "title": "Turnos perdidos por cupo",
-          "vizConfig": {
-            "group": "stat",
-            "kind": "VizConfig",
-            "spec": {
-              "fieldConfig": {
-                "defaults": {
-                  "color": {
-                    "mode": "thresholds"
-                  },
-                  "thresholds": {
-                    "mode": "absolute",
-                    "steps": [
-                      {
-                        "color": "green",
-                        "value": 0
-                      },
-                      {
-                        "color": "orange",
-                        "value": 1
-                      },
-                      {
-                        "color": "red",
-                        "value": 10
-                      }
-                    ]
-                  },
-                  "unit": "short"
-                },
-                "overrides": []
-              },
-              "options": {
-                "colorMode": "value",
-                "graphMode": "none",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                  "calcs": [
-                    "lastNotNull"
-                  ],
-                  "fields": "",
-                  "values": false
-                },
-                "showPercentChange": false,
-                "textMode": "auto",
-                "wideLayout": true
-              }
-            },
-            "version": "13.2.0-31775358088"
-          }
-        }
       }
     },
     "layout": {
@@ -3441,7 +3435,7 @@
         "1d"
       ],
       "fiscalYearStartMonth": 0,
-      "from": "now-24h",
+      "from": "now-12h",
       "hideTimepicker": false,
       "timezone": "browser",
       "to": "now"
@@ -3453,8 +3447,8 @@
         "spec": {
           "allowCustomValue": true,
           "current": {
-            "text": "",
-            "value": ""
+            "text": "grafana-postgresql-datasource-lopii-dev",
+            "value": "ffsm07da9g8hse"
           },
           "hide": "dontHide",
           "includeAll": false,
