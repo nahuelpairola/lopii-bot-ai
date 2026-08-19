@@ -24,3 +24,10 @@ point. Each tip declares when it is eligible; a tip that fires too often is wors
 never fires, because the user learns to ignore the whole channel.
 
 Copy and thresholds are values someone tuned, not defaults. Changing one is a product decision.
+
+---
+
+**Why the design is this way** — the measurements, incidents and rejected
+alternatives behind these rules live in `docs/decisions.md`, section **Interaction principles**.
+Read it before changing a design choice: most were already argued there, with the
+production numbers that settled them.

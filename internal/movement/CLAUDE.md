@@ -1,14 +1,14 @@
 # internal/movement
 
 The money guard lives here. **The accounting model is deliberately not repeated in this file** —
-it is in the root `CLAUDE.md` (§ The accounting model) and `docs/business-rules.md`, both
+it is in `AGENTS.md` (§ The accounting model) and `docs/business-rules.md`, both
 verified accurate against `guard.go`. Below is only what neither of them says.
 
 ## The guard protects the INSERT path, by caller convention
 
 Nothing in `repository.go` calls `Normalize`. `InsertBatch`, `InsertAccountsWithOpenings` and
 `ReplaceMovements` accept a `[]Movement` and trust it has already been through the guard —
-which is a pure function the *caller* must invoke (see `messaging/movement_create_flow.go`).
+which is a pure function the *caller* must invoke (see `flow/movement_write.go`).
 A new write path that skips it compiles and inserts unnormalized money.
 
 ## `ReassignAccount` upholds a guard invariant in raw SQL
@@ -54,3 +54,10 @@ historical value, which is **not** the case the "live rows only" rule governs: t
 about *choosing* a subcategory (pickers, taxonomy resolution), where offering a deleted one
 is a real bug. Callers must still nil-check `Subcategory`; `Unscoped` shrinks the case, it
 does not remove it.
+
+---
+
+**Why the design is this way** — the measurements, incidents and rejected
+alternatives behind these rules live in `docs/decisions.md`, section **The money model** and **Movements: mutation and reference resolution**.
+Read it before changing a design choice: most were already argued there, with the
+production numbers that settled them.

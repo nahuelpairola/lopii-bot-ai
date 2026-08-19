@@ -43,7 +43,7 @@ methods that the edge forwards to `internal/settings`.
 
 ## Money
 
-Anything touching amounts, signs or `account_id`: read the root `CLAUDE.md` (§ The accounting
+Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
 model) **before** editing — the write pipeline (`movement_write.go`) is where those invariants are
 enforced. Note the one deliberate exception, documented at the call site: the near-duplicate gate
 (`near_duplicate_offer.go`) writes **without** going through `movement.Normalize`, and is only safe
@@ -51,3 +51,10 @@ because the candidate must share type, currency and account. Loosening that rule
 guard back.
 
 In tests `b` is nil. Use `r.SendText(...)`, which guards; a direct `b.SendMessage` panics.
+
+---
+
+**Why the design is this way** — the measurements, incidents and rejected
+alternatives behind these rules live in `docs/decisions.md`, section **Conversation engine and flows**.
+Read it before changing a design choice: most were already argued there, with the
+production numbers that settled them.

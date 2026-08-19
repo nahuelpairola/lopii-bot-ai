@@ -14,27 +14,19 @@
 
 ## Per-package `CLAUDE.md`
 
-Twelve packages carry their own file. They are **not** loaded at session start — Claude Code pulls
-them in only when it reads a file in that subtree, so they cost nothing on unrelated tasks.
+Fourteen packages carry their own file. They are **not** loaded at session start — Claude Code
+pulls one in only when it reads a file in that subtree, and `codegraph_explore` does not count as
+reading, so on most tasks you have to open it deliberately.
+
 Each holds one thing only: **rules that compile fine and then behave wrong.** Structure is
 `codegraph_explore`'s job, not theirs.
 
-| Package | The trap it exists for |
-|---|---|
-| `internal/controller/messaging` | the bridge pattern, the per-user lock, what bypasses the engine |
-| `internal/flow` | the 3 places a flow must be registered, `callback_data`'s 64 bytes, why `runner` is exported |
-| `internal/orchestrator` | four call types silently share `createModel`; `AgentTool.Kind`'s zero value |
-| `internal/conversation` | `Data` round-trips through JSONB — numbers come back `float64` |
-| `internal/movement` | the guard only covers INSERT; two finders need opposite date binding |
-| `internal/subcategory` | cache writes need a manual `Reload()`; `c.global` is shared |
-| `internal/controller/miniapp` | **auth is which Gin group you register on, and nothing else** |
-| `internal/agent` | the loop is the only entry point; a turn that wrote must never be re-enqueued; the two windows of `resolveCandidates` |
-| `internal/query` | one `search` filter, matched in SQL — not to be confused with `resolveCandidates`; the app re-attaches two facts after narration |
-| `internal/settings` | the only caller of three LLM calls; a 429 is answered before the wizard fallback, never after |
-| `internal/pendingjob` | the replay flag is set once at the call site; `EnqueueBehindPending` is webhook-only |
-| `internal/nudges` | dispatcher and its own storage; a tip's tap jumps the engine on purpose |
+**The index of which package has one, and the trap each exists for, is the table in
+[AGENTS.md](../AGENTS.md#where-knowledge-lives)** — kept there because that file is loaded every
+session and this one is not. It is not repeated here: two copies of a list like that drift, and
+the stale one is always the copy.
 
-For conventions and the condensed money-model warning, see the root `CLAUDE.md` (always loaded).
+For conventions and the money model, see [AGENTS.md](../AGENTS.md) (loaded every session).
 
 ## Do NOT read
 
@@ -71,8 +63,7 @@ For conventions and the condensed money-model warning, see the root `CLAUDE.md` 
   | An app-built movement against a known account (balance adjustment) | `movement.Normalize` too | Cheap, and it validates the flow's notion of the account against the DB's. |
   | An account's **opening** movement | Take the `*account.Account` and read both `AccountID` and `Currency` off it | The mismatch becomes unrepresentable — strictly better than checking for it. **Do not route these through `Normalize`**: an opening is a lone leg typed `Transfer` (so it stays out of cash-flow aggregates) with no counterparty and no `transaction_id`, and the guard rejects any transfer that isn't a distinct 2-leg group — it would reject *every* opening, at any amount. Its amount may also legitimately be `0`. |
 - **Never call an orchestrator method from a webhook site without routing its error through `pendingjob.HandleGroqError`.** A terminal Groq 429 (`orchestrator.RateLimitedError`) must be enqueued into `pending_llm_jobs` and acked, not shown as `msgSomethingBroke` — a site that skips `pendingjob.HandleGroqError` silently drops the user's message on rate limit instead of queuing it for the drain worker (`internal/pendingjob/enqueue.go`/`drain.go`). See [recipes.md](recipes.md#recipe-5-wire-a-new-groq-calling-site-into-the-pending-jobs-queue).
-- **Never fill a gap in `usd_quotes` writer-side, and never read it with `date = D`.** The series is not strictly business days — the source carries the last value into some weekends and not others (verified: Sat 2026-08-01 is absent, Sun 2026-08-02 is present), so gaps are real and irregular. A reader resolves a date with `<= D ORDER BY date DESC LIMIT 1` and displays the quote's own date, never the requested one. `bid`/`ask` are from the exchange house's side: ARS→USD divides by `ask`, USD→ARS multiplies by `bid`. v1 copied the previous day forward on write, which invented prices that never traded.
-- **Never treat `monthly_cpi.value` as an index level.** It is the monthly percentage change (`1.9` = 1.9%) and it can be negative. A deflator is a chained product of `(1 + value/100)` across months, never a ratio between two rows. The current month never has a row — INDEC publishes ~2 weeks after close — so any deflation anchors on the last month present in the table, not on the period's anchor month.
+- **Never read `usd_quotes` with `date = D`, and never treat `monthly_cpi.value` as an index level.** Both series come from public sources with shapes that produce a plausible wrong number rather than an error — irregular gaps, an inverted spread, a percentage that is not a level. The four traps and how to read around them are in [`internal/quote/CLAUDE.md`](../internal/quote/CLAUDE.md); read it before writing the first reader of either table.
 - **Never type an optional (non-`required`) tool-schema field as a bare scalar.** Groq validates the model's tool-call against the schema we send; the model emits `null` for an absent optional, and a bare `"string"`/`"integer"` 400s on that null (a real prod failure: an optional string field emitted as `null` on "pago tarjeta"). Every property not in the schema's `required` list must be a null-union (`["string", "null"]`). `internal/orchestrator/schema_test.go` enforces this across all tool schemas — see [recipes.md Recipe 3](recipes.md#recipe-3-add-an-llm-intent) before adding or promoting a field.
 - **Never gate an admin route with `middleware.RequireAdmin`.** It authenticates nothing: it sets `user_id = 1` in the Gin context and calls `Next()`, so any route behind it is open to anyone who knows the URL. A real admin surface goes on the Mini App's `authed` group behind `requireAdmin()`, which reads the `is_admin` flag `authInitData` stamped from the users row. `/app/admin` is the worked example; the reset endpoint's use of `RequireAdmin` is debt, not a pattern.
 
@@ -89,7 +80,7 @@ For conventions and the condensed money-model warning, see the root `CLAUDE.md` 
 | A new anti-pattern identified | `docs/ARCHITECTURE.md` (Anti-patterns, above) |
 | A new recipe (flow type, step type, intent) | `docs/recipes.md` |
 | A new business rule | `docs/business-rules.md` |
-| A new dependency added to `go.mod` | root `CLAUDE.md` → Stack |
+| A new dependency added to `go.mod` | `AGENTS.md` → Stack |
 | A rule that compiles fine and then behaves wrong | that package's `CLAUDE.md` — **not** here |
 | A value reused across files or packages | define a constant scoped per the no-duplicated-literal rule (`internal/constants` if cross-package) |
 

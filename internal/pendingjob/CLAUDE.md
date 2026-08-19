@@ -45,3 +45,10 @@ Two rules the copy depends on:
 
 `maxJobAge` (2h) is the giving-up point: past it, a job is not rate-limited any more but permanently
 broken (dead key, billing, provider down), and the user gets told rather than left waiting.
+
+---
+
+**Why the design is this way** — the measurements, incidents and rejected
+alternatives behind these rules live in `docs/decisions.md`, section **Groq quota, the 429 queue and rate limits**.
+Read it before changing a design choice: most were already argued there, with the
+production numbers that settled them.

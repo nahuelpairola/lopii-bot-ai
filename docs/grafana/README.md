@@ -39,8 +39,8 @@ drill-down.
 > instancia. Si alguna vez lo rechaza: abrí cualquier dashboard existente →
 > *JSON Model* y copiá el que muestre.
 
-Diseño y justificación de cada panel:
-[`docs/superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md`](../superpowers/specs/2026-07-22-grafana-admin-dashboard-v2-design.md).
+Diseño y justificación de cada panel: la spec vivía en `docs/superpowers/` (scratch, git-ignored)
+y ya no está. Lo que sobrevive es este archivo más el JSON del dashboard.
 
 ## Importar
 

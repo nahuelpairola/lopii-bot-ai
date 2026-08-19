@@ -70,4 +70,12 @@ goose create <descriptive_name> sql -dir ./migrations
 ```
 
 ### Tests
-First tests added in `internal/controller/messaging` (`onboarding_flow_test.go`) — mocked local repository interfaces, no real Postgres. Follow the same pattern for new packages.
+
+```bash
+bash check.sh    # build + vet + errcheck + the default suite
+```
+
+Unit tests mock the package's own local interfaces — no real Postgres outside the `integration`
+tag. Four build tags gate the suites that need Postgres or a Groq key, and one test is red on
+purpose: the table and the reasoning are in [AGENTS.md](../AGENTS.md#build-test-lint), not
+repeated here.

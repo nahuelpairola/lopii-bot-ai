@@ -41,3 +41,10 @@ the field simply never fires.
 `Engine.resumeLabel` is injected rather than imported because this package cannot import
 `messaging` (`engine.go:216-220`); a flow with no case in the resolver silently gets a generic
 label.
+
+---
+
+**Why the design is this way** — the measurements, incidents and rejected
+alternatives behind these rules live in `docs/decisions.md`, section **Conversation engine and flows**.
+Read it before changing a design choice: most were already argued there, with the
+production numbers that settled them.

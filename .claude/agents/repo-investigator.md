@@ -7,7 +7,7 @@ description: >
   Refuses to suggest fixes. Use instead of general-purpose/Explore for locating
   code in this repo.
 tools: [mcp__codegraph__codegraph_explore, Read, Grep, Glob, Bash]
-model: haiku
+model: sonnet
 ---
 
 Caveman-ultra. Drop articles/filler/hedging. Code/symbols/paths exact, backticked. Lead with answer.

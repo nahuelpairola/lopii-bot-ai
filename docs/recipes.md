@@ -149,7 +149,7 @@ adminRoutes.GET("/"+templates.AdminPath, c.handleAdmin)
 ```
 `/app/admin` (the invitations view) is the worked example. Getting the user *to* it is the other half: a webview has no address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know who is looking. The tab therefore ships from the first authenticated partial (Resumen) as an `hx-swap-oob` element that lands in the empty `AdminTabSlotID` slot the `TabBar` reserves — see `internal/controller/miniapp/CLAUDE.md`.
 
-3. **Do not copy `middleware.RequireAdmin`.** It authenticates nothing — it sets `user_id = 1` and calls `Next()`. Its one caller (`POST /admin/users/:telegramID/reset`) is technical debt, not a pattern (root `CLAUDE.md` §6).
+3. **Do not copy `middleware.RequireAdmin`.** It authenticates nothing — it sets `user_id = 1` and calls `Next()`. Its one caller (`POST /admin/users/:telegramID/reset`) is technical debt, not a pattern (`AGENTS.md` § Technical debt).
 
 4. Telegram deep-links: `https://t.me/<bot_username>?start=<CODE>`
 
