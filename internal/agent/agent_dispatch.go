@@ -116,7 +116,13 @@ func finishAskUserFlow(ctx context.Context, svc agentServices, b *bot.Bot, chatI
 	}
 
 	if conversation.Flag(data, conversation.KeyCancelled) {
-		dropAgentAction(ctx, svc, b, chatID, userID, action, flow.MsgUpdateCancelled)
+		// record_movements no cae acá: parkCreate no setea Questions.
+		outcome, msg := flow.OutcomeUpdateCancelled, flow.MsgUpdateCancelled
+		if action.Tool == orchestrator.ToolDeleteMovements {
+			outcome, msg = flow.OutcomeDeleteCancelled, flow.MsgDeleteCancelled
+		}
+		resolveMetric(ctx, svc, userID, outcome)
+		dropAgentAction(ctx, svc, b, chatID, userID, action, msg)
 		return
 	}
 	if conversation.Flag(data, conversation.KeyAskDiscarded) {

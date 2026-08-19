@@ -278,3 +278,24 @@ func TestNextForUser_IsPerUser(t *testing.T) {
 		t.Errorf("la cola de otro usuario no puede verse: %v", err)
 	}
 }
+
+// Cancelar es un final del usuario, no un flujo muerto: sin el resolve la fila
+// queda en pending y el mensaje siguiente la cierra como abandoned.
+func TestFinishAskUser_CancelResuelveLaMetrica(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	svc := newDispatchServices(t, repo)
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+		t.Fatal(err)
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:   uint64(1),
+		conversation.KeyActionID: strconv.FormatUint(repo.rows[0].ID, 10),
+	}
+	conversation.SetFlag(data, conversation.KeyCancelled)
+
+	finishAskUserFlow(context.Background(), svc, nil, 0, data)
+
+	if len(svc.metrics.resolved) != 1 || svc.metrics.resolved[0] != flow.OutcomeUpdateCancelled {
+		t.Fatalf("want %q, got %v", flow.OutcomeUpdateCancelled, svc.metrics.resolved)
+	}
+}
