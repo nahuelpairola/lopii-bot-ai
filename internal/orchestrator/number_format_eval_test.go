@@ -11,7 +11,7 @@ import (
 )
 
 // Run with real Groq creds:
-//   GROQ_API_KEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestNumberFormatEval -v
+//   GROQ_APIKEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestNumberFormatEval -v
 // Excluded from default `go test ./...` (build tag) so CI needs no API key.
 
 // Las cuentas del eval. Vivían en create_eval_test.go, que se fue con
@@ -37,10 +37,7 @@ var numberFormatCreateCases = []struct {
 // siendo plata: leer "1.041.265" como 1041.265 cambia el monto MIL veces, y
 // nada río abajo lo puede notar — es un número perfectamente válido.
 func TestNumberFormatEval_Loop(t *testing.T) {
-	key := os.Getenv("GROQ_API_KEY")
-	if key == "" {
-		t.Skip("GROQ_API_KEY unset — real-LLM eval skipped")
-	}
+	key := evalKey(t)
 	o := New(Config{
 		APIKey:         key,
 		BaseURL:        os.Getenv("GROQ_BASE_URL"),
@@ -89,10 +86,7 @@ var numberFormatOnboardingCases = []struct {
 }
 
 func TestNumberFormatEval_Onboarding(t *testing.T) {
-	key := os.Getenv("GROQ_API_KEY")
-	if key == "" {
-		t.Skip("GROQ_API_KEY unset — real-LLM eval skipped")
-	}
+	key := evalKey(t)
 	o := New(Config{
 		APIKey:         key,
 		BaseURL:        os.Getenv("GROQ_BASE_URL"),

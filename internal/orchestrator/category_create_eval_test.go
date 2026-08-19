@@ -9,14 +9,11 @@ import (
 )
 
 // Run with real Groq creds:
-//   GROQ_API_KEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestCategoryCreateEval -v
+//   GROQ_APIKEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestCategoryCreateEval -v
 // Excluded from default `go test ./...` (build tag) so CI needs no API key.
 
 func TestCategoryCreateEval_MatchesExisting(t *testing.T) {
-	key := os.Getenv("GROQ_API_KEY")
-	if key == "" {
-		t.Skip("GROQ_API_KEY unset — real-LLM eval skipped")
-	}
+	key := evalKey(t)
 	o := New(Config{
 		APIKey:         key,
 		BaseURL:        os.Getenv("GROQ_BASE_URL"),
@@ -40,10 +37,7 @@ func TestCategoryCreateEval_MatchesExisting(t *testing.T) {
 }
 
 func TestCategoryCreateEval_ProposesWhenAbsent(t *testing.T) {
-	key := os.Getenv("GROQ_API_KEY")
-	if key == "" {
-		t.Skip("GROQ_API_KEY unset — real-LLM eval skipped")
-	}
+	key := evalKey(t)
 	o := New(Config{
 		APIKey:         key,
 		BaseURL:        os.Getenv("GROQ_BASE_URL"),

@@ -64,7 +64,7 @@ func (r evalRecorder) Record(c orchestrator.LLMCall) {
 func TestQueryEval(t *testing.T) {
 	key := os.Getenv("GROQ_APIKEY")
 	if key == "" {
-		t.Skip("GROQ_APIKEY unset — real-LLM eval skipped")
+		t.Fatal("GROQ_APIKEY unset — the query_eval tag was requested on purpose, so skipping would be a green that proves nothing. Export it from .env.")
 	}
 	baseURL := os.Getenv("GROQ_BASE_URL")
 	if baseURL == "" {
