@@ -86,7 +86,8 @@ const maxQueryCompletionTokens = 1024
 // Groq reserva prompt + max_completion_tokens contra el TPM aunque la respuesta no los
 // use, así que un cap grande de más es cupo que se le saca a la consulta siguiente.
 // Medido el 2026-08-13 contra Groq real, narrando la misma respuesta: 35-61 tokens en
-// llama-3.3-70b (el modelo de narración por default) y 174-376 en los razonadores.
+// llama-3.3-70b —que era el modelo de narración entonces; Groq lo dio de baja el
+// 2026-08-17 y hoy narra gpt-oss-20b, sin volver a medir— y 174-376 en los razonadores.
 // 400 deja ~6 veces de margen sobre el caso medido.
 const maxNarrationCompletionTokens = 400
 

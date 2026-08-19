@@ -103,28 +103,36 @@ func applyDefaults(v *viper.Viper) {
 	// desde la etapa 5, Run es el ÚNICO, así que un entorno nuevo sin este valor
 	// no degrada, no arranca.
 	v.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
-	// La cadena por default. Los tres soportan `tools` (verificado contra
-	// /v1/models) y están ordenados por precio: gpt-oss-20b es el más barato de
-	// los capaces, y llama-3.3-70b —el de mayor techo, 12.000 TPM— va último
-	// porque su prompt cuesta 8 veces más. qwen queda AFUERA a propósito: su
-	// completion sale $3 por millón, diez veces el 20b.
-	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "openai/gpt-oss-20b"})
-	// La cadena de query. llama-3.3-70b primero por el techo medido más alto
-	// (12.000 TPM) y bucket propio; gpt-oss-20b último porque es el más barato pero
-	// el más flojo narrando, y a esa altura la alternativa es no contestar.
+	// Las dos cadenas son los MISMOS dos modelos en orden inverso, y no es un
+	// descuido: desde el 2026-08-17 Groq dejó exactamente dos usables, así que un
+	// suplente distinto del primario es todo lo que se puede pedir. Ambos soportan
+	// `tools` (verificado contra /v1/models) y tienen 8.000 TPM cada uno, en
+	// buckets separados — que es lo único que hace que correrse sirva de algo.
 	//
-	// El orden de la cadena del AGENTE no se toca a propósito, aunque su primer
-	// suplente (120b) sea el primario de query: ahora query tiene con qué correrse
-	// de ese choque, e invertir el del agente mandaría todo el tráfico de rescate a
-	// llama-3.3-70b, cuyo prompt cuesta ~8 veces más. Está último por precio.
+	// OJO con lo que estas listas son: NO son la cadena. La cadena la arma
+	// `agentRound`/`queryChain` como `[primario] + estos`, así que hoy el agente
+	// camina 20b → 120b → 20b y query camina 120b → 20b → 120b. El tercer paso
+	// vuelve al bucket que acaba de rebotar y, con un retry-after de decenas de
+	// segundos, casi siempre rebota otra vez: cuesta una llamada, una fila de
+	// llm_calls y latencia, para rescatar casi nunca. Se deja porque "casi" no es
+	// "nunca" —el minuto puede rodar justo ahí— pero si alguien mide cuántas veces
+	// el tercer paso devolvió 200, ese número decide si sobra.
+	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "openai/gpt-oss-20b"})
 	v.SetDefault("Groq.QueryFallbackModels", []string{"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
-	// openai/gpt-oss-20b no razona: narra en 35-61 tokens de completion contra
-	// los 174-1.024 de gpt-oss, y por eso no puede quedarse sin presupuesto antes de
-	// escribir. qwen queda afuera: emite su razonamiento DENTRO del contenido.
-	// llama-3.1-8b-instant también: Groq lo da de baja el 2026-08-16.
+	// Se elige un modelo que no razone: narrar cuesta decenas de tokens de
+	// completion y razonar cuesta cientos, así que el que razona puede quedarse sin
+	// presupuesto antes de escribir. Los números medidos están en
+	// maxNarrationCompletionTokens (client_loop.go) — con la advertencia de que se
+	// midieron contra llama-3.3-70b, que ya no existe.
+	//
+	// qwen/qwen3.6-27b queda afuera y conviene que siga anotado, porque es el
+	// candidato obvio a tercer modelo cada vez que alguien mira el test de colisión
+	// en rojo: emite su razonamiento DENTRO del contenido, o sea que el <think> le
+	// sale al usuario. No es un problema de costo, es que rompe la salida.
 	v.SetDefault("Groq.NarrationModel", "openai/gpt-oss-20b")
-	// openai/gpt-oss-20b: el techo medido más alto (12.000 TPM), bucket
-	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
+	// Va en su propio bucket respecto del loop, que es el punto — no por tener el
+	// techo más alto: los dos gpt-oss miden 8.000 TPM. Fuerte en español
+	// rioplatense. Punto de partida, no conclusión.
 	v.SetDefault("Groq.ClassifierModel", "openai/gpt-oss-20b")
 	v.SetDefault("Log.Level", "info")
 	v.SetDefault("Log.Format", "json")
