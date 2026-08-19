@@ -108,7 +108,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -133,7 +133,7 @@
                         "editorMode": "code",
                         "format": "table",
                         "rawQuery": true,
-                        "rawSql": "SELECT intent, count(*) AS \"total\", count(*) FILTER (WHERE outcome ~ 'inserted|confirmed|applied|answered') AS \"ok\", count(*) FILTER (WHERE outcome LIKE '%cancelled%') AS \"cancelado\", count(*) FILTER (WHERE outcome = 'create_rewrite') AS \"corregido\", count(*) FILTER (WHERE outcome ~ 'failed|no_candidates') AS \"fallo\", count(*) FILTER (WHERE outcome = 'pending') AS \"colgado\" FROM intent_events WHERE $__timeFilter(created_at) GROUP BY intent ORDER BY \"total\" DESC"
+                        "rawSql": "SELECT intent, count(*) AS \"total\", count(*) FILTER (WHERE k = 'ok') AS \"ok\", count(*) FILTER (WHERE k = 'cancelado') AS \"cancelado\", count(*) FILTER (WHERE k = 'corregido') AS \"corregido\", count(*) FILTER (WHERE k = 'fallo') AS \"fallo\", count(*) FILTER (WHERE k = 'colgado') AS \"colgado\", count(*) FILTER (WHERE k = 'abandonado') AS \"abandonado\", count(*) FILTER (WHERE k = 'otro') AS \"otro\" FROM (SELECT intent, CASE WHEN outcome ~ 'inserted|confirmed|applied|answered' THEN 'ok' WHEN outcome = 'create_rewrite' THEN 'corregido' WHEN outcome LIKE '%cancelled%' THEN 'cancelado' WHEN outcome ~ 'failed|no_candidates' THEN 'fallo' WHEN outcome = 'pending' THEN 'colgado' WHEN outcome = 'abandoned' THEN 'abandonado' ELSE 'otro' END AS k FROM intent_events WHERE $__timeFilter(created_at)) t GROUP BY intent ORDER BY \"total\" DESC"
                       },
                       "version": "v0"
                     },
@@ -145,7 +145,7 @@
               "transformations": []
             }
           },
-          "description": "colgado = un pending que nunca se resolvió: el usuario arrancó un flujo y lo dejó tirado. corregido = create_rewrite, el usuario tuvo que corregir lo que el bot entendió, o sea el proxy honesto de calidad del LLM. Limitación conocida: un pending reciente puede ser un flujo en curso ahora mismo, no un abandono.",
+          "description": "colgado = un pending que nunca se resolvió: el usuario arrancó un flujo y lo dejó tirado. corregido = create_rewrite, el usuario tuvo que corregir lo que el bot entendió, o sea el proxy honesto de calidad del LLM. Limitación conocida: un pending reciente puede ser un flujo en curso ahora mismo, no un abandono. abandonado = el usuario dejó el flujo tirado y el mensaje siguiente lo cerró. otro = todo lo que no entra en las demás; si crece, hay un outcome que merece columna propia. Cada fila cae en exactamente una clase, así que las columnas suman total.",
           "id": 101,
           "links": [],
           "title": "Intents × outcomes",
@@ -284,7 +284,7 @@
                 "showHeader": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -366,7 +366,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -448,7 +448,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -537,7 +537,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -619,7 +619,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -708,7 +708,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -834,7 +834,7 @@
                 "showHeader": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -923,7 +923,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -1012,7 +1012,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -1094,7 +1094,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -1172,7 +1172,7 @@
                 "showHeader": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -1261,7 +1261,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -1350,7 +1350,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -1439,7 +1439,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -1611,7 +1611,7 @@
                 "showHeader": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -1816,7 +1816,7 @@
                 }
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -1985,7 +1985,7 @@
                 }
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -2069,7 +2069,7 @@
               },
               "version": "v0"
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -2158,7 +2158,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -2247,7 +2247,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -2336,7 +2336,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -2414,7 +2414,7 @@
                 "showHeader": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -2524,7 +2524,7 @@
                 }
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -2602,7 +2602,7 @@
                 "showHeader": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31683987170"
           }
         }
       },
@@ -2719,7 +2719,7 @@
                 "showHeader": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -2882,7 +2882,7 @@
                 }
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       },
@@ -2971,7 +2971,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-29854286369"
+            "version": "13.2.0-31775358088"
           }
         }
       }
@@ -3115,7 +3115,7 @@
           {
             "kind": "RowsLayoutRow",
             "spec": {
-              "collapse": true,
+              "collapse": false,
               "layout": {
                 "kind": "GridLayout",
                 "spec": {
@@ -3181,7 +3181,7 @@
           {
             "kind": "RowsLayoutRow",
             "spec": {
-              "collapse": true,
+              "collapse": false,
               "layout": {
                 "kind": "GridLayout",
                 "spec": {
@@ -3191,37 +3191,11 @@
                       "spec": {
                         "element": {
                           "kind": "ElementReference",
-                          "name": "panel-201"
+                          "name": "panel-206"
                         },
-                        "height": 4,
+                        "height": 6,
                         "width": 4,
                         "x": 0,
-                        "y": 0
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-202"
-                        },
-                        "height": 4,
-                        "width": 4,
-                        "x": 4,
-                        "y": 0
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-203"
-                        },
-                        "height": 8,
-                        "width": 16,
-                        "x": 8,
                         "y": 0
                       }
                     },
@@ -3232,10 +3206,49 @@
                           "kind": "ElementReference",
                           "name": "panel-204"
                         },
-                        "height": 4,
-                        "width": 8,
+                        "height": 6,
+                        "width": 20,
+                        "x": 4,
+                        "y": 0
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-201"
+                        },
+                        "height": 6,
+                        "width": 4,
                         "x": 0,
-                        "y": 4
+                        "y": 6
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-202"
+                        },
+                        "height": 6,
+                        "width": 4,
+                        "x": 4,
+                        "y": 6
+                      }
+                    },
+                    {
+                      "kind": "GridLayoutItem",
+                      "spec": {
+                        "element": {
+                          "kind": "ElementReference",
+                          "name": "panel-203"
+                        },
+                        "height": 6,
+                        "width": 16,
+                        "x": 8,
+                        "y": 6
                       }
                     },
                     {
@@ -3246,22 +3259,9 @@
                           "name": "panel-205"
                         },
                         "height": 8,
-                        "width": 20,
-                        "x": 4,
-                        "y": 8
-                      }
-                    },
-                    {
-                      "kind": "GridLayoutItem",
-                      "spec": {
-                        "element": {
-                          "kind": "ElementReference",
-                          "name": "panel-206"
-                        },
-                        "height": 8,
-                        "width": 4,
+                        "width": 24,
                         "x": 0,
-                        "y": 8
+                        "y": 12
                       }
                     }
                   ]
