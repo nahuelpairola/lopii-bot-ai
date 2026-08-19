@@ -3,35 +3,29 @@ package messaging
 import (
 	"testing"
 
-	"gorm.io/gorm"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 )
-
-func movementModelWithID(t *testing.T, id uint) (m gorm.Model) {
-	t.Helper()
-	m.ID = id
-	return m
-}
 
 func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementDeleteFlow())
+	engine.Register(flow.NewMovementDeleteFlow())
 
 	seed := conversation.Data{
 		"resolved_index": "0",
-		"candidate_groups": encodeCandidateGroups(
-			[]transactionGroup{{Movements: []movement.Movement{{}}}},
+		"candidate_groups": flow.EncodeCandidateGroups(
+			[]flow.CandidateGroup{{OldIDs: []string{"1"}, Rows: []movement.MovementRow{{}}}},
 		),
 	}
 
-	prompt, err := engine.StartWithData(1, movementDeleteFlowName, seed)
+	prompt, err := engine.StartWithData(1, flow.MovementDeleteFlowName, seed)
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepConfirmDelete {
-		t.Errorf("landed on step %q, want %q (should skip the picker)", store.stepName, stepConfirmDelete)
+	if store.stepName != flow.StepConfirmDelete {
+		t.Errorf("landed on step %q, want %q (should skip the picker)", store.stepName, flow.StepConfirmDelete)
 	}
 	_ = prompt
 }
@@ -39,24 +33,24 @@ func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewMovementDeleteFlow())
+	engine.Register(flow.NewMovementDeleteFlow())
 
 	seed := conversation.Data{
-		"candidate_labels": encodeStringSlice([]string{"🔴 3000 ARS · Café", "🔴 3200 ARS · Café"}),
-		"candidate_groups": encodeCandidateGroups(
-			[]transactionGroup{
-				{Movements: []movement.Movement{{}}},
-				{Movements: []movement.Movement{{}}},
+		"candidate_labels": conversation.EncodeStringSlice([]string{"🔴 3000 ARS · Café", "🔴 3200 ARS · Café"}),
+		"candidate_groups": flow.EncodeCandidateGroups(
+			[]flow.CandidateGroup{
+				{OldIDs: []string{"1"}, Rows: []movement.MovementRow{{}}},
+				{OldIDs: []string{"2"}, Rows: []movement.MovementRow{{}}},
 			},
 		),
 	}
 
-	_, err := engine.StartWithData(1, movementDeleteFlowName, seed)
+	_, err := engine.StartWithData(1, flow.MovementDeleteFlowName, seed)
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepPickDeleteCandidate {
-		t.Errorf("landed on step %q, want %q (should show the picker)", store.stepName, stepPickDeleteCandidate)
+	if store.stepName != flow.StepPickDeleteCandidate {
+		t.Errorf("landed on step %q, want %q (should show the picker)", store.stepName, flow.StepPickDeleteCandidate)
 	}
 }
 
@@ -68,12 +62,12 @@ func TestFinishMovementDeleteFlow_Confirmed_Deletes(t *testing.T) {
 		conversation.UserIDKey: uint64(1),
 		"confirmed":            "true",
 		"resolved_index":       "0",
-		"candidate_groups": encodeCandidateGroups(
-			[]transactionGroup{{Movements: []movement.Movement{{Model: movementModelWithID(t, 42)}}}},
+		"candidate_groups": flow.EncodeCandidateGroups(
+			[]flow.CandidateGroup{{OldIDs: []string{"42"}, Rows: []movement.MovementRow{{}}}},
 		),
 	}
 
-	c.finishMovementDeleteFlow(nil, nil, 0, data)
+	flow.FinishMovementDelete(nil, c, nil, 0, data)
 
 	if len(movRepo.deletedIDs) != 1 || movRepo.deletedIDs[0] != 42 {
 		t.Errorf("deletedIDs = %v, want [42]", movRepo.deletedIDs)
@@ -89,7 +83,7 @@ func TestFinishMovementDeleteFlow_Cancelled_NoDelete(t *testing.T) {
 		"confirmed":            "false",
 	}
 
-	c.finishMovementDeleteFlow(nil, nil, 0, data)
+	flow.FinishMovementDelete(nil, c, nil, 0, data)
 
 	if len(movRepo.deletedIDs) != 0 {
 		t.Error("cancelling should never delete anything")

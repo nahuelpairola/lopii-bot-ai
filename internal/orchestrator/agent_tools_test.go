@@ -98,7 +98,7 @@ func TestAgentTools_RecordMovementsNeverAsksForTheCategoryPair(t *testing.T) {
 
 // TestAgentTools_ReadToolsKeepTheirQuerySchemas pins the five read tools to the
 // argument shapes their executors already parse (queryToolArgs in
-// messaging/query.go). The nullable unions are deliberate: tool-calling models
+// internal/query). The nullable unions are deliberate: tool-calling models
 // emit explicit null for arguments they do not set, and Groq validates
 // server-side, so a plain "string" 400s before the executor ever runs.
 func TestAgentTools_ReadToolsKeepTheirQuerySchemas(t *testing.T) {

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -15,15 +14,19 @@ import (
 	"github.com/go-telegram/bot/models"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/nudges"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/reminder"
+	"lopiibot.com/internal/settings"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -123,23 +126,13 @@ type traceRepository interface {
 }
 
 // nudgeRepository is the once-ever/cooldown storage for contextual nudges
-// (internal/nudge). Local interface — see nudge.go.
+// (internal/nudge). Local interface — see nudges_services.go.
 type nudgeRepository interface {
 	SentKeys(userID uint64) ([]string, error)
 	MarkSent(userID uint64, key string) error
 	MarkSentAgain(userID uint64, key string) error
 	MarkTapped(userID uint64, key string) error
 	LastSentAt(userID uint64) (*time.Time, error)
-}
-
-// jobsRepository is the pending_llm_jobs storage (internal/pendingjob) —
-// the durable cache for a user message that hit a terminal Groq 429.
-type jobsRepository interface {
-	Insert(job *pendingjob.PendingJob) error
-	ListByUserOrdered(userID uint64) ([]pendingjob.PendingJob, error)
-	ListPendingUserIDs() ([]uint64, error)
-	Delete(id uint64) error
-	CountByUser(userID uint64) (int64, error)
 }
 
 // actionsRepository is the pending_actions storage (internal/pendingaction) —
@@ -164,10 +157,8 @@ type controller struct {
 	reminders     reminderRepository
 	traces        traceRepository
 	nudges        nudgeRepository
-	jobs          jobsRepository
+	jobs          pendingjob.Repository
 	actions       actionsRepository
-	nextDrainAt   time.Time
-	drainMu       sync.Mutex
 	// locks serializa los updates de un mismo usuario. Ver user_lock.go.
 	locks userLocks
 }
@@ -185,7 +176,7 @@ func NewController(
 	reminders reminderRepository,
 	traces traceRepository,
 	nudges nudgeRepository,
-	jobs jobsRepository,
+	jobs pendingjob.Repository,
 	actions actionsRepository,
 ) *controller {
 	return &controller{
@@ -204,6 +195,39 @@ func NewController(
 		jobs:          jobs,
 		actions:       actions,
 	}
+}
+
+// Los métodos de abajo implementan flow.runner: el pipeline de escritura de
+// movimientos (flow/movement_write.go) corre en flow y solo necesita estas
+// lecturas/escrituras mínimas sobre los repos del borde. Ver flow/runner.go.
+// Exportados porque una interfaz con métodos unexported solo la implementan
+// tipos del mismo paquete que la interfaz.
+func (c *controller) FindUserAccounts(userID uint64) ([]account.Account, error) {
+	return c.accounts.FindByUserID(userID)
+}
+
+func (c *controller) InsertAccount(a *account.Account) error {
+	return c.accounts.Insert(a)
+}
+
+func (c *controller) GetAccount(id uint64) (*account.Account, error) {
+	return c.accounts.GetAccount(id)
+}
+
+func (c *controller) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
+	return c.movements.SumAmountForAccount(id)
+}
+
+func (c *controller) InsertMovements(movs []movement.Movement) error {
+	return c.movements.InsertBatch(movs)
+}
+
+func (c *controller) ReplaceMovements(oldIDs []uint, movs []movement.Movement) error {
+	return c.movements.ReplaceMovements(oldIDs, movs)
+}
+
+func (c *controller) FindSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error) {
+	return c.subcategories.FindByCategoryAndSubcategory(userID, category, subcategory)
 }
 
 func (c *controller) RegisterHandlers(b *bot.Bot) {
@@ -256,12 +280,12 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		// El tap del botón de un tip no pasa por el engine ni por el router.
 		// Va acá arriba para que un flow abierto no se coma el callback como si
 		// fuera una opción suya; la consulta es read-only y lo deja intacto.
-		if c.handleNudgeQuery(ctx, b, chatID, u.ID, input.CallbackData) {
+		if nudges.HandleCallback(ctx, c, b, chatID, u.ID, input.CallbackData) {
 			return &uid, nil
 		}
 		// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
 		// una opción de ningún flow, y un flow abierto no puede comérselo.
-		if c.handleNearDuplicateChoice(ctx, b, chatID, u.ID, input.CallbackData) {
+		if flow.HandleNearDuplicateChoice(ctx, c, b, chatID, u.ID, input.CallbackData) {
 			return &uid, nil
 		}
 
@@ -272,18 +296,18 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
-				if c.enqueueBehindPending(ctx, b, chatID, u.ID, input.Text) {
+				if pendingjob.EnqueueBehindPending(ctx, c, c.jobs, b, chatID, u.ID, input.Text) {
 					return &uid, nil
 				}
 				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
-				c.maybeNudge(ctx, b, chatID, u.ID)
+				nudges.Maybe(ctx, c, b, chatID, u.ID)
 				return &uid, err
 			}
 			return &uid, nil
 		}
 		if result.Finished {
 			c.handleFlowFinished(ctx, b, chatID, result)
-			c.maybeNudge(ctx, b, chatID, u.ID)
+			nudges.Maybe(ctx, c, b, chatID, u.ID)
 			return &uid, nil
 		}
 		c.sendPrompt(ctx, b, chatID, result.Prompt)
@@ -296,7 +320,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 // nombre. Agregar un flow nuevo implica agregar un case acá.
 func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID int64, result conversation.Result) {
 	slog.InfoContext(ctx, "flow finished", "flow", result.FlowName)
-	if stringOrEmpty(result.Data[conversation.ResumeCancelledKey]) == "true" {
+	if conversation.StringOrEmpty(result.Data[conversation.ResumeCancelledKey]) == "true" {
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgResumeCancelled})
 		return
 	}
@@ -304,48 +328,55 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	// acción, volver a preguntar, o descartarla). Los demás flujos terminales
 	// destapan la cola: es el único momento en que se sabe que no hay nada
 	// abierto, y por eso el WIP=1 se sostiene solo.
-	if result.FlowName == askUserFlowName {
-		c.finishAskUserFlow(ctx, b, chatID, result.Data)
+	if result.FlowName == flow.AskUserFlowName {
+		agent.FinishAskUser(ctx, c, b, chatID, result.Data)
 		return
 	}
 	defer func() {
-		if err := c.drainNextAgentAction(ctx, b, chatID, result.Data.UserID()); err != nil {
+		if err := agent.DrainNextAction(ctx, c, b, chatID, result.Data.UserID()); err != nil {
 			slog.ErrorContext(ctx, "drain parked actions failed", "err", err)
 		}
 	}()
 
 	switch result.FlowName {
-	case movementCreateFlowName:
-		c.finishMovementCreateFlow(ctx, b, chatID, result.Data)
-	case movementUpdatePickFlowName:
-		c.finishMovementUpdatePickFlow(ctx, b, chatID, result.Data)
-	case movementUpdateConfirmFlowName:
+	case flow.MovementCreateFlowName:
+		flow.FinishMovementCreate(ctx, c, b, chatID, result.Data)
+	case flow.MovementUpdatePickFlowName:
+		agent.FinishMovementUpdatePick(ctx, c, b, chatID, result.Data)
+	case flow.MovementUpdateConfirmFlowName:
 		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
-	case movementDeleteFlowName:
-		c.finishMovementDeleteFlow(ctx, b, chatID, result.Data)
-	case accountCreateFlowName:
+	case flow.MovementDeleteFlowName:
+		flow.FinishMovementDelete(ctx, c, b, chatID, result.Data)
+	case flow.AccountCreateFlowName:
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
-	case accountManageFlowName:
+	case flow.AccountManageFlowName:
 		c.finishAccountManageFlow(ctx, b, chatID, result.Data)
-	case accountMoveOfferFlowName:
+	case flow.AccountMoveOfferFlowName:
 		c.finishAccountMoveOffer(ctx, b, chatID, result.Data)
-	case subcategorySetupFlowName:
+	case flow.SubcategorySetupFlowName:
 		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
-	case categoryMatchOfferFlowName:
+	case flow.CategoryMatchOfferFlowName:
 		c.finishCategoryMatchOffer(ctx, b, chatID, result.Data)
-	case categoryProposalConfirmFlowName:
+	case flow.CategoryProposalConfirmFlowName:
 		c.finishCategoryProposalConfirm(ctx, b, chatID, result.Data)
-	case categoryManagePickFlowName:
+	case flow.CategoryManagePickFlowName:
 		c.finishCategoryManagePickFlow(ctx, b, chatID, result.Data)
-	case categoryManageTargetFlowName:
+	case flow.CategoryManageTargetFlowName:
 		c.finishCategoryManageTargetFlow(ctx, b, chatID, result.Data)
-	case movementNegativeConfirmFlowName:
-		c.finishMovementNegativeConfirmFlow(ctx, b, chatID, result.Data)
-	case reminderSetupFlowName:
+	case flow.MovementNegativeConfirmFlowName:
+		flow.FinishMovementNegativeConfirm(ctx, c, b, chatID, result.Data)
+	case flow.ReminderSetupFlowName:
 		c.finishReminderSetup(ctx, b, chatID, result.Data)
 	default:
 		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
 	}
+}
+
+// finishMovementUpdateConfirmFlow es el puente al finish que ahora vive en flow
+// (FinishMovementUpdateConfirm). Los tests del borde lo llaman por este nombre;
+// el puente se borra al cerrar la costura.
+func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
+	flow.FinishMovementUpdateConfirm(ctx, c, b, chatID, data)
 }
 
 // buttonsPerRow caps how many inline-keyboard buttons Telegram renders
@@ -425,6 +456,105 @@ func (c *controller) startFlow(ctx context.Context, b *bot.Bot, chatID int64, us
 	}
 	c.sendPrompt(ctx, b, chatID, prompt)
 	return nil
+}
+
+// Implementación de runner para los finishes migrados a flow (movement_finish.go).
+// El contrato (runner) vive en flow/runner.go: métodos exportados, pero el tipo
+// es unexported. Son puentes de una línea al nombre interno — el borde conserva
+// su nomenclatura y flow solo ve la interfaz angosta.
+func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint) {
+	c.resolveMetric(ctx, userID, outcome, movementIDs...)
+}
+
+func (c *controller) SendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
+	c.sendText(ctx, b, chatID, text)
+}
+
+func (c *controller) StartFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
+	return c.startFlow(ctx, b, chatID, userID, flowName, seed, errCtx)
+}
+
+func (c *controller) MarkTipSent(userID uint64, tip string) error {
+	if c.nudges == nil {
+		return nil
+	}
+	return c.nudges.MarkSent(userID, tip)
+}
+
+func (c *controller) SoftDeleteByIDs(ids []uint) error {
+	return c.movements.SoftDeleteByIDs(ids)
+}
+
+func (c *controller) RenameAccount(id uint64, name string) error {
+	return c.accounts.Rename(id, name)
+}
+
+func (c *controller) FindDefaultAccountByCurrency(userID uint64, cur currency.Currency) (*account.Account, error) {
+	return c.accounts.FindDefaultByCurrency(userID, cur)
+}
+
+func (c *controller) UnsetDefaultAccount(userID uint64, cur currency.Currency) error {
+	return c.accounts.UnsetDefault(userID, cur)
+}
+
+func (c *controller) SetDefaultAccount(id uint64) error {
+	return c.accounts.SetDefault(id)
+}
+
+func (c *controller) InsertMovementsBatch(movs []movement.Movement) error {
+	return c.movements.InsertBatch(movs)
+}
+
+func (c *controller) ReassignAccountMovements(fromID, toID uint64) error {
+	return c.movements.ReassignAccount(fromID, toID)
+}
+
+func (c *controller) StartAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+	return settings.StartAccountCreate(ctx, c, b, chatID, userID, text)
+}
+
+func (c *controller) SubcategoryIconForCategory(userID uint64, category string) string {
+	return c.subcategories.IconForCategory(userID, category)
+}
+
+func (c *controller) InsertSubcategory(s *subcategory.Subcategory) error {
+	return c.subcategories.Insert(s)
+}
+
+func (c *controller) ReloadSubcategories() error {
+	return c.subcategories.Reload()
+}
+
+func (c *controller) DeleteSubcategory(userID, id uint64) error {
+	return c.subcategories.Delete(userID, id)
+}
+
+func (c *controller) CountMovementsBySubcategory(userID, subcategoryID uint64) (int64, error) {
+	return c.movements.CountBySubcategory(userID, subcategoryID)
+}
+
+func (c *controller) ReassignSubcategoryMovements(userID, fromID, toID uint64) error {
+	return c.movements.ReassignSubcategory(userID, fromID, toID)
+}
+
+func (c *controller) SuggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {
+	return c.suggestMergeTarget(ctx, userID, sourceID, data)
+}
+
+func (c *controller) UpsertReminder(rem *reminder.Reminder) error {
+	return c.reminders.Upsert(rem)
+}
+
+func (c *controller) DisableReminder(userID uint64) error {
+	return c.reminders.Disable(userID)
+}
+
+func (c *controller) SetWeeklySummary(userID uint64, enabled bool) error {
+	return c.reminders.SetWeeklySummary(userID, enabled)
+}
+
+func (c *controller) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error) {
+	return c.movements.FindRecentlyCreatedForUser(userID, since, limit)
 }
 
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {

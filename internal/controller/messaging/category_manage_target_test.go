@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 )
@@ -33,10 +34,10 @@ func (f fakeTargetLister) DistinctCategoriesForUser(uint64) ([]string, error) {
 func (f fakeTargetLister) IconForCategory(_ uint64, category string) string {
 	for _, s := range f.all {
 		if s.Category == category {
-			return subcategoryIcon(s)
+			return flow.SubcategoryIcon(s)
 		}
 	}
-	return defaultCategoryIcon
+	return flow.DefaultCategoryIcon
 }
 
 func targetCatalog() []subcategory.Subcategory {
@@ -51,21 +52,21 @@ func targetCatalog() []subcategory.Subcategory {
 func newTargetEngine() (*conversation.Engine, *fakeStateStore) {
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManageTargetFlow(fakeTargetLister{all: targetCatalog()}))
+	engine.Register(flow.NewCategoryManageTargetFlow(fakeTargetLister{all: targetCatalog()}))
 	return engine, store
 }
 
 func targetSeed(count string, withSuggestion bool) conversation.Data {
 	seed := conversation.Data{
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
-		keyMovementCount:       count,
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
+		conversation.KeyMovementCount:       count,
 	}
 	if withSuggestion {
-		seed[keySuggestedSubcategoryID] = "3"
-		seed[keySuggestedCategory] = "Alimentos"
-		seed[keySuggestedSubcategory] = "Delivery"
+		seed[conversation.KeySuggestedSubcategoryID] = "3"
+		seed[conversation.KeySuggestedCategory] = "Alimentos"
+		seed[conversation.KeySuggestedSubcategory] = "Delivery"
 	}
 	return seed
 }
@@ -73,28 +74,28 @@ func targetSeed(count string, withSuggestion bool) conversation.Data {
 // El grafo del flujo 2 tiene que validar: si algún NextStep apuntara a un step
 // inexistente, NewFlow haría panic acá. Es la red del picker parametrizado.
 func TestCategoryManageTargetFlow_BuildsWithoutPanic(t *testing.T) {
-	flow := NewCategoryManageTargetFlow(fakeTargetLister{})
-	if flow.InitialStep != stepSuggestTarget {
-		t.Errorf("InitialStep = %q, want %q", flow.InitialStep, stepSuggestTarget)
+	fl := flow.NewCategoryManageTargetFlow(fakeTargetLister{})
+	if fl.InitialStep != flow.StepSuggestTarget {
+		t.Errorf("InitialStep = %q, want %q", fl.InitialStep, flow.StepSuggestTarget)
 	}
 }
 
 // Conteo 0 → ni sugerencia ni pickers: directo al confirm de borrado.
 func TestTargetFlow_ZeroCount_SkipsToConfirm(t *testing.T) {
 	engine, store := newTargetEngine()
-	prompt, err := engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("0", false))
+	prompt, err := engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("0", false))
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepConfirmCategoryManage {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepConfirmCategoryManage)
+	if store.stepName != flow.StepConfirmCategoryManage {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepConfirmCategoryManage)
 	}
-	if prompt.Text != msgCategoryManageConfirmDelete("Comida › Delivery") {
+	if prompt.Text != flow.MsgCategoryManageConfirmDelete("Comida › Delivery") {
 		t.Errorf("Text = %q, want el confirm de borrado", prompt.Text)
 	}
 	// sin Atrás: no hubo ninguna elección que rehacer
 	for _, b := range prompt.Buttons {
-		if b.Data == optionBack {
+		if b.Data == flow.OptionBack {
 			t.Error("el confirm con conteo 0 no debería ofrecer Atrás")
 		}
 	}
@@ -103,16 +104,16 @@ func TestTargetFlow_ZeroCount_SkipsToConfirm(t *testing.T) {
 // Con movimientos y sin sugerencia, arranca directo en el picker manual.
 func TestTargetFlow_NoSuggestion_SkipsToCategoryPicker(t *testing.T) {
 	engine, store := newTargetEngine()
-	prompt, err := engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	prompt, err := engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepPickTargetCategory {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepPickTargetCategory)
+	if store.stepName != flow.StepPickTargetCategory {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepPickTargetCategory)
 	}
 	// sin sugerencia, este es el primer step real: no lleva Atrás
 	for _, b := range prompt.Buttons {
-		if b.Data == optionBack {
+		if b.Data == flow.OptionBack {
 			t.Error("sin sugerencia previa, el picker de categoría no debería ofrecer Atrás")
 		}
 	}
@@ -120,61 +121,61 @@ func TestTargetFlow_NoSuggestion_SkipsToCategoryPicker(t *testing.T) {
 
 func TestTargetFlow_WithSuggestion_ShowsSuggestStep(t *testing.T) {
 	engine, store := newTargetEngine()
-	prompt, err := engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
+	prompt, err := engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
-	if store.stepName != stepSuggestTarget {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepSuggestTarget)
+	if store.stepName != flow.StepSuggestTarget {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepSuggestTarget)
 	}
-	want := msgCategoryManageSuggest("Comida › Delivery", "3", "Alimentos › Delivery")
+	want := flow.MsgCategoryManageSuggest("Comida › Delivery", "3", "Alimentos › Delivery")
 	if prompt.Text != want {
 		t.Errorf("Text = %q, want %q", prompt.Text, want)
 	}
 	if len(prompt.Buttons) != 3 {
 		t.Fatalf("len(Buttons) = %d, want 3", len(prompt.Buttons))
 	}
-	if prompt.Buttons[0].Data != optionAcceptSuggestion {
-		t.Errorf("Buttons[0] = %q, want %q", prompt.Buttons[0].Data, optionAcceptSuggestion)
+	if prompt.Buttons[0].Data != flow.OptionAcceptSuggestion {
+		t.Errorf("Buttons[0] = %q, want %q", prompt.Buttons[0].Data, flow.OptionAcceptSuggestion)
 	}
 }
 
 func TestTargetFlow_AcceptSuggestion_SetsTargetAndGoesToConfirm(t *testing.T) {
 	engine, store := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
 
-	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionAcceptSuggestion}); err != nil {
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionAcceptSuggestion}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if store.stepName != stepConfirmCategoryManage {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepConfirmCategoryManage)
+	if store.stepName != flow.StepConfirmCategoryManage {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepConfirmCategoryManage)
 	}
-	if store.data[keyTargetSubcategoryID] != "3" {
-		t.Errorf("target id = %v, want \"3\"", store.data[keyTargetSubcategoryID])
+	if store.data[conversation.KeyTargetSubcategoryID] != "3" {
+		t.Errorf("target id = %v, want \"3\"", store.data[conversation.KeyTargetSubcategoryID])
 	}
-	if store.data[keyTargetCategory] != "Alimentos" {
-		t.Errorf("target category = %v, want Alimentos", store.data[keyTargetCategory])
+	if store.data[conversation.KeyTargetCategory] != "Alimentos" {
+		t.Errorf("target category = %v, want Alimentos", store.data[conversation.KeyTargetCategory])
 	}
-	if store.data[keyTargetOrigin] != targetOriginSuggested {
-		t.Errorf("target origin = %v, want %q", store.data[keyTargetOrigin], targetOriginSuggested)
+	if store.data[conversation.KeyTargetOrigin] != flow.TargetOriginSuggested {
+		t.Errorf("target origin = %v, want %q", store.data[conversation.KeyTargetOrigin], flow.TargetOriginSuggested)
 	}
 }
 
 func TestTargetFlow_ChooseOther_GoesToCategoryPickerWithBack(t *testing.T) {
 	engine, store := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
 
-	result, _, err := engine.Handle(1, conversation.Input{CallbackData: optionChooseOther})
+	result, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionChooseOther})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if store.stepName != stepPickTargetCategory {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepPickTargetCategory)
+	if store.stepName != flow.StepPickTargetCategory {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepPickTargetCategory)
 	}
 	// hubo sugerencia, así que se puede volver a ella
 	found := false
 	for _, b := range result.Prompt.Buttons {
-		if b.Data == optionBack {
+		if b.Data == flow.OptionBack {
 			found = true
 		}
 	}
@@ -186,15 +187,15 @@ func TestTargetFlow_ChooseOther_GoesToCategoryPickerWithBack(t *testing.T) {
 // El picker de subcategoría destino nunca puede ofrecer la fila de origen.
 func TestTargetFlow_SubcategoryPicker_ExcludesSource(t *testing.T) {
 	engine, store := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 
 	// elegir la categoría "Comida", que es la del origen
 	result, _, err := engine.Handle(1, conversation.Input{CallbackData: "Comida"})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if store.stepName != stepPickTargetSubcategory {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepPickTargetSubcategory)
+	if store.stepName != flow.StepPickTargetSubcategory {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepPickTargetSubcategory)
 	}
 	for _, b := range result.Prompt.Buttons {
 		if b.Data == "7" {
@@ -205,20 +206,20 @@ func TestTargetFlow_SubcategoryPicker_ExcludesSource(t *testing.T) {
 
 func TestTargetFlow_ManualPick_SetsTargetWithManualOrigin(t *testing.T) {
 	engine, store := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 	engine.Handle(1, conversation.Input{CallbackData: "Alimentos"})
 
 	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: "3"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if store.stepName != stepConfirmCategoryManage {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepConfirmCategoryManage)
+	if store.stepName != flow.StepConfirmCategoryManage {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepConfirmCategoryManage)
 	}
-	if store.data[keyTargetSubcategoryID] != "3" {
-		t.Errorf("target id = %v, want \"3\"", store.data[keyTargetSubcategoryID])
+	if store.data[conversation.KeyTargetSubcategoryID] != "3" {
+		t.Errorf("target id = %v, want \"3\"", store.data[conversation.KeyTargetSubcategoryID])
 	}
-	if store.data[keyTargetOrigin] != targetOriginManual {
-		t.Errorf("target origin = %v, want %q", store.data[keyTargetOrigin], targetOriginManual)
+	if store.data[conversation.KeyTargetOrigin] != flow.TargetOriginManual {
+		t.Errorf("target origin = %v, want %q", store.data[conversation.KeyTargetOrigin], flow.TargetOriginManual)
 	}
 }
 
@@ -226,49 +227,49 @@ func TestTargetFlow_ManualPick_SetsTargetWithManualOrigin(t *testing.T) {
 // no puede dejar el destino viejo colgado.
 func TestTargetFlow_BackFromConfirm_ClearsTarget(t *testing.T) {
 	engine, store := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
-	engine.Handle(1, conversation.Input{CallbackData: optionAcceptSuggestion})
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
+	engine.Handle(1, conversation.Input{CallbackData: flow.OptionAcceptSuggestion})
 
-	if store.data[keyTargetSubcategoryID] != "3" {
-		t.Fatalf("precondición: el destino debería estar seteado, got %v", store.data[keyTargetSubcategoryID])
+	if store.data[conversation.KeyTargetSubcategoryID] != "3" {
+		t.Fatalf("precondición: el destino debería estar seteado, got %v", store.data[conversation.KeyTargetSubcategoryID])
 	}
-	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionBack}); err != nil {
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionBack}); err != nil {
 		t.Fatalf("Handle back: %v", err)
 	}
-	if store.stepName != stepSuggestTarget {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepSuggestTarget)
+	if store.stepName != flow.StepSuggestTarget {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepSuggestTarget)
 	}
-	if got := stringOrEmpty(store.data[keyTargetSubcategoryID]); got != "" {
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategoryID]); got != "" {
 		t.Errorf("target id = %q tras Atrás, want vacío", got)
 	}
-	if got := stringOrEmpty(store.data[keyTargetOrigin]); got != "" {
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetOrigin]); got != "" {
 		t.Errorf("target origin = %q tras Atrás, want vacío", got)
 	}
 }
 
 func TestTargetFlow_ChooseOtherAfterAccept_ClearsTarget(t *testing.T) {
 	engine, store := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
-	engine.Handle(1, conversation.Input{CallbackData: optionAcceptSuggestion})
-	engine.Handle(1, conversation.Input{CallbackData: optionBack})
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
+	engine.Handle(1, conversation.Input{CallbackData: flow.OptionAcceptSuggestion})
+	engine.Handle(1, conversation.Input{CallbackData: flow.OptionBack})
 
-	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionChooseOther}); err != nil {
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionChooseOther}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if got := stringOrEmpty(store.data[keyTargetSubcategoryID]); got != "" {
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategoryID]); got != "" {
 		t.Errorf("target id = %q, want vacío tras elegir otra", got)
 	}
 }
 
 func TestTargetFlow_ConfirmMergeCopyShowsCountAndBothNames(t *testing.T) {
 	engine, _ := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
 
-	result, _, err := engine.Handle(1, conversation.Input{CallbackData: optionAcceptSuggestion})
+	result, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionAcceptSuggestion})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	want := msgCategoryManageConfirmMerge("3", "Comida › Delivery", "Alimentos › Delivery")
+	want := flow.MsgCategoryManageConfirmMerge("3", "Comida › Delivery", "Alimentos › Delivery")
 	if result.Prompt.Text != want {
 		t.Errorf("Text = %q, want %q", result.Prompt.Text, want)
 	}
@@ -276,70 +277,70 @@ func TestTargetFlow_ConfirmMergeCopyShowsCountAndBothNames(t *testing.T) {
 
 func TestTargetFlow_Confirm_FinishesConfirmed(t *testing.T) {
 	engine, _ := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
-	engine.Handle(1, conversation.Input{CallbackData: optionAcceptSuggestion})
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
+	engine.Handle(1, conversation.Input{CallbackData: flow.OptionAcceptSuggestion})
 
-	result, _, err := engine.Handle(1, conversation.Input{CallbackData: optionConfirm})
+	result, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionConfirm})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	if !result.Finished {
 		t.Fatal("confirmar debería terminar el flujo")
 	}
-	if !flag(result.Data, keyConfirmed) {
-		t.Error("confirmar debería marcar keyConfirmed")
+	if !conversation.Flag(result.Data, conversation.KeyConfirmed) {
+		t.Error("confirmar debería marcar conversation.KeyConfirmed")
 	}
-	if flag(result.Data, keyCancelled) {
+	if conversation.Flag(result.Data, conversation.KeyCancelled) {
 		t.Error("confirmar no debería marcar cancelado")
 	}
 }
 
 func TestTargetFlow_CancelAtConfirm_MarksCancelledNotConfirmed(t *testing.T) {
 	engine, _ := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("0", false))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("0", false))
 
-	result, _, err := engine.Handle(1, conversation.Input{CallbackData: optionCancel})
+	result, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionCancel})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if !flag(result.Data, keyCancelled) {
-		t.Error("cancelar debería marcar keyCancelled")
+	if !conversation.Flag(result.Data, conversation.KeyCancelled) {
+		t.Error("cancelar debería marcar conversation.KeyCancelled")
 	}
-	if flag(result.Data, keyConfirmed) {
+	if conversation.Flag(result.Data, conversation.KeyConfirmed) {
 		t.Error("cancelar no debería marcar confirmado")
 	}
 }
 
 func TestTargetFlow_CancelAtSuggest_MarksCancelled(t *testing.T) {
 	engine, _ := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", true))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
 
-	result, _, err := engine.Handle(1, conversation.Input{CallbackData: optionCancel})
+	result, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionCancel})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if !flag(result.Data, keyCancelled) {
-		t.Error("cancelar en la sugerencia debería marcar keyCancelled")
+	if !conversation.Flag(result.Data, conversation.KeyCancelled) {
+		t.Error("cancelar en la sugerencia debería marcar conversation.KeyCancelled")
 	}
 }
 
 func TestTargetFlow_BackFromSubcategoryPicker_ReturnsToCategoryPicker(t *testing.T) {
 	engine, store := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 	engine.Handle(1, conversation.Input{CallbackData: "Alimentos"})
 
-	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: optionBack}); err != nil {
+	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionBack}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if store.stepName != stepPickTargetCategory {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepPickTargetCategory)
+	if store.stepName != flow.StepPickTargetCategory {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepPickTargetCategory)
 	}
 }
 
 // Las reservadas nunca aparecen como destino.
 func TestTargetFlow_CategoryPicker_ExcludesReserved(t *testing.T) {
 	engine, _ := newTargetEngine()
-	prompt, err := engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	prompt, err := engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 	if err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
@@ -366,10 +367,10 @@ func TestProceedToCategoryTarget_ZeroCountSkipsOrchestrator(t *testing.T) {
 	}
 
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
 	}
 	if err := c.proceedToCategoryTarget(context.Background(), nil, 100, data); err != nil {
 		t.Fatalf("proceedToCategoryTarget: %v", err)
@@ -377,12 +378,12 @@ func TestProceedToCategoryTarget_ZeroCountSkipsOrchestrator(t *testing.T) {
 	if orch.calls != 0 {
 		t.Errorf("llamó al orquestador %d veces con conteo 0, want 0", orch.calls)
 	}
-	if store.data[keyMovementCount] != "0" {
-		t.Errorf("movement_count = %v, want \"0\"", store.data[keyMovementCount])
+	if store.data[conversation.KeyMovementCount] != "0" {
+		t.Errorf("movement_count = %v, want \"0\"", store.data[conversation.KeyMovementCount])
 	}
 	// y con conteo 0 el flujo 2 tiene que haber saltado directo al confirm
-	if store.stepName != stepConfirmCategoryManage {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepConfirmCategoryManage)
+	if store.stepName != flow.StepConfirmCategoryManage {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepConfirmCategoryManage)
 	}
 }
 
@@ -403,10 +404,10 @@ func TestProceedToCategoryTarget_PositiveCountSeedsSuggestion(t *testing.T) {
 	}
 
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
 	}
 	if err := c.proceedToCategoryTarget(context.Background(), nil, 100, data); err != nil {
 		t.Fatalf("proceedToCategoryTarget: %v", err)
@@ -414,14 +415,14 @@ func TestProceedToCategoryTarget_PositiveCountSeedsSuggestion(t *testing.T) {
 	if orch.calls != 1 {
 		t.Errorf("llamó al orquestador %d veces, want 1", orch.calls)
 	}
-	if store.data[keyMovementCount] != "3" {
-		t.Errorf("movement_count = %v, want \"3\"", store.data[keyMovementCount])
+	if store.data[conversation.KeyMovementCount] != "3" {
+		t.Errorf("movement_count = %v, want \"3\"", store.data[conversation.KeyMovementCount])
 	}
-	if store.data[keySuggestedSubcategoryID] != "3" {
-		t.Errorf("suggested id = %v, want \"3\"", store.data[keySuggestedSubcategoryID])
+	if store.data[conversation.KeySuggestedSubcategoryID] != "3" {
+		t.Errorf("suggested id = %v, want \"3\"", store.data[conversation.KeySuggestedSubcategoryID])
 	}
-	if store.stepName != stepSuggestTarget {
-		t.Errorf("stepName = %q, want %q", store.stepName, stepSuggestTarget)
+	if store.stepName != flow.StepSuggestTarget {
+		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepSuggestTarget)
 	}
 }
 
@@ -437,16 +438,16 @@ func TestProceedToCategoryTarget_OrchestratorErrorStillStartsFlow(t *testing.T) 
 	}
 
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
-		keySourceCategory:      "Comida",
-		keySourceSubcategory:   "Delivery",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
+		conversation.KeySourceCategory:      "Comida",
+		conversation.KeySourceSubcategory:   "Delivery",
 	}
 	if err := c.proceedToCategoryTarget(context.Background(), nil, 100, data); err != nil {
 		t.Fatalf("un fallo del LLM no debería romper el flujo: %v", err)
 	}
-	if store.stepName != stepPickTargetCategory {
-		t.Errorf("stepName = %q, want %q (picker manual)", store.stepName, stepPickTargetCategory)
+	if store.stepName != flow.StepPickTargetCategory {
+		t.Errorf("stepName = %q, want %q (picker manual)", store.stepName, flow.StepPickTargetCategory)
 	}
 }
 
@@ -462,8 +463,8 @@ func TestProceedToCategoryTarget_CountErrorReturnsError(t *testing.T) {
 	}
 
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keySourceSubcategoryID: "7",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeySourceSubcategoryID: "7",
 	}
 	if err := c.proceedToCategoryTarget(context.Background(), nil, 100, data); err == nil {
 		t.Error("un error al contar debería propagarse")
@@ -479,32 +480,32 @@ func TestProceedToCategoryTarget_CountErrorReturnsError(t *testing.T) {
 // listar (filtra por categoría) y el usuario quedaría en un callejón.
 func TestTargetFlow_BackFromConfirm_ManualPath_KeepsCategoryAndListsOptions(t *testing.T) {
 	engine, store := newTargetEngine()
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 	engine.Handle(1, conversation.Input{CallbackData: "Alimentos"})
 	engine.Handle(1, conversation.Input{CallbackData: "3"})
 
-	if store.stepName != stepConfirmCategoryManage {
-		t.Fatalf("precondición: stepName = %q, want %q", store.stepName, stepConfirmCategoryManage)
+	if store.stepName != flow.StepConfirmCategoryManage {
+		t.Fatalf("precondición: stepName = %q, want %q", store.stepName, flow.StepConfirmCategoryManage)
 	}
 
-	result, _, err := engine.Handle(1, conversation.Input{CallbackData: optionBack})
+	result, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionBack})
 	if err != nil {
 		t.Fatalf("Handle back: %v", err)
 	}
-	if store.stepName != stepPickTargetSubcategory {
-		t.Fatalf("stepName = %q, want %q", store.stepName, stepPickTargetSubcategory)
+	if store.stepName != flow.StepPickTargetSubcategory {
+		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepPickTargetSubcategory)
 	}
-	if got := stringOrEmpty(store.data[keyTargetCategory]); got != "Alimentos" {
-		t.Errorf("keyTargetCategory = %q tras Atrás, want %q conservada", got, "Alimentos")
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetCategory]); got != "Alimentos" {
+		t.Errorf("conversation.KeyTargetCategory = %q tras Atrás, want %q conservada", got, "Alimentos")
 	}
-	if got := stringOrEmpty(store.data[keyTargetSubcategoryID]); got != "" {
-		t.Errorf("keyTargetSubcategoryID = %q tras Atrás, want vacío", got)
+	if got := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategoryID]); got != "" {
+		t.Errorf("conversation.KeyTargetSubcategoryID = %q tras Atrás, want vacío", got)
 	}
 
 	// lo que realmente importa: el picker tiene algo para elegir
 	picks := 0
 	for _, b := range result.Prompt.Buttons {
-		if b.Data != optionBack && b.Data != optionCancel {
+		if b.Data != flow.OptionBack && b.Data != flow.OptionCancel {
 			picks++
 		}
 	}
@@ -535,7 +536,7 @@ func (r raceTargetLister) DistinctCategoriesForUser(uint64) ([]string, error) {
 	return []string{"Alimentos"}, nil
 }
 
-func (r raceTargetLister) IconForCategory(uint64, string) string { return defaultCategoryIcon }
+func (r raceTargetLister) IconForCategory(uint64, string) string { return flow.DefaultCategoryIcon }
 
 // Si la fila destino desaparece justo antes de que OnChoice busque su nombre,
 // NO puede quedar un destino con ID y sin nombre: el confirm diría
@@ -553,9 +554,9 @@ func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
 
 	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewCategoryManageTargetFlow(lister))
+	engine.Register(flow.NewCategoryManageTargetFlow(lister))
 
-	engine.StartWithData(1, categoryManageTargetFlowName, targetSeed("3", false))
+	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 	engine.Handle(1, conversation.Input{CallbackData: "Alimentos"})
 	// El prompt del paso de subcategoría ya se renderizó dentro del Handle
 	// anterior, así que el contador arranca de cero recién acá.
@@ -563,9 +564,32 @@ func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
 
 	engine.Handle(1, conversation.Input{CallbackData: "3"})
 
-	id := stringOrEmpty(store.data[keyTargetSubcategoryID])
-	name := stringOrEmpty(store.data[keyTargetSubcategory])
+	id := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategoryID])
+	name := conversation.StringOrEmpty(store.data[conversation.KeyTargetSubcategory])
 	if id != "" && name == "" {
 		t.Errorf("destino a medias: ID=%q sin nombre — el confirm mostraría «Alimentos › »", id)
 	}
+}
+
+// fakeCategoryOrchestrator embebe movementOrchestrator: los métodos que no se
+// usan quedan nil y explotan si alguien los llama por error. Se quedó en el
+// borde cuando el cluster de settings se fue — lo comparten los tests de
+// category_manage_apply y category_manage_target.
+type fakeCategoryOrchestrator struct {
+	movementOrchestrator
+	match       *orchestrator.CategoryMatch
+	proposal    *orchestrator.CategoryProposal
+	err         error
+	calls       int
+	gotText     string
+	gotTaxonomy []orchestrator.TaxonomyEntry
+}
+
+func (f *fakeCategoryOrchestrator) ClassifyCategoryCreate(_ context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
+	f.calls++
+	f.gotText, f.gotTaxonomy = text, taxonomy
+	if f.err != nil {
+		return orchestrator.CategoryCreateResult{}, f.err
+	}
+	return orchestrator.CategoryCreateResult{Match: f.match, Proposal: f.proposal}, nil
 }

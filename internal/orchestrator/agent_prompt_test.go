@@ -7,7 +7,7 @@ import (
 
 func TestBuildAgentPrompt_CarriesTheLoadBearingRules(t *testing.T) {
 	// These strings are tuned against production. They come across verbatim
-	// from create.go, router.go and messaging/query.go — rewriting any of them
+	// from create.go, router.go and internal/query — rewriting any of them
 	// changes classification silently.
 	prompt := BuildAgentPrompt("2026-07-31",
 		[]AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}},

@@ -48,7 +48,7 @@ const schemaNoArgs = `{"type": "object", "properties": {}}`
 // vuelta que costaba el turno entero no compraba nada.
 //
 // The five read tools and record_movements carry their existing schemas
-// VERBATIM — from messaging/query.go's queryTools and create.go's createTool.
+// VERBATIM — from internal/query's Tools and create.go's createTool.
 // Stage 1 changes no behaviour, and a "tidied" schema is a behaviour change:
 // the read executors parse these exact argument names (queryToolArgs), and
 // record_movements feeds the money path.
@@ -105,7 +105,7 @@ func AgentTools() []AgentTool {
 			Name: ToolListCategories,
 			When: "preguntas por qué categorías existen.",
 			Kind: KindRead,
-			// El contrato tiene que seguir al de messaging/query.go: sin filtro NO
+			// El contrato tiene que seguir al de internal/query: sin filtro NO
 			// viajan las descripciones (~825 tokens de más por ronda, ver el modelo
 			// de costo en client_loop.go). Cuando la etapa 4 cablee esta tool, su
 			// ejecutor tiene que llamar a execListCategories, no a una copia.

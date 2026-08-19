@@ -17,6 +17,7 @@ import (
 	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/query"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -63,7 +64,7 @@ func (r evalRecorder) Record(c orchestrator.LLMCall) {
 func TestQueryEval(t *testing.T) {
 	key := os.Getenv("GROQ_APIKEY")
 	if key == "" {
-		t.Skip("GROQ_APIKEY unset — real-LLM eval skipped")
+		t.Fatal("GROQ_APIKEY unset — the query_eval tag was requested on purpose, so skipping would be a green that proves nothing. Export it from .env.")
 	}
 	baseURL := os.Getenv("GROQ_BASE_URL")
 	if baseURL == "" {
@@ -140,9 +141,21 @@ func TestQueryEval(t *testing.T) {
 	t.Logf("queryModel = %s", queryModel)
 	// El eval tiene que reflejar la config de producción (server.go/config.go) o no
 	// gatea nada: sin NarrationModel, la narración forzada cae al QueryModel y nunca
-	// se ejerce el modelo que esta spec existe para probar.
+	// se ejerce el modelo que esta spec existe para probar. Por eso el default sigue
+	// al de config/*.toml — estaba clavado en llama-3.3-70b-versatile, que Groq dio
+	// de baja, y el eval entero moría con un 404.
+	//
+	// No da lo mismo cuál: con openai/gpt-oss-120b acá, "filtro_inexistente" falla
+	// 4 de 4 veces (narra "gastaste $0" sobre una categoría que no existe), y con
+	// qwen/qwen3.6-27b la narración vuelve vacía. Si cambia el de config, hay que
+	// medir de nuevo, no asumir.
+	narrationModel := os.Getenv("GROQ_NARRATION_MODEL")
+	if narrationModel == "" {
+		narrationModel = "openai/gpt-oss-20b"
+	}
+	t.Logf("narrationModel = %s", narrationModel)
 	orch := orchestrator.New(orchestrator.Config{
-		APIKey: key, BaseURL: baseURL, QueryModel: queryModel, NarrationModel: "llama-3.3-70b-versatile", TimeoutSeconds: 30,
+		APIKey: key, BaseURL: baseURL, QueryModel: queryModel, NarrationModel: narrationModel, TimeoutSeconds: 30,
 		Recorder: evalRecorder{t: t},
 	})
 	c := &controller{accounts: accRepo, movements: movRepo, subcategories: cache, orchestrator: orch}
@@ -155,14 +168,14 @@ func TestQueryEval(t *testing.T) {
 	// como "subtest may have called FailNow on a parent test": el subtest queda en
 	// FAIL aunque la intención fuera saltearlo.
 	ask := func(t *testing.T, q string) string {
-		prompt := c.buildQuerySystemPrompt()
-		exec := c.buildQueryExecutor(uid)
+		prompt := query.SystemPrompt()
+		exec := query.NewExecutor(c, uid)
 		if asked > 0 {
 			time.Sleep(12 * time.Second)
 		}
 		asked++
 		for attempt := 0; ; attempt++ {
-			ans, err := c.orchestrator.AnswerQuery(context.Background(), prompt, q, nil, queryTools, exec)
+			ans, err := c.orchestrator.AnswerQuery(context.Background(), prompt, q, nil, query.Tools, exec)
 			if err != nil {
 				if attempt < 4 && strings.Contains(err.Error(), "rate_limit") {
 					t.Logf("rate-limited, backing off 20s (attempt %d)", attempt+1)

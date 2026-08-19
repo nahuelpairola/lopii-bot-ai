@@ -7,11 +7,13 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
 
 // El alta lazy de la primera cuenta pregunta por UNA moneda —
-// firstAccountCurrency decide cuál— pero opera sobre TODAS las filas del
+// flow.FirstAccountCurrency decide cuál— pero opera sobre TODAS las filas del
 // mensaje. Estos tests fijan que lo que se crea y el saldo que se le pone
 // correspondan a la moneda que se preguntó, y no a la primera fila que pase.
 //
@@ -30,14 +32,14 @@ func openingSubRepo() *fakeSubcategoryRepoFull {
 
 // firstAccountData arma el Data que createFirstAccount lee: las filas, el
 // nombre que tipeó el usuario y el saldo que declaró.
-func firstAccountData(rows []movementRow, name, balance string) conversation.Data {
+func firstAccountData(rows []movement.MovementRow, name, balance string) conversation.Data {
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keyMovements:           encodeMovementRows(rows),
-		keyFirstAccountName:    name,
+		conversation.UserIDKey:           uint64(1),
+		conversation.KeyMovements:        movement.EncodeMovementRows(rows),
+		conversation.KeyFirstAccountName: name,
 	}
 	if balance != "" {
-		data[keyFirstAccountBalance] = balance
+		data[conversation.KeyFirstAccountBalance] = balance
 	}
 	return data
 }
@@ -57,21 +59,21 @@ func TestCreateFirstAccount_SkipsCurrenciesThatAlreadyHaveADefault(t *testing.T)
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: openingSubRepo(), accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "5000", Currency: "ARS"},
 		{Type: "income", Amount: "200", Currency: "USD"},
 	}
 	data := firstAccountData(rows, "Broker", "500")
 
-	if got := firstAccountCurrency(data, hasDefaultFor(accRepo, data)); got != "USD" {
+	if got := flow.FirstAccountCurrency(data, flow.HasDefaultFor(accRepo, data)); got != "USD" {
 		t.Fatalf("la pregunta fue por %q, want USD", got)
 	}
 
-	idx, err := c.loadAccountIndex(1)
+	idx, err := flow.LoadAccountIndex(c, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skip, err := c.createFirstAccount(data, rows, idx)
+	skip, err := flow.CreateFirstAccount(c, data, rows, idx)
 	if err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
@@ -113,17 +115,17 @@ func TestCreateFirstAccount_SameCurrencyTwiceCreatesOneAccount(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: openingSubRepo(), accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "500", Currency: "ARS"},
 		{Type: "expense", Amount: "300", Currency: "ARS"},
 	}
 	data := firstAccountData(rows, "Galicia", "1.000")
 
-	idx, err := c.loadAccountIndex(1)
+	idx, err := flow.LoadAccountIndex(c, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.createFirstAccount(data, rows, idx); err != nil {
+	if _, err := flow.CreateFirstAccount(c, data, rows, idx); err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
 
@@ -149,21 +151,21 @@ func TestCreateFirstAccount_ZeroAccountsMixed_BalanceOnlyToTheAskedCurrency(t *t
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: openingSubRepo(), accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "5000", Currency: "ARS"},
 		{Type: "income", Amount: "200", Currency: "USD"},
 	}
 	data := firstAccountData(rows, "Mi plata", "20.000")
 
-	if got := firstAccountCurrency(data, hasDefaultFor(accRepo, data)); got != "ARS" {
+	if got := flow.FirstAccountCurrency(data, flow.HasDefaultFor(accRepo, data)); got != "ARS" {
 		t.Fatalf("la pregunta fue por %q, want ARS (la primera fila sin default)", got)
 	}
 
-	idx, err := c.loadAccountIndex(1)
+	idx, err := flow.LoadAccountIndex(c, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skip, err := c.createFirstAccount(data, rows, idx)
+	skip, err := flow.CreateFirstAccount(c, data, rows, idx)
 	if err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
@@ -206,19 +208,19 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{100: "10500"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "500", Currency: "ARS", Category: "Alimentación", Subcategory: "Supermercado", Date: "2026-07-02"},
 	}
 	data := conversation.Data{
-		conversation.UserIDKey: uint64(1),
-		keyMovements:           encodeMovementRows(rows),
-		keyPendingCategoryGaps: encodeStringSlice(nil),
-		keyPendingAccountGaps:  encodeStringSlice(nil),
-		keyFirstAccountName:    "Galicia",
-		keyFirstAccountBalance: "10.000",
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeyMovements:           movement.EncodeMovementRows(rows),
+		conversation.KeyPendingCategoryGaps: conversation.EncodeStringSlice(nil),
+		conversation.KeyPendingAccountGaps:  conversation.EncodeStringSlice(nil),
+		conversation.KeyFirstAccountName:    "Galicia",
+		conversation.KeyFirstAccountBalance: "10.000",
 	}
 
-	if _, err := c.resolveAndInsertMovements(data); err != nil {
+	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
 		t.Fatalf("primera pasada: %v", err)
 	}
 	if len(accRepo.inserted) != 1 {
@@ -227,8 +229,8 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 	openings := len(movRepo.batches)
 
 	// Segunda pasada sobre el MISMO data, como hace el gate al confirmar.
-	setFlag(data, keySkipBalanceCheck)
-	if _, err := c.resolveAndInsertMovements(data); err != nil {
+	conversation.SetFlag(data, conversation.KeySkipBalanceCheck)
+	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
 		t.Fatalf("reintento: %v", err)
 	}
 
@@ -254,15 +256,15 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 // declarado de ésta. Sumarlos es el bug que abría la cuenta en dólares con el
 // valor de un gasto en pesos.
 func TestFirstAccountNetDelta_IgnoresOtherCurrencies(t *testing.T) {
-	rows := []movementRow{
+	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "5000", Currency: "ARS"},
 		{Type: "income", Amount: "200", Currency: "USD"},
 	}
 
-	if got := firstAccountNetDelta(rows, "USD"); !got.Equal(decimal.RequireFromString("200")) {
+	if got := flow.FirstAccountNetDelta(rows, "USD"); !got.Equal(decimal.RequireFromString("200")) {
 		t.Errorf("netDelta(USD) = %s, want 200", got)
 	}
-	if got := firstAccountNetDelta(rows, "ARS"); !got.Equal(decimal.RequireFromString("-5000")) {
+	if got := flow.FirstAccountNetDelta(rows, "ARS"); !got.Equal(decimal.RequireFromString("-5000")) {
 		t.Errorf("netDelta(ARS) = %s, want -5000", got)
 	}
 }

@@ -27,7 +27,7 @@ import (
 // The corpus is verbatim from the production export (spec §2.2-2.4). Every one
 // of these FAILED for a real user.
 //
-//	GROQ_API_KEY=... GROQ_BASE_URL=https://api.groq.com/openai/v1 \
+//	GROQ_APIKEY=... GROQ_BASE_URL=https://api.groq.com/openai/v1 \
 //	GROQ_AGENT_MODEL=openai/gpt-oss-20b \
 //	go test -tags llm_eval ./internal/orchestrator/ -run TestAgentLoopEval -v -timeout 30m
 
@@ -161,10 +161,7 @@ func evalTools() []AgentTool {
 const fakeCandidates = `[{"transaction_id":"tx-1","fecha":"hoy","detalle":"café · $3.000 · Ocio y salidas | Salir a comer"}]`
 
 func TestAgentLoopEval(t *testing.T) {
-	key := os.Getenv("GROQ_API_KEY")
-	if key == "" {
-		t.Skip("GROQ_API_KEY unset — real-LLM eval skipped")
-	}
+	key := evalKey(t)
 
 	_, taxonomy := seededTaxonomy(t)
 	accounts := []AccountOption{

@@ -9,7 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -65,7 +68,7 @@ func (h *convHarness) SeedMovementOn(description, amount string, subcategoryID u
 // uno cruzado dan lo mismo, y el test pasaría con la agrupación rota.
 func (h *convHarness) SeedCorpus() {
 	h.t.Helper()
-	today := startOfTodayArgentina()
+	today := agent.StartOfTodayArgentina()
 	super := h.subID("Alimentación", "Supermercado")
 	h.SeedMovementOn("Carrefour", "-12700", super, today)
 	h.SeedMovementOn("Coto", "-3000", super, today.AddDate(0, 0, -2))
@@ -115,7 +118,7 @@ func TestConversation_AnswerQuerySumsRealData(t *testing.T) {
 
 	var toolOut string
 	h.ScriptQuery(func(execute func(string, json.RawMessage) (string, error)) (string, error) {
-		today := startOfTodayArgentina()
+		today := agent.StartOfTodayArgentina()
 		out, err := execute("sum_movements", json.RawMessage(fmt.Sprintf(
 			`{"from":%q,"to":%q,"currency":"ARS","group_by":"category"}`,
 			today.AddDate(0, 0, -30).Format("2006-01-02"), today.Format("2006-01-02"))))
@@ -172,12 +175,12 @@ func TestConversation_AnswerQueryReadsAccountBalance(t *testing.T) {
 // base, el usuario tocó un botón que no existe.
 func TestConversation_ManageSettingsReminder_OpensTheWizard(t *testing.T) {
 	h := newConversationHarness(t)
-	h.ScriptToolCalls(manageSettingsCall(settingsAreaReminder))
+	h.ScriptToolCalls(manageSettingsCall(agent.SettingsAreaReminder))
 
 	h.SendText("quiero que me recuerdes cargar los gastos")
 
-	if flow, _ := h.FlowState(); flow != reminderSetupFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, reminderSetupFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.ReminderSetupFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.ReminderSetupFlowName, h.Messages())
 	}
 }
 
@@ -187,12 +190,12 @@ func TestConversation_ManageSettingsAccount_OpensTheManageFlow(t *testing.T) {
 	h := newConversationHarness(t)
 	matched := h.accounts["Banco Test"]
 	h.orc.accountManageResult = orchestrator.AccountManageResult{MatchedAccountID: &matched}
-	h.ScriptToolCalls(manageSettingsCall(settingsAreaAccount))
+	h.ScriptToolCalls(manageSettingsCall(agent.SettingsAreaAccount))
 
 	h.SendText("renombrá la cuenta del banco")
 
-	if flow, _ := h.FlowState(); flow != accountManageFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, accountManageFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.AccountManageFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.AccountManageFlowName, h.Messages())
 	}
 }
 
@@ -209,12 +212,12 @@ func TestConversation_ManageSettingsCategory_OpensTheProposalConfirm(t *testing.
 		Category: "Ocio y salidas", Subcategory: "Escalada indoor", Icon: "🧗",
 		Description: "Entradas y alquiler de equipo en el rocódromo",
 	}}
-	h.ScriptToolCalls(manageSettingsCall(settingsAreaCategory))
+	h.ScriptToolCalls(manageSettingsCall(agent.SettingsAreaCategory))
 
 	h.SendText("quiero una categoría para la escalada")
 
-	if flow, _ := h.FlowState(); flow != categoryProposalConfirmFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, categoryProposalConfirmFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.CategoryProposalConfirmFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.CategoryProposalConfirmFlowName, h.Messages())
 	}
 }
 
@@ -227,12 +230,12 @@ func TestConversation_ManageSettingsCategory_DuplicateOffersTheExistingOne(t *te
 		Category: "Mascotas", Subcategory: "Veterinaria", Icon: "🐶",
 		Description: "Consultas y vacunas del perro",
 	}}
-	h.ScriptToolCalls(manageSettingsCall(settingsAreaCategory))
+	h.ScriptToolCalls(manageSettingsCall(agent.SettingsAreaCategory))
 
 	h.SendText("quiero una categoría para el veterinario")
 
-	if flow, _ := h.FlowState(); flow != categoryMatchOfferFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, categoryMatchOfferFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.CategoryMatchOfferFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.CategoryMatchOfferFlowName, h.Messages())
 	}
 }
 
@@ -247,7 +250,7 @@ func TestConversation_ManageSettingsUnknownArea_AsksForARewrite(t *testing.T) {
 	if flow, _ := h.FlowState(); flow != "" {
 		t.Errorf("un área desconocida abrió el flow %q", flow)
 	}
-	if h.LastMessage() != msgAskRewrite {
+	if h.LastMessage() != messages.MsgAskRewrite {
 		t.Errorf("último mensaje = %q, want msgAskRewrite", h.LastMessage())
 	}
 }
@@ -263,7 +266,7 @@ func TestConversation_ManageSettingsUnknownArea_AsksForARewrite(t *testing.T) {
 // escondió el bug durante dos días.
 func TestConversation_RecategorizeABatch(t *testing.T) {
 	h := newConversationHarness(t)
-	today := startOfTodayArgentina()
+	today := agent.StartOfTodayArgentina()
 	super := h.subID("Alimentación", "Supermercado")
 	destino := h.subID("Vivienda", "Mantenimiento hogar")
 	ids := []uint{
@@ -281,7 +284,7 @@ func TestConversation_RecategorizeABatch(t *testing.T) {
 		"changes":[{"field":"category","op":"set","value":"mantenimiento hogar"}]}`))
 
 	h.SendText("mové los movimientos del lote a mantenimiento hogar")
-	h.TapButton(optionConfirm)
+	h.TapButton(flow.OptionConfirm)
 
 	var moved int
 	for _, m := range h.Movements() {
@@ -320,7 +323,7 @@ func describeRows(ms []movement.Movement) string {
 func TestConversation_NoOpCorrectionWritesNothing(t *testing.T) {
 	h := newConversationHarness(t)
 	super := h.subID("Alimentación", "Supermercado")
-	id := h.SeedMovementOn("Carrefour", "-12700", super, startOfTodayArgentina())
+	id := h.SeedMovementOn("Carrefour", "-12700", super, agent.StartOfTodayArgentina())
 
 	// El "cambio" nombra la categoría que la fila ya tiene.
 	h.ScriptToolCalls(correctMovementCall(`{
@@ -350,11 +353,11 @@ func TestConversation_ManageSettingsCategoryManage_OpensThePickFlow(t *testing.T
 	// caso.
 	h.SeedOwnCategory("Mascotas", "Paseador", "El que saca al perro", "🐕")
 
-	h.ScriptToolCalls(manageSettingsCall(settingsAreaCategoryManage))
+	h.ScriptToolCalls(manageSettingsCall(agent.SettingsAreaCategoryManage))
 	h.SendText("eliminá subcategorías")
 
-	if flow, _ := h.FlowState(); flow != categoryManagePickFlowName {
-		t.Fatalf("flow abierto = %q, want %q. Copia: %v", flow, categoryManagePickFlowName, h.Messages())
+	if fl, _ := h.FlowState(); fl != flow.CategoryManagePickFlowName {
+		t.Fatalf("flow abierto = %q, want %q. Copia: %v", fl, flow.CategoryManagePickFlowName, h.Messages())
 	}
 }
 
@@ -388,7 +391,7 @@ func TestConversation_GuardsSayWhatHappened(t *testing.T) {
 	for _, tc := range casos {
 		t.Run(tc.nombre, func(t *testing.T) {
 			h := newConversationHarness(t)
-			id := h.SeedMovementOn("Peaje", tc.monto, h.subID("Transporte", "Peaje"), startOfTodayArgentina())
+			id := h.SeedMovementOn("Peaje", tc.monto, h.subID("Transporte", "Peaje"), agent.StartOfTodayArgentina())
 
 			h.ScriptToolCalls(correctMovementCall(
 				`{"change":"` + tc.mensaje + `","changes":[` + tc.cambio + `]}`))
@@ -416,12 +419,12 @@ func TestConversation_GuardsSayWhatHappened(t *testing.T) {
 func TestRecentEntities_ReachTheWholeDayNotTenMinutes(t *testing.T) {
 	h := newConversationHarness(t)
 	// Cargado hace media hora: fuera de justCreatedWindow, dentro de hoy.
-	h.SeedMovementOn("Peaje", "-2500", h.subID("Transporte", "Peaje"), startOfTodayArgentina())
+	h.SeedMovementOn("Peaje", "-2500", h.subID("Transporte", "Peaje"), agent.StartOfTodayArgentina())
 	h.conn.DB.Exec(
 		"UPDATE movements SET created_at = now() - interval '30 minutes' WHERE user_id = ? AND description = 'Peaje'",
 		h.userID)
 
-	bloque := h.c.buildRecentEntities(h.userID)
+	bloque := agent.BuildRecentEntities(h.c, h.userID)
 
 	if !strings.Contains(bloque, "Peaje") {
 		t.Errorf("el peaje de hace 30 min tiene que estar en el bloque:\n%q", bloque)

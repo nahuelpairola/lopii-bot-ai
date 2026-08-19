@@ -1,13 +1,16 @@
+// Package server es el composition root: arma todo y lo enciende.
+//
+// InitServer se lee de arriba a abajo a propósito — el orden ES la información
+// cuando el server no levanta. Lo que NO es orden de arranque vive al lado:
+// recorder.go (el adapter de telemetría), flows.go (los 15 registros de flujo)
+// y bootstrap.go (construir base, bot y orchestrator).
 package server
 
 import (
 	"context"
-	"log/slog"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/config"
@@ -16,15 +19,13 @@ import (
 	messagingctrl "lopiibot.com/internal/controller/messaging"
 	miniappctrl "lopiibot.com/internal/controller/miniapp"
 	"lopiibot.com/internal/conversation"
-	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/health"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/logging"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/notifier"
-	"lopiibot.com/internal/nudge"
-	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/nudges"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/quote"
@@ -34,49 +35,9 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-type httpServer struct {
-	engine *gin.Engine
-}
-
-var server httpServer
-
 // quoteTimeoutSeconds: el fetch más grande es el sembrado de 2.9 MB, una vez
 // por deploy. 60 s le sobra y no bloquea nada — corre en la goroutine del sweeper.
 const quoteTimeoutSeconds = 60
-
-// llmCallRecorder adapta orchestrator.LLMRecorder a metric. Fire-and-forget en
-// goroutine: la métrica no debe agregar latencia ni romper el flujo del usuario.
-type llmCallRecorder struct {
-	insert func(*metric.LLMCall) error
-}
-
-func (r llmCallRecorder) Record(c orchestrator.LLMCall) {
-	go func() {
-		// Vacío → NULL, para que `WHERE tool_calls IS NOT NULL` signifique "el
-		// modelo llamó algo" y no "la columna trae un array vacío".
-		var toolCalls *string
-		if c.ToolCalls != "" {
-			toolCalls = &c.ToolCalls
-		}
-		if err := r.insert(&metric.LLMCall{
-			TraceID:                    c.TraceID,
-			CallType:                   c.CallType,
-			Model:                      c.Model,
-			PromptTokens:               c.PromptTokens,
-			CompletionTokens:           c.CompletionTokens,
-			TotalTokens:                c.TotalTokens,
-			LatencyMs:                  c.LatencyMs,
-			HTTPStatus:                 c.HTTPStatus,
-			Attempts:                   c.Attempts,
-			Error:                      c.Err,
-			RateLimitRemainingRequests: c.RateLimitRemainingRequests,
-			RateLimitRemainingTokens:   c.RateLimitRemainingTokens,
-			ToolCalls:                  toolCalls,
-		}); err != nil {
-			slog.Error("llm_call insert failed", "err", err)
-		}
-	}()
-}
 
 func InitServer(conf *config.Config) error {
 	// First statement: everything after this — including a failed DB connect —
@@ -96,18 +57,19 @@ func InitServer(conf *config.Config) error {
 		return err
 	}
 
-	tgBot, err := inititalizeBot(conf, ginEngine)
+	tgBot, err := initializeBot(conf, ginEngine)
 	if err != nil {
 		return err
 	}
 
+	// Repositorios. Uno por tabla, todos sobre la misma conexión.
 	healthChecker := health.NewHealthChecker(conn)
 	invitationRepo := invitation.NewRepository(conn)
 	userRepo := user.NewRepository(conn)
 	accountRepo := account.NewRepository(conn)
 	movementRepo := movement.InitRepository(conn)
 	reminderRepo := reminder.NewRepository(conn)
-	nudgeRepo := nudge.NewRepository(conn)
+	nudgeRepo := nudges.NewRepository(conn)
 	jobsRepo := pendingjob.NewRepository(conn)
 	metricRepo := metric.InitRepository(conn)
 	chatHistoryRepo := chathistory.InitRepository(
@@ -123,45 +85,13 @@ func InitServer(conf *config.Config) error {
 	conversationRepo := conversation.NewRepository(conn)
 	actionsRepo := pendingaction.NewRepository(conn)
 
-	llmOrchestrator := orchestrator.New(orchestrator.Config{
-		APIKey:              conf.Groq.APIKey,
-		BaseURL:             conf.Groq.BaseURL,
-		CreateModel:         conf.Groq.CreateModel,
-		UpdateModel:         conf.Groq.UpdateModel,
-		QueryModel:          conf.Groq.QueryModel,
-		AgentModel:          conf.Groq.AgentModel,
-		AgentFallbackModels: conf.Groq.AgentFallbackModels,
-		QueryFallbackModels: conf.Groq.QueryFallbackModels,
-		NarrationModel:      conf.Groq.NarrationModel,
-		ClassifierModel:     conf.Groq.ClassifierModel,
-		TimeoutSeconds:      conf.Groq.TimeoutSeconds,
-		Recorder:            llmCallRecorder{insert: metricRepo.InsertLLMCall},
-	})
-
-	// Avisa, no aborta: un operador puede tener una razón que la tabla no contempla, y
-	// tumbar el server por eso es peor que el problema que evita. El corte de verdad es
-	// el test sobre config/*.toml, que corre antes del deploy.
-	for _, conflicto := range config.ModelBucketConflicts(conf.Groq) {
-		slog.Warn("config: llamadas del mismo turno comparten modelo", "detalle", conflicto)
-	}
+	llmOrchestrator := buildOrchestrator(conf, llmCallRecorder{insert: metricRepo.InsertLLMCall})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
-	conversationEngine.Register(messagingctrl.NewMovementCreateFlow(subcategoryCache, accountRepo))
-	conversationEngine.Register(messagingctrl.NewMovementUpdatePickFlow())
-	conversationEngine.Register(messagingctrl.NewMovementUpdateConfirmFlow())
-	conversationEngine.Register(messagingctrl.NewMovementDeleteFlow())
-	conversationEngine.Register(messagingctrl.NewAccountCreateFlow())
-	conversationEngine.Register(messagingctrl.NewAccountManageFlow(movementRepo))
-	conversationEngine.Register(messagingctrl.NewAccountMoveOfferFlow())
-	conversationEngine.Register(messagingctrl.NewSubcategorySetupFlow(subcategoryCache))
-	conversationEngine.Register(messagingctrl.NewCategoryMatchOfferFlow())
-	conversationEngine.Register(messagingctrl.NewCategoryProposalConfirmFlow())
-	conversationEngine.Register(messagingctrl.NewCategoryManagePickFlow(subcategoryCache))
-	conversationEngine.Register(messagingctrl.NewCategoryManageTargetFlow(subcategoryCache))
-	conversationEngine.Register(messagingctrl.NewMovementNegativeConfirmFlow())
-	conversationEngine.Register(messagingctrl.NewReminderSetupFlow())
-	conversationEngine.Register(messagingctrl.NewAskUserFlow())
+	registerFlows(conversationEngine, subcategoryCache, accountRepo, movementRepo)
 
+	// Controllers. metricRepo entra DOS veces —como metrics y como traces— porque
+	// las dos lecturas salen del mismo repo; no es un error de tipeo.
 	healthController := healthctrl.NewController(healthChecker)
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
@@ -175,67 +105,14 @@ func InitServer(conf *config.Config) error {
 	messagingController.RegisterHandlers(tgBot)
 	miniappController.RegisterRoutes(ginEngine)
 
+	// Las dos goroutines de fondo: el sweeper (recordatorios, resumen semanal,
+	// retención de trazas, cotizaciones) y el drenaje de la cola de 429.
 	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo, subcategoryCache)
 	quoteRepo := quote.NewRepository(conn)
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
 	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
-	go messagingController.RunJobDrain(context.Background(), tgBot, messagingctrl.JobDrainInterval)
+	go pendingjob.Run(context.Background(), messagingController, jobsRepo, tgBot, pendingjob.JobDrainInterval)
 
-	server = httpServer{engine: ginEngine}
-	return server.engine.Run(":" + conf.Server.Port)
-}
-
-func initializeDatabase(conf *config.Config) (*database.Connection, error) {
-	conn, err := database.Initialize(database.Creds{
-		Host:     conf.Database.Host,
-		Name:     conf.Database.Name,
-		Port:     conf.Database.Port,
-		User:     conf.Database.User,
-		Password: conf.Database.Password,
-	}, conf.Log.Level == "debug")
-	if err != nil {
-		return nil, err
-	}
-
-	if err := database.RunMigrations("../../migrations"); err != nil {
-		return nil, err
-	}
-
-	return conn, nil
-}
-
-func inititalizeBot(conf *config.Config, engine *gin.Engine) (*bot.Bot, error) {
-	tgBot, err := bot.New(conf.Telegram.Token)
-	if err != nil {
-		return nil, err
-	}
-
-	webhookBot := conf.Server.BaseHost + "/webhook/telegram"
-	_, err = tgBot.SetWebhook(context.Background(), &bot.SetWebhookParams{
-		URL: webhookBot,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	engine.POST("/webhook/telegram", gin.WrapH(tgBot.WebhookHandler()))
-
-	// The Mini App menu button is cosmetic — register it best-effort, OFF the
-	// boot critical path. A slow or failing Telegram call here must never
-	// delay or abort the webhook loop (the bot's core function).
-	go func() {
-		if _, err := tgBot.SetChatMenuButton(context.Background(), &bot.SetChatMenuButtonParams{
-			MenuButton: &models.MenuButtonWebApp{
-				Type:   models.MenuButtonTypeWebApp,
-				Text:   miniappctrl.MenuButtonText,
-				WebApp: models.WebAppInfo{URL: conf.Server.BaseHost + miniappctrl.EntryPath},
-			},
-		}); err != nil {
-			slog.Error("miniapp: SetChatMenuButton failed", "err", err)
-		}
-	}()
-
-	go tgBot.StartWebhook(context.Background())
-	return tgBot, nil
+	return ginEngine.Run(":" + conf.Server.Port)
 }

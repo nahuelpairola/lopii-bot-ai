@@ -19,6 +19,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -188,21 +189,21 @@ func newConversationHarness(t *testing.T) *convHarness {
 	// Los mismos que registra server.go: parkear a un flow no registrado es un
 	// error de arranque, y un escenario que lo toque muere con un mensaje que no
 	// habla de lo que el escenario prueba.
-	engine.Register(NewMovementCreateFlow(cache, accRepo))
-	engine.Register(NewMovementUpdatePickFlow())
-	engine.Register(NewMovementUpdateConfirmFlow())
-	engine.Register(NewMovementDeleteFlow())
-	engine.Register(NewAccountCreateFlow())
-	engine.Register(NewAccountManageFlow(movRepo))
-	engine.Register(NewAccountMoveOfferFlow())
-	engine.Register(NewSubcategorySetupFlow(cache))
-	engine.Register(NewCategoryMatchOfferFlow())
-	engine.Register(NewCategoryProposalConfirmFlow())
-	engine.Register(NewCategoryManagePickFlow(cache))
-	engine.Register(NewCategoryManageTargetFlow(cache))
-	engine.Register(NewMovementNegativeConfirmFlow())
-	engine.Register(NewReminderSetupFlow())
-	engine.Register(NewAskUserFlow())
+	engine.Register(flow.NewMovementCreateFlow(cache, accRepo))
+	engine.Register(flow.NewMovementUpdatePickFlow())
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
+	engine.Register(flow.NewMovementDeleteFlow())
+	engine.Register(flow.NewAccountCreateFlow())
+	engine.Register(flow.NewAccountManageFlow(movRepo))
+	engine.Register(flow.NewAccountMoveOfferFlow())
+	engine.Register(flow.NewSubcategorySetupFlow(cache))
+	engine.Register(flow.NewCategoryMatchOfferFlow())
+	engine.Register(flow.NewCategoryProposalConfirmFlow())
+	engine.Register(flow.NewCategoryManagePickFlow(cache))
+	engine.Register(flow.NewCategoryManageTargetFlow(cache))
+	engine.Register(flow.NewMovementNegativeConfirmFlow())
+	engine.Register(flow.NewReminderSetupFlow())
+	engine.Register(flow.NewAskUserFlow())
 
 	// El clasificador va scripteado con un par válido por default: desde que la
 	// clasificación salió del loop, sin par TODA fila cae en PENDING_REVIEW y
@@ -398,7 +399,7 @@ func TestConversation_DeleteConfirmedActuallyDeletes(t *testing.T) {
 	// Con UN candidato el loop siembra resolved_index y el picker se saltea, así
 	// que el primer botón que ve el usuario ya es el de confirmar. (Cuando hay
 	// varios, el picker manda ÍNDICES y no etiquetas: callback_data son 64 bytes.)
-	h.TapButton(optionConfirm)
+	h.TapButton(flow.OptionConfirm)
 
 	movs := h.Movements()
 	if len(movs) != 0 {
@@ -445,7 +446,7 @@ func TestConversation_CorrectionWithUnknownCategoryKeepsTheMovement(t *testing.T
 		"changes":[{"field":"category","op":"set","value":"proyecto hogar"}]}`))
 
 	h.SendText("el café ponelo en proyecto hogar")
-	h.TapButton(optionConfirm) // resuelve el picker de candidatos
+	h.TapButton(flow.OptionConfirm) // resuelve el picker de candidatos
 
 	if got := h.Movements(); len(got) != 1 || got[0].ID != id {
 		t.Fatalf("el movimiento %d se perdió — este es EL bug. Quedó: %+v. Copia: %v", id, got, h.Messages())
@@ -495,7 +496,7 @@ func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t
 	}
 
 	// Y aunque confirme lo que sea que se le ofreció, el movimiento sigue.
-	h.TapButton(optionConfirm)
+	h.TapButton(flow.OptionConfirm)
 	movs := h.Movements()
 	if len(movs) != 1 || movs[0].ID != id {
 		t.Fatalf("el movimiento se perdió: %+v. Copia: %v", movs, h.Messages())
@@ -527,7 +528,7 @@ func (h *convHarness) insertCoffeeThenCorrection(t *testing.T) {
 	// Sin esto los tests de abajo serían vacíos: arman el callback a mano, así
 	// que pasarían aunque el gate no hubiera marcado nada. Lo que se exige acá
 	// es que el RECIBO haya salido con los botones puestos.
-	if !h.lastMarkupHas(nearDupPrefix) {
+	if !h.lastMarkupHas(flow.NearDupPrefix) {
 		t.Fatalf("el recibo salió sin los botones del gate. Markups: %v", h.rt.markups)
 	}
 }
@@ -549,7 +550,7 @@ func (h *convHarness) nearDupButton(t *testing.T, action string) string {
 	if len(movs) != 2 {
 		t.Fatalf("esperaba dos filas antes de tocar el botón, hay %d", len(movs))
 	}
-	return nearDupPrefix + action + ":" +
+	return flow.NearDupPrefix + action + ":" +
 		strconv.FormatUint(uint64(movs[1].ID), 10) + ":" +
 		strconv.FormatUint(uint64(movs[0].ID), 10)
 }
@@ -558,7 +559,7 @@ func TestNearDuplicate_SumaloAEse_MergesAndDeletes(t *testing.T) {
 	h := newConversationHarness(t)
 	h.insertCoffeeThenCorrection(t)
 
-	h.TapButton(h.nearDupButton(t, nearDupMerge))
+	h.TapButton(h.nearDupButton(t, flow.NearDupMerge))
 
 	movs := h.Movements()
 	if len(movs) != 1 {
@@ -573,7 +574,7 @@ func TestNearDuplicate_Reemplazalo_KeepsOnlyTheNewAmount(t *testing.T) {
 	h := newConversationHarness(t)
 	h.insertCoffeeThenCorrection(t)
 
-	h.TapButton(h.nearDupButton(t, nearDupReplace))
+	h.TapButton(h.nearDupButton(t, flow.NearDupReplace))
 
 	movs := h.Movements()
 	if len(movs) != 1 {
@@ -611,7 +612,7 @@ func TestNearDuplicate_VaAparte_ChangesNothing(t *testing.T) {
 	h := newConversationHarness(t)
 	h.insertCoffeeThenCorrection(t)
 
-	h.TapButton(h.nearDupButton(t, nearDupSeparte))
+	h.TapButton(h.nearDupButton(t, flow.NearDupSeparte))
 
 	if got := len(h.Movements()); got != 2 {
 		t.Errorf("movimientos = %d, want 2", got)

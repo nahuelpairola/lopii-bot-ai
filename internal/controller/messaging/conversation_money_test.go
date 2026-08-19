@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"testing"
 
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -119,7 +121,7 @@ func TestMoney_UsdAndArsNeverMix(t *testing.T) {
 func TestMoney_CancelledCorrectionWritesNothing(t *testing.T) {
 	h := newConversationHarness(t)
 	super := h.subID("Alimentación", "Supermercado")
-	id := h.SeedMovementOn("Carrefour", "-12700", super, startOfTodayArgentina())
+	id := h.SeedMovementOn("Carrefour", "-12700", super, agent.StartOfTodayArgentina())
 	antes := h.Balance("Banco Test")
 
 	h.ScriptToolCalls(correctMovementCall(`{
@@ -149,12 +151,12 @@ func itoa(id uint64) string { return strconv.FormatUint(id, 10) }
 //
 // Medido en vivo el 2026-08-12, donde falló por DOS bugs encadenados: la guarda
 // de no-op no comparaba AccountNameGuess (cambiar de cuenta pone el nombre y
-// VACÍA el id, y el vacío se leía como "no lo tocó"), y keyPendingAccountGaps
+// VACÍA el id, y el vacío se leía como "no lo tocó"), y conversation.KeyPendingAccountGaps
 // iba hardcodeado en nil — el mismo bug que ya había tenido la categoría.
 func TestMoney_ChangingTheAccountMovesBothBalances(t *testing.T) {
 	h := newConversationHarness(t)
 	h.SeedAccount("Galicia Test", currency.ARS, "0")
-	h.SeedMovementOn("Peaje", "-2500", h.subID("Transporte", "Peaje"), startOfTodayArgentina())
+	h.SeedMovementOn("Peaje", "-2500", h.subID("Transporte", "Peaje"), agent.StartOfTodayArgentina())
 
 	origenAntes := h.Balance("Banco Test")
 	destinoAntes := h.Balance("Galicia Test")
@@ -163,7 +165,7 @@ func TestMoney_ChangingTheAccountMovesBothBalances(t *testing.T) {
 		"change":"el peaje ponelo en Galicia Test",
 		"changes":[{"field":"account","value":"Galicia Test"}]}`))
 	h.SendText("el peaje ponelo en Galicia Test")
-	h.TapButton(optionConfirm)
+	h.TapButton(flow.OptionConfirm)
 
 	movs := h.Movements()
 	if len(movs) != 1 {

@@ -103,28 +103,29 @@ func applyDefaults(v *viper.Viper) {
 	// desde la etapa 5, Run es el ÚNICO, así que un entorno nuevo sin este valor
 	// no degrada, no arranca.
 	v.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
-	// La cadena por default. Los tres soportan `tools` (verificado contra
-	// /v1/models) y están ordenados por precio: gpt-oss-20b es el más barato de
-	// los capaces, y llama-3.3-70b —el de mayor techo, 12.000 TPM— va último
-	// porque su prompt cuesta 8 veces más. qwen queda AFUERA a propósito: su
-	// completion sale $3 por millón, diez veces el 20b.
-	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "openai/gpt-oss-20b"})
-	// La cadena de query. llama-3.3-70b primero por el techo medido más alto
-	// (12.000 TPM) y bucket propio; gpt-oss-20b último porque es el más barato pero
-	// el más flojo narrando, y a esa altura la alternativa es no contestar.
+	// Estas listas NO son la cadena: `agentRound`/`queryChain` arman `[primario] +
+	// esto`, así que el último paso repite el primario y reintenta un bucket que ya
+	// rebotó. Se deja así a propósito (2026-08-19).
 	//
-	// El orden de la cadena del AGENTE no se toca a propósito, aunque su primer
-	// suplente (120b) sea el primario de query: ahora query tiene con qué correrse
-	// de ese choque, e invertir el del agente mandaría todo el tráfico de rescate a
-	// llama-3.3-70b, cuyo prompt cuesta ~8 veces más. Está último por precio.
+	// Groq dejó dos modelos usables, ambos de 8.000 TPM en buckets separados — que
+	// dos llamadas caigan en buckets distintos es lo único que hace que correrse
+	// sirva de algo.
+	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "openai/gpt-oss-20b"})
 	v.SetDefault("Groq.QueryFallbackModels", []string{"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
-	// openai/gpt-oss-20b no razona: narra en 35-61 tokens de completion contra
-	// los 174-1.024 de gpt-oss, y por eso no puede quedarse sin presupuesto antes de
-	// escribir. qwen queda afuera: emite su razonamiento DENTRO del contenido.
-	// llama-3.1-8b-instant también: Groq lo da de baja el 2026-08-16.
+	// Se elige un modelo que no razone: narrar cuesta decenas de tokens de
+	// completion y razonar cuesta cientos, así que el que razona puede quedarse sin
+	// presupuesto antes de escribir. Los números medidos están en
+	// maxNarrationCompletionTokens (client_loop.go) — con la advertencia de que se
+	// midieron contra llama-3.3-70b, que ya no existe.
+	//
+	// qwen/qwen3.6-27b queda afuera y conviene que siga anotado, porque es el
+	// candidato obvio a tercer modelo cada vez que alguien mira el test de colisión
+	// en rojo: emite su razonamiento DENTRO del contenido, o sea que el <think> le
+	// sale al usuario. No es un problema de costo, es que rompe la salida.
 	v.SetDefault("Groq.NarrationModel", "openai/gpt-oss-20b")
-	// openai/gpt-oss-20b: el techo medido más alto (12.000 TPM), bucket
-	// propio, y fuerte en español rioplatense. Punto de partida, no conclusión.
+	// Va en su propio bucket respecto del loop, que es el punto — no por tener el
+	// techo más alto: los dos gpt-oss miden 8.000 TPM. Fuerte en español
+	// rioplatense. Punto de partida, no conclusión.
 	v.SetDefault("Groq.ClassifierModel", "openai/gpt-oss-20b")
 	v.SetDefault("Log.Level", "info")
 	v.SetDefault("Log.Format", "json")
@@ -132,29 +133,13 @@ func applyDefaults(v *viper.Viper) {
 
 // sameTurnCalls son los pares de llamadas a Groq que pueden ocurrir en UN MISMO turno.
 //
-// Los techos de Groq (TPM, TPD) son POR MODELO, así que dos llamadas del mismo turno
-// apuntando al mismo modelo compiten entre sí: la primera reserva y la segunda rebota.
-// El 2026-08-13 costó ~95 segundos y ~11.000 tokens quemados en reintentos que no
-// podían avanzar, porque `create` estaba en el mismo modelo que `agent`.
+// Los techos de Groq son POR MODELO, así que dos llamadas del mismo turno apuntando al
+// mismo modelo compiten: la primera reserva y la segunda rebota. Ya costó un turno
+// entero en reintentos que no podían avanzar (2026-08-13).
 //
-// Lo que NO entra, y es tan importante como lo que entra: `update` y `onboarding`
-// viven en pasos de flow que llegan en mensajes POSTERIORES, no en el turno del
-// agente. Competir entre turnos ya lo cubre la cadena de fallback.
-//
-// Tampoco entran `query`+`create` (hoy los dos en openai/gpt-oss-120b) ni
-// `classifier`+`narration` (hoy los dos en openai/gpt-oss-20b), aunque en
-// teoría podrían chocar: sólo aparecen si se lee la tabla como transitiva
-// (agent-query más agent-create implicando query-create, y análogo para el otro
-// par). No hay un trace que muestre a ninguno de los dos ocurriendo de verdad en
-// el mismo turno —cada par que SÍ está listado, lo tiene—. Y satisfacer la
-// lectura transitiva pediría cinco modelos distintos cuando sólo hay tres
-// usables: qwen emite su razonamiento adentro del contenido que le llega al
-// usuario, y Groq da de baja llama-3.1-8b-instant el 2026-08-16. El costo
-// residual de dejarlos afuera es acotado y mucho menor al que esta tabla existe
-// para evitar: la narración reserva ~850 tokens contra el techo de llama
-// (~12.000 TPM), y las cadenas de fallback cubren un rebote. Si algún día un
-// trace muestra a alguno de estos dos pares chocando en producción, se agrega
-// acá y se cambia de modelo.
+// Un par se agrega cuando un trace lo muestra, no cuando parece posible. Qué queda
+// afuera y por qué, y por qué la tabla se deja intacta con el test en rojo desde el
+// 2026-08-17: docs/decisions.md § Groq quota, the 429 queue and rate limits.
 var sameTurnCalls = [][2]string{
 	{"agent", "classifier"}, // ClassifyCategories sale del propio ejecutor del agente
 	{"agent", "query"},      // el agente delega en answer_query dentro del mismo turno

@@ -13,7 +13,7 @@ import (
 //   - taxonomy / amount / date / compound / type / gain / grouping rules come
 //     verbatim from createSystemPromptTemplate (create.go)
 //   - the narration and Argentine-formatting rules come verbatim from
-//     buildQuerySystemPrompt (messaging/query.go)
+//     query.SystemPrompt (internal/query)
 //   - the router's tie-breakers (router.go) are the one part genuinely
 //     rewritten: the router picked an INTENT, the model now picks a TOOL
 //

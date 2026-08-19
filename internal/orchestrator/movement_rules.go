@@ -21,12 +21,6 @@ import "strings"
 // plantillas de fmt.Sprintf; el '%%' de abajo es el escape correcto) ni
 // backtick (son raw string literals).
 
-const taxonomyAndAmountRules = `
-REGLAS DE TAXONOMÍA:
-1. Usá ÚNICAMENTE las categorías y subcategorías listadas abajo. Prohibido inventar nombres nuevos.
-2. Si tenés menos del 90%% de certeza sobre la categoría o subcategoría, asigná EXACTAMENTE "PENDING_REVIEW" en ambos campos.
-` + amountRules
-
 // amountRules es lo que queda cuando la taxonomía se va del prompt: el loop
 // sigue necesitando cómo leer un monto, pero ya no clasifica.
 const amountRules = `

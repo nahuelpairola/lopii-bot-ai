@@ -39,3 +39,6 @@ app_scripts_v1/
 
 # Superpowers scratch (specs/plans, per-session) — not tracked
 docs/superpowers/
+
+# Local OpenCode MCP config (machine-specific; auth lives in the OAuth store)
+opencode.json

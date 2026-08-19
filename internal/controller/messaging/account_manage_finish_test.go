@@ -6,6 +6,7 @@ import (
 
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/flow"
 )
 
 func resolvedContains(m *fakeMetricRepo, outcome string) bool {
@@ -84,7 +85,7 @@ func TestFinishAccountManage_CreateNew_StartsCreate(t *testing.T) {
 	orch := &fakeFullOrchestrator{}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountCreateFlow())
+	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine, metrics: &fakeMetricRepo{}}
 
 	data := conversation.Data{
@@ -94,7 +95,7 @@ func TestFinishAccountManage_CreateNew_StartsCreate(t *testing.T) {
 	}
 	c.finishAccountManageFlow(context.Background(), nil, 0, data)
 
-	if store.flowName != accountCreateFlowName {
-		t.Errorf("started flow = %q, want %q", store.flowName, accountCreateFlowName)
+	if store.flowName != flow.AccountCreateFlowName {
+		t.Errorf("started flow = %q, want %q", store.flowName, flow.AccountCreateFlowName)
 	}
 }

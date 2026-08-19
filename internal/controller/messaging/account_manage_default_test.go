@@ -7,6 +7,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/flow"
 )
 
 func defaultData() conversation.Data {
@@ -35,7 +36,7 @@ func newDefaultController(prev *account.Account, prevBalance string) (*controlle
 	}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
-	engine.Register(NewAccountMoveOfferFlow())
+	engine.Register(flow.NewAccountMoveOfferFlow())
 	c := &controller{accounts: accRepo, movements: movRepo, engine: engine, metrics: &fakeMetricRepo{}}
 	return c, accRepo, movRepo, store
 }
@@ -53,8 +54,8 @@ func TestFinishAccountDefault_OffersMove(t *testing.T) {
 	if accRepo.setDefaultID != 7 {
 		t.Errorf("setDefaultID = %d, want 7", accRepo.setDefaultID)
 	}
-	if store.flowName != accountMoveOfferFlowName {
-		t.Fatalf("flowName = %q, want %q (offer must start)", store.flowName, accountMoveOfferFlowName)
+	if store.flowName != flow.AccountMoveOfferFlowName {
+		t.Fatalf("flowName = %q, want %q (offer must start)", store.flowName, flow.AccountMoveOfferFlowName)
 	}
 	if store.data["move_from_id"] != "3" || store.data["move_to_id"] != "7" {
 		t.Errorf("seed from/to = %v/%v, want 3/7", store.data["move_from_id"], store.data["move_to_id"])

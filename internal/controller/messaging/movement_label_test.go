@@ -5,17 +5,18 @@ import (
 	"time"
 
 	"lopiibot.com/internal/constants"
+	"lopiibot.com/internal/movement"
 )
 
 // TestTodayCivil_IsArgentineCalendarDay falla si "hoy" vuelve a salir del reloj
 // del server: entre las 21:00 y las 24:00 ART, UTC ya está en el día siguiente.
 func TestTodayCivil_IsArgentineCalendarDay(t *testing.T) {
-	got := todayCivil()
+	got := movement.TodayCivil()
 	want := time.Now().In(constants.ArgentinaZone).Format("2006-01-02")
 	if got.Format("2006-01-02") != want {
-		t.Errorf("todayCivil() = %s, want %s (día ART)", got.Format("2006-01-02"), want)
+		t.Errorf("movement.TodayCivil() = %s, want %s (día ART)", got.Format("2006-01-02"), want)
 	}
 	if got.Location() != time.UTC || got.Hour() != 0 {
-		t.Errorf("todayCivil() = %v, want medianoche UTC (fecha civil comparable)", got)
+		t.Errorf("movement.TodayCivil() = %v, want medianoche UTC (fecha civil comparable)", got)
 	}
 }

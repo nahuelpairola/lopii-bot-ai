@@ -1,6 +1,6 @@
 # Recipes — lopii-finance-bot
 
-> Step-by-step for the common extension points. Conventions they assume live in `CLAUDE.md`.
+> Step-by-step for the common extension points. Conventions they assume live in `AGENTS.md`.
 
 ### Recipe 1: Add a DB migration
 
@@ -29,8 +29,8 @@ goose -dir ./migrations postgres "<connection_string>" up
 A flow is a graph of steps persisting state in `conversation_states`. The graph is validated at
 construction — a step referencing a non-existent next step fails the server at startup.
 
-> Read `internal/conversation/CLAUDE.md` first for the `Data` contract, and
-> `internal/controller/messaging/CLAUDE.md` for the local helpers. The traps there are the ones
+> Read `internal/conversation/AGENTS.md` first for the `Data` contract, and
+> `internal/controller/messaging/AGENTS.md` for the local helpers. The traps there are the ones
 > that compile.
 
 **1. Step names as constants**, in the target package:
@@ -78,7 +78,7 @@ func NewAccountSetupFlow() *conversation.Flow {
 
 | Where | What | If you forget |
 |---|---|---|
-| `server.go` | `conversationEngine.Register(NewAccountSetupFlow())` | server fails at startup — loud, fine |
+| `server/flows.go` | a line in `registerFlows`: `engine.Register(flow.NewAccountSetupFlow())` | server fails at startup — loud, fine |
 | `controller.go` → `handleFlowFinished` | a `case accountSetupFlowName:` | the flow completes into `msgSomethingBroke` |
 | `messages.go` → `FlowResumeLabel` | a `case accountSetupFlowName:` | **silent** — broken copy appears only after a user idles 24h |
 
@@ -147,9 +147,9 @@ b.RegisterHandler(bot.HandlerTypeMessageText, "/new-invite", bot.MatchTypePrefix
 adminRoutes := authed.Group("", requireAdmin())
 adminRoutes.GET("/"+templates.AdminPath, c.handleAdmin)
 ```
-`/app/admin` (the invitations view) is the worked example. Getting the user *to* it is the other half: a webview has no address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know who is looking. The tab therefore ships from the first authenticated partial (Resumen) as an `hx-swap-oob` element that lands in the empty `AdminTabSlotID` slot the `TabBar` reserves — see `internal/controller/miniapp/CLAUDE.md`.
+`/app/admin` (the invitations view) is the worked example. Getting the user *to* it is the other half: a webview has no address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know who is looking. The tab therefore ships from the first authenticated partial (Resumen) as an `hx-swap-oob` element that lands in the empty `AdminTabSlotID` slot the `TabBar` reserves — see `internal/controller/miniapp/AGENTS.md`.
 
-3. **Do not copy `middleware.RequireAdmin`.** It authenticates nothing — it sets `user_id = 1` and calls `Next()`. Its one caller (`POST /admin/users/:telegramID/reset`) is technical debt, not a pattern (root `CLAUDE.md` §6).
+3. **Do not copy `middleware.RequireAdmin`.** It authenticates nothing — it sets `user_id = 1` and calls `Next()`. Its one caller (`POST /admin/users/:telegramID/reset`) is technical debt, not a pattern (`AGENTS.md` § Technical debt).
 
 4. Telegram deep-links: `https://t.me/<bot_username>?start=<CODE>`
 
@@ -170,10 +170,10 @@ if err != nil {
 }
 ```
 
-`handleGroqError` (`internal/controller/messaging/pending_jobs.go`) is context-aware: on the live webhook path it enqueues a `kindFreeText` job + acks (`ackForWait`, never silent); under drain replay (`isReplaying(ctx)`) it propagates the error so the drain re-gates `nextDrainAt` and leaves the job in place, instead of re-enqueuing it.
+`pendingjob.HandleGroqError` (`internal/pendingjob/enqueue.go`) is context-aware: on the live webhook path it enqueues a `KindFreeText` job + acks (`AckForWait`, never silent); under drain replay (`pendingjob.IsReplaying(ctx)`) it propagates the error so the drain re-gates `nextDrainAt` and leaves the job in place, instead of re-enqueuing it.
 
-**For a site that must preserve more than raw text** (today: `finishMovementUpdatePickFlow`'s `update_pick`, which needs the chosen candidate's IDs/rows, not just the message) — add a dedicated payload struct + a dedicated `enqueueXIfRateLimited` helper (see `updatePickPayload`/`enqueueUpdatePickIfRateLimited`), and a `case kindX:` branch in `job_drain.go`'s `replayJob` that unmarshals the payload and calls the same function the webhook would have called.
+**For a site that must preserve more than raw text** (today: `finishMovementUpdatePickFlow`'s `update_pick`, which needs the chosen candidate's IDs/rows, not just the message) — add a dedicated payload struct + a dedicated `enqueueXIfRateLimited` helper (see `pendingjob.UpdatePickPayload`/`EnqueueUpdatePick`), and a `case KindX:` branch in `pendingjob/drain.go`'s `replayJob` that unmarshals the payload and calls the same function the webhook would have called.
 
 **Never:**
-- Skip `handleGroqError`/the dedicated helper and fall straight to `msgSomethingBroke` on a Groq call — that's the anti-pattern this recipe exists to prevent (see [ARCHITECTURE.md](ARCHITECTURE.md#anti-patterns--what-not-to-do)).
-- Add the ordering-invariant guard (`enqueueBehindPending`) anywhere other than `handleConversationInput` — it must never be reachable from the drain's replay path (see [decisions.md](decisions.md)).
+- Skip `pendingjob.HandleGroqError`/the dedicated helper and fall straight to `msgSomethingBroke` on a Groq call — that's the anti-pattern this recipe exists to prevent (see [ARCHITECTURE.md](ARCHITECTURE.md#anti-patterns--what-not-to-do)).
+- Add the ordering-invariant guard (`pendingjob.EnqueueBehindPending`) anywhere other than `handleConversationInput` — it must never be reachable from the drain's replay path (see [decisions.md](decisions.md)).

@@ -2,6 +2,17 @@ package pendingjob
 
 import "lopiibot.com/internal/database"
 
+// Repository is what the drain and enqueue paths need from pending_llm_jobs
+// storage. Vive acá (y no como interfaz local del consumidor) porque el
+// consumidor es este mismo paquete: el borde solo la reenvía.
+type Repository interface {
+	Insert(job *PendingJob) error
+	ListByUserOrdered(userID uint64) ([]PendingJob, error)
+	ListPendingUserIDs() ([]uint64, error)
+	Delete(id uint64) error
+	CountByUser(userID uint64) (int64, error)
+}
+
 type repository struct {
 	conn *database.Connection
 }
