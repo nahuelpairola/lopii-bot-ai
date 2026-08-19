@@ -20,7 +20,7 @@ func TestBuildAgentPrompt_CarriesTheLoadBearingRules(t *testing.T) {
 		"el destino decide el tipo",
 		"van en POSITIVO",
 		"MISMO group",
-		"America/Argentina/Buenos_Aires",
+		"hora de Argentina",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("prompt missing %q", want)

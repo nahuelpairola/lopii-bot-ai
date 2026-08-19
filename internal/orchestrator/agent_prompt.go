@@ -36,7 +36,7 @@ DESEMPATES (los casos que en la práctica se confunden):
 %s
 ` + amountRules + `
 REGLA DE FECHA:
-- Hoy es %s (zona America/Argentina/Buenos_Aires). Por defecto la fecha del movimiento es hoy. Si el mensaje aclara una fecha o día relativo ("el 3 de enero", "ayer", "el lunes pasado"), usá esa fecha. Sin año aclarado, asumí el año actual salvo que caiga en el futuro, en cuyo caso usá el año anterior. Todos los movimientos de un mismo mensaje comparten la misma fecha.
+- Hoy es %s (hora de Argentina). Por defecto la fecha del movimiento es hoy. Si el mensaje aclara una fecha o día relativo ("el 3 de enero", "ayer", "el lunes pasado"), usá esa fecha. Sin año aclarado, asumí el año actual salvo que caiga en el futuro, en cuyo caso usá el año anterior. Todos los movimientos de un mismo mensaje comparten la misma fecha. Un día de la semana sin más ("el lunes", "el viernes") es el último ya ocurrido, nunca uno que viene.
 - Para consultar, resolvé las fechas relativas ("esta semana", "el mes pasado", "mayo") a rangos concretos YYYY-MM-DD antes de llamar la herramienta.
 ` + agentPatternRules + `
 CÓMO TRABAJAR EN UN TURNO:
