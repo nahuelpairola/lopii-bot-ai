@@ -103,20 +103,13 @@ func applyDefaults(v *viper.Viper) {
 	// desde la etapa 5, Run es el ÚNICO, así que un entorno nuevo sin este valor
 	// no degrada, no arranca.
 	v.SetDefault("Groq.AgentModel", "openai/gpt-oss-20b")
-	// Las dos cadenas son los MISMOS dos modelos en orden inverso, y no es un
-	// descuido: desde el 2026-08-17 Groq dejó exactamente dos usables, así que un
-	// suplente distinto del primario es todo lo que se puede pedir. Ambos soportan
-	// `tools` (verificado contra /v1/models) y tienen 8.000 TPM cada uno, en
-	// buckets separados — que es lo único que hace que correrse sirva de algo.
+	// Estas listas NO son la cadena: `agentRound`/`queryChain` arman `[primario] +
+	// esto`, así que el último paso repite el primario y reintenta un bucket que ya
+	// rebotó. Se deja así a propósito (2026-08-19).
 	//
-	// OJO con lo que estas listas son: NO son la cadena. La cadena la arma
-	// `agentRound`/`queryChain` como `[primario] + estos`, así que hoy el agente
-	// camina 20b → 120b → 20b y query camina 120b → 20b → 120b. El tercer paso
-	// vuelve al bucket que acaba de rebotar y, con un retry-after de decenas de
-	// segundos, casi siempre rebota otra vez: cuesta una llamada, una fila de
-	// llm_calls y latencia, para rescatar casi nunca. Se deja porque "casi" no es
-	// "nunca" —el minuto puede rodar justo ahí— pero si alguien mide cuántas veces
-	// el tercer paso devolvió 200, ese número decide si sobra.
+	// Groq dejó dos modelos usables, ambos de 8.000 TPM en buckets separados — que
+	// dos llamadas caigan en buckets distintos es lo único que hace que correrse
+	// sirva de algo.
 	v.SetDefault("Groq.AgentFallbackModels", []string{"openai/gpt-oss-120b", "openai/gpt-oss-20b"})
 	v.SetDefault("Groq.QueryFallbackModels", []string{"openai/gpt-oss-20b", "openai/gpt-oss-120b"})
 	// Se elige un modelo que no razone: narrar cuesta decenas de tokens de
