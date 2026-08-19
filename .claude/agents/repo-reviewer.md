@@ -51,7 +51,7 @@ File order, ascending line numbers within file.
 
 - Review only what's in front of you. No "while we're here".
 - No big-refactor proposals.
-- Context needed to judge → `mcp__codegraph__codegraph_explore` FIRST (verbatim source + call graph), never guess. `Grep` only for what it doesn't cover.
+- Context needed to judge → get it, never guess. `mcp__codegraph__codegraph_explore` when the question is "what else touches this"; `Read` when it is "what does this file actually say"; `Grep` for plain text.
 - Formatting nits skipped unless they change meaning.
 
 ## Tools

@@ -156,30 +156,37 @@ there**: most were, with the production numbers that settled them.
 
 Two more, read on demand: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) indexes every reference doc
 (data model, business rules, recipes, dev setup, Grafana) and holds the anti-pattern list.
-**Use `codegraph_explore` for structure** - one call returns verbatim source plus the call graph.
-This repo has `.codegraph/` indexed; prefer it over grep/find to orient.
+
+For structure, this repo has `.codegraph/` indexed: `codegraph_explore` answers "where is X, what
+calls Y, how does this flow" in one call, with verbatim source plus the call graph. Use it to get
+oriented. Once you know which file you are changing, **read that file** - `Read` also pulls in its
+package's `AGENTS.md`, which `codegraph_explore` does not. `Grep` still wins for plain text.
 
 Fourteen packages carry their own `AGENTS.md`. **If you are editing one, read its file first** -
-the trap is not visible in the code, and you cannot count on anything loading the file for you.
-Each also has a one-line `CLAUDE.md` that imports it, because Claude Code reads `CLAUDE.md` and
-not `AGENTS.md`; the content lives in the `AGENTS.md` and only there.
+the trap is not visible in the code. Four of them - `movement`, `conversation`, `agent`,
+`pendingjob` - are marked **always** below: they are the money path, where ignoring the file
+records money wrong with nothing to warn you, so `CLAUDE.md` imports them at launch and they are
+loaded before you start. The other ten load only when something reads a file in that subtree,
+which is not guaranteed - open them deliberately. (Each of those ten also has a one-line
+`CLAUDE.md` importing it, because Claude Code reads `CLAUDE.md` and not `AGENTS.md`. The content
+lives in the `AGENTS.md` and only there.)
 
-| Package | The trap it exists for |
-|---|---|
-| `agent` | the only entry point for free text; a turn that wrote must never be re-enqueued; `resolveCandidates` has two windows |
-| `orchestrator` | three call types silently share `createModel`; Groq's ceilings are per model; `AgentTool.Kind` |
-| `query` | one `search` filter matched in SQL; the app re-attaches two facts after narration |
-| `flow` | a flow must be registered in 3 places across 2 packages; `callback_data` is 64 bytes |
-| `conversation` | `Data` round-trips through JSONB - numbers come back `float64` |
-| `movement` | the guard covers INSERT by caller convention only; two finders need opposite date binding |
-| `subcategory` | cache writes need a manual `Reload()`; `c.global` is shared by every user |
-| `settings` | the only caller of three LLM calls; a 429 is answered before the wizard fallback |
-| `pendingjob` | the replay flag is set once at the call site; `EnqueueBehindPending` is webhook-only |
-| `nudges` | `MarkSent` is once-ever; a tip's tap jumps the engine on purpose |
-| `notifier` | the sweeper sends with `ParseMode: HTML` - every emitter must be HTML-safe |
-| `quote` | `usd_quotes` has irregular gaps (read `<= D`, never `= D`); `monthly_cpi.value` is a % change, not a level |
-| `controller/messaging` | the bridge pattern; the per-user lock; what bypasses the engine |
-| `controller/miniapp` | **auth is which Gin group you register on, and nothing else** |
+| Package | Loaded | The trap it exists for |
+|---|---|---|
+| `agent` | **always** | the only entry point for free text; a turn that wrote must never be re-enqueued; `resolveCandidates` has two windows |
+| `orchestrator` | on demand | three call types silently share `createModel`; Groq's ceilings are per model; `AgentTool.Kind` |
+| `query` | on demand | one `search` filter matched in SQL; the app re-attaches two facts after narration |
+| `flow` | on demand | a flow must be registered in 3 places across 2 packages; `callback_data` is 64 bytes |
+| `conversation` | **always** | `Data` round-trips through JSONB - numbers come back `float64` |
+| `movement` | **always** | the guard covers INSERT by caller convention only; two finders need opposite date binding |
+| `subcategory` | on demand | cache writes need a manual `Reload()`; `c.global` is shared by every user |
+| `settings` | on demand | the only caller of three LLM calls; a 429 is answered before the wizard fallback |
+| `pendingjob` | **always** | the replay flag is set once at the call site; `EnqueueBehindPending` is webhook-only |
+| `nudges` | on demand | `MarkSent` is once-ever; a tip's tap jumps the engine on purpose |
+| `notifier` | on demand | the sweeper sends with `ParseMode: HTML` - every emitter must be HTML-safe |
+| `quote` | on demand | `usd_quotes` has irregular gaps (read `<= D`, never `= D`); `monthly_cpi.value` is a % change, not a level |
+| `controller/messaging` | on demand | the bridge pattern; the per-user lock; what bypasses the engine |
+| `controller/miniapp` | on demand | **auth is which Gin group you register on, and nothing else** |
 
 Every other package is a plain model + repository. Ask codegraph.
 

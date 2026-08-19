@@ -14,14 +14,23 @@
 
 ## Per-package `AGENTS.md`
 
-Fourteen packages carry their own file, plus a one-line `CLAUDE.md` next to it that imports it
-(Claude Code reads `CLAUDE.md`, not `AGENTS.md`; every other agent reads the nearest `AGENTS.md`).
-The content lives in the `AGENTS.md` and only there — the `CLAUDE.md` is a pointer, never a copy.
+Fourteen packages carry their own file. They split into two classes, and the split is a criterion,
+not a taste: **a package loads at launch when ignoring its file records money wrong and nothing
+warns you.** That is `movement` (a movement's sign and account), `conversation` (the JSONB
+round-trip that turns a number back into `float64`), `agent` (a turn that wrote being
+re-enqueued) and `pendingjob` (a job replayed twice). The root `CLAUDE.md` imports those four, so
+they are in context before anyone types anything. The list lives in those imports — the only
+place it cannot go stale.
 
-They are **not** loaded at session start, and on this repo you should assume they are not loaded
-at all: the automatic path fires only when an agent reads a file in that subtree, and
-`codegraph_explore` — the tool this repo tells you to reach for first — does not count as reading.
-Open the file deliberately.
+The other ten load **on demand**, and on demand is weaker than it sounds: it fires only when an
+agent reads a file in that subtree, and `codegraph_explore` does not count as reading. Open them
+deliberately before editing there.
+
+Each of the ten also has a one-line `CLAUDE.md` next to it that imports it (Claude Code reads
+`CLAUDE.md`, not `AGENTS.md`; every other agent reads the nearest `AGENTS.md`). The content lives
+in the `AGENTS.md` and only there — the `CLAUDE.md` is a pointer, never a copy. The four
+always-loaded packages have **no** bridge file on purpose: the root import already carries them,
+and a bridge would load the same text a second time.
 
 Each holds one thing only: **rules that compile fine and then behave wrong.** Structure is
 `codegraph_explore`'s job, not theirs.

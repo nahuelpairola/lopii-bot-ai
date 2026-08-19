@@ -42,7 +42,9 @@ For the mechanics of an in-scope change: migrations → `docs/recipes.md` (Recip
 
 ## Workflow
 
-1. `mcp__codegraph__codegraph_explore` (or `Read`) target(s). Never edit blind.
+1. `Read` the target file. Never edit blind — and `Read` is what pulls in that package's
+   `AGENTS.md`, which `codegraph_explore` does not. Target not located yet, or the change has
+   callers you cannot see → `mcp__codegraph__codegraph_explore` first, then `Read`.
 2. `Edit` smallest diff that works.
 3. Re-read to verify.
 4. Run `bash check.sh` from repo root. Must end in `check: OK`.
