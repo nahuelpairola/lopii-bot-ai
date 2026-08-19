@@ -40,6 +40,11 @@ movement; a date correction travels in `changes` with `field: "date"`). One lone
 the window on *both* sides: an open `until` does not narrow anything, and a lone `date_to`
 used to invert the window outright.
 
+That rule has a consequence the schema — not the prompt — has to carry: a **named period**
+("la semana pasada") arriving as one lone date searches a **single day**. `date_to`'s description
+is what tells the model to send both ends of a span; widening the window in Go instead would undo
+the 24h margin the 04/08 case needed.
+
 ## The loop parks, it does not route
 
 There is no router (it was deleted in stage 5). When the loop needs an answer from the user it
