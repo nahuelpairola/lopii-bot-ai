@@ -120,6 +120,18 @@ worked. Rejected: computing the date in Go (a date-expression parser for one phr
 widening the window (it would undo the 24h margin the 04/08 case needed). Known gap, accepted:
 **"el lunes" still sends a wrong date** — `TestAgentDateAnchorEval` keeps that case red on purpose.
 
+- **`record_movements` still tells the model to resolve a weekday, and it still gets it wrong.**
+  The schema forbids `correct_movement` from computing a date from a weekday, for the reason above.
+  But a movement can't be inserted with no date, so the `REGLA DE FECHA` in the prompt
+  (`internal/orchestrator/agent_prompt.go`) still asks the model to resolve "el lunes" as the most
+  recent one that already happened — and it still gets it wrong. "gasté 5000 el lunes" is saved
+  with the wrong date, silently, and no eval covers it: `TestAgentDateAnchorEval` only checks
+  `correct_movement`'s arguments. This is an accepted gap, not a fix: dropping the sentence from
+  the prompt would not correct the date, it would just leave the model with no guidance at all. The
+  real fix is resolving the weekday in Go before calling the model, and that is separate work. The
+  weekday stays in "Hoy es" anyway, despite this measurement reading neutral-or-worse for
+  correction, because it serves QUERY, where "esta semana" resolves against the real day.
+
 ## Groq quota, the 429 queue and rate limits
 
 - **A terminal Groq 429 is a typed error (`orchestrator.RateLimitedError`), not a string to re-parse.** `Client.send`'s existing retry loop already computes the best available wait (header priority over body-parsed text); wrapping that wait in a struct returned via `errors.As` means the pending-jobs queue (and any future consumer) never re-derives or re-parses anything Groq said — it reads `RetryAfter` off the error itself. The alternative (checking `errors.Is(err, someSentinel)` and separately re-parsing the body for the wait) would duplicate parsing logic `send` already did.

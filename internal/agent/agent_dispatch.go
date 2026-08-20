@@ -254,7 +254,8 @@ func researchCandidates(svc agentServices, userID uint64, action *pendingaction.
 		return nil
 	}
 
-	groups, err := resolveCandidates(svc, userID, payload.SearchText+" "+answer, payload.DateFrom, payload.DateTo)
+	searchText := payload.SearchText + " " + answer
+	groups, err := resolveCandidates(svc, userID, searchText, payload.DateFrom, payload.DateTo)
 	if err != nil {
 		return fmt.Errorf("research: resolve: %w", err)
 	}
@@ -279,6 +280,12 @@ func researchCandidates(svc agentServices, userID uint64, action *pendingaction.
 	question := flow.MsgPickUpdateCandidate(nil)
 	if action.Tool == orchestrator.ToolDeleteMovements {
 		question = flow.MsgPickDeleteCandidate(nil)
+	}
+	// Mismo criterio que park (agent_executor.go): si el primero no matchea
+	// textualmente, la lista salió del fallback por recencia y el cartel no
+	// puede decir "encontré parecidos" sobre filas que no se parecen a nada.
+	if !matchesMessage(groups[0], searchText) {
+		question = flow.MsgPickRecentFallback
 	}
 	rawQuestions, err := json.Marshal([]pendingaction.OpenQuestion{{
 		Key: questionKeyCandidate, Prompt: question + " " + flow.MsgCanRetypeToSearch, Options: options,

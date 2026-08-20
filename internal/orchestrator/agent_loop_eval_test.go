@@ -249,12 +249,9 @@ func TestAgentLoopEval(t *testing.T) {
 // TestAgentDateAnchorEval mide lo único que el eval de arriba no mira: la FECHA
 // que el modelo pone en el locator.
 //
-// Medido el 2026-08-19 sobre el caso real ("la compra de locro del lunes", un
-// miércoles 19, con el lunes en el 17): 20b sin el día de la semana en el prompt
-// dijo el 15; CON el día, el 14; y con la tabla de fechas de los últimos 7 días
-// escrita en el prompto —o sea con "lunes 2026-08-17" delante— dijo el 14 igual.
-// El 120b no mandó fecha ninguna. Este modelo no fecha un día de la semana, y
-// no es cuestión de prompt: ignora el dato aunque lo tenga.
+// El modelo no fecha un día de la semana, y no es cuestión de prompt: la
+// medición completa (2026-08-19, cuatro corridas, todas mal) vive en
+// docs/decisions.md, sección "The agent loop and QUERY".
 //
 // Así que el contrato es al revés: una referencia relativa va SIN fecha, y la
 // app la resuelve por la ventana de created_at, donde el matcheo textual la

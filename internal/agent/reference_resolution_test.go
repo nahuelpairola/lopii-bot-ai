@@ -44,6 +44,17 @@ func TestMatchesMessage_Amount(t *testing.T) {
 	}
 }
 
+func TestScoreGroup_ExpenseAmountMatchesDespiteStoredSign(t *testing.T) {
+	// Un gasto se guarda negativo (-61306.49), pero el usuario y el LLM sólo
+	// ven Abs(): el signo contable nunca puede ser parte del match.
+	amount := decimal.NewFromFloat(-61306.49)
+	now := time.Now()
+	group := transactionGroup{Movements: []movement.Movement{{Type: movement.Expense, Amount: amount, Date: now}}}
+	if got := scoreGroup(group, "eran 61306.49", now); got < 1 {
+		t.Fatalf("scoreGroup = %v, want >= 1: el monto positivo del mensaje tiene que matchear el gasto guardado negativo", got)
+	}
+}
+
 func TestMatchesMessage_DescriptionToken(t *testing.T) {
 	// Desde el fold de merchant, el nombre del comercio vive en la description
 	// y este es el unico camino de match textual.

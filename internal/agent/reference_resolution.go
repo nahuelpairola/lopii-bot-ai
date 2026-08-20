@@ -86,9 +86,8 @@ func groupByTransaction(ms []movement.Movement) []transactionGroup {
 
 // dateTieBreak es el techo de lo que puede aportar la cercanía de fecha al
 // puntaje. Vale menos que la diferencia de cobertura más chica que nos importa
-// (1/2 - 1/3 = 0,17), así que DESEMPATA y no da vuelta nada: medido sobre el
-// caso del 2026-08-16, aporta 0,019 al candidato correcto contra 0,025 al ruido,
-// y la cobertura los separa 1,00 a 0,67.
+// (1/2 - 1/3 = 0,17), así que DESEMPATA y no da vuelta una diferencia de
+// cobertura. Números medidos en docs/decisions.md.
 const dateTieBreak = 0.25
 
 // scoreGroup puntúa cuánto se parece un grupo candidato al mensaje. 0 significa
@@ -98,7 +97,8 @@ const dateTieBreak = 0.25
 // La cobertura es del lado de la DESCRIPCIÓN, no del mensaje: lo que preguntamos
 // es "cuánto de lo que dice esta fila está en lo que escribió el usuario". El
 // monto literal presente en el mensaje vale 1: nombrar el número es tan bueno
-// como nombrar la cosa entera.
+// como nombrar la cosa entera. Se compara contra Abs(): el signo contable
+// nunca llega al usuario, así que tampoco puede ser parte del match.
 //
 // Se toma el máximo sobre los movimientos del grupo — un grupo es una
 // transacción y puede tener dos piernas; alcanza con que una la nombre.
@@ -107,7 +107,7 @@ func scoreGroup(g transactionGroup, message string, anchor time.Time) float64 {
 	best := 0.0
 	for _, m := range g.Movements {
 		cover := 0.0
-		if !m.Amount.IsZero() && strings.Contains(message, m.Amount.String()) {
+		if !m.Amount.IsZero() && strings.Contains(message, m.Amount.Abs().String()) {
 			cover = 1
 		}
 		if m.Description != nil {

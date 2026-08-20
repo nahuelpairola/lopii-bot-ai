@@ -351,6 +351,53 @@ func TestFinishAskUser_TextoLibreVuelveABuscar(t *testing.T) {
 	}
 }
 
+// TestFinishAskUser_ReBusquedaSinMatchAvisaFallback: si la re-búsqueda no
+// matchea textualmente, la lista salió del fallback por recencia y el cartel
+// tiene que decirlo — no puede prometer "encontré parecidos" (mismo criterio
+// que park en agent_executor.go).
+func TestFinishAskUser_ReBusquedaSinMatchAvisaFallback(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	svc := newDispatchServices(t, repo)
+
+	// Nada en la descripción comparte token con "eran 2000" ni con la
+	// respuesta libre: la re-búsqueda cae en el fallback por recencia.
+	svc.movements = &fakeMovementRepoForResolve{result: []movement.Movement{
+		{Model: gorm.Model{ID: 40, CreatedAt: time.Now().Add(-200 * time.Hour)},
+			Description: strPtr("Nafta YPF")},
+	}}
+
+	action := twoCandidateAction(t)
+	action.Payload.SearchText = "eran 2000"
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{action}); err != nil {
+		t.Fatal(err)
+	}
+
+	data := conversation.Data{
+		conversation.UserIDKey:   uint64(1),
+		conversation.KeyActionID: strconv.FormatUint(repo.rows[0].ID, 10),
+		conversation.KeyOpenQuestions: flow.EncodeOpenQuestions([]pendingaction.OpenQuestion{{
+			Key:     questionKeyCandidate,
+			Prompt:  "¿Cuál es?",
+			Options: []string{"la de 3000", "la de 5000"},
+			Answer:  "no se cual es",
+		}}),
+		conversation.KeyAskBudget: "2",
+	}
+
+	finishAskUserFlow(context.Background(), svc, nil, 0, data)
+
+	var questions []pendingaction.OpenQuestion
+	if err := json.Unmarshal(repo.rows[0].Questions, &questions); err != nil {
+		t.Fatal(err)
+	}
+	if len(questions) != 1 {
+		t.Fatalf("questions = %d, want 1", len(questions))
+	}
+	if !strings.HasPrefix(questions[0].Prompt, flow.MsgPickRecentFallback) {
+		t.Errorf("prompt = %q, want que empiece con %q", questions[0].Prompt, flow.MsgPickRecentFallback)
+	}
+}
+
 // La re-búsqueda tiene que usar LA MISMA ventana que la original. Sin esto, una
 // corrección que había entrado por fecha salta a la ventana por created_at y el
 // usuario ve otro conjunto por una razón que no puede adivinar.
