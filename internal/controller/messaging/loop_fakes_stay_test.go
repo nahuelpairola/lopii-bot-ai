@@ -44,6 +44,17 @@ func (r *fakeActionsRepo) NextForUser(userID uint64) (*pendingaction.PendingActi
 	return best, nil
 }
 
+// Update pisa la fila de rows que coincida por ID, igual que un Save real.
+func (r *fakeActionsRepo) Update(a *pendingaction.PendingAction) error {
+	for i, row := range r.rows {
+		if row.ID == a.ID {
+			r.rows[i] = a
+			return nil
+		}
+	}
+	return errors.New("fakeActionsRepo: update: no row with that id")
+}
+
 func (r *fakeActionsRepo) Delete(id uint64) error {
 	r.deleted = append(r.deleted, id)
 	kept := r.rows[:0]

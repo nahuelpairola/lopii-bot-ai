@@ -56,6 +56,13 @@ That works for "la semana pasada" and leaves **"el lunes" still sending a wrong 
 red case in the eval, kept red on purpose. Do not widen the window in Go to compensate: that
 would undo the 24h margin the 04/08 case needed.
 
+When the picker's answer is free text that names none of the options, the loop **searches again**
+with the original message plus what the user just typed, instead of re-asking the same question.
+That is what `SearchText`/`DateFrom`/`DateTo` are doing in the parked payload: `park` would
+otherwise drop all three and there would be nothing to search with. `SearchText` is `e.userText`
+and never `Change` — `Change` is the model's paraphrase, and `applyAnswers` concatenates the
+user's answers onto it.
+
 ## The loop parks, it does not route
 
 There is no router (it was deleted in stage 5). When the loop needs an answer from the user it

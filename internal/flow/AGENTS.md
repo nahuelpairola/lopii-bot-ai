@@ -41,6 +41,18 @@ Anything needing the LLM does *not* go through `runner` directly — `flow` neve
 `orchestrator`. The two cases that need it (`StartAccountCreate`, `SuggestMergeTarget`) are runner
 methods that the edge forwards to `internal/settings`.
 
+## Two pickers, and only one of them re-searches
+
+`ask_user_flow.go` is a `TextStep` with accelerator buttons: free text is the point, and an answer
+naming none of the options makes the agent loop search again (`agent_dispatch.go`).
+`movement_update_flow.go`'s `movement_update_pick` and `movement_delete_flow.go` are `ChoiceStep`s:
+there, free text lands on `InvalidChoiceMessage` and nothing is re-searched.
+
+They **share the prompt constants** (`MsgPickUpdateCandidate`, `MsgPickDeleteCandidate`), which is
+why `MsgCanRetypeToSearch` is appended by `park` at the `ask_user` call site rather than being
+folded into either constant. Putting it inside one of them writes a promise the `ChoiceStep` path
+cannot keep.
+
 ## Money
 
 Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting

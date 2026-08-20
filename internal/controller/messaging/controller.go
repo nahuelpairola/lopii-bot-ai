@@ -140,6 +140,7 @@ type nudgeRepository interface {
 type actionsRepository interface {
 	Insert(action *pendingaction.PendingAction) error
 	NextForUser(userID uint64) (*pendingaction.PendingAction, error)
+	Update(action *pendingaction.PendingAction) error
 	Delete(id uint64) error
 	CountForUser(userID uint64) (int64, error)
 }

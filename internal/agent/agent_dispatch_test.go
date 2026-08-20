@@ -2,11 +2,14 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"gorm.io/gorm"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/movement"
@@ -297,5 +300,91 @@ func TestFinishAskUser_CancelResuelveLaMetrica(t *testing.T) {
 
 	if len(svc.metrics.resolved) != 1 || svc.metrics.resolved[0] != flow.OutcomeUpdateCancelled {
 		t.Fatalf("want %q, got %v", flow.OutcomeUpdateCancelled, svc.metrics.resolved)
+	}
+}
+
+// El picker es un TextStep: el texto libre ya se acepta. Lo que estaba roto es
+// que no llegaba a ningún lado — applyAnswers no encontraba el texto entre las
+// etiquetas, devolvía resolved=false, y openAskUser volvía a mostrar LOS MISMOS
+// cinco botones. Escribir gastaba una vuelta de presupuesto y no cambiaba nada.
+func TestFinishAskUser_TextoLibreVuelveABuscar(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	svc := newDispatchServices(t, repo)
+
+	// La ventana que va a devolver la re-búsqueda: sólo la carnicería nombra
+	// algo del texto nuevo. created_at viejo a propósito, para no caer en el
+	// atajo del recién-creado.
+	svc.movements = &fakeMovementRepoForResolve{result: []movement.Movement{
+		{Model: gorm.Model{ID: 40, CreatedAt: time.Now().Add(-200 * time.Hour)},
+			Description: strPtr("Compra en carnicería")},
+	}}
+
+	action := twoCandidateAction(t)
+	action.Payload.SearchText = "eran 2000"
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{action}); err != nil {
+		t.Fatal(err)
+	}
+
+	data := conversation.Data{
+		conversation.UserIDKey:   uint64(1),
+		conversation.KeyActionID: strconv.FormatUint(repo.rows[0].ID, 10),
+		conversation.KeyOpenQuestions: flow.EncodeOpenQuestions([]pendingaction.OpenQuestion{{
+			Key:     questionKeyCandidate,
+			Prompt:  "¿Cuál es?",
+			Options: []string{"la de 3000", "la de 5000"},
+			Answer:  "no, el de la carnicería",
+		}}),
+		conversation.KeyAskBudget: "2",
+	}
+
+	finishAskUserFlow(context.Background(), svc, nil, 0, data)
+
+	var payload agentPayload
+	if err := json.Unmarshal(repo.rows[0].Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Candidates) != 1 {
+		t.Fatalf("candidatos = %d, want 1: el texto libre tenía que re-buscar", len(payload.Candidates))
+	}
+	if payload.Candidates[0].OldIDs[0] != "40" {
+		t.Errorf("candidato = %v, want 40 (la carnicería, que salió de la re-búsqueda)", payload.Candidates[0].OldIDs)
+	}
+}
+
+// La re-búsqueda tiene que usar LA MISMA ventana que la original. Sin esto, una
+// corrección que había entrado por fecha salta a la ventana por created_at y el
+// usuario ve otro conjunto por una razón que no puede adivinar.
+func TestFinishAskUser_LaReBusquedaRespetaLaVentana(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	svc := newDispatchServices(t, repo)
+	fake := &fakeMovementRepoForResolve{}
+	svc.movements = fake
+
+	action := twoCandidateAction(t)
+	action.Payload.SearchText = "el débito del 4 de agosto"
+	action.Payload.DateFrom = "2026-08-04"
+	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{action}); err != nil {
+		t.Fatal(err)
+	}
+
+	data := conversation.Data{
+		conversation.UserIDKey:   uint64(1),
+		conversation.KeyActionID: strconv.FormatUint(repo.rows[0].ID, 10),
+		conversation.KeyOpenQuestions: flow.EncodeOpenQuestions([]pendingaction.OpenQuestion{{
+			Key:     questionKeyCandidate,
+			Prompt:  "¿Cuál es?",
+			Options: []string{"la de 3000", "la de 5000"},
+			Answer:  "el de mercado pago",
+		}}),
+		conversation.KeyAskBudget: "2",
+	}
+
+	finishAskUserFlow(context.Background(), svc, nil, 0, data)
+
+	if fake.recencyCalled {
+		t.Fatal("la re-búsqueda cayó en la ventana por created_at: perdió el localizador de fecha")
+	}
+	if want := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC); !fake.capturedSince.Equal(want) {
+		t.Errorf("since = %v, want %v", fake.capturedSince, want)
 	}
 }

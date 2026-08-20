@@ -40,6 +40,13 @@ func (r *repository) NextForUser(userID uint64) (*PendingAction, error) {
 	return &a, nil
 }
 
+// Update reescribe la fila entera. Lo usa la re-búsqueda del picker, que pisa
+// Payload y Questions y tiene que dejar intactos Position, Budget y TraceID —
+// por eso es un Save de la fila y no un update de dos columnas.
+func (r *repository) Update(a *PendingAction) error {
+	return r.conn.DB.Save(a).Error
+}
+
 func (r *repository) Delete(id uint64) error {
 	return r.conn.DB.Delete(&PendingAction{}, "id = ?", id).Error
 }

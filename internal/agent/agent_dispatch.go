@@ -135,8 +135,16 @@ func finishAskUserFlow(ctx context.Context, svc agentServices, b *bot.Bot, chatI
 	answers := flow.DecodeOpenQuestions(data)
 	payload, resolved := applyAnswers(action, answers)
 	if !resolved {
-		// La respuesta no cerró la pregunta (texto libre que no nombra ninguno de
-		// los candidatos). Se vuelve a preguntar con lo que quede de presupuesto.
+		// La respuesta no cerró la pregunta: es texto libre que no nombra ninguno
+		// de los candidatos. Antes se volvía a preguntar LO MISMO, o sea que
+		// escribir gastaba presupuesto y no cambiaba nada. Ahora se busca de
+		// nuevo, sumando lo que acaba de escribir al mensaje original.
+		//
+		// Un error acá NO corta: se loguea y se reabre igual. Reabrir la pregunta
+		// vieja es pobre, pero perder la acción es peor.
+		if err := researchCandidates(svc, userID, action, answers); err != nil {
+			slog.ErrorContext(ctx, "re-search candidates failed", "err", err, "user_id", userID)
+		}
 		if err := openAskUser(ctx, svc, b, chatID, userID, action, flow.AskBudget(data)); err != nil {
 			slog.ErrorContext(ctx, "reopen ask_user failed", "err", err)
 			svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
@@ -223,6 +231,65 @@ func applyAnswers(action *pendingaction.PendingAction, answers []pendingaction.O
 	// que esto la da por resuelta apenas contesta algo. Exigir además un Change
 	// no vacío dejaría sin resolver a DELETE, que nunca lleva uno.
 	return payload, payload.Chosen >= 0
+}
+
+// researchCandidates vuelve a buscar con el texto original MÁS lo que el usuario
+// acaba de escribir, y pisa los candidatos de la acción con el resultado.
+//
+// Sale sin tocar nada —y sin error— cuando no hay con qué buscar o cuando la
+// búsqueda no encontró nada: en los dos casos, dejar la acción como estaba y
+// reabrir la pregunta vieja es mejor que vaciarle los candidatos.
+func researchCandidates(svc agentServices, userID uint64, action *pendingaction.PendingAction, answers []pendingaction.OpenQuestion) error {
+	var payload agentPayload
+	if err := json.Unmarshal(action.Payload, &payload); err != nil {
+		return fmt.Errorf("research: payload: %w", err)
+	}
+	answer := ""
+	for _, q := range answers {
+		if q.Key == questionKeyCandidate && q.Answer != "" {
+			answer = q.Answer
+		}
+	}
+	if answer == "" || payload.SearchText == "" {
+		return nil
+	}
+
+	groups, err := resolveCandidates(svc, userID, payload.SearchText+" "+answer, payload.DateFrom, payload.DateTo)
+	if err != nil {
+		return fmt.Errorf("research: resolve: %w", err)
+	}
+	if len(groups) == 0 {
+		return nil
+	}
+
+	candidates := make([]flow.CandidateGroup, 0, len(groups))
+	options := make([]string, 0, len(groups))
+	for _, g := range groups {
+		candidates = append(candidates, toCandidateGroup(g))
+		options = append(options, candidateLabel(g))
+	}
+	payload.Candidates = candidates
+	payload.Chosen = -1
+
+	rawPayload, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("research: marshal payload: %w", err)
+	}
+
+	question := flow.MsgPickUpdateCandidate(nil)
+	if action.Tool == orchestrator.ToolDeleteMovements {
+		question = flow.MsgPickDeleteCandidate(nil)
+	}
+	rawQuestions, err := json.Marshal([]pendingaction.OpenQuestion{{
+		Key: questionKeyCandidate, Prompt: question + " " + flow.MsgCanRetypeToSearch, Options: options,
+	}})
+	if err != nil {
+		return fmt.Errorf("research: marshal questions: %w", err)
+	}
+
+	action.Payload = rawPayload
+	action.Questions = rawQuestions
+	return svc.ActionsUpdate(action)
 }
 
 func indexOf(options []string, want string) int {

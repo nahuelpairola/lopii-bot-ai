@@ -102,6 +102,12 @@ func MsgPickUpdateCandidate(conversation.Data) string {
 // match textual.
 const MsgPickRecentFallback = "No encontré nada que se parezca a lo que decís. ¿Es alguno de estos?"
 
+// Invitación a re-buscar escribiendo. Sólo vale en el picker de ask_user, que
+// es un TextStep: ahí el texto libre vuelve a buscar. En los ChoiceStep de
+// movement_update_pick / movement_delete cae en MsgInvalidChoice, así que esto
+// NO se mete adentro de MsgPickUpdateCandidate ni de MsgPickDeleteCandidate.
+const MsgCanRetypeToSearch = "Si no es ninguno, escribime algo más y lo busco de nuevo."
+
 func MsgConfirmUpdateDiff(data conversation.Data) string {
 	before := movement.DecodeMovementRows(conversation.Data{conversation.KeyMovements: data[conversation.KeyBeforeMovements]})
 

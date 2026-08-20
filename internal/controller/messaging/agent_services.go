@@ -58,6 +58,13 @@ func (c *controller) ActionsNextForUser(userID uint64) (*pendingaction.PendingAc
 	return c.actions.NextForUser(userID)
 }
 
+func (c *controller) ActionsUpdate(a *pendingaction.PendingAction) error {
+	if c.actions == nil {
+		return nil
+	}
+	return c.actions.Update(a)
+}
+
 func (c *controller) ActionsDelete(id uint64) error {
 	if c.actions == nil {
 		return nil
