@@ -40,10 +40,17 @@ movement; a date correction travels in `changes` with `field: "date"`). One lone
 the window on *both* sides: an open `until` does not narrow anything, and a lone `date_to`
 used to invert the window outright.
 
-That rule has a consequence the schema — not the prompt — has to carry: a **named period**
-("la semana pasada") arriving as one lone date searches a **single day**. `date_to`'s description
-is what tells the model to send both ends of a span; widening the window in Go instead would undo
-the 24h margin the 04/08 case needed.
+That rule has a consequence, and **measurement settled how to handle it** (2026-08-19, real
+model, `TestAgentDateAnchorEval`): a relative reference must arrive with **no date at all**, so
+the search falls back to the `created_at` window where the text match finds it. The model cannot
+compute a weekday into a date — given "hoy es miércoles 2026-08-19" it dated "del lunes" (the
+17th) as the 15th, then the 14th, and still the 14th with `lunes 2026-08-17` written out in the
+prompt. `date_from`'s description now asks for a date **only** when the message spells out day
+and month, which it transcribes correctly.
+
+That works for "la semana pasada" and leaves **"el lunes" still sending a wrong date** — the one
+red case in the eval, kept red on purpose. Do not widen the window in Go to compensate: that
+would undo the 24h margin the 04/08 case needed.
 
 ## The loop parks, it does not route
 

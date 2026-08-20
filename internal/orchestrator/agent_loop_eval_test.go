@@ -189,7 +189,7 @@ func TestAgentLoopEval(t *testing.T) {
 	}
 	o := New(Config{
 		APIKey:         key,
-		BaseURL:        os.Getenv("GROQ_BASE_URL"),
+		BaseURL:        evalBaseURL(),
 		AgentModel:     model,
 		TimeoutSeconds: 60,
 	})
@@ -241,6 +241,105 @@ func TestAgentLoopEval(t *testing.T) {
 				if c == tc.forbidden {
 					t.Errorf("llamó %s, que es justo lo que no debe (%s)", tc.forbidden, tc.why)
 				}
+			}
+		})
+	}
+}
+
+// TestAgentDateAnchorEval mide lo único que el eval de arriba no mira: la FECHA
+// que el modelo pone en el locator.
+//
+// Medido el 2026-08-19 sobre el caso real ("la compra de locro del lunes", un
+// miércoles 19, con el lunes en el 17): 20b sin el día de la semana en el prompt
+// dijo el 15; CON el día, el 14; y con la tabla de fechas de los últimos 7 días
+// escrita en el prompto —o sea con "lunes 2026-08-17" delante— dijo el 14 igual.
+// El 120b no mandó fecha ninguna. Este modelo no fecha un día de la semana, y
+// no es cuestión de prompt: ignora el dato aunque lo tenga.
+//
+// Así que el contrato es al revés: una referencia relativa va SIN fecha, y la
+// app la resuelve por la ventana de created_at, donde el matcheo textual la
+// encuentra. Eso es lo que se mide acá.
+//
+// Con el schema pidiéndolo, "la semana pasada" y las fechas explícitas dan
+// bien. "El lunes" NO: sigue mandando una fecha inventada aunque la descripción
+// de date_from lo nombre como ejemplo de lo que no hay que completar. Ese caso
+// queda ROJO A PROPÓSITO — es la medición del techo del modelo, no un pendiente.
+// Arreglarlo pide que Go descarte la fecha cuando el texto nombra un día de la
+// semana, y se decidió no hacerlo (2026-08-19).
+//
+// El "hoy" va fijo, así que el caso es el mismo corra cuando corra.
+//
+//	GROQ_APIKEY=... go test -tags llm_eval ./internal/orchestrator/ -run TestAgentDateAnchorEval -v -timeout 10m
+func TestAgentDateAnchorEval(t *testing.T) {
+	key := evalKey(t)
+
+	_, taxonomy := seededTaxonomy(t)
+	accounts := []AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}}
+	tools := evalTools()
+	// Miércoles. El lunes anterior es el 17; la semana pasada, lun 10 a dom 16.
+	const hoy = "miércoles 2026-08-19"
+
+	model := os.Getenv("GROQ_AGENT_MODEL")
+	if model == "" {
+		model = "openai/gpt-oss-20b"
+	}
+	o := New(Config{APIKey: key, BaseURL: evalBaseURL(), AgentModel: model, TimeoutSeconds: 60})
+
+	cases := []struct {
+		id    string
+		msg   string
+		today string
+		// wantNoDate: la referencia es relativa, así que las dos fechas tienen
+		// que venir vacías. Una fecha inventada acá manda la búsqueda a una
+		// ventana donde el movimiento no está, y el usuario ve un picker de
+		// movimientos ajenos.
+		wantNoDate bool
+		wantFrom   string // fecha explícita: transcribirla sí sabe
+	}{
+		// ROJO A PROPÓSITO: ver el comentario de arriba. Mide el techo del modelo.
+		{id: "el_lunes_no_lleva_fecha", today: hoy, msg: "La compra de locro del lunes ponela en salidas restaurante", wantNoDate: true},
+		{id: "la_semana_pasada_no_lleva_fecha", today: hoy, msg: "El gasto de la semana pasada ponelo en otra categoría", wantNoDate: true},
+		{id: "el_4_de_agosto_si_lleva_fecha", today: hoy, msg: "El débito del 4 de agosto ponelo en Servicios", wantFrom: "2026-08-04"},
+	}
+
+	for i, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			if i > 0 {
+				time.Sleep(62 * time.Second) // mismo pacing que TestAgentLoopEval
+			}
+			var args struct {
+				DateFrom string `json:"date_from"`
+				DateTo   string `json:"date_to"`
+			}
+			prompt := BuildAgentPrompt(tc.today, accounts, taxonomy, "", tools, "")
+			var seen bool
+			execute := func(name string, raw json.RawMessage) (string, error) {
+				if name == ToolCorrectMovement {
+					seen = true
+					if err := json.Unmarshal(raw, &args); err != nil {
+						t.Errorf("args ilegibles: %v — %s", err, raw)
+					}
+					t.Logf("args: %s", raw)
+				}
+				return "pendiente: la app se encarga", nil
+			}
+
+			// Un error DESPUÉS de la tool call no invalida la medición: lo que se
+			// mide es el argumento, y la segunda ronda (la narración) se come un
+			// 429 con sólo mirarla de reojo.
+			_, err := o.Run(context.Background(), prompt, tc.msg, nil, tools, execute)
+			if !seen {
+				t.Fatalf("no llamó %s (err=%v)", ToolCorrectMovement, err)
+			}
+
+			if tc.wantNoDate {
+				if args.DateFrom != "" || args.DateTo != "" {
+					t.Errorf("una referencia relativa no lleva fecha, y vino date_from=%q date_to=%q — el modelo la calcula mal y manda la búsqueda a otra ventana", args.DateFrom, args.DateTo)
+				}
+				return
+			}
+			if args.DateFrom != tc.wantFrom {
+				t.Errorf("date_from = %q, quería %q", args.DateFrom, tc.wantFrom)
 			}
 		})
 	}

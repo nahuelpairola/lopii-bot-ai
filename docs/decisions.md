@@ -88,6 +88,20 @@
   needs both in mind: capping rounds "because they only pick tools" truncates the real answer of
   most queries. **That reasoning was tried once and was wrong.**
 
+- **The model cannot turn a weekday into a date, and no prompt fixes it.** Measured 2026-08-19
+against the real model with the "hoy" pinned to `miércoles 2026-08-19` and the production case
+("la compra de locro **del lunes**", the Monday being the 17th): `gpt-oss-20b` answered the 15th
+with only the date in the prompt, the **14th** once the weekday was added, and the **14th again**
+with a table spelling out `lunes 2026-08-17`. `gpt-oss-120b` sent no date at all. Four runs, four
+wrong answers — it ignores the fact even when it is written in front of it.
+So `date_from` now asks for a date **only** when the message spells out day and month
+("el débito del 4 de agosto"), which the model transcribes correctly; a relative reference travels
+with no date and `resolveCandidates` falls back to the `created_at` window, where the text match
+finds the movement. That is what the 120b did by accident on the real case, and it would have
+worked. Rejected: computing the date in Go (a date-expression parser for one phrasing) and
+widening the window (it would undo the 24h margin the 04/08 case needed). Known gap, accepted:
+**"el lunes" still sends a wrong date** — `TestAgentDateAnchorEval` keeps that case red on purpose.
+
 ## Groq quota, the 429 queue and rate limits
 
 - **A terminal Groq 429 is a typed error (`orchestrator.RateLimitedError`), not a string to re-parse.** `Client.send`'s existing retry loop already computes the best available wait (header priority over body-parsed text); wrapping that wait in a struct returned via `errors.As` means the pending-jobs queue (and any future consumer) never re-derives or re-parses anything Groq said — it reads `RetryAfter` off the error itself. The alternative (checking `errors.Is(err, someSentinel)` and separately re-parsing the body for the wait) would duplicate parsing logic `send` already did.

@@ -485,9 +485,10 @@ func TestResolveCandidates_LoneDateFromAnchorsASingleDay(t *testing.T) {
 	}
 }
 
-// Un período nombrado ("la semana pasada") es un TRAMO: con los dos extremos la
-// ventana los cubre enteros. Con date_from solo colapsa a un día — ver
-// TestResolveCandidates_LoneDateFromAnchorsASingleDay.
+// Cuando vienen los dos extremos, la ventana los cubre enteros. Ojo: un período
+// nombrado ("la semana pasada") ya NO llega acá con fechas — el schema le pide al
+// modelo que no las calcule, porque las calcula mal (ver TestAgentDateAnchorEval).
+// Esto pinea el tramo explícito, "los gastos del 3 al 5 de agosto".
 func TestResolveCandidates_DateRangeCoversTheWholeSpan(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
 	svc := &fakeServices{movements: fake}

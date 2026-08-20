@@ -16,7 +16,7 @@ func TestCategoryCreateEval_MatchesExisting(t *testing.T) {
 	key := evalKey(t)
 	o := New(Config{
 		APIKey:         key,
-		BaseURL:        os.Getenv("GROQ_BASE_URL"),
+		BaseURL:        evalBaseURL(),
 		CreateModel:    os.Getenv("GROQ_CREATE_MODEL"),
 		TimeoutSeconds: 30,
 	})
@@ -40,7 +40,7 @@ func TestCategoryCreateEval_ProposesWhenAbsent(t *testing.T) {
 	key := evalKey(t)
 	o := New(Config{
 		APIKey:         key,
-		BaseURL:        os.Getenv("GROQ_BASE_URL"),
+		BaseURL:        evalBaseURL(),
 		CreateModel:    os.Getenv("GROQ_CREATE_MODEL"),
 		TimeoutSeconds: 30,
 	})

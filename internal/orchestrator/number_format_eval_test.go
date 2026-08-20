@@ -40,7 +40,7 @@ func TestNumberFormatEval_Loop(t *testing.T) {
 	key := evalKey(t)
 	o := New(Config{
 		APIKey:         key,
-		BaseURL:        os.Getenv("GROQ_BASE_URL"),
+		BaseURL:        evalBaseURL(),
 		AgentModel:     os.Getenv("GROQ_AGENT_MODEL"),
 		TimeoutSeconds: 30,
 	})
@@ -89,7 +89,7 @@ func TestNumberFormatEval_Onboarding(t *testing.T) {
 	key := evalKey(t)
 	o := New(Config{
 		APIKey:         key,
-		BaseURL:        os.Getenv("GROQ_BASE_URL"),
+		BaseURL:        evalBaseURL(),
 		CreateModel:    os.Getenv("GROQ_CREATE_MODEL"), // ClassifyOnboarding uses createModel
 		TimeoutSeconds: 30,
 	})
