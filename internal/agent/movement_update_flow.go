@@ -34,6 +34,17 @@ func movementToRow(m movement.Movement) movement.MovementRow {
 	if m.AccountID != nil {
 		row.AccountID = strconv.FormatUint(*m.AccountID, 10)
 	}
+	// Una corrección reescribe el grupo ENTERO (ReplaceMovements), así que las
+	// dos cosas que hacen grupo a un grupo tienen que viajar en la fila: el tag
+	// que vuelve a unir las patas y cuál de las dos es la que sale. Sin el tag
+	// las patas se insertan sueltas; sin la marca vuelven las dos en positivo.
+	// Las dos las rechaza validateTransferGroups y la corrección muere entera.
+	if m.Type == movement.Transfer && m.TransactionID != nil {
+		row.Group = m.TransactionID.String()
+		if m.Amount.IsNegative() {
+			row.TransferOut = movement.TransferOutMark
+		}
+	}
 	if m.Account != nil {
 		row.AccountName = m.Account.Name
 	}
@@ -448,6 +459,31 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, b *bot.Bo
 		orchestrator.UpdateResult{Resolved: true, Movements: drafts})
 }
 
+// carryTransferIdentity devuelve las filas corregidas con la identidad de grupo
+// del ANTES: el tag que vuelve a unir las patas y cuál es la que sale.
+//
+// Las dos las pone la app y ninguna sobrevive el viaje por MovementDraft — el
+// modelo no las conoce y no tiene por qué. Sin esto una transferencia corregida
+// se reinserta como dos patas sueltas en positivo y validateTransferGroups
+// rechaza el grupo entero: la corrección muere SIEMPRE, cualquiera sea el campo.
+//
+// El apareo es posicional, que es lo mismo que ya asume correctionIsNoOp: el
+// modelo devuelve las filas del candidato en el orden en que se las dieron. Con
+// otra cantidad de filas no hay a qué aparear y se devuelve lo que había — el
+// guard rechaza después, que es lo correcto: mejor ruidoso que mal firmado.
+func carryTransferIdentity(before, after []movement.MovementRow) []movement.MovementRow {
+	if len(before) != len(after) {
+		return after
+	}
+	for i := range after {
+		if before[i].Group != "" {
+			after[i].Group = before[i].Group
+		}
+		after[i].TransferOut = before[i].TransferOut
+	}
+	return after
+}
+
 // accountNamedIn devuelve el nombre de la cuenta del usuario que aparece en el
 // mensaje, o "" si no nombró ninguna. Es lo que separa un reintegro a la misma
 // cuenta de uno que entró en otra — restar el segundo del gasto original deja
@@ -484,6 +520,7 @@ func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bo
 		}
 		afterRows = append(afterRows, row)
 	}
+	afterRows = carryTransferIdentity(beforeRows, afterRows)
 
 	// La taxonomía del usuario, para validar el par igual que CREATE. Si no
 	// carga, taxonomy queda vacía y categoryGapsFor no inventa gaps — degradar a
