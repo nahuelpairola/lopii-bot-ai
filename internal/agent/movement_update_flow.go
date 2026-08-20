@@ -385,7 +385,7 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, b *bot.Bo
 		// sería peor: un lote donde algunos cambiaron y otros no, sin manera de
 		// saber cuáles.
 		slog.WarnContext(ctx, "structured correction rejected", "user_id", userID, "err", err)
-		resolveMetric(ctx, svc, userID, outcomeLoopDidNothing)
+		resolveMetric(ctx, svc, userID, outcomeCorrectionRefused)
 		// Una contradicción NO es un "no te entendí": el bot entendió y se niega.
 		// Decirle lo genérico lo manda a reformular algo que ya dijo bien.
 		// Cada guarda que significa algo distinto se dice distinto. Las que quedan
@@ -450,7 +450,7 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, b *bot.Bo
 	// migración otra vez. Se vio en vivo el 2026-08-12: contestar la categoría
 	// que el movimiento YA tenía reemplazó la fila igual.
 	if correctionIsNoOp(beforeRows, drafts) {
-		resolveMetric(ctx, svc, userID, outcomeLoopDidNothing)
+		resolveMetric(ctx, svc, userID, outcomeNothingToChange)
 		svc.SendText(ctx, b, chatID, messages.MsgCorrectionChangesNothing)
 		return nil
 	}
