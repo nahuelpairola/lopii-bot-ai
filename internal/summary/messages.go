@@ -17,5 +17,3 @@ const (
 
 	msgEmptyWeek = "📊 Esta semana no registraste movimientos. ¿Arrancamos? 💪" + msgNote
 )
-
-var weekdayEs = [...]string{"domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"}

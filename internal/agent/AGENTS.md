@@ -26,10 +26,14 @@ up. Same park, different meaning — read it before adding a third case.
 ## One reference resolver, and it has two windows
 
 `resolveCandidates` (`reference_resolution.go`) is the **only** candidate-search mechanism, and
-both correction paths share it. Do not add a second. Textual relevance is decided in Go
-(`matchesMessage`, accent-folded), never in SQL. It also has a shortcut worth knowing: when
-nothing matches textually but the user has just recorded something, it returns **exactly one**
-candidate — the recent entry — rather than a picker.
+both correction paths share it. Do not add a second. Textual relevance is **scored and ranked** in
+Go (`scoreGroup`, accent-folded), never in SQL: a candidate's score is the FRACTION of its own
+description tokens the message names, plus a capped tie-break for date proximity. A score of 0
+means "no match" and the group never enters — that is what keeps the recency fallback alive, and
+a change that lets the date term alone produce a candidate silently deletes it. The cut to five is
+by score, not by recency. It also has a shortcut worth knowing: when nothing matches textually but
+the user has just recorded something, it returns **exactly one** candidate — the recent entry —
+rather than a picker.
 
 It has **two windows, and picking the wrong one is the whole bug class.** With no date it
 searches by `created_at` ("what did I just enter"); with a date it searches by *business*
@@ -39,6 +43,18 @@ loaded on the 8th — is invisible to the first window and obvious to the second
 movement; a date correction travels in `changes` with `field: "date"`). One lone date closes
 the window on *both* sides: an open `until` does not narrow anything, and a lone `date_to`
 used to invert the window outright.
+
+That rule has a consequence: a relative reference must arrive with **no date at all**, because the
+model cannot turn a weekday into a date — `date_from`'s description now asks for a date **only**
+when the message spells out day and month. Full measurement, and why `TestAgentDateAnchorEval`
+keeps "el lunes" red on purpose, in `docs/decisions.md` (§ The agent loop and QUERY).
+
+When the picker's answer is free text that names none of the options, the loop **searches again**
+with the original message plus what the user just typed, instead of re-asking the same question.
+That is what `SearchText`/`DateFrom`/`DateTo` are doing in the parked payload: `park` would
+otherwise drop all three and there would be nothing to search with. `SearchText` is `e.userText`
+and never `Change` — `Change` is the model's paraphrase, and `applyAnswers` concatenates the
+user's answers onto it.
 
 ## The loop parks, it does not route
 

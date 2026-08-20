@@ -81,6 +81,17 @@ type agentPayload struct {
 	// de corrección NO vuelve a llamar al modelo — no hay nada que interpretar.
 	Scope   string             `json:"scope,omitempty"`
 	Changes []correctionChange `json:"changes,omitempty"`
+	// SearchText, DateFrom y DateTo son lo que hace falta para volver a buscar
+	// cuando el usuario contesta el picker por texto en vez de tocar un botón.
+	// Sin guardarlos, park los tira al salir.
+	//
+	// SearchText es e.userText y NO Change: Change es la paráfrasis del modelo, y
+	// además applyAnswers le concatena las respuestas del usuario.
+	SearchText string `json:"search_text,omitempty"`
+	// DateFrom/DateTo son el mismo LOCALIZADOR que usó la búsqueda original, para
+	// que la re-búsqueda mire la misma ventana en vez de saltar a created_at.
+	DateFrom string `json:"date_from,omitempty"`
+	DateTo   string `json:"date_to,omitempty"`
 }
 
 // agentExecutor es el closure `execute` que Run llama por cada tool call.
@@ -414,6 +425,7 @@ func (e *agentExecutor) park(req parkRequest) (string, error) {
 	action := parkedAction{Tool: tool, Payload: agentPayload{
 		Change: change, Candidates: candidates, Chosen: -1,
 		Scope: req.scope, Changes: req.changes,
+		SearchText: e.userText, DateFrom: req.dateFrom, DateTo: req.dateTo,
 	}}
 	switch {
 	case len(candidates) == 1:
@@ -425,6 +437,15 @@ func (e *agentExecutor) park(req parkRequest) (string, error) {
 		// ("mové los movimientos del lote a proyecto hogar"): con el picker el
 		// usuario elegía uno y los otros dos se quedaban donde estaban.
 	default:
+		// Si el primero no matchea, ninguno matchea: la lista es el fallback.
+		if !matchesMessage(groups[0], e.userText) {
+			question = flow.MsgPickRecentFallback
+		}
+		// La invitación se pega acá y no adentro de las consts del cartel:
+		// MsgPickUpdateCandidate/MsgPickDeleteCandidate las comparte el ChoiceStep
+		// de movement_update_pick, donde el texto libre cae en InvalidChoiceMessage
+		// y NO re-busca. Prometerlo ahí sería mentir.
+		question += " " + flow.MsgCanRetypeToSearch
 		action.Questions = []pendingaction.OpenQuestion{{
 			Key: questionKeyCandidate, Prompt: question, Options: options,
 		}}

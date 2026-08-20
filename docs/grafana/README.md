@@ -48,8 +48,22 @@ y ya no está. Lo que sobrevive es este archivo más el JSON del dashboard.
 2. Pegar el contenido de `admin-dashboard.json`.
 3. Elegir el datasource de Postgres cuando lo pida (variable `DS_POSTGRES`).
 
-El archivo no trae ningún UID de datasource hardcodeado a propósito: era un id
-específico del entorno de dev dentro de un archivo versionado.
+**Este archivo ES el export de la instancia que corre**, y se mantiene así. No
+se le "limpia" nada por prolijidad: entre el 2026-07-22 y el 2026-08-19 el repo
+tuvo una versión editada a mano que Grafana rechazaba, mientras la instancia
+corría otra que nadie trajo de vuelta. Lo que diferían no se veía leyendo:
+`panel-104` tenía el `footer` en `options` con la forma vieja
+(`reducer: ["sum"]`, un array donde el schema espera otra cosa — el mismo panel
+que ya había roto el import del 2026-08-13), `panel-405` no tenía `spanNulls`, y
+las filas colapsadas estaban sin repaginar.
+
+Por eso el UID de datasource de dev vive en `variables[0].current` aunque sea un
+id de entorno: viene del export y sacarlo deja el dashboard importado sin
+datasource elegido. Las *queries* siguen apuntando a `${DS_POSTGRES}`, que es lo
+que el linter chequea.
+
+**Para actualizarlo:** exportar de Grafana (*JSON Model*), pisar el archivo
+entero, y recién ahí aplicar a mano el cambio que se quería hacer.
 
 ## Cómo leerlo
 

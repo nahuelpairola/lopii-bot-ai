@@ -27,6 +27,14 @@ func RelativeDate(d time.Time) string {
 	}
 }
 
+// WeekdayEs nombra el día en castellano. Va en el "Hoy es" de los prompts: el
+// modelo no deduce bien el día de la semana a partir de la fecha.
+var weekdayEs = [...]string{"domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"}
+
+func WeekdayEs(t time.Time) string {
+	return weekdayEs[t.Weekday()]
+}
+
 // CivilDay descarta la hora y la zona: deja solo el día del calendario, anclado
 // a UTC para que dos fechas se puedan comparar entre sí sin que el huso mueva
 // ninguna de las dos.

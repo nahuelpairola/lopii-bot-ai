@@ -202,7 +202,8 @@ func buildAgentSystemPrompt(svc agentServices, userID uint64, tools []orchestrat
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	return orchestrator.BuildAgentPrompt(movement.TodayCivil().Format("2006-01-02"), accountOptions, taxonomy, "", tools,
+	today := movement.TodayCivil()
+	return orchestrator.BuildAgentPrompt(movement.WeekdayEs(today)+" "+today.Format("2006-01-02"), accountOptions, taxonomy, "", tools,
 		BuildRecentEntities(svc, userID)), taxonomy, nil
 }
 

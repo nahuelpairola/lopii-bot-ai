@@ -40,9 +40,27 @@
 ## Movements: mutation and reference resolution
 
 - **Movement mutation operates on movement IDs, not `transaction_id`.** `movement.SoftDeleteByIDs`/`ReplaceMovements` take a list of primary-key IDs. This means a standalone/ungrouped movement (`transaction_id IS NULL`) is corrected or deleted through the exact same code path as a multi-row compound transaction — no special-casing for "is this movement part of a group."
-- **One reference-resolution mechanism, `resolveCandidates`, used everywhere.** UPDATE, DELETE, and CREATE's duplicate-check all go through it, anchored on a mentioned date or on recency of *entry* (`created_at`) otherwise. Textual relevance is decided **in Go** (`matchesMessage`: shared tokens ≥4 chars, accent-folded, or a literal amount match) — the DB layer no longer pre-filters by `pg_trgm` similarity, it just supplies the window. 0 candidates errors out (or, for CREATE, just proceeds — no duplicate found), 1 proceeds to confirm, 2+ shows a picker. There used to be a second mechanism (`LastTransactionStore`, an in-memory per-user "last transaction" checked before the DB search) — removed because two overlapping "what does this refer to" mechanisms was a source of silent wrong matches, not a performance win worth keeping.
+- **One reference-resolution mechanism, `resolveCandidates`, used everywhere.** UPDATE, DELETE, and CREATE's duplicate-check all go through it, anchored on a mentioned date or on recency of *entry* (`created_at`) otherwise. Textual relevance is **scored** in Go (`scoreGroup`: the fraction of a candidate's own description tokens the message names, accent-folded, or a literal amount match, plus a capped date-proximity tie-break) and the candidates are ranked by that score before being cut to five — the DB layer no longer pre-filters by `pg_trgm` similarity, it just supplies the window. 0 candidates errors out (or, for CREATE, just proceeds — no duplicate found), 1 proceeds to confirm, 2+ shows a picker. There used to be a second mechanism (`LastTransactionStore`, an in-memory per-user "last transaction" checked before the DB search) — removed because two overlapping "what does this refer to" mechanisms was a source of silent wrong matches, not a performance win worth keeping.
 - **`Movement.Subcategory` is the one exception to "bare FK, manual lookup."** Every other FK in the codebase (`Account.UserID`, `Invitation.CreatedBy/UsedBy`, `Subcategory.UserID`, `Movement.UserID`/`AccountID`) is a bare `uint64`/`*uint64` with manual repository lookups, even though a real Postgres FK backs every one. `Movement.Subcategory *subcategory.Subcategory` breaks that pattern deliberately: the FK already existed (no migration needed, Go-level-only change), and `Movement` is the one entity with a growing reporting/analytics surface (monthly summaries today, `QUERY` intent tomorrow) where list-shaped queries with names attached recur — every future method benefits from `.Preload("Subcategory")` instead of re-implementing `buildSubcategoryIndex`-style plumbing. The other four models are single-row lookups by ID with no comparable multiplying need.
 - **UPDATE = atomic DELETE + INSERT.** Editing a movement means soft-deleting the old one(s) and inserting the new one(s) in a single transaction. Never partial patch.
+- **Candidate search ranks by description coverage, and the window holds 60 rows — both numbers came
+  from one incident.** On 2026-08-16 a user sent nine messages in twenty minutes trying to record a
+  refund against a card debit; eight ended `abandoned`. The movement existed (`Débito tarjeta Mercado
+  Pago`, `-61306.49`, dated 08-04) but sat at **row 32 of a 30-row window**, so it was never a
+  candidate. Raising the limit alone does not fix it: eight rows in that window share the words
+  "mercado"/"pago"/"tarjeta", the boolean matcher rated all of them equal, and the cut kept the five
+  most recent — the right row still loses. Ranking alone does not fix it either, because the row is
+  out of reach. Scored, it wins outright: coverage 4/4 = 1.00 against 0.67 for the best of the noise
+  (`Transferencia a Mercado Pago`, 2/3). Coverage is a **fraction of the candidate's own tokens**, not
+  a count of hits — counting hits ties `Transferencia Banco Galicia a Mercado Pago` with the correct
+  row at 2 apiece. The date term is capped at 0.25 so it can only break ties: on this case it
+  contributed 0.019 to the right row against 0.025 to the noise, and the coverage gap decided it
+  anyway. 60 rows is ~14 days at production rates (measured 2026-08-20: row 30 = 8.5 days, row 50 =
+  12.7), which is also what a relative reference needs since the model stopped sending dates for one.
+  **Paging ("show me five more") was designed and rejected**: measured against the whole
+  post-stage-5 record, it fixes zero of the nine live failures, and with ranking in place page two is
+  by construction the next-least-similar rows. What recovers a miss is a new search with better
+  words, not more of the same ranking.
 
 ## Conversation engine and flows
 
@@ -88,6 +106,32 @@
   needs both in mind: capping rounds "because they only pick tools" truncates the real answer of
   most queries. **That reasoning was tried once and was wrong.**
 
+- **The model cannot turn a weekday into a date, and no prompt fixes it.** Measured 2026-08-19
+against the real model with the "hoy" pinned to `miércoles 2026-08-19` and the production case
+("la compra de locro **del lunes**", the Monday being the 17th): `gpt-oss-20b` answered the 15th
+with only the date in the prompt, the **14th** once the weekday was added, and the **14th again**
+with a table spelling out `lunes 2026-08-17`. `gpt-oss-120b` sent no date at all. Four runs, four
+wrong answers — it ignores the fact even when it is written in front of it.
+So `date_from` now asks for a date **only** when the message spells out day and month
+("el débito del 4 de agosto"), which the model transcribes correctly; a relative reference travels
+with no date and `resolveCandidates` falls back to the `created_at` window, where the text match
+finds the movement. That is what the 120b did by accident on the real case, and it would have
+worked. Rejected: computing the date in Go (a date-expression parser for one phrasing) and
+widening the window (it would undo the 24h margin the 04/08 case needed). Known gap, accepted:
+**"el lunes" still sends a wrong date** — `TestAgentDateAnchorEval` keeps that case red on purpose.
+
+- **`record_movements` still tells the model to resolve a weekday, and it still gets it wrong.**
+  The schema forbids `correct_movement` from computing a date from a weekday, for the reason above.
+  But a movement can't be inserted with no date, so the `REGLA DE FECHA` in the prompt
+  (`internal/orchestrator/agent_prompt.go`) still asks the model to resolve "el lunes" as the most
+  recent one that already happened — and it still gets it wrong. "gasté 5000 el lunes" is saved
+  with the wrong date, silently, and no eval covers it: `TestAgentDateAnchorEval` only checks
+  `correct_movement`'s arguments. This is an accepted gap, not a fix: dropping the sentence from
+  the prompt would not correct the date, it would just leave the model with no guidance at all. The
+  real fix is resolving the weekday in Go before calling the model, and that is separate work. The
+  weekday stays in "Hoy es" anyway, despite this measurement reading neutral-or-worse for
+  correction, because it serves QUERY, where "esta semana" resolves against the real day.
+
 ## Groq quota, the 429 queue and rate limits
 
 - **A terminal Groq 429 is a typed error (`orchestrator.RateLimitedError`), not a string to re-parse.** `Client.send`'s existing retry loop already computes the best available wait (header priority over body-parsed text); wrapping that wait in a struct returned via `errors.As` means the pending-jobs queue (and any future consumer) never re-derives or re-parses anything Groq said — it reads `RetryAfter` off the error itself. The alternative (checking `errors.Is(err, someSentinel)` and separately re-parsing the body for the wait) would duplicate parsing logic `send` already did.
@@ -95,7 +139,7 @@
 - **The FIFO ordering invariant lives at the webhook boundary (`handleConversationInput`), not inside `handleFreeText`.** Because the drain's replay calls `handleFreeText` directly, a guard placed inside `handleFreeText` would see the drain's own in-flight job as "pending" and re-enqueue it — an infinite loop. `enqueueBehindPending` sits one level up, in the webhook-only `handleConversationInput`, which the drain never touches — so it enforces "don't process a new message ahead of one already queued" for live traffic without ever seeing a replay.
 - **A ctx flag (`isReplaying`) tells a Groq-error site whether it's live or under replay — cheaper than threading a parameter through every call.** `handleGroqError` behaves differently in each case (live: enqueue + ack; replay: propagate the error so the drain re-gates and leaves the job) but is called from deep inside shared flow logic (`startMovementCreate`, `startMovementUpdate`, etc.) that both paths share. Passing an explicit bool through every intermediate signature would touch far more call sites than a `context.WithValue` flag set once at the drain's replay entrypoint.
 - **Give-up ceiling is 2 hours, not a daily reset.** Groq's TPD (tokens-per-day) limit is *rolling*, not a fixed midnight reset — the largest wait actually observed via `x-ratelimit-reset-tokens` is on the order of ~16 minutes. `maxJobAge=2h` gives ~7× margin over that observed ceiling while still recognizing a job stuck far longer as a permanent failure (dead API key, billing issue, provider outage) rather than retrying it forever. Give-up runs *before* the replay call, on `CreatedAt` age alone, so an abandoned job never costs another Groq call.
-- **A parked action is not a queued message.** `pending_llm_jobs` caches a *message* that could not be processed (terminal Groq 429); `pending_actions` holds an *already-interpreted action* missing an answer only the user has. Different lifetimes, different drain triggers, deliberately not merged. `pending_actions` drains one at a time (WIP=1), which is also what keeps `intent_events`' "last pending" correlation honest — and why a loop turn that parks nothing must resolve its own metric, or the next message flips it to `abandoned`.
+- **A parked action is not a queued message.** `pending_llm_jobs` caches a *message* that could not be processed (terminal Groq 429); `pending_actions` holds an *already-interpreted action* missing an answer only the user has. Different lifetimes, different drain triggers, deliberately not merged. `pending_actions` drains one at a time (WIP=1), which is also what keeps `intent_events`' "last pending" correlation honest — and why a loop turn that parks nothing must resolve its own metric, or the next message flips it to `abandoned`. The same duty binds the other end: a parked action the user **cancels** resolves its own metric too. It did not until 2026-08-19, which is why the table held 121 `abandoned` against 2 `update_cancelled` — a user's deliberate "no" was indistinguishable from a flow that died.
 
 - **`maxAgentCompletionTokens` is 1500, and the number is measured, not round (2026-08-12).** Groq
   charges `prompt + max_completion_tokens` against the quota whether the completion uses it or not,

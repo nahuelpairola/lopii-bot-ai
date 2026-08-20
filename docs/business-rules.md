@@ -118,7 +118,7 @@ floored silently.
 - Low confidence → `PENDING_REVIEW` subcategory, bot asks for confirmation
 - A CREATE the router flags as ambiguous, or that matches an existing recent movement (`resolveCandidates`), stops at a reescribir/cancelar confirm gate instead of inserting — CREATE's frictionless default has this one exception
 - `UPDATE` = atomic `DELETE + INSERT` (never partial patch)
-- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`) — no in-memory last-transaction store
+- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go scoring over a DB window: the most recent 60 movements by entry time `created_at`, capped at 90 days; a mentioned date anchors on business `date` instead) — no in-memory last-transaction store
 
 ### Bot interaction
 - No Telegram commands for end users. Everything is free text → LLM → flow or query handler.

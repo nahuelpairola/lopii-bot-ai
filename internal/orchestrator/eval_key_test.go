@@ -29,3 +29,14 @@ func evalKey(t *testing.T) string {
 	}
 	return key
 }
+
+// evalBaseURL es la URL de Groq. Default y no fatal: la baseUrl no vive en el
+// .env sino en el TOML (groq.baseUrl), así que exigirla por entorno hacía que
+// el eval muriera con "unsupported protocol scheme" — el mismo modo de falla
+// que el GROQ_API_KEY que nadie exportaba.
+func evalBaseURL() string {
+	if u := os.Getenv("GROQ_BASE_URL"); u != "" {
+		return u
+	}
+	return "https://api.groq.com/openai/v1"
+}

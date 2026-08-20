@@ -2,6 +2,8 @@ package agent
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -11,7 +13,7 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// foldAccents y tokenAppearsInString viven en flow (movement_text.go), junto al
+// foldAccents y TokenCoverage viven en flow (movement_text.go), junto al
 // foldAccents del matcher de nombres de cuenta; acá quedan los puentes que usa
 // la resolución de referencias.
 func foldAccents(s string) string { return flow.FoldAccents(s) }
@@ -24,8 +26,12 @@ func StartOfTodayArgentina() time.Time {
 }
 
 const (
-	dateAnchorMargin  = 24 * time.Hour
-	fallbackRecentCap = 5
+	dateAnchorMargin = 24 * time.Hour
+	// pickerMaxOptions acota cuántos botones ve el usuario. Un mensaje ambiguo
+	// ("el super") puede matchear decenas de movimientos en una base con
+	// historia, y un picker de veinte botones no se lee — además de que
+	// conversation_states guardaría los veinte grupos enteros en JSONB.
+	pickerMaxOptions = 5
 	// recencyLimit / recencyWindow acotan la ventana de "lo que tengo fresco".
 	//
 	// El límite REAL es por cantidad, no por tiempo: una ventana fija servía o no
@@ -34,10 +40,13 @@ const (
 	// pasado. Con "los últimos N cargados" la ventana se ajusta sola: al que
 	// carga mucho le cubre un día, al que carga poco le cubre semanas.
 	//
+	// 60 y no 30: con 30 el débito de tarjeta del 2026-08-16 quedaba en la fila
+	// 32, dos afuera, y ocho intentos seguidos fallaron. Ver docs/decisions.md.
+	//
 	// recencyWindow queda como techo contra fósiles, no como la ventana real: sin
 	// él, un usuario con 5 movimientos en total vería uno del año pasado como
 	// candidato de "eran 1500".
-	recencyLimit  = 30
+	recencyLimit  = 60
 	recencyWindow = 90 * 24 * time.Hour
 )
 
@@ -75,42 +84,53 @@ func groupByTransaction(ms []movement.Movement) []transactionGroup {
 	return groups
 }
 
-// matchesMessage is a cheap, dependency-free relevance filter over one
-// candidate group: it matches when any description TOKEN of length >= 4
-// appears (case-insensitively) in the message, or the message literally
-// contains one of the group's amounts. Token-level (not whole-phrase) so a
-// verbose LLM description like "gasto en trabas" matches a message that
-// shares only "trabas". The DB layer no longer pre-filters by similarity
-// (see FindSimilarForUser / resolveCandidates), so this is the primary
-// textual relevance check.
-func matchesMessage(group transactionGroup, message string) bool {
+// dateTieBreak es el techo de lo que puede aportar la cercanía de fecha al
+// puntaje. Vale menos que la diferencia de cobertura más chica que nos importa
+// (1/2 - 1/3 = 0,17), así que DESEMPATA y no da vuelta una diferencia de
+// cobertura. Números medidos en docs/decisions.md.
+const dateTieBreak = 0.25
+
+// scoreGroup puntúa cuánto se parece un grupo candidato al mensaje. 0 significa
+// "no matchea" y el grupo no entra: sin esa condición el término de fecha haría
+// candidato a cualquier cosa y el fallback por recencia dejaría de existir.
+//
+// La cobertura es del lado de la DESCRIPCIÓN, no del mensaje: lo que preguntamos
+// es "cuánto de lo que dice esta fila está en lo que escribió el usuario". El
+// monto literal presente en el mensaje vale 1: nombrar el número es tan bueno
+// como nombrar la cosa entera. Se compara contra Abs(): el signo contable
+// nunca llega al usuario, así que tampoco puede ser parte del match.
+//
+// Se toma el máximo sobre los movimientos del grupo — un grupo es una
+// transacción y puede tener dos piernas; alcanza con que una la nombre.
+func scoreGroup(g transactionGroup, message string, anchor time.Time) float64 {
 	lower := foldAccents(strings.ToLower(message))
-	for _, m := range group.Movements {
-		if tokenAppearsIn(m.Description, lower) {
-			return true
+	best := 0.0
+	for _, m := range g.Movements {
+		cover := 0.0
+		if !m.Amount.IsZero() && strings.Contains(message, m.Amount.Abs().String()) {
+			cover = 1
 		}
-		if !m.Amount.IsZero() && strings.Contains(message, m.Amount.String()) {
-			return true
+		if m.Description != nil {
+			if c := flow.TokenCoverage(*m.Description, lower); c > cover {
+				cover = c
+			}
+		}
+		if cover > best {
+			best = cover
 		}
 	}
-	return false
-}
-
-// tokenAppearsIn reports whether any whitespace-separated token of `field`
-// with length >= minMatchTokenLen is a substring of the already-lowercased
-// haystack.
-func tokenAppearsIn(field *string, lowerHaystack string) bool {
-	if field == nil || *field == "" {
-		return false
+	if best == 0 {
+		return 0
 	}
-	return tokenAppearsInString(*field, lowerHaystack)
+	days := math.Abs(anchor.Sub(g.Movements[0].Date).Hours()) / 24
+	return best + dateTieBreak/(1+days)
 }
 
-// tokenAppearsInString es la misma prueba sobre un string ya desreferenciado.
-// La usa guessNamesOwnAccount, que compara contra la description de la fila y
-// no contra el mensaje. La implementación vive en flow (movement_text.go).
-func tokenAppearsInString(field, lowerHaystack string) bool {
-	return flow.TokenAppearsInString(field, lowerHaystack)
+// matchesMessage dice si el grupo matchea, sin importar cuánto. Queda porque el
+// cartel del picker lo necesita (agent_executor.go): saber si la lista salió de
+// un match textual o del fallback por recencia.
+func matchesMessage(group transactionGroup, message string) bool {
+	return scoreGroup(group, message, time.Now()) > 0
 }
 
 // dropReservedGroups saca los grupos cuya categoría es interna (Sistema,
@@ -187,24 +207,40 @@ func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, date
 
 	groups := groupByTransaction(matches)
 
-	var candidates []transactionGroup
+	// El ancla del desempate por fecha: la fecha que nombró el mensaje si hay
+	// una, hoy si no. Es la misma que acotó la ventana unas líneas más arriba.
+	anchor := StartOfTodayArgentina()
+	if from := parseDateAnchor(dateFrom); from != nil {
+		anchor = *from
+	} else if to := parseDateAnchor(dateTo); to != nil {
+		anchor = *to
+	}
+
+	type scored struct {
+		group transactionGroup
+		score float64
+	}
+	var candidates []scored
 	for _, g := range groups {
-		if matchesMessage(g, message) {
-			candidates = append(candidates, g)
+		if s := scoreGroup(g, message, anchor); s > 0 {
+			candidates = append(candidates, scored{group: g, score: s})
 		}
 	}
 	if len(candidates) > 0 {
-		// Mismo techo que el fallback: un mensaje ambiguo ("el super") puede
-		// matchear decenas de movimientos en una base con historia, y un picker
-		// de veinte botones no se lee — además de que conversation_states
-		// guardaría los veinte grupos enteros en JSONB. El corte es por
-		// recencia porque candidates hereda el orden newest-first de groups.
-		// ponytail: si el correcto queda afuera del corte seguido, el paso
-		// siguiente es rankear por similitud en vez de cortar por recencia.
-		if len(candidates) > fallbackRecentCap {
-			candidates = candidates[:fallbackRecentCap]
+		// Estable a propósito: a puntaje igual gana el que vino primero de la
+		// consulta, o sea el más reciente. Sin SliceStable, dos candidatos
+		// idénticos salen en orden arbitrario y el picker cambia entre corridas.
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return candidates[i].score > candidates[j].score
+		})
+		if len(candidates) > pickerMaxOptions {
+			candidates = candidates[:pickerMaxOptions]
 		}
-		return candidates, nil
+		out := make([]transactionGroup, 0, len(candidates))
+		for _, c := range candidates {
+			out = append(out, c.group)
+		}
+		return out, nil
 	}
 
 	// Nada matchó textualmente: esto ya no es resolver una referencia, es "te
@@ -231,8 +267,8 @@ func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, date
 	// picker. groups is already ordered newest-first by the window query
 	// (created_at DESC in the default no-date path, date DESC when a date was
 	// mentioned).
-	if len(groups) > fallbackRecentCap {
-		groups = groups[:fallbackRecentCap]
+	if len(groups) > pickerMaxOptions {
+		groups = groups[:pickerMaxOptions]
 	}
 	return groups, nil
 }

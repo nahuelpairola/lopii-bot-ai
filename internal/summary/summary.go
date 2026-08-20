@@ -476,7 +476,7 @@ func daysBlock(counts []movement.DayCount, from, to time.Time) string {
 			logged++
 			continue
 		}
-		missing = append(missing, weekdayEs[d.Weekday()])
+		missing = append(missing, movement.WeekdayEs(d))
 	}
 	if len(missing) == 0 {
 		return fmt.Sprintf("\n<i>Anotaste los %d días 💪</i>\n", total)

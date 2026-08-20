@@ -44,6 +44,17 @@ func TestMatchesMessage_Amount(t *testing.T) {
 	}
 }
 
+func TestScoreGroup_ExpenseAmountMatchesDespiteStoredSign(t *testing.T) {
+	// Un gasto se guarda negativo (-61306.49), pero el usuario y el LLM sólo
+	// ven Abs(): el signo contable nunca puede ser parte del match.
+	amount := decimal.NewFromFloat(-61306.49)
+	now := time.Now()
+	group := transactionGroup{Movements: []movement.Movement{{Type: movement.Expense, Amount: amount, Date: now}}}
+	if got := scoreGroup(group, "eran 61306.49", now); got < 1 {
+		t.Fatalf("scoreGroup = %v, want >= 1: el monto positivo del mensaje tiene que matchear el gasto guardado negativo", got)
+	}
+}
+
 func TestMatchesMessage_DescriptionToken(t *testing.T) {
 	// Desde el fold de merchant, el nombre del comercio vive en la description
 	// y este es el unico camino de match textual.
@@ -111,6 +122,66 @@ func TestMatchesMessage_TransferWithAccount(t *testing.T) {
 	group := transactionGroup{Movements: []movement.Movement{m}}
 	if !matchesMessage(group, "la transferencia de 500") {
 		t.Error("expected a match on the description token 'transferencia'")
+	}
+}
+
+// El caso guía, con las descripciones reales de la ventana del user 3 el
+// 2026-08-16 (ver la spec, § 1.2). La fila correcta es la única con cobertura
+// 1,00; todas las demás comparten "mercado"/"pago"/"tarjeta" y nada más.
+func TestScoreGroup_DebitoTarjetaLeGanaALasTransferencias(t *testing.T) {
+	msg := "Del débito tarjeta Mercado Pago se me reintegraron $70.000"
+	anchor := time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC)
+	date := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+
+	group := func(desc string) transactionGroup {
+		return transactionGroup{Movements: []movement.Movement{{Description: strPtr(desc), Date: date}}}
+	}
+	correcto := scoreGroup(group("Débito tarjeta Mercado Pago"), msg, anchor)
+	for _, ruido := range []string{
+		"Pago tarjeta de crédito",
+		"Transferencia a Mercado Pago",
+		"Transferencia Mercado Pago a FCI",
+		"Transferencia Mercado Pago a Cedears",
+		"Transferencia Banco Galicia a Mercado Pago",
+	} {
+		if got := scoreGroup(group(ruido), msg, anchor); got >= correcto {
+			t.Errorf("%q puntuó %v, y el correcto %v: el ruido no puede empatarle", ruido, got, correcto)
+		}
+	}
+}
+
+// El desempate por fecha no puede dar vuelta una diferencia de cobertura.
+func TestScoreGroup_LaFechaDesempataPeroNoManda(t *testing.T) {
+	msg := "la compra de locro"
+	anchor := time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
+	group := func(desc string, d time.Time) transactionGroup {
+		return transactionGroup{Movements: []movement.Movement{{Description: strPtr(desc), Date: d}}}
+	}
+
+	// Cobertura 1,00 pero quince días atrás, contra cobertura 0,50 de hoy.
+	viejoYExacto := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -15)), msg, anchor)
+	nuevoYFlojo := scoreGroup(group("Compra USD 100 a 1500", anchor), msg, anchor)
+	if viejoYExacto <= nuevoYFlojo {
+		t.Fatalf("exacto y viejo = %v, flojo y nuevo = %v: la fecha dio vuelta la cobertura", viejoYExacto, nuevoYFlojo)
+	}
+
+	// A cobertura igual, sí manda la fecha.
+	cerca := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -1)), msg, anchor)
+	lejos := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -20)), msg, anchor)
+	if cerca <= lejos {
+		t.Fatalf("cerca = %v, lejos = %v: a cobertura igual tiene que ganar el más cercano", cerca, lejos)
+	}
+}
+
+// Cobertura 0 sigue siendo "no matchea": el puntaje no puede inventar
+// candidatos a fuerza del término de fecha, o el fallback por recencia deja de
+// existir.
+func TestScoreGroup_SinCoberturaEsCero(t *testing.T) {
+	g := transactionGroup{Movements: []movement.Movement{
+		{Description: strPtr("Café"), Date: time.Now()},
+	}}
+	if got := scoreGroup(g, "era 700", time.Now()); got != 0 {
+		t.Fatalf("scoreGroup = %v, want 0: sin token compartido no hay candidato", got)
 	}
 }
 
@@ -385,11 +456,46 @@ func TestResolveCandidates_ManyTextMatches_IsCapped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(candidates) > fallbackRecentCap {
-		t.Fatalf("got %d candidates, want <= %d: un picker no puede tener 20 botones", len(candidates), fallbackRecentCap)
+	if len(candidates) > pickerMaxOptions {
+		t.Fatalf("got %d candidates, want <= %d: un picker no puede tener 20 botones", len(candidates), pickerMaxOptions)
 	}
 	if candidates[0].Movements[0].ID != 100 {
 		t.Errorf("primer candidato = %d, want 100 (el corte tiene que dejar los más recientes)", candidates[0].Movements[0].ID)
+	}
+}
+
+// El corte de 5 pasa a ser por PARECIDO y no por recencia. Antes, con seis
+// matches, se quedaba con los cinco más nuevos y el único que nombraba la cosa
+// entera se caía si era el sexto.
+func TestResolveCandidates_ElCorteEsPorParecidoNoPorRecencia(t *testing.T) {
+	now := time.Now()
+	var window []movement.Movement
+	// Cinco genéricos, todos más nuevos que el correcto.
+	for i := 0; i < 5; i++ {
+		window = append(window, movement.Movement{
+			Model:       gorm.Model{ID: uint(200 + i), CreatedAt: now.Add(-time.Duration(i+2) * time.Hour)},
+			Description: strPtr("Transferencia Banco Galicia a Mercado Pago"),
+		})
+	}
+	// El correcto, el más viejo de todos.
+	window = append(window, movement.Movement{
+		Model:       gorm.Model{ID: 205, CreatedAt: now.Add(-200 * time.Hour)},
+		Description: strPtr("Débito tarjeta Mercado Pago"),
+	})
+
+	fake := &fakeMovementRepoForResolve{result: window}
+	svc := &fakeServices{movements: fake}
+
+	candidates, err := resolveCandidates(svc, 3, "Del débito tarjeta Mercado Pago se me reintegraron $70.000", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) == 0 {
+		t.Fatal("sin candidatos")
+	}
+	if candidates[0].Movements[0].ID != 205 {
+		t.Errorf("primer candidato = %d, want 205: el que nombra la fila entera va primero, aunque sea el más viejo",
+			candidates[0].Movements[0].ID)
 	}
 }
 
@@ -418,6 +524,9 @@ func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 	// volumen no alcanza sus propios movimientos de la semana pasada.
 	if recencyWindow < 30*24*time.Hour {
 		t.Errorf("recencyWindow = %v, want >= 30 días: es un techo contra fósiles, no la ventana real", recencyWindow)
+	}
+	if recencyLimit < 60 {
+		t.Errorf("recencyLimit = %d, want >= 60: con 30, el débito de tarjeta del 2026-08-16 quedaba en la fila 32", recencyLimit)
 	}
 }
 
@@ -482,6 +591,31 @@ func TestResolveCandidates_LoneDateFromAnchorsASingleDay(t *testing.T) {
 	}
 	if want := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC); !fake.capturedUntil.Equal(want) {
 		t.Errorf("until = %v, want %v", *fake.capturedUntil, want)
+	}
+}
+
+// Cuando vienen los dos extremos, la ventana los cubre enteros. Ojo: un período
+// nombrado ("la semana pasada") ya NO llega acá con fechas — el schema le pide al
+// modelo que no las calcule, porque las calcula mal (ver TestAgentDateAnchorEval).
+// Esto pinea el tramo explícito, "los gastos del 3 al 5 de agosto".
+func TestResolveCandidates_DateRangeCoversTheWholeSpan(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{}
+	svc := &fakeServices{movements: fake}
+
+	if _, err := resolveCandidates(svc, 3, "la compra de la semana pasada ponela en otra categoría", "2026-08-10", "2026-08-16"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.recencyCalled {
+		t.Fatal("con fecha no se usa la ventana de created_at")
+	}
+	if want := time.Date(2026, 8, 9, 0, 0, 0, 0, time.UTC); !fake.capturedSince.Equal(want) {
+		t.Errorf("since = %v, want %v", fake.capturedSince, want)
+	}
+	if fake.capturedUntil == nil {
+		t.Fatal("until = nil: la semana quedó abierta")
+	}
+	if want := time.Date(2026, 8, 17, 0, 0, 0, 0, time.UTC); !fake.capturedUntil.Equal(want) {
+		t.Errorf("until = %v, want %v (el tramo se colapsó)", *fake.capturedUntil, want)
 	}
 }
 

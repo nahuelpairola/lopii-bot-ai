@@ -43,6 +43,7 @@ type agentServices interface {
 	// Cola de acciones parkeadas.
 	ActionsInsert(a *pendingaction.PendingAction) error
 	ActionsNextForUser(userID uint64) (*pendingaction.PendingAction, error)
+	ActionsUpdate(a *pendingaction.PendingAction) error
 	ActionsDelete(id uint64) error
 	ActionsEnabled() bool
 

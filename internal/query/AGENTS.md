@@ -20,10 +20,11 @@ parameter, because the model cannot reliably tell which of the three fields a na
 "lote" reads like a category and actually sits in the description of movements spread across
 four subcategories.
 
-**Do not confuse it with `resolveCandidates`.** That one still decides textual relevance in Go
-with `foldAccents`, and the rule above — *textual relevance is decided in Go, never in SQL* —
-still holds **for reference resolution**. The two answer different questions: `search` filters
-an aggregate query, `resolveCandidates` works out which movement a correction refers to.
+**Do not confuse it with `resolveCandidates`.** That one still resolves textual relevance in Go
+with `foldAccents` — it **scores and ranks** candidates rather than filtering them, but the rule
+above — *textual relevance is decided in Go, never in SQL* — still holds **for reference
+resolution**. The two answer different questions: `search` filters an aggregate query,
+`resolveCandidates` works out which movement a correction refers to.
 
 Three more things that are not obvious from the code:
 
