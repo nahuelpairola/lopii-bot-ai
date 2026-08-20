@@ -114,6 +114,66 @@ func TestMatchesMessage_TransferWithAccount(t *testing.T) {
 	}
 }
 
+// El caso guía, con las descripciones reales de la ventana del user 3 el
+// 2026-08-16 (ver la spec, § 1.2). La fila correcta es la única con cobertura
+// 1,00; todas las demás comparten "mercado"/"pago"/"tarjeta" y nada más.
+func TestScoreGroup_DebitoTarjetaLeGanaALasTransferencias(t *testing.T) {
+	msg := "Del débito tarjeta Mercado Pago se me reintegraron $70.000"
+	anchor := time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC)
+	date := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+
+	group := func(desc string) transactionGroup {
+		return transactionGroup{Movements: []movement.Movement{{Description: strPtr(desc), Date: date}}}
+	}
+	correcto := scoreGroup(group("Débito tarjeta Mercado Pago"), msg, anchor)
+	for _, ruido := range []string{
+		"Pago tarjeta de crédito",
+		"Transferencia a Mercado Pago",
+		"Transferencia Mercado Pago a FCI",
+		"Transferencia Mercado Pago a Cedears",
+		"Transferencia Banco Galicia a Mercado Pago",
+	} {
+		if got := scoreGroup(group(ruido), msg, anchor); got >= correcto {
+			t.Errorf("%q puntuó %v, y el correcto %v: el ruido no puede empatarle", ruido, got, correcto)
+		}
+	}
+}
+
+// El desempate por fecha no puede dar vuelta una diferencia de cobertura.
+func TestScoreGroup_LaFechaDesempataPeroNoManda(t *testing.T) {
+	msg := "la compra de locro"
+	anchor := time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
+	group := func(desc string, d time.Time) transactionGroup {
+		return transactionGroup{Movements: []movement.Movement{{Description: strPtr(desc), Date: d}}}
+	}
+
+	// Cobertura 1,00 pero quince días atrás, contra cobertura 0,50 de hoy.
+	viejoYExacto := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -15)), msg, anchor)
+	nuevoYFlojo := scoreGroup(group("Compra USD 100 a 1500", anchor), msg, anchor)
+	if viejoYExacto <= nuevoYFlojo {
+		t.Fatalf("exacto y viejo = %v, flojo y nuevo = %v: la fecha dio vuelta la cobertura", viejoYExacto, nuevoYFlojo)
+	}
+
+	// A cobertura igual, sí manda la fecha.
+	cerca := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -1)), msg, anchor)
+	lejos := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -20)), msg, anchor)
+	if cerca <= lejos {
+		t.Fatalf("cerca = %v, lejos = %v: a cobertura igual tiene que ganar el más cercano", cerca, lejos)
+	}
+}
+
+// Cobertura 0 sigue siendo "no matchea": el puntaje no puede inventar
+// candidatos a fuerza del término de fecha, o el fallback por recencia deja de
+// existir.
+func TestScoreGroup_SinCoberturaEsCero(t *testing.T) {
+	g := transactionGroup{Movements: []movement.Movement{
+		{Description: strPtr("Café"), Date: time.Now()},
+	}}
+	if got := scoreGroup(g, "era 700", time.Now()); got != 0 {
+		t.Fatalf("scoreGroup = %v, want 0: sin token compartido no hay candidato", got)
+	}
+}
+
 // fakeMovementRepoForResolve captures the arguments to the window queries.
 type fakeMovementRepoForResolve struct {
 	result               []movement.Movement

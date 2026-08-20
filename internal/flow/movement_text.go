@@ -22,21 +22,36 @@ func FoldAccents(s string) string { return accentFolder.Replace(s) }
 
 const minMatchTokenLen = 4
 
-// TokenAppearsInString reports whether any whitespace-separated token of
-// `field` with length >= minMatchTokenLen is a substring of the
-// already-lowercased haystack.
-func TokenAppearsInString(field, lowerHaystack string) bool {
+// TokenCoverage es qué FRACCIÓN de los tokens de `field` (los de >= 4 runas)
+// aparece en el haystack ya en minúsculas. Dividir por el total es lo que separa
+// la señal del ruido: "Débito tarjeta Mercado Pago" contra un mensaje que las
+// dice las cuatro da 1, y "Transferencia Banco Galicia a Mercado Pago" contra el
+// mismo mensaje da 2/5. Contando aciertos sueltos, las dos empatarían en 2.
+func TokenCoverage(field, lowerHaystack string) float64 {
+	total, hit := 0, 0
 	for _, tok := range strings.Fields(FoldAccents(strings.ToLower(field))) {
 		// ponytail: length>=4 skips es stopwords (de/en/el/con/por) without a
 		// stopword list; standalone <=3-char descriptions like "pan"/"ypf"
 		// won't match as tokens — revisit if that bites.
-		if len([]rune(tok)) >= minMatchTokenLen {
-			if strings.Contains(lowerHaystack, tok) {
-				return true
-			}
+		if len([]rune(tok)) < minMatchTokenLen {
+			continue
+		}
+		total++
+		if strings.Contains(lowerHaystack, tok) {
+			hit++
 		}
 	}
-	return false
+	if total == 0 {
+		return 0
+	}
+	return float64(hit) / float64(total)
+}
+
+// TokenAppearsInString reports whether any whitespace-separated token of
+// `field` with length >= minMatchTokenLen is a substring of the
+// already-lowercased haystack.
+func TokenAppearsInString(field, lowerHaystack string) bool {
+	return TokenCoverage(field, lowerHaystack) > 0
 }
 
 // GuessNamesOwnAccount discrimina los dos motivos por los que el modelo llena

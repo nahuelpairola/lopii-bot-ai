@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -75,42 +76,53 @@ func groupByTransaction(ms []movement.Movement) []transactionGroup {
 	return groups
 }
 
-// matchesMessage is a cheap, dependency-free relevance filter over one
-// candidate group: it matches when any description TOKEN of length >= 4
-// appears (case-insensitively) in the message, or the message literally
-// contains one of the group's amounts. Token-level (not whole-phrase) so a
-// verbose LLM description like "gasto en trabas" matches a message that
-// shares only "trabas". The DB layer no longer pre-filters by similarity
-// (see FindSimilarForUser / resolveCandidates), so this is the primary
-// textual relevance check.
-func matchesMessage(group transactionGroup, message string) bool {
+// dateTieBreak es el techo de lo que puede aportar la cercanía de fecha al
+// puntaje. Vale menos que la diferencia de cobertura más chica que nos importa
+// (1/2 - 1/3 = 0,17), así que DESEMPATA y no da vuelta nada: medido sobre el
+// caso del 2026-08-16, aporta 0,019 al candidato correcto contra 0,025 al ruido,
+// y la cobertura los separa 1,00 a 0,67.
+const dateTieBreak = 0.25
+
+// scoreGroup puntúa cuánto se parece un grupo candidato al mensaje. 0 significa
+// "no matchea" y el grupo no entra: sin esa condición el término de fecha haría
+// candidato a cualquier cosa y el fallback por recencia dejaría de existir.
+//
+// La cobertura es del lado de la DESCRIPCIÓN, no del mensaje: lo que preguntamos
+// es "cuánto de lo que dice esta fila está en lo que escribió el usuario". El
+// monto literal presente en el mensaje vale 1: nombrar el número es tan bueno
+// como nombrar la cosa entera.
+//
+// Se toma el máximo sobre los movimientos del grupo — un grupo es una
+// transacción y puede tener dos piernas; alcanza con que una la nombre.
+func scoreGroup(g transactionGroup, message string, anchor time.Time) float64 {
 	lower := foldAccents(strings.ToLower(message))
-	for _, m := range group.Movements {
-		if tokenAppearsIn(m.Description, lower) {
-			return true
-		}
+	best := 0.0
+	for _, m := range g.Movements {
+		cover := 0.0
 		if !m.Amount.IsZero() && strings.Contains(message, m.Amount.String()) {
-			return true
+			cover = 1
+		}
+		if m.Description != nil {
+			if c := flow.TokenCoverage(*m.Description, lower); c > cover {
+				cover = c
+			}
+		}
+		if cover > best {
+			best = cover
 		}
 	}
-	return false
-}
-
-// tokenAppearsIn reports whether any whitespace-separated token of `field`
-// with length >= minMatchTokenLen is a substring of the already-lowercased
-// haystack.
-func tokenAppearsIn(field *string, lowerHaystack string) bool {
-	if field == nil || *field == "" {
-		return false
+	if best == 0 {
+		return 0
 	}
-	return tokenAppearsInString(*field, lowerHaystack)
+	days := math.Abs(anchor.Sub(g.Movements[0].Date).Hours()) / 24
+	return best + dateTieBreak/(1+days)
 }
 
-// tokenAppearsInString es la misma prueba sobre un string ya desreferenciado.
-// La usa guessNamesOwnAccount, que compara contra la description de la fila y
-// no contra el mensaje. La implementación vive en flow (movement_text.go).
-func tokenAppearsInString(field, lowerHaystack string) bool {
-	return flow.TokenAppearsInString(field, lowerHaystack)
+// matchesMessage dice si el grupo matchea, sin importar cuánto. Queda porque el
+// cartel del picker lo necesita (agent_executor.go): saber si la lista salió de
+// un match textual o del fallback por recencia.
+func matchesMessage(group transactionGroup, message string) bool {
+	return scoreGroup(group, message, time.Now()) > 0
 }
 
 // dropReservedGroups saca los grupos cuya categoría es interna (Sistema,
