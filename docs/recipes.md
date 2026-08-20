@@ -104,7 +104,7 @@ ACCOUNT_MANAGE | CREATE_CATEGORY | CATEGORY_MANAGE | REMINDER_SET | HELP | UNCLE
 
 - Tool calling: the LLM constructs action parameters, not just the intent type
 - `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
-- Implicit references ("actually it was 1200") resolve via `resolveCandidates` (in-Go token/amount match over a DB window: recency of entry `created_at`/48h by default, a mentioned date anchors on business `date`), not an in-memory store
+- Implicit references ("actually it was 1200") resolve via `resolveCandidates`, not an in-memory store — window and scoring rules in [business-rules.md](business-rules.md)
 - **Migration in progress:** `UPDATE`, `DELETE` and `CREATE` no longer open a flow from the
   router — they go through the unified agent loop (`orchestrator.Run` → `startAgentLoop`),
   stages 2 and 3 of 5. The router still gates what reaches the loop, which is what keeps each

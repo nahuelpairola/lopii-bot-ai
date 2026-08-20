@@ -26,10 +26,14 @@ up. Same park, different meaning — read it before adding a third case.
 ## One reference resolver, and it has two windows
 
 `resolveCandidates` (`reference_resolution.go`) is the **only** candidate-search mechanism, and
-both correction paths share it. Do not add a second. Textual relevance is decided in Go
-(`matchesMessage`, accent-folded), never in SQL. It also has a shortcut worth knowing: when
-nothing matches textually but the user has just recorded something, it returns **exactly one**
-candidate — the recent entry — rather than a picker.
+both correction paths share it. Do not add a second. Textual relevance is **scored and ranked** in
+Go (`scoreGroup`, accent-folded), never in SQL: a candidate's score is the FRACTION of its own
+description tokens the message names, plus a capped tie-break for date proximity. A score of 0
+means "no match" and the group never enters — that is what keeps the recency fallback alive, and
+a change that lets the date term alone produce a candidate silently deletes it. The cut to five is
+by score, not by recency. It also has a shortcut worth knowing: when nothing matches textually but
+the user has just recorded something, it returns **exactly one** candidate — the recent entry —
+rather than a picker.
 
 It has **two windows, and picking the wrong one is the whole bug class.** With no date it
 searches by `created_at` ("what did I just enter"); with a date it searches by *business*

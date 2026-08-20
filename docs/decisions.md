@@ -40,9 +40,27 @@
 ## Movements: mutation and reference resolution
 
 - **Movement mutation operates on movement IDs, not `transaction_id`.** `movement.SoftDeleteByIDs`/`ReplaceMovements` take a list of primary-key IDs. This means a standalone/ungrouped movement (`transaction_id IS NULL`) is corrected or deleted through the exact same code path as a multi-row compound transaction — no special-casing for "is this movement part of a group."
-- **One reference-resolution mechanism, `resolveCandidates`, used everywhere.** UPDATE, DELETE, and CREATE's duplicate-check all go through it, anchored on a mentioned date or on recency of *entry* (`created_at`) otherwise. Textual relevance is decided **in Go** (`matchesMessage`: shared tokens ≥4 chars, accent-folded, or a literal amount match) — the DB layer no longer pre-filters by `pg_trgm` similarity, it just supplies the window. 0 candidates errors out (or, for CREATE, just proceeds — no duplicate found), 1 proceeds to confirm, 2+ shows a picker. There used to be a second mechanism (`LastTransactionStore`, an in-memory per-user "last transaction" checked before the DB search) — removed because two overlapping "what does this refer to" mechanisms was a source of silent wrong matches, not a performance win worth keeping.
+- **One reference-resolution mechanism, `resolveCandidates`, used everywhere.** UPDATE, DELETE, and CREATE's duplicate-check all go through it, anchored on a mentioned date or on recency of *entry* (`created_at`) otherwise. Textual relevance is **scored** in Go (`scoreGroup`: the fraction of a candidate's own description tokens the message names, accent-folded, or a literal amount match, plus a capped date-proximity tie-break) and the candidates are ranked by that score before being cut to five — the DB layer no longer pre-filters by `pg_trgm` similarity, it just supplies the window. 0 candidates errors out (or, for CREATE, just proceeds — no duplicate found), 1 proceeds to confirm, 2+ shows a picker. There used to be a second mechanism (`LastTransactionStore`, an in-memory per-user "last transaction" checked before the DB search) — removed because two overlapping "what does this refer to" mechanisms was a source of silent wrong matches, not a performance win worth keeping.
 - **`Movement.Subcategory` is the one exception to "bare FK, manual lookup."** Every other FK in the codebase (`Account.UserID`, `Invitation.CreatedBy/UsedBy`, `Subcategory.UserID`, `Movement.UserID`/`AccountID`) is a bare `uint64`/`*uint64` with manual repository lookups, even though a real Postgres FK backs every one. `Movement.Subcategory *subcategory.Subcategory` breaks that pattern deliberately: the FK already existed (no migration needed, Go-level-only change), and `Movement` is the one entity with a growing reporting/analytics surface (monthly summaries today, `QUERY` intent tomorrow) where list-shaped queries with names attached recur — every future method benefits from `.Preload("Subcategory")` instead of re-implementing `buildSubcategoryIndex`-style plumbing. The other four models are single-row lookups by ID with no comparable multiplying need.
 - **UPDATE = atomic DELETE + INSERT.** Editing a movement means soft-deleting the old one(s) and inserting the new one(s) in a single transaction. Never partial patch.
+- **Candidate search ranks by description coverage, and the window holds 60 rows — both numbers came
+  from one incident.** On 2026-08-16 a user sent nine messages in twenty minutes trying to record a
+  refund against a card debit; eight ended `abandoned`. The movement existed (`Débito tarjeta Mercado
+  Pago`, `-61306.49`, dated 08-04) but sat at **row 32 of a 30-row window**, so it was never a
+  candidate. Raising the limit alone does not fix it: eight rows in that window share the words
+  "mercado"/"pago"/"tarjeta", the boolean matcher rated all of them equal, and the cut kept the five
+  most recent — the right row still loses. Ranking alone does not fix it either, because the row is
+  out of reach. Scored, it wins outright: coverage 4/4 = 1.00 against 0.67 for the best of the noise
+  (`Transferencia a Mercado Pago`, 2/3). Coverage is a **fraction of the candidate's own tokens**, not
+  a count of hits — counting hits ties `Transferencia Banco Galicia a Mercado Pago` with the correct
+  row at 2 apiece. The date term is capped at 0.25 so it can only break ties: on this case it
+  contributed 0.019 to the right row against 0.025 to the noise, and the coverage gap decided it
+  anyway. 60 rows is ~14 days at production rates (measured 2026-08-20: row 30 = 8.5 days, row 50 =
+  12.7), which is also what a relative reference needs since the model stopped sending dates for one.
+  **Paging ("show me five more") was designed and rejected**: measured against the whole
+  post-stage-5 record, it fixes zero of the nine live failures, and with ranking in place page two is
+  by construction the next-least-similar rows. What recovers a miss is a new search with better
+  words, not more of the same ranking.
 
 ## Conversation engine and flows
 

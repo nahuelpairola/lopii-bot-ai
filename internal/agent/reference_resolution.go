@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// foldAccents y tokenAppearsInString viven en flow (movement_text.go), junto al
+// foldAccents y TokenCoverage viven en flow (movement_text.go), junto al
 // foldAccents del matcher de nombres de cuenta; acá quedan los puentes que usa
 // la resolución de referencias.
 func foldAccents(s string) string { return flow.FoldAccents(s) }
@@ -25,8 +26,12 @@ func StartOfTodayArgentina() time.Time {
 }
 
 const (
-	dateAnchorMargin  = 24 * time.Hour
-	fallbackRecentCap = 5
+	dateAnchorMargin = 24 * time.Hour
+	// pickerMaxOptions acota cuántos botones ve el usuario. Un mensaje ambiguo
+	// ("el super") puede matchear decenas de movimientos en una base con
+	// historia, y un picker de veinte botones no se lee — además de que
+	// conversation_states guardaría los veinte grupos enteros en JSONB.
+	pickerMaxOptions = 5
 	// recencyLimit / recencyWindow acotan la ventana de "lo que tengo fresco".
 	//
 	// El límite REAL es por cantidad, no por tiempo: una ventana fija servía o no
@@ -35,10 +40,13 @@ const (
 	// pasado. Con "los últimos N cargados" la ventana se ajusta sola: al que
 	// carga mucho le cubre un día, al que carga poco le cubre semanas.
 	//
+	// 60 y no 30: con 30 el débito de tarjeta del 2026-08-16 quedaba en la fila
+	// 32, dos afuera, y ocho intentos seguidos fallaron. Ver docs/decisions.md.
+	//
 	// recencyWindow queda como techo contra fósiles, no como la ventana real: sin
 	// él, un usuario con 5 movimientos en total vería uno del año pasado como
 	// candidato de "eran 1500".
-	recencyLimit  = 30
+	recencyLimit  = 60
 	recencyWindow = 90 * 24 * time.Hour
 )
 
@@ -199,24 +207,40 @@ func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, date
 
 	groups := groupByTransaction(matches)
 
-	var candidates []transactionGroup
+	// El ancla del desempate por fecha: la fecha que nombró el mensaje si hay
+	// una, hoy si no. Es la misma que acotó la ventana unas líneas más arriba.
+	anchor := StartOfTodayArgentina()
+	if from := parseDateAnchor(dateFrom); from != nil {
+		anchor = *from
+	} else if to := parseDateAnchor(dateTo); to != nil {
+		anchor = *to
+	}
+
+	type scored struct {
+		group transactionGroup
+		score float64
+	}
+	var candidates []scored
 	for _, g := range groups {
-		if matchesMessage(g, message) {
-			candidates = append(candidates, g)
+		if s := scoreGroup(g, message, anchor); s > 0 {
+			candidates = append(candidates, scored{group: g, score: s})
 		}
 	}
 	if len(candidates) > 0 {
-		// Mismo techo que el fallback: un mensaje ambiguo ("el super") puede
-		// matchear decenas de movimientos en una base con historia, y un picker
-		// de veinte botones no se lee — además de que conversation_states
-		// guardaría los veinte grupos enteros en JSONB. El corte es por
-		// recencia porque candidates hereda el orden newest-first de groups.
-		// ponytail: si el correcto queda afuera del corte seguido, el paso
-		// siguiente es rankear por similitud en vez de cortar por recencia.
-		if len(candidates) > fallbackRecentCap {
-			candidates = candidates[:fallbackRecentCap]
+		// Estable a propósito: a puntaje igual gana el que vino primero de la
+		// consulta, o sea el más reciente. Sin SliceStable, dos candidatos
+		// idénticos salen en orden arbitrario y el picker cambia entre corridas.
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return candidates[i].score > candidates[j].score
+		})
+		if len(candidates) > pickerMaxOptions {
+			candidates = candidates[:pickerMaxOptions]
 		}
-		return candidates, nil
+		out := make([]transactionGroup, 0, len(candidates))
+		for _, c := range candidates {
+			out = append(out, c.group)
+		}
+		return out, nil
 	}
 
 	// Nada matchó textualmente: esto ya no es resolver una referencia, es "te
@@ -243,8 +267,8 @@ func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, date
 	// picker. groups is already ordered newest-first by the window query
 	// (created_at DESC in the default no-date path, date DESC when a date was
 	// mentioned).
-	if len(groups) > fallbackRecentCap {
-		groups = groups[:fallbackRecentCap]
+	if len(groups) > pickerMaxOptions {
+		groups = groups[:pickerMaxOptions]
 	}
 	return groups, nil
 }

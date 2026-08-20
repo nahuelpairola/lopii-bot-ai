@@ -445,11 +445,46 @@ func TestResolveCandidates_ManyTextMatches_IsCapped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(candidates) > fallbackRecentCap {
-		t.Fatalf("got %d candidates, want <= %d: un picker no puede tener 20 botones", len(candidates), fallbackRecentCap)
+	if len(candidates) > pickerMaxOptions {
+		t.Fatalf("got %d candidates, want <= %d: un picker no puede tener 20 botones", len(candidates), pickerMaxOptions)
 	}
 	if candidates[0].Movements[0].ID != 100 {
 		t.Errorf("primer candidato = %d, want 100 (el corte tiene que dejar los más recientes)", candidates[0].Movements[0].ID)
+	}
+}
+
+// El corte de 5 pasa a ser por PARECIDO y no por recencia. Antes, con seis
+// matches, se quedaba con los cinco más nuevos y el único que nombraba la cosa
+// entera se caía si era el sexto.
+func TestResolveCandidates_ElCorteEsPorParecidoNoPorRecencia(t *testing.T) {
+	now := time.Now()
+	var window []movement.Movement
+	// Cinco genéricos, todos más nuevos que el correcto.
+	for i := 0; i < 5; i++ {
+		window = append(window, movement.Movement{
+			Model:       gorm.Model{ID: uint(200 + i), CreatedAt: now.Add(-time.Duration(i+2) * time.Hour)},
+			Description: strPtr("Transferencia Banco Galicia a Mercado Pago"),
+		})
+	}
+	// El correcto, el más viejo de todos.
+	window = append(window, movement.Movement{
+		Model:       gorm.Model{ID: 205, CreatedAt: now.Add(-200 * time.Hour)},
+		Description: strPtr("Débito tarjeta Mercado Pago"),
+	})
+
+	fake := &fakeMovementRepoForResolve{result: window}
+	svc := &fakeServices{movements: fake}
+
+	candidates, err := resolveCandidates(svc, 3, "Del débito tarjeta Mercado Pago se me reintegraron $70.000", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) == 0 {
+		t.Fatal("sin candidatos")
+	}
+	if candidates[0].Movements[0].ID != 205 {
+		t.Errorf("primer candidato = %d, want 205: el que nombra la fila entera va primero, aunque sea el más viejo",
+			candidates[0].Movements[0].ID)
 	}
 }
 
@@ -478,6 +513,9 @@ func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 	// volumen no alcanza sus propios movimientos de la semana pasada.
 	if recencyWindow < 30*24*time.Hour {
 		t.Errorf("recencyWindow = %v, want >= 30 días: es un techo contra fósiles, no la ventana real", recencyWindow)
+	}
+	if recencyLimit < 60 {
+		t.Errorf("recencyLimit = %d, want >= 60: con 30, el débito de tarjeta del 2026-08-16 quedaba en la fila 32", recencyLimit)
 	}
 }
 
