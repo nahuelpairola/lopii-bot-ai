@@ -382,9 +382,9 @@ type MovementQuery struct {
 }
 
 // CategorySum is one grouped aggregate row. Label is the group key (category
-// name, subcategory, type, account_id as text, "YYYY-MM", "YYYY-MM-DD", or
-// "" when group_by is none). Total is SUM(ABS(amount)) — the sign is a
-// storage detail and never surfaces.
+// name, subcategory, type, account_id as text, "YYYY-MM", "YYYY-MM-DD",
+// "out"/"in" under GroupByDirection, or "" when group_by is none). Total is
+// SUM(ABS(amount)) — the sign is a storage detail and never surfaces.
 type CategorySum struct {
 	Label string          `gorm:"column:label"`
 	Total decimal.Decimal `gorm:"column:total"`
@@ -464,6 +464,7 @@ const (
 	GroupByMonth       = "month"
 	GroupByDay         = "day"
 	GroupByAccount     = "account"
+	GroupByDirection   = "direction"
 )
 
 // groupLabelExpr maps a group_by name to its SQL expression, or "" for none.
@@ -481,6 +482,9 @@ func groupLabelExpr(groupBy string) string {
 		return "to_char(movements.date, 'YYYY-MM-DD')"
 	case GroupByAccount:
 		return "movements.account_id::text"
+	case GroupByDirection:
+		// Las dos patas de un transfer son la misma plata: separadas se leen, sumadas mienten.
+		return "CASE WHEN movements.amount < 0 THEN 'out' ELSE 'in' END"
 	default:
 		return ""
 	}
