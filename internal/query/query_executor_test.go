@@ -920,3 +920,81 @@ func TestGroupedTotalLine_RefusesTransfers(t *testing.T) {
 		t.Error("un agrupado de gastos sí lleva su total")
 	}
 }
+
+// La consulta real que rompió en producción el 2026-08-21. Los montos son los
+// de la base: 8 patas salientes de FCI hacia Mercado Pago en agosto.
+//
+// Antes contestaba $100.000 —el único movimiento que zafaba del filtro, y
+// encima mal categorizado— sobre $1.548.595,59 reales.
+func TestExec_SumMovements_TransferSplitsByDirection(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "out", Total: dec("1548595.59")},
+		{Label: "in", Total: dec("0")},
+	}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","type":"transfer","group_by":"none","search":"mercado pago"}`))
+	if err != nil {
+		t.Fatalf("sum de transferencias: %v", err)
+	}
+	if m.lastGroupBy != movement.GroupByDirection {
+		t.Errorf("el ejecutor tiene que forzar el agrupado por dirección, agrupó por %q", m.lastGroupBy)
+	}
+	if !strings.Contains(out, "1548595.59") {
+		t.Errorf("falta el total que sale:\n%s", out)
+	}
+	if !strings.Contains(out, "salió") || !strings.Contains(out, "entró") {
+		t.Errorf("las dos direcciones tienen que estar etiquetadas:\n%s", out)
+	}
+	if strings.Contains(out, "total") {
+		t.Errorf("no puede haber línea de total: sumar las dos patas es contar la misma plata dos veces:\n%s", out)
+	}
+}
+
+// Una dirección sin filas sale en cero EXPLÍCITO y no se omite. Una ausencia es
+// un hecho: si la línea no está, el modelo no sabe si se consultó y dio cero o
+// si nadie la consultó, y ya contestó "no hay" sobre plata real por eso.
+func TestExec_SumMovements_TransferShowsBothDirectionsEvenAtZero(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "out", Total: dec("5000")},
+	}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","type":"transfer"}`))
+	if !strings.Contains(out, "entró") || !strings.Contains(out, "0.00") {
+		t.Errorf("la dirección sin filas tiene que salir en cero explícito:\n%s", out)
+	}
+}
+
+// El modelo pidió un agrupado: se respeta. Pisárselo con la dirección sería
+// contestarle otra pregunta. Lo que lo mantiene seguro es que tampoco lleva
+// total (ver TestGroupedTotalLine_RefusesTransfers).
+func TestExec_SumMovements_TransferHonoursAnExplicitGroupBy(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "43", Total: dec("1000")},
+		{Label: "45", Total: dec("1000")},
+	}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","type":"transfer","group_by":"account"}`))
+	if m.lastGroupBy != movement.GroupByAccount {
+		t.Errorf("el agrupado explícito del modelo se respeta, agrupó por %q", m.lastGroupBy)
+	}
+	if strings.Contains(out, "total") {
+		t.Errorf("ni siquiera agrupado lleva total:\n%s", out)
+	}
+}
+
+// El camino común no cambia de forma.
+func TestExec_SumMovements_NonTransferUnchanged(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Total: dec("1000")}}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-07-01","to":"2026-07-31","currency":"ARS"}`))
+	if out != "total: 1000.00 ARS" {
+		t.Errorf("un sum normal tiene que salir igual que siempre: %q", out)
+	}
+	if m.lastGroupBy == movement.GroupByDirection {
+		t.Error("sólo las transferencias se agrupan por dirección")
+	}
+}
