@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // loopToolCall is one tool call inside an assistant message during the
@@ -38,6 +39,28 @@ type loopRequest struct {
 	ToolChoice          string        `json:"tool_choice"`
 	Temperature         float64       `json:"temperature"`
 	MaxCompletionTokens int           `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort     string        `json:"reasoning_effort,omitempty"`
+}
+
+// lowReasoningEffort devuelve el valor de reasoning_effort para la narración
+// forzada de este modelo, o "" si no hay que mandarlo.
+//
+// Los gpt-oss cobran el razonamiento como completion_tokens, así que en la
+// llamada forzada —donde el modelo YA tiene los datos y sólo redacta— el
+// razonamiento se come el cap y la respuesta vuelve vacía. Medido contra Groq
+// real el 2026-08-21 narrando la misma respuesta: 318 tokens sin effort contra
+// un techo de 400, y 78 con "low".
+//
+// Es por FAMILIA y no para todos porque el valor no es universal: qwen contesta
+// 400 "`reasoning_effort` must be one of `none` or `default`", y un 400 no lo
+// reintenta nadie — mandárselo mata el turno en vez de salvarlo. Un modelo nuevo
+// en la cadena no manda nada hasta que se verifique qué acepta, que es la
+// degradación segura.
+func lowReasoningEffort(model string) string {
+	if strings.HasPrefix(model, "openai/gpt-oss") {
+		return "low"
+	}
+	return ""
 }
 
 // EL MODELO DE COSTO DE GROQ, que gobierna las dos constantes de abajo y el cap de
@@ -89,6 +112,14 @@ const maxQueryCompletionTokens = 1024
 // llama-3.3-70b —que era el modelo de narración entonces; Groq lo dio de baja el
 // 2026-08-17 y hoy narra gpt-oss-20b, sin volver a medir— y 174-376 en los razonadores.
 // 400 deja ~6 veces de margen sobre el caso medido.
+//
+// 2026-08-21: ese margen NO existía. Con gpt-oss-20b narrando la misma respuesta
+// el completion medido fue 318 de 400 —el razonamiento entra en la cuenta— y en
+// producción se comió los 400 enteros sin escribir nada: el turno murió con
+// ErrQueryMaxIterations, que nombra una causa que no era. Por eso la llamada
+// forzada ahora pide reasoning_effort "low" (ver lowReasoningEffort), que baja
+// el mismo caso a 78. El cap se queda en 400 porque con el effort bajo sobra;
+// subirlo es cupo que se le saca a la consulta siguiente.
 const maxNarrationCompletionTokens = 400
 
 // maxAgentCompletionTokens: techo de completion de Run. Groq cobra
@@ -123,6 +154,11 @@ func (c *Client) chatCompletionLoop(ctx context.Context, callType, model string,
 		ToolChoice:          toolChoice,
 		Temperature:         0.1,
 		MaxCompletionTokens: maxTokens,
+	}
+	// tool_choice "none" ES la narración forzada, acá y en el loop del agente:
+	// no hace falta un parámetro más para distinguirla.
+	if toolChoice == "none" {
+		reqBody.ReasoningEffort = lowReasoningEffort(model)
 	}
 
 	payload, err := json.Marshal(reqBody)

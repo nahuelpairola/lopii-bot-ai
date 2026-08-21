@@ -40,7 +40,7 @@ func MsgAskCategory(data conversation.Data) string {
 
 func MsgAskSubcategory(data conversation.Data) string {
 	rows := movement.DecodeMovementRows(data)
-	idx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyGapActiveRow]))
+	idx := ActiveGapRow(data)
 	return "¿Y la subcategoría de " + movement.MovementGapDescriptor(rows[idx]) + ", dentro de " + rows[idx].Category + "?" + GapPosition(idx, len(rows))
 }
 

@@ -1,6 +1,10 @@
 package movement
 
-import "lopiibot.com/internal/conversation"
+import (
+	"github.com/shopspring/decimal"
+
+	"lopiibot.com/internal/conversation"
+)
 
 // MovementRow is the JSON-safe, per-row shape carried inside
 // conversation.Data during CREATE's gap-fill flow. Every field is a
@@ -22,6 +26,30 @@ type MovementRow struct {
 	Date             string
 	Icon             string
 	Group            string
+	// TransferOut marca la pata que SALE de una transferencia. La lleva la app,
+	// nunca el modelo: Amount es siempre el valor absoluto (el signo guardado no
+	// sale de storage), así que sin esta marca una transferencia reescrita vuelve
+	// con las dos patas en positivo y validateTransferGroups rechaza el grupo.
+	TransferOut string
+}
+
+// TransferOutMark es el único valor con significado en MovementRow.TransferOut.
+// Es un string porque toda la fila lo es: Data va y vuelve de una columna JSONB.
+const TransferOutMark = "true"
+
+// RowAmount lee el monto de una fila y le devuelve el signo contable que la app
+// posee. Sólo hace falta para la pata que SALE de una transferencia reescrita:
+// el resto de los tipos los firma Normalize, y una fila de CREATE trae el signo
+// que clasificó el modelo.
+func RowAmount(row MovementRow) (decimal.Decimal, error) {
+	amount, err := ParseARAmount(row.Amount)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	if row.TransferOut == TransferOutMark {
+		return amount.Abs().Neg(), nil
+	}
+	return amount, nil
 }
 
 // MovementGapDescriptor names a MovementRow for the gap-fill ask-prompts, so
@@ -54,6 +82,7 @@ func DecodeMovementRows(data conversation.Data) []MovementRow {
 			Date:             conversation.StringOrEmpty(m[conversation.KeyDate]),
 			Icon:             conversation.StringOrEmpty(m[conversation.KeyIcon]),
 			Group:            conversation.StringOrEmpty(m[conversation.KeyGroup]),
+			TransferOut:      conversation.StringOrEmpty(m[conversation.KeyTransferOut]),
 		})
 	}
 	return rows
@@ -78,6 +107,7 @@ func EncodeMovementRows(rows []MovementRow) []interface{} {
 			conversation.KeyDate:             r.Date,
 			conversation.KeyIcon:             r.Icon,
 			conversation.KeyGroup:            r.Group,
+			conversation.KeyTransferOut:      r.TransferOut,
 		})
 	}
 	return encoded

@@ -51,6 +51,7 @@ const (
 	KeyDate             DataKey = "date"
 	KeyIcon             DataKey = "icon"
 	KeyGroup            DataKey = "group"
+	KeyTransferOut      DataKey = "transfer_out"
 
 	// Account create/manage flow keys.
 	KeyAccountCurrency DataKey = "account_currency"

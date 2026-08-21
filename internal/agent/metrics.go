@@ -19,9 +19,15 @@ const (
 	outcomeLoopErrored    = "loop_errored"     // la llamada al loop falló (transporte, no-429)
 	outcomeParkFailed     = "park_failed"      // no se pudo guardar la acción parkeada
 	outcomeLoopDidNothing = "loop_did_nothing" // el turno no parkeó ni escribió nada
-	outcomeNoCandidates   = "no_candidates"
-	outcomeHelpShown      = "help_shown"
-	outcomeUnclear        = "unclear"
+	// Los dos de abajo salieron de loop_did_nothing porque NO son fracasos, y
+	// mezclados con los que sí lo son la serie no se puede leer: "no cambié nada
+	// porque ya estaba así" y "no cambié nada porque me niego" contaban igual que
+	// "no cambié nada porque me rompí".
+	outcomeNothingToChange   = "nothing_to_change"  // la corrección dejaba todo igual
+	outcomeCorrectionRefused = "correction_refused" // una guarda la rechazó a propósito
+	outcomeNoCandidates      = "no_candidates"
+	outcomeHelpShown         = "help_shown"
+	outcomeUnclear           = "unclear"
 )
 
 // routerOutcome mapea el intent del router al outcome inicial que se loguea

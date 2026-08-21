@@ -350,7 +350,7 @@ func buildMovements(r runner, userID uint64, rows []movement.MovementRow) ([]mov
 		if err != nil {
 			return nil, nil, fmt.Errorf("subcategoría %q/%q: %w", row.Category, row.Subcategory, err)
 		}
-		amount, err := movement.ParseARAmount(row.Amount)
+		amount, err := movement.RowAmount(row)
 		if err != nil {
 			return nil, nil, fmt.Errorf("monto %q: %w", row.Amount, err)
 		}

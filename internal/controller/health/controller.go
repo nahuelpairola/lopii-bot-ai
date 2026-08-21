@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -29,6 +30,7 @@ func (c *controller) internalHealthCheck(ctx *gin.Context) {
 
 func (c *controller) externalHealthCheck(ctx *gin.Context) {
 	if err := c.IsHealthy(); err != nil {
+		slog.ErrorContext(ctx, "database ping error : "+err.Error())
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}

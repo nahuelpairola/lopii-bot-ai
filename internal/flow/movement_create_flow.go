@@ -92,6 +92,18 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				if len(conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)) == 0 {
 					return stepResolveAccount, true
 				}
+				// El gap es del PAR, no del campo: una corrección que nombra una
+				// categoría existente deja la subcategoría vacía, y el par
+				// ("Transporte", "") no está en la taxonomía. Preguntar la
+				// categoría acá es hacerle repetir lo que acaba de decir —
+				// "ponelo en Transporte" contestado con las 18 categorías.
+				//
+				// Sólo en UPDATE: ahí la categoría la escribió el usuario. En
+				// CREATE es la del modelo, y ofrecerle cambiarla sigue valiendo.
+				if conversation.StringOrEmpty(data[conversation.KeyMode]) == ModeUpdate &&
+					rowCategoryExists(subcategories, data) {
+					return stepResolveSubcategory, true
+				}
 				return "", false
 			},
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
@@ -131,7 +143,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 		stepResolveSubcategory: conversation.ChoiceStep{
 			PromptText: MsgAskSubcategory,
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
-				rowIdx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyGapActiveRow]))
+				rowIdx := ActiveGapRow(data)
 				rows := movement.DecodeMovementRows(data)
 				category := rows[rowIdx].Category
 
@@ -159,7 +171,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				}
 				next := conversation.CopyData(data)
 				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)
-				rowIdx, _ := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyGapActiveRow]))
+				rowIdx := ActiveGapRow(data)
 
 				rows := movement.DecodeMovementRows(data)
 				rows[rowIdx].Subcategory = value

@@ -9,7 +9,7 @@ on disk locally, absent from a fresh clone. **No pattern, type or logic there ap
 
 ## Stack
 
-- Go, Gin, GORM, Postgres (Neon)
+- Go, Gin, GORM, Postgres (Supabase)
 - Goose for migrations (run automatically at server startup)
 - go-telegram/bot in webhook mode
 - Viper for config (TOML per environment; env vars override)
