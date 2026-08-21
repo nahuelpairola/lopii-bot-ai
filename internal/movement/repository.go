@@ -382,9 +382,9 @@ type MovementQuery struct {
 }
 
 // CategorySum is one grouped aggregate row. Label is the group key (category
-// name, subcategory, type, account_id as text, "YYYY-MM", "YYYY-MM-DD", or
-// "" when group_by is none). Total is SUM(ABS(amount)) — the sign is a
-// storage detail and never surfaces.
+// name, subcategory, type, account_id as text, "YYYY-MM", "YYYY-MM-DD",
+// "out"/"in" under GroupByDirection, or "" when group_by is none). Total is
+// SUM(ABS(amount)) — the sign is a storage detail and never surfaces.
 type CategorySum struct {
 	Label string          `gorm:"column:label"`
 	Total decimal.Decimal `gorm:"column:total"`
@@ -435,9 +435,19 @@ func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 	// Reserved categories are excluded by default and returned alone when
 	// asked for — see MovementQuery.OnlyReserved. Both branches need the
 	// subcategories join, which every apply() caller already does.
-	if q.OnlyReserved {
+	//
+	// La tercera rama existe porque pedir type=transfer seleccionaba justo las
+	// filas que la exclusión borraba: toda transferencia entre cuentas propias
+	// vive en Sistema|Transferencia. Va por SUBCATEGORÍA y no por categoría —
+	// Saldo inicial también es type=transfer, y eximir Sistema entero contaría
+	// el saldo de apertura de cada cuenta como una transferencia.
+	switch {
+	case q.OnlyReserved:
 		db = db.Where("s.category IN ?", subcategory.ReservedCategories())
-	} else {
+	case q.Type != nil && *q.Type == constants.Transfer:
+		db = db.Where("s.category NOT IN ? OR (s.category = ? AND s.subcategory = ?)",
+			subcategory.ReservedCategories(), subcategory.CategorySystem, subcategory.SubTransfer)
+	default:
 		db = db.Where("s.category NOT IN ?", subcategory.ReservedCategories())
 	}
 	return db
@@ -454,6 +464,7 @@ const (
 	GroupByMonth       = "month"
 	GroupByDay         = "day"
 	GroupByAccount     = "account"
+	GroupByDirection   = "direction"
 )
 
 // groupLabelExpr maps a group_by name to its SQL expression, or "" for none.
@@ -471,6 +482,9 @@ func groupLabelExpr(groupBy string) string {
 		return "to_char(movements.date, 'YYYY-MM-DD')"
 	case GroupByAccount:
 		return "movements.account_id::text"
+	case GroupByDirection:
+		// Las dos patas de un transfer son la misma plata: separadas se leen, sumadas mienten.
+		return "CASE WHEN movements.amount < 0 THEN 'out' ELSE 'in' END"
 	default:
 		return ""
 	}

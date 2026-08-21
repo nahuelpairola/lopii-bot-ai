@@ -118,3 +118,51 @@ func subcategoryID(t *testing.T, conn *database.Connection, category, sub string
 	}
 	return id
 }
+
+// La consulta que rompió en producción el 2026-08-21: "¿cuánto transferí este
+// mes de fci a mercado pago?" contestó $100.000 sobre $1.548.595,59 reales.
+//
+// apply excluía las categorías reservadas SIEMPRE, y toda transferencia entre
+// cuentas propias vive en Sistema|Transferencia: pedir type=transfer
+// seleccionaba justo las filas que la cláusula siguiente borraba. El único
+// movimiento que sobrevivió estaba mal categorizado.
+//
+// La exención va por SUBCATEGORÍA y no por categoría porque Saldo inicial
+// también es type=transfer: eximir Sistema entero cambiaría un error por otro,
+// contando el saldo de apertura de cada cuenta como una transferencia.
+func TestSumForUser_TransferQuerySeesRealTransfers_ButNotOpeningBalances(t *testing.T) {
+	conn := testConnection(t)
+	r := InitRepository(conn)
+	accRepo := account.NewRepository(conn)
+	userID := uint64(1)
+
+	acc := &account.Account{UserID: userID, Name: "Transfer_" + uuid.NewString()[:8], Currency: currency.ARS}
+	if err := accRepo.Insert(acc); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+	accID := uint64(acc.ID)
+
+	transferSub := subcategoryID(t, conn, subcategory.CategorySystem, subcategory.SubTransfer)
+	openingSub := subcategoryID(t, conn, subcategory.CategorySystem, subcategory.SubOpeningBalance)
+
+	day := time.Date(2031, 4, 12, 0, 0, 0, 0, time.UTC)
+	if err := r.InsertBatch([]Movement{
+		{UserID: userID, AccountID: &accID, SubcategoryID: transferSub, Date: day, Type: Transfer, Amount: decimal.NewFromInt(-5000), Currency: currency.ARS},
+		{UserID: userID, AccountID: &accID, SubcategoryID: openingSub, Date: day, Type: Transfer, Amount: decimal.NewFromInt(-900), Currency: currency.ARS},
+	}); err != nil {
+		t.Fatalf("insert movements: %v", err)
+	}
+
+	transfer := constants.Transfer
+	q := MovementQuery{
+		UserID:    userID,
+		From:      day.AddDate(0, 0, -1),
+		To:        day.AddDate(0, 0, 1),
+		Currency:  currency.ARS,
+		AccountID: &accID,
+		Type:      &transfer,
+	}
+	if got := singleTotal(t, r, q); !got.Equal(decimal.NewFromInt(5000)) {
+		t.Errorf("transferencias = %s, want 5000 (la real entra, el saldo inicial de 900 no)", got)
+	}
+}

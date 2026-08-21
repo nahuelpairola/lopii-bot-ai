@@ -241,7 +241,7 @@ func hasMultipleAccountsNoTransfer(s Services, userID uint64) bool {
 	if err != nil || len(accs) < transferTipMin {
 		return false
 	}
-	sub, err := s.SubcategoriesFindByCategoryAndSubcategory(userID, subcategory.CategorySystem, "Transferencia")
+	sub, err := s.SubcategoriesFindByCategoryAndSubcategory(userID, subcategory.CategorySystem, subcategory.SubTransfer)
 	if err != nil {
 		return false
 	}

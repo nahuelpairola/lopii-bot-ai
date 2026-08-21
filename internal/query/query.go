@@ -20,6 +20,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/chathistory"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -299,6 +300,11 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 		return "", err
 	}
 	groupBy := args.GroupBy
+	// Sin partir por dirección, SUM(ABS) suma las DOS patas del mismo transfer.
+	transferSplit := args.Type == constants.Transfer && ungroupedSum(groupBy)
+	if transferSplit {
+		groupBy = movement.GroupByDirection
+	}
 	rows, err := svc.QuerySumMovements(q, groupBy)
 	if err != nil {
 		return "", err
@@ -318,10 +324,21 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	// de haber sumado sólo movimientos de monto cero ("me lo regalaron"), que caen
 	// en las sondas y se describen como ausencia. Impreciso en ese borde, y aun así
 	// mejor que el cero mudo.
-	if len(rows) == 0 || (ungroupedSum(groupBy) && rows[0].Total.IsZero()) {
+	//
+	// El transferSplit reabre esa misma puerta: al forzar el agrupado por
+	// dirección, ungroupedSum deja de ser cierto y el cero mudo volvería a pasar
+	// como "salió 0 / entró 0". allZero es la misma guarda para ese camino.
+	if len(rows) == 0 || (ungroupedSum(groupBy) && rows[0].Total.IsZero()) || (transferSplit && allZero(rows)) {
 		return describeEmptyResult(svc, q, args)
 	}
 	cur := q.Currency.String()
+	if transferSplit {
+		name, err := accountName(svc, userID, args.Account)
+		if err != nil {
+			return "", err
+		}
+		return renderTransferDirections(rows, name, cur), nil
+	}
 	if ungroupedSum(groupBy) {
 		return fmt.Sprintf("total: %s %s", rows[0].Total.Abs().StringFixed(2), cur), nil
 	}
@@ -346,10 +363,49 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
 	}
-	if line, ok := groupedTotalLine(rows, groupBy, cur); ok {
+	if line, ok := groupedTotalLine(rows, groupBy, cur, args.Type); ok {
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// Las dos patas de un transfer, etiquetadas. Nunca se suman: son la misma plata.
+const (
+	msgTransferOutFmt     = "salió: %s %s"
+	msgTransferInFmt      = "entró: %s %s"
+	msgTransferOutAcctFmt = "salió de %s: %s %s"
+	msgTransferInAcctFmt  = "entró a %s: %s %s"
+)
+
+// dirOut / dirIn son las etiquetas que devuelve movement.GroupByDirection.
+const (
+	dirOut = "out"
+	dirIn  = "in"
+)
+
+// renderTransferDirections arma las dos patas. Las DOS salen siempre, aunque una
+// esté en cero: una ausencia es un hecho y omitir la línea la vuelve indistinguible
+// de "no la consulté".
+func renderTransferDirections(rows []movement.CategorySum, account, cur string) string {
+	totals := map[string]decimal.Decimal{dirOut: decimal.Zero, dirIn: decimal.Zero}
+	for _, r := range rows {
+		totals[r.Label] = r.Total.Abs()
+	}
+	out, in := totals[dirOut].StringFixed(2), totals[dirIn].StringFixed(2)
+	if account == "" {
+		return fmt.Sprintf(msgTransferOutFmt, out, cur) + "\n" + fmt.Sprintf(msgTransferInFmt, in, cur)
+	}
+	return fmt.Sprintf(msgTransferOutAcctFmt, account, out, cur) + "\n" +
+		fmt.Sprintf(msgTransferInAcctFmt, account, in, cur)
+}
+
+func allZero(rows []movement.CategorySum) bool {
+	for _, r := range rows {
+		if !r.Total.IsZero() {
+			return false
+		}
+	}
+	return true
 }
 
 // ungroupedSum dice si el pedido no lleva agrupación. Son dos valores y no uno
@@ -370,17 +426,20 @@ const groupByNoneArg = "none"
 // principio que ya gobierna las correcciones: la aritmética es de la app, y el
 // modelo sólo cita lo que la app calculó.
 //
-// Dos casos NO llevan total, y los dos son por corrección, no por estética:
+// Tres casos NO llevan total, y los tres son por corrección, no por estética:
 //
 //   - group_by=type. Las filas llegan en valor absoluto (CategorySum.Total es
 //     SUM(ABS(amount))), así que sumar el renglón de gastos con el de ingresos da
 //     un número que no es el gasto, ni el ingreso, ni el neto. Escribirlo sería
 //     peor que no escribir nada: la línea existe justamente para que el modelo la
 //     cite sin revisarla.
+//   - type=transfer, con cualquier agrupado. Es el mismo razonamiento: un
+//     transfer son DOS patas de la misma plata, así que todo total entre filas
+//     de transferencias es 2×.
 //   - Una sola fila. El total ES la fila, y repetirlo le presenta dos hechos
 //     donde hay uno.
-func groupedTotalLine(rows []movement.CategorySum, groupBy, cur string) (string, bool) {
-	if groupBy == "type" || len(rows) < 2 {
+func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string) (string, bool) {
+	if groupBy == "type" || movType == constants.Transfer || len(rows) < 2 {
 		return "", false
 	}
 	total := decimal.Zero
@@ -490,14 +549,10 @@ func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (moveme
 		if err != nil {
 			return movement.MovementQuery{}, err
 		}
-		var names []string
-		for _, a := range accts {
-			if strings.EqualFold(a.Name, args.Account) {
-				id := uint64(a.ID)
-				q.AccountID = &id
-				break
-			}
-			names = append(names, a.Name)
+		acct, names := matchAccount(accts, args.Account)
+		if acct != nil {
+			id := uint64(acct.ID)
+			q.AccountID = &id
 		}
 		// Un nombre que no matchea NO puede seguir de largo. Antes dejaba AccountID
 		// en nil y la consulta corría sin filtrar: el usuario preguntaba por una
@@ -514,6 +569,40 @@ func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (moveme
 		}
 	}
 	return q, nil
+}
+
+// matchAccount busca la cuenta por nombre sin distinguir mayúsculas. Devuelve
+// nil y la lista de nombres reales cuando no matchea, que es lo que arma el
+// mensaje de error. Está acá y no inline porque la usan dos sitios:
+// buildMovementQuery, para resolver el id, y accountName, para etiquetar las
+// dos patas de un transfer con el nombre GUARDADO y no con el que tipeó el
+// modelo ("fci").
+func matchAccount(accts []account.Account, name string) (*account.Account, []string) {
+	names := make([]string, 0, len(accts))
+	for i := range accts {
+		if strings.EqualFold(accts[i].Name, name) {
+			return &accts[i], nil
+		}
+		names = append(names, accts[i].Name)
+	}
+	return nil, names
+}
+
+// accountName devuelve el nombre guardado de la cuenta que pidió el modelo, o
+// "" si no pidió ninguna. Un nombre que no existe ya lo rechazó
+// buildMovementQuery antes de llegar acá.
+func accountName(svc services, userID uint64, asked string) (string, error) {
+	if asked == "" {
+		return "", nil
+	}
+	accts, err := svc.QueryAccountsByUserID(userID)
+	if err != nil {
+		return "", err
+	}
+	if acct, _ := matchAccount(accts, asked); acct != nil {
+		return acct.Name, nil
+	}
+	return "", nil
 }
 
 // stripLeadingIcon saca el ícono que le antepusimos NOSOTROS al nombre de una

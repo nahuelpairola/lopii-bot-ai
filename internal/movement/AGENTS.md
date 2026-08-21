@@ -19,6 +19,26 @@ two accounts are soft-deleted **whole**, because re-pointing a single leg would 
 re-checks here. That SQL is hand-maintained correctness: editing it can produce data the guard
 would have refused.
 
+## `apply`'s reserved filter has THREE branches, and the third is subcategory-precise
+
+Reserved categories are excluded by default and returned alone under `OnlyReserved`. The third
+branch is `Type == transfer`: every own-account transfer lives under `Sistema | Transferencia`,
+so without it a transfer query selected exactly the rows the exclusion deleted.
+
+**The exemption names the SUBCATEGORY, not the category, and that is load-bearing.**
+`Sistema | Saldo inicial` is also `type=transfer`. Widening the exemption to all of `Sistema`
+compiles, passes every test, and starts counting each account's opening balance as a transfer —
+trading a silent undercount for a silent overcount.
+
+`Sistema | Ajuste de saldo` rows are `expense`/`income`, never `transfer`, so they are unreachable
+from this branch and stay out of every P&L query.
+
+## `GroupByDirection` exists so a transfer total is not double
+
+A transfer is two rows and `SumForUser` is `SUM(ABS(amount))`, so any total over both legs is
+exactly 2×. `GroupByDirection` splits them into `out` (amount < 0) and `in`. Whoever consumes it
+must never add the two rows — they are the same money seen twice.
+
 ## Two adjacent finders need opposite time-binding styles
 
 | Function | Column | Bind |
