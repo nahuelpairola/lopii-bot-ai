@@ -435,9 +435,19 @@ func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 	// Reserved categories are excluded by default and returned alone when
 	// asked for — see MovementQuery.OnlyReserved. Both branches need the
 	// subcategories join, which every apply() caller already does.
-	if q.OnlyReserved {
+	//
+	// La tercera rama existe porque pedir type=transfer seleccionaba justo las
+	// filas que la exclusión borraba: toda transferencia entre cuentas propias
+	// vive en Sistema|Transferencia. Va por SUBCATEGORÍA y no por categoría —
+	// Saldo inicial también es type=transfer, y eximir Sistema entero contaría
+	// el saldo de apertura de cada cuenta como una transferencia.
+	switch {
+	case q.OnlyReserved:
 		db = db.Where("s.category IN ?", subcategory.ReservedCategories())
-	} else {
+	case q.Type != nil && *q.Type == constants.Transfer:
+		db = db.Where("s.category NOT IN ? OR (s.category = ? AND s.subcategory = ?)",
+			subcategory.ReservedCategories(), subcategory.CategorySystem, subcategory.SubTransfer)
+	default:
 		db = db.Where("s.category NOT IN ?", subcategory.ReservedCategories())
 	}
 	return db
