@@ -39,6 +39,16 @@ Three more things that are not obvious from the code:
   apart. The reserved-category probe is not optional: `apply()` hides `Sistema` and
   `PENDING_REVIEW`, so without it a search for "transferencia" — 12 real movements — would be
   reported as not existing at all, which is worse than the mute zero it replaced.
+  **The probes only run on ZERO rows.** A result where most rows were hidden and one survived
+  never reaches them, and the model gets a confident partial total with nothing marking it — the
+  2026-08-21 transfer bug, worse than the case the probes cover.
+- **A `type=transfer` sum comes back SPLIT, not totalled.** With no `group_by` the executor forces
+  `movement.GroupByDirection` and renders `salió` / `entró` as two lines; both always render, even
+  at zero, because omitting one makes "consulted and it was zero" indistinguishable from "never
+  consulted". There is no `direction` argument — returning both is what let the schema stay
+  unchanged. `groupedTotalLine` refuses a total for **any** transfer result at any grouping: the
+  two legs are the same money, so adding them is 2×. `allZero` is what keeps the mute-zero guard
+  alive on this path, since forcing a grouping makes `ungroupedSum` false.
 - **`Run` post-processes the model's answer, and that is deliberate.** Two app-owned
   facts are re-attached after narration: the reserved-category verdict
   (`reinstateAppVerdict` — the model once inverted it, telling the user nothing matched while
