@@ -20,6 +20,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/chathistory"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -346,7 +347,7 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 		}
 		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
 	}
-	if line, ok := groupedTotalLine(rows, groupBy, cur); ok {
+	if line, ok := groupedTotalLine(rows, groupBy, cur, args.Type); ok {
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n"), nil
@@ -370,17 +371,20 @@ const groupByNoneArg = "none"
 // principio que ya gobierna las correcciones: la aritmética es de la app, y el
 // modelo sólo cita lo que la app calculó.
 //
-// Dos casos NO llevan total, y los dos son por corrección, no por estética:
+// Tres casos NO llevan total, y los tres son por corrección, no por estética:
 //
 //   - group_by=type. Las filas llegan en valor absoluto (CategorySum.Total es
 //     SUM(ABS(amount))), así que sumar el renglón de gastos con el de ingresos da
 //     un número que no es el gasto, ni el ingreso, ni el neto. Escribirlo sería
 //     peor que no escribir nada: la línea existe justamente para que el modelo la
 //     cite sin revisarla.
+//   - type=transfer, con cualquier agrupado. Es el mismo razonamiento: un
+//     transfer son DOS patas de la misma plata, así que todo total entre filas
+//     de transferencias es 2×.
 //   - Una sola fila. El total ES la fila, y repetirlo le presenta dos hechos
 //     donde hay uno.
-func groupedTotalLine(rows []movement.CategorySum, groupBy, cur string) (string, bool) {
-	if groupBy == "type" || len(rows) < 2 {
+func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string) (string, bool) {
+	if groupBy == "type" || movType == constants.Transfer || len(rows) < 2 {
 		return "", false
 	}
 	total := decimal.Zero

@@ -902,3 +902,21 @@ func TestExec_SumMovements_UngroupedZeroRowIsAnEmptyResult(t *testing.T) {
 		t.Errorf("no corrió el camino de resultado vacío: %q", out)
 	}
 }
+
+// Un transfer son dos patas de la misma plata. Con group_by=account las filas
+// por cuenta sí significan algo, pero el total entre ellas es 2×. La línea de
+// total existe justamente porque el modelo la cita sin revisarla, así que acá
+// no puede existir.
+func TestGroupedTotalLine_RefusesTransfers(t *testing.T) {
+	rows := []movement.CategorySum{
+		{Label: "43", Total: dec("1448595.59")},
+		{Label: "45", Total: dec("1448595.59")},
+	}
+	if _, ok := groupedTotalLine(rows, movement.GroupByAccount, "ARS", constants.Transfer); ok {
+		t.Error("un resultado de transferencias no puede llevar línea de total: sumaría la misma plata dos veces")
+	}
+	// El caso normal no cambia.
+	if _, ok := groupedTotalLine(rows, movement.GroupByAccount, "ARS", constants.Expense); !ok {
+		t.Error("un agrupado de gastos sí lleva su total")
+	}
+}
