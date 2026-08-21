@@ -19,6 +19,12 @@ const CategorySystem = "Sistema"
 // lazy first-account create inside movement_create), hence the const.
 const SubOpeningBalance = "Saldo inicial"
 
+// SubTransfer es la subcategoría de Sistema donde viven las dos patas de cada
+// transferencia entre cuentas propias. Exportada porque es la EXCEPCIÓN del
+// filtro de reservadas en MovementQuery.apply: plata real del usuario, no
+// plomería como SubOpeningBalance.
+const SubTransfer = "Transferencia"
+
 // reservedCategories are internal plumbing (opening balances, adjustment
 // rows, the classification fallback) — never user-facing picker options,
 // never proposable by the LLM.
