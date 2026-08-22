@@ -33,6 +33,10 @@ func (c *controller) UsersFindByID(userID uint64) (*user.User, error) {
 	return c.users.FindByID(userID)
 }
 
+func (c *controller) UsersFindChannelID(userID uint64, channel string) (string, error) {
+	return c.users.FindChannelID(userID, channel)
+}
+
 func (c *controller) AccountsFindByUserID(userID uint64) ([]account.Account, error) {
 	return c.accounts.FindByUserID(userID)
 }

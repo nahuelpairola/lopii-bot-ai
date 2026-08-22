@@ -13,7 +13,7 @@ import (
 )
 
 type userReader interface {
-	FindByTelegramID(telegramID string) (*user.User, error)
+	FindByChannel(channel, channelUserID string) (*user.User, error)
 }
 type resetter interface {
 	SoftDeleteByUserID(userID uint64) error
@@ -44,7 +44,7 @@ func (c *controller) RegisterRoutes(engine *gin.Engine) {
 // message is silently eaten). intent_events is deliberately untouched.
 func (c *controller) Reset(ctx *gin.Context) {
 	telegramID := ctx.Param("telegramID")
-	u, err := c.users.FindByTelegramID(telegramID)
+	u, err := c.users.FindByChannel(user.ChannelTelegram, telegramID)
 	if err != nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return

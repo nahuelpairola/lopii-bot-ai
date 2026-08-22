@@ -11,7 +11,7 @@ import (
 
 type fakeUsers struct{ u *user.User }
 
-func (f *fakeUsers) FindByTelegramID(string) (*user.User, error) { return f.u, nil }
+func (f *fakeUsers) FindByChannel(channel, channelUserID string) (*user.User, error) { return f.u, nil }
 
 type fakeReset struct{ called uint64 }
 
@@ -23,7 +23,7 @@ func (f *fakeEngine) Clear(id uint64) error { f.cleared = id; return nil }
 
 func TestReset_SoftDeletesAndClearsFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	users := &fakeUsers{u: &user.User{ID: 42, TelegramID: "12345"}}
+	users := &fakeUsers{u: &user.User{ID: 42}}
 	accs, movs, eng := &fakeReset{}, &fakeReset{}, &fakeEngine{}
 	c := NewController(users, accs, movs, eng, nil) // nil bot: SendMessage guarded
 

@@ -36,7 +36,11 @@ func (f *fakeMovements) FindRecentlyCreatedForUser(userID uint64, _ time.Time, l
 type fakeUsers struct{}
 
 func (fakeUsers) FindByID(id uint64) (*user.User, error) {
-	return &user.User{ID: id, TelegramID: "1000"}, nil
+	return &user.User{ID: id}, nil
+}
+
+func (fakeUsers) FindChannelID(uint64, string) (string, error) {
+	return "1000", nil
 }
 
 func newSweeper(r *fakeReminders, m *fakeMovements, sent *[]int64) *Sweeper {

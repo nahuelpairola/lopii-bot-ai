@@ -18,7 +18,7 @@ func TestRepository_InsertListDeleteCount(t *testing.T) {
 	r := NewRepository(conn)
 	userRepo := user.NewRepository(conn)
 
-	u := &user.User{TelegramID: fmt.Sprintf("%d", time.Now().UnixNano())}
+	u := &user.User{Username: fmt.Sprintf("%d", time.Now().UnixNano())}
 	if err := userRepo.Insert(u); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}

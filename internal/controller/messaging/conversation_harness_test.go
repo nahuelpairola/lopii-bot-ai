@@ -59,9 +59,10 @@ type convHarness struct {
 	conn *database.Connection
 	// userID es users.id — el que toma handleFreeText.
 	userID uint64
-	// telegramID es users.telegram_id — el que viaja en el Update de un callback,
-	// que lo resuelve por FindByTelegramID. Son DOS espacios de ids distintos y
-	// confundirlos hace que el botón opere sobre otro usuario que el texto.
+	// telegramID es el channel_user_id en user_channels — el que viaja en el
+	// Update de un callback, que lo resuelve por FindByChannel. Son DOS
+	// espacios de ids distintos y confundirlos hace que el botón opere sobre
+	// otro usuario que el texto.
 	telegramID  string
 	telegramNum int64
 	chatID      int64
@@ -145,13 +146,16 @@ func newConversationHarness(t *testing.T) *convHarness {
 	}
 
 	// El telegram id tiene que ser NUMÉRICO: viaja como int64 en el Update del
-	// callback y el handler lo pasa a string para FindByTelegramID. Con un prefijo
+	// callback y el handler lo pasa a string para FindByChannel. Con un prefijo
 	// de texto el round-trip no cierra y el botón no encuentra al usuario.
 	tgNum := time.Now().UnixNano() % 1_000_000_000
 	tgID := fmt.Sprintf("%d", tgNum)
-	u := &user.User{TelegramID: tgID}
+	u := &user.User{}
 	if err := userRepo.Insert(u); err != nil {
 		t.Fatalf("insert user: %v", err)
+	}
+	if err := userRepo.LinkChannel(u.ID, user.ChannelTelegram, tgID); err != nil {
+		t.Fatalf("link channel: %v", err)
 	}
 	uid := u.ID
 	t.Cleanup(func() {
@@ -161,6 +165,7 @@ func newConversationHarness(t *testing.T) *convHarness {
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&reminder.Reminder{})
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&subcategory.Subcategory{})
 		conn.DB.Unscoped().Exec("DELETE FROM conversation_states WHERE user_id = ?", uid)
+		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&user.UserChannel{})
 		conn.DB.Unscoped().Where("id = ?", uid).Delete(&user.User{})
 	})
 

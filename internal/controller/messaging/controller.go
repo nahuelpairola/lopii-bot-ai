@@ -32,9 +32,11 @@ import (
 )
 
 type userRepository interface {
-	FindByTelegramID(telegramID string) (*user.User, error)
+	FindByChannel(channel, channelUserID string) (*user.User, error)
 	FindByID(id uint64) (*user.User, error)
 	Insert(u *user.User) error
+	LinkChannel(userID uint64, channel, channelUserID string) error
+	FindChannelID(userID uint64, channel string) (string, error)
 }
 
 type invitationRepository interface {
@@ -256,7 +258,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		if telegramID == "" {
 			return nil, nil
 		}
-		u, err := c.users.FindByTelegramID(telegramID)
+		u, err := c.users.FindByChannel(user.ChannelTelegram, telegramID)
 		if err != nil {
 			return nil, err
 		}

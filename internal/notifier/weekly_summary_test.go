@@ -37,7 +37,11 @@ func (s *wkStore) SetLastSummaryOn(userID uint64, date time.Time) error {
 type wkUsers struct{}
 
 func (wkUsers) FindByID(id uint64) (*user.User, error) {
-	return &user.User{ID: id, TelegramID: "555"}, nil
+	return &user.User{ID: id}, nil
+}
+
+func (wkUsers) FindChannelID(uint64, string) (string, error) {
+	return "555", nil
 }
 
 type wkSummary struct{ text string }

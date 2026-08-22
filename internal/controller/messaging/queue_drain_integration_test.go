@@ -57,13 +57,18 @@ func queueDrainConn(t *testing.T) *database.Connection {
 	return conn
 }
 
-// queueDrainUser siembra un usuario descartable con TelegramID numérico:
-// drainUser lo parsea con strconv.ParseInt, así que no puede ser el "qeval-<n>"
-// que usa query_eval_test.go (ese test nunca llega a drainUser).
+// queueDrainUser siembra un usuario descartable con un channel_user_id
+// numérico: drainUser lo parsea con strconv.ParseInt, así que no puede ser el
+// "qeval-<n>" que usa query_eval_test.go (ese test nunca llega a drainUser).
 func queueDrainUser(t *testing.T, conn *database.Connection) (uid uint64, cleanup func()) {
-	u := &user.User{TelegramID: fmt.Sprintf("%d", time.Now().UnixNano())}
-	if err := user.NewRepository(conn).Insert(u); err != nil {
+	userRepo := user.NewRepository(conn)
+	telegramID := fmt.Sprintf("%d", time.Now().UnixNano())
+	u := &user.User{}
+	if err := userRepo.Insert(u); err != nil {
 		t.Fatalf("insert user: %v", err)
+	}
+	if err := userRepo.LinkChannel(u.ID, user.ChannelTelegram, telegramID); err != nil {
+		t.Fatalf("link channel: %v", err)
 	}
 	uid = u.ID
 	return uid, func() {
@@ -84,6 +89,9 @@ func queueDrainUser(t *testing.T, conn *database.Connection) (uid uint64, cleanu
 		// que no escribe ahí; se limpia igual por si otra corrida concurrente
 		// contra la misma base dejó una fila y el delete del usuario se traba.
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&metric.IntentEvent{})
+		// user_channels tiene FK a users: hay que borrarla antes que la fila de
+		// usuario o el DELETE final falla igual que las otras tablas de arriba.
+		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&user.UserChannel{})
 		conn.DB.Unscoped().Where("id = ?", uid).Delete(&user.User{})
 	}
 }

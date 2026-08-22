@@ -12,6 +12,7 @@ import (
 // with the *controller as implementation. Bridge file: messaging/pendingjob_services.go.
 type Services interface {
 	UsersFindByID(userID uint64) (*user.User, error)
+	UsersFindChannelID(userID uint64, channel string) (string, error)
 	HandleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error
 	ProceedToUpdateConfirm(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message string, transactionID string, oldIDs []string, beforeRows []movement.MovementRow) error
 	SendText(ctx context.Context, b *bot.Bot, chatID int64, text string)

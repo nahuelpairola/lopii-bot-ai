@@ -37,6 +37,7 @@ type movementReader interface {
 
 type userReader interface {
 	FindByID(id uint64) (*user.User, error)
+	FindChannelID(userID uint64, channel string) (string, error)
 }
 
 type retentionStore interface {
@@ -186,7 +187,12 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 			slog.ErrorContext(ctx, "notifier user lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
-		chatID, err := strconv.ParseInt(u.TelegramID, 10, 64)
+		channelID, err := s.users.FindChannelID(u.ID, user.ChannelTelegram)
+		if err != nil {
+			slog.ErrorContext(ctx, "notifier channel lookup failed", "user_id", r.UserID, "err", err)
+			continue
+		}
+		chatID, err := strconv.ParseInt(channelID, 10, 64)
 		if err != nil {
 			slog.ErrorContext(ctx, "notifier bad telegram_id", "user_id", r.UserID, "err", err)
 			continue
@@ -236,7 +242,12 @@ func (s *Sweeper) sweepWeeklySummary(ctx context.Context, now time.Time) {
 			slog.ErrorContext(ctx, "notifier weekly user lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
-		chatID, err := strconv.ParseInt(u.TelegramID, 10, 64)
+		channelID, err := s.users.FindChannelID(u.ID, user.ChannelTelegram)
+		if err != nil {
+			slog.ErrorContext(ctx, "notifier weekly channel lookup failed", "user_id", r.UserID, "err", err)
+			continue
+		}
+		chatID, err := strconv.ParseInt(channelID, 10, 64)
 		if err != nil {
 			slog.ErrorContext(ctx, "notifier weekly bad telegram_id", "user_id", r.UserID, "err", err)
 			continue

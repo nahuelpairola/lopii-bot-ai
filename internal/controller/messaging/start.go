@@ -18,7 +18,7 @@ func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models
 		telegramID := fmt.Sprint(update.Message.From.ID)
 		code := extractStartCode(update.Message.Text)
 
-		if existing, err := c.users.FindByTelegramID(telegramID); err == nil {
+		if existing, err := c.users.FindByChannel(user.ChannelTelegram, telegramID); err == nil {
 			c.reply(ctx, b, update, msgAlreadyHasAccount)
 			uid := existing.ID
 			return &uid, nil
@@ -48,11 +48,14 @@ func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models
 		}
 
 		newUser := &user.User{
-			TelegramID: telegramID,
-			Username:   update.Message.From.Username,
-			IsAdmin:    false,
+			Username: update.Message.From.Username,
+			IsAdmin:  false,
 		}
 		if err := c.users.Insert(newUser); err != nil {
+			c.reply(ctx, b, update, msgUserCreationError)
+			return nil, err
+		}
+		if err := c.users.LinkChannel(newUser.ID, user.ChannelTelegram, telegramID); err != nil {
 			c.reply(ctx, b, update, msgUserCreationError)
 			return nil, err
 		}

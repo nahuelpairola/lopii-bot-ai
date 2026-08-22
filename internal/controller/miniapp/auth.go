@@ -22,7 +22,7 @@ const (
 // userLookup is the local interface authInitData needs — repo convention,
 // mirrored by movementReader/accountReader in controller.go.
 type userLookup interface {
-	FindByTelegramID(telegramID string) (*user.User, error)
+	FindByChannel(channel, channelUserID string) (*user.User, error)
 }
 
 // authInitData is Gin middleware for the /app view routes. It enforces auth
@@ -55,7 +55,7 @@ func authInitData(botToken string, users userLookup) gin.HandlerFunc {
 			return
 		}
 
-		u, err := users.FindByTelegramID(strconv.FormatInt(parsed.User.ID, 10))
+		u, err := users.FindByChannel(user.ChannelTelegram, strconv.FormatInt(parsed.User.ID, 10))
 		if err != nil {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return

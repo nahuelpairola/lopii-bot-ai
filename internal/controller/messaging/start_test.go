@@ -14,13 +14,14 @@ import (
 
 // fakeUserRepository mocks the userRepository interface for start_test.
 type fakeUserRepository struct {
-	byTelegramID map[string]*user.User
-	inserted     []*user.User
-	insertErr    error
+	byChannelUserID map[string]*user.User
+	linked          map[string]uint64 // channelUserID -> userID, set by LinkChannel
+	inserted        []*user.User
+	insertErr       error
 }
 
-func (r *fakeUserRepository) FindByTelegramID(telegramID string) (*user.User, error) {
-	if u, ok := r.byTelegramID[telegramID]; ok {
+func (r *fakeUserRepository) FindByChannel(channel, channelUserID string) (*user.User, error) {
+	if u, ok := r.byChannelUserID[channelUserID]; ok {
 		return u, nil
 	}
 	return nil, gorm.ErrRecordNotFound
@@ -42,6 +43,23 @@ func (r *fakeUserRepository) Insert(u *user.User) error {
 	u.ID = uint64(len(r.inserted) + 1) // assign a fake ID
 	r.inserted = append(r.inserted, u)
 	return nil
+}
+
+func (r *fakeUserRepository) LinkChannel(userID uint64, channel, channelUserID string) error {
+	if r.linked == nil {
+		r.linked = make(map[string]uint64)
+	}
+	r.linked[channelUserID] = userID
+	return nil
+}
+
+func (r *fakeUserRepository) FindChannelID(userID uint64, channel string) (string, error) {
+	for channelUserID, uid := range r.linked {
+		if uid == userID {
+			return channelUserID, nil
+		}
+	}
+	return "", gorm.ErrRecordNotFound
 }
 
 // fakeInvitationRepository mocks the invitationRepository interface for start_test.
@@ -76,7 +94,7 @@ func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 	const telegramID = "123456789"
 	const validCode = "ABC123"
 
-	userRepo := &fakeUserRepository{byTelegramID: make(map[string]*user.User)}
+	userRepo := &fakeUserRepository{byChannelUserID: make(map[string]*user.User)}
 	invRepo := &fakeInvitationRepository{
 		byCode: map[string]*invitation.Invitation{
 			validCode: {
@@ -119,8 +137,8 @@ func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 	if len(userRepo.inserted) != 1 {
 		t.Fatalf("expected 1 user inserted, got %d", len(userRepo.inserted))
 	}
-	if userRepo.inserted[0].TelegramID != telegramID {
-		t.Errorf("inserted user telegram_id = %q, want %q", userRepo.inserted[0].TelegramID, telegramID)
+	if got, err := userRepo.FindChannelID(userRepo.inserted[0].ID, user.ChannelTelegram); err != nil || got != telegramID {
+		t.Errorf("linked channel_user_id = %q (err=%v), want %q", got, err, telegramID)
 	}
 
 	// Verify: accountRepository.Insert was NOT called — value-first, no fabricated account.
@@ -147,10 +165,10 @@ func TestHandleStart_ExistingUser_DoesNotRestart(t *testing.T) {
 	const telegramID = "123456789"
 	const validCode = "ABC123"
 
-	existingUser := &user.User{ID: 42, TelegramID: telegramID, Username: "testuser"}
+	existingUser := &user.User{ID: 42, Username: "testuser"}
 
 	userRepo := &fakeUserRepository{
-		byTelegramID: map[string]*user.User{telegramID: existingUser},
+		byChannelUserID: map[string]*user.User{telegramID: existingUser},
 	}
 	invRepo := &fakeInvitationRepository{
 		byCode: map[string]*invitation.Invitation{

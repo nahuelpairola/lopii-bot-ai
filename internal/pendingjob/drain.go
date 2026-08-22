@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/user"
 )
 
 const (
@@ -65,7 +66,12 @@ func drainUser(ctx context.Context, s Services, repo Repository, b *bot.Bot, use
 		slog.ErrorContext(ctx, "drain: user lookup failed", "user_id", userID, "err", err)
 		return
 	}
-	chatID, err := strconv.ParseInt(u.TelegramID, 10, 64)
+	channelID, err := s.UsersFindChannelID(u.ID, user.ChannelTelegram)
+	if err != nil {
+		slog.ErrorContext(ctx, "drain: channel lookup failed", "user_id", userID, "err", err)
+		return
+	}
+	chatID, err := strconv.ParseInt(channelID, 10, 64)
 	if err != nil {
 		slog.ErrorContext(ctx, "drain: bad telegram_id", "user_id", userID, "err", err)
 		return

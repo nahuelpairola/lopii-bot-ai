@@ -125,7 +125,7 @@ func TestRepository_SentKeys(t *testing.T) {
 func newTestUser(t *testing.T, conn *database.Connection) uint64 {
 	t.Helper()
 	userRepo := user.NewRepository(conn)
-	u := &user.User{TelegramID: fmt.Sprintf("%d", time.Now().UnixNano())}
+	u := &user.User{Username: fmt.Sprintf("%d", time.Now().UnixNano())}
 	if err := userRepo.Insert(u); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}

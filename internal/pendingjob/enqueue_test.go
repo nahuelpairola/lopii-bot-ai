@@ -31,6 +31,9 @@ type enqueueTestServices struct {
 }
 
 func (s *enqueueTestServices) UsersFindByID(uint64) (*user.User, error) { return nil, nil }
+func (s *enqueueTestServices) UsersFindChannelID(uint64, string) (string, error) {
+	return "", nil
+}
 func (s *enqueueTestServices) HandleFreeText(_ context.Context, _ *bot.Bot, _ int64, _ uint64, text string) error {
 	s.texts = append(s.texts, text)
 	return nil

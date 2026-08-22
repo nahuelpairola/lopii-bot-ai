@@ -29,7 +29,8 @@ func (d *drainJobs) CountByUser(uint64) (int64, error)              { return int
 
 type fakeUsers struct{}
 
-func (fakeUsers) FindByID(uint64) (*user.User, error) { return &user.User{TelegramID: "100"}, nil }
+func (fakeUsers) FindByID(uint64) (*user.User, error)          { return &user.User{}, nil }
+func (fakeUsers) FindChannelID(uint64, string) (string, error) { return "100", nil }
 
 type testServices struct {
 	users          fakeUsers
@@ -41,6 +42,9 @@ type testServices struct {
 
 func (s *testServices) UsersFindByID(userID uint64) (*user.User, error) {
 	return s.users.FindByID(userID)
+}
+func (s *testServices) UsersFindChannelID(userID uint64, channel string) (string, error) {
+	return s.users.FindChannelID(userID, channel)
 }
 func (s *testServices) HandleFreeText(_ context.Context, _ *bot.Bot, _ int64, _ uint64, text string) error {
 	s.texts = append(s.texts, text)
