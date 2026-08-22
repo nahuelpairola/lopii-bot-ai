@@ -54,10 +54,12 @@ type AccountOption struct {
 // MovementDraft is what Call 2 CREATE/UPDATE returns per movement row.
 // Amount and Date are strings — LLM JSON output is never trusted as a
 // native numeric/date type; the caller parses these into
-// decimal.Decimal/time.Time. AccountID is set only when the LLM matched
-// an existing account; AccountNameGuess is set instead when a transfer
-// names an account that doesn't exist yet (triggers the account-
-// creation gap in the CREATE flow).
+// decimal.Decimal/time.Time.
+//
+// AccountID is what the LLM CLAIMS the account is — it is not a match
+// against anything, and on non-transfer rows the app ignores it outright
+// (see buildCreateSeed). AccountNameGuess is likewise a claim, honored
+// only when the user's message backs it up.
 type MovementDraft struct {
 	Type             string  `json:"type"`
 	Amount           string  `json:"amount"`

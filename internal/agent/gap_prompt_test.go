@@ -33,7 +33,7 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 			Category: "PENDING_REVIEW", Subcategory: "PENDING_REVIEW", Date: "2026-07-24"},
 	}}
 
-	data := buildCreateSeed(result, nil, nil)
+	data := buildCreateSeed(result, nil, nil, "")
 	gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)
 	if len(gaps) != 2 {
 		t.Fatalf("las dos filas tienen que abrir gap, hay %d", len(gaps))

@@ -20,7 +20,7 @@ func TestBuildCreateSeed_QueuesCategoryAndAccountGaps(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, nil, nil)
+	data := buildCreateSeed(result, nil, nil, "")
 
 	categoryGaps := conversation.DecodeStringSlice(data, "pending_category_gaps")
 	if len(categoryGaps) != 1 || categoryGaps[0] != "0" {
@@ -42,7 +42,7 @@ func TestBuildCreateSeed_NoGaps_EmptyQueues(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, nil, nil)
+	data := buildCreateSeed(result, nil, nil, "")
 
 	if len(conversation.DecodeStringSlice(data, "pending_category_gaps")) != 0 {
 		t.Error("expected no category gaps")
@@ -70,7 +70,7 @@ func TestBuildCreateSeed_UnknownCategoryPair_QueuesGap(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, taxonomy, nil)
+	data := buildCreateSeed(result, taxonomy, nil, "")
 
 	gaps := conversation.DecodeStringSlice(data, "pending_category_gaps")
 	if len(gaps) != 1 || gaps[0] != "0" {
@@ -91,7 +91,7 @@ func TestBuildCreateSeed_KnownCategoryPair_NoGap(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, taxonomy, nil)
+	data := buildCreateSeed(result, taxonomy, nil, "")
 
 	if gaps := conversation.DecodeStringSlice(data, "pending_category_gaps"); len(gaps) != 0 {
 		t.Errorf("category gaps = %v, want []: un par que existe no debe preguntar nada", gaps)
@@ -113,7 +113,7 @@ func TestBuildCreateSeed_NonTransferWithUnmatchedAccountName_QueuesAccountGap(t 
 		},
 	}
 
-	data := buildCreateSeed(result, nil, nil)
+	data := buildCreateSeed(result, nil, nil, "20000 restaurante con Brubank")
 
 	accountGaps := conversation.DecodeStringSlice(data, "pending_account_gaps")
 	if len(accountGaps) != 1 || accountGaps[0] != "0" {
@@ -134,7 +134,7 @@ func TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap(t *testing.T
 		},
 	}
 
-	data := buildCreateSeed(result, nil, nil)
+	data := buildCreateSeed(result, nil, nil, "")
 
 	if gaps := conversation.DecodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
 		t.Errorf("account gaps = %v, want []: sin cuenta nombrada no se pregunta nada", gaps)
@@ -158,7 +158,7 @@ func TestBuildCreateSeed_CounterpartyInDescription_NoAccountGap(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, nil, nil)
+	data := buildCreateSeed(result, nil, nil, "pizza con Pablo 100000")
 
 	if gaps := conversation.DecodeStringSlice(data, "pending_account_gaps"); len(gaps) != 0 {
 		t.Errorf("account gaps = %v, want []: el nombre de la contraparte no es una cuenta", gaps)
@@ -179,7 +179,7 @@ func TestBuildCreateSeed_OwnAccountNotInDescription_OpensGap(t *testing.T) {
 		},
 	}
 
-	data := buildCreateSeed(result, nil, nil)
+	data := buildCreateSeed(result, nil, nil, "pagué el curso de ingles con Brubank 35000")
 
 	if gaps := conversation.DecodeStringSlice(data, "pending_account_gaps"); len(gaps) != 1 {
 		t.Errorf("account gaps = %v, want 1: 'pagué el curso con Brubank' tiene que preguntar", gaps)
@@ -255,7 +255,7 @@ func TestBuildCreateSeed_NamedAccountThatExistsResolvesWithoutAsking(t *testing.
 		Description: "Lote cemento", Date: "2026-08-12",
 	}}}
 
-	data := buildCreateSeed(result, nil, accounts)
+	data := buildCreateSeed(result, nil, accounts, "Lote cemento 45000 con mercado pago")
 
 	if gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps); len(gaps) != 0 {
 		t.Fatalf("se abrió un gap de cuenta pese a que la nombró: %v", gaps)
@@ -277,7 +277,7 @@ func TestBuildCreateSeed_PartialAccountNameStillAsks(t *testing.T) {
 		Description:      "Lote cemento", Date: "2026-08-12",
 	}}}
 
-	data := buildCreateSeed(result, nil, accounts)
+	data := buildCreateSeed(result, nil, accounts, "Lote cemento 45000 con Galicia")
 
 	if gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps); len(gaps) != 1 {
 		t.Errorf("un nombre parcial tiene que preguntar, gaps = %v", gaps)
@@ -297,7 +297,7 @@ func TestBuildCreateSeed_SameNameDifferentCurrencyPicksByCurrency(t *testing.T) 
 		Description:      "algo", Date: "2026-08-12",
 	}}}
 
-	rows := movement.DecodeMovementRows(buildCreateSeed(result, nil, accounts))
+	rows := movement.DecodeMovementRows(buildCreateSeed(result, nil, accounts, "algo 100 con Brubank"))
 	if rows[0].AccountID != "11" {
 		t.Errorf("account_id = %q, want 11 (la de USD)", rows[0].AccountID)
 	}

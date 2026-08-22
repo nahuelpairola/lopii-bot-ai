@@ -62,7 +62,58 @@ func matchNamedAccount(guess string, accounts []account.Account, cur string) uin
 	return found
 }
 
-func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry, accounts []account.Account) conversation.Data {
+// accountNamedInMessage resuelve, del lado de la app, cuál de las cuentas del
+// usuario nombra el MENSAJE — no el modelo. El account_id que manda el LLM en una
+// fila que no es transfer se ignora: medido sobre llm_calls lo llenó en 30 de 43
+// gastos, y en NINGUNO de esos 30 el usuario había nombrado una cuenta. Acertaba
+// la default por el orden de los ids, no por entender el mensaje.
+//
+// Exige coverage 1.0 —TODOS los tokens del nombre presentes— y no "algún token".
+// Con "algún token", "pago de monotributo" matchearía la cuenta "Mercado Pago"
+// por la palabra "pago", y ese es el caso más común que hay.
+//
+// (0, false) significa "el mensaje no nombra ninguna": la fila sigue al guess y,
+// si tampoco, cae en la default de su moneda dentro de movement.Normalize.
+// (0, true) es "nombra más de una": que pregunte.
+func accountNamedInMessage(msg string, accounts []account.Account, cur string) (found uint64, ambiguous bool) {
+	haystack := foldAccents(strings.ToLower(msg))
+	if haystack == "" {
+		return 0, false
+	}
+	for _, a := range accounts {
+		// La moneda tiene que coincidir: dos cuentas pueden llamarse igual en ARS
+		// y USD, y meter el gasto en la otra rompe los dos saldos.
+		if cur != "" && a.Currency.String() != cur {
+			continue
+		}
+		if flow.TokenCoverage(a.Name, haystack) < fullCoverage {
+			continue
+		}
+		if found != 0 {
+			return 0, true
+		}
+		found = uint64(a.ID)
+	}
+	return found, false
+}
+
+// guessBackedByMessage exige que el account_name_guess esté RESPALDADO por lo que
+// el usuario escribió. El modelo copia líneas del bloque CUENTAS DEL USUARIO del
+// prompt —se lo vio mandar "Banco Galicia (ARS)", con el paréntesis de la moneda
+// pegado— y sin esta compuerta ese invento abre un gap: le pregunta al usuario a
+// qué cuenta va un gasto donde nunca mencionó ninguna.
+func guessBackedByMessage(guess, msg string) bool {
+	if guess == "" {
+		return false
+	}
+	return flow.TokenCoverage(guess, foldAccents(strings.ToLower(msg))) >= fullCoverage
+}
+
+// fullCoverage es "todos los tokens del nombre aparecen en el mensaje". Se usa en
+// las dos compuertas de arriba, que tienen que exigir lo mismo.
+const fullCoverage = 1.0
+
+func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry, accounts []account.Account, userText string) conversation.Data {
 	rows := make([]movement.MovementRow, 0, len(result.Movements))
 	var categoryGaps, accountGaps []string
 
@@ -90,7 +141,10 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 			Date:             draft.Date,
 			Group:            draft.Group,
 		}
-		if draft.AccountID != nil {
+		// El account_id del modelo SÓLO vale en las piernas de un transfer. En un
+		// gasto es ruido; ahí la cuenta la resuelve la app contra el mensaje —
+		// la medición que lo decidió está en accountNamedInMessage.
+		if draft.AccountID != nil && draft.Type == constants.Transfer {
 			row.AccountID = strconv.FormatUint(*draft.AccountID, 10)
 		}
 
@@ -98,25 +152,39 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 		if draft.Category == constants.PendingReview || (len(known) > 0 && !known[draft.Category+"\x00"+draft.Subcategory]) {
 			categoryGaps = append(categoryGaps, idx)
 		}
+
 		// Un gap de cuenta significa "no puedo saber a qué cuenta va esta fila y
-		// tengo que preguntar". Lo abren dos casos: una transferencia con una pata
-		// sin resolver, y cualquier fila que nombró una cuenta que el modelo no pudo
-		// matchear con una existente. Sin el segundo caso esa fila cae callada en la
-		// cuenta default de la moneda y la cuenta nombrada nunca se crea — la
-		// intención declarada por el usuario se descarta.
-		//
-		// Una fila sin AccountNameGuess y sin AccountID NO es un gap: es el camino
-		// normal "usá mi default" y tiene que seguir siendo mudo. Tampoco lo es una
-		// que solo repite algo que ya está en la description — ver guessNamesOwnAccount.
-		if draft.AccountID == nil && (draft.Type == constants.Transfer || guessNamesOwnAccount(draft.AccountNameGuess, draft.Description)) {
-			// Antes de preguntar: si el nombre que dijo el usuario ES una de sus
-			// cuentas, ya está resuelto. Preguntarle a cuál va después de que la
-			// nombró es hacerle repetir lo que acaba de decir.
-			if id := matchNamedAccount(draft.AccountNameGuess, accounts, draft.Currency); id != 0 {
-				row.AccountID = strconv.FormatUint(id, 10)
-			} else {
+		// tengo que preguntar". Una fila sin nada que resolver NO es un gap: es el
+		// camino normal "usá mi default" y tiene que seguir siendo mudo.
+		if draft.Type == constants.Transfer {
+			// Una pierna sin resolver no se puede adivinar: un transfer necesita
+			// las DOS cuentas o no es un transfer. Camino sin cambios.
+			if draft.AccountID == nil {
+				if id := matchNamedAccount(draft.AccountNameGuess, accounts, draft.Currency); id != 0 {
+					row.AccountID = strconv.FormatUint(id, 10)
+				} else {
+					accountGaps = append(accountGaps, idx)
+				}
+			}
+		} else {
+			named, ambiguous := accountNamedInMessage(userText, accounts, draft.Currency)
+			switch {
+			case ambiguous:
+				// El mensaje nombra más de una cuenta suya. Elegir sería tirar una
+				// moneda sobre un saldo.
+				accountGaps = append(accountGaps, idx)
+			case named != 0:
+				row.AccountID = strconv.FormatUint(named, 10)
+			case guessBackedByMessage(draft.AccountNameGuess, userText) &&
+				guessNamesOwnAccount(draft.AccountNameGuess, draft.Description):
+				// El usuario nombró algo que no es ninguna de sus cuentas: hay que
+				// preguntar, y ofrecerle crearla ("pagué el curso con Brubank").
+				// Si fuera una cuenta EXISTENTE, accountNamedInMessage ya la habría
+				// encontrado — por eso acá no se vuelve a llamar matchNamedAccount.
 				accountGaps = append(accountGaps, idx)
 			}
+			// Sin ninguna de las tres: AccountID queda vacío y movement.Normalize
+			// cae en la default de la moneda. Ese camino tiene que seguir mudo.
 		}
 
 		rows = append(rows, row)
