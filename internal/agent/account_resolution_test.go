@@ -195,6 +195,52 @@ func TestBuildCreateSeed_MessageNamedAccountRespectsCurrency(t *testing.T) {
 	}
 }
 
+// La regla es "todo lo que no es transfer", pero cada fixture de arriba es un
+// expense. Un income entra por la misma rama y nadie lo estaba probando — y es el
+// tipo que guarda el monto en POSITIVO, o sea la otra mitad del modelo contable.
+func TestBuildCreateSeed_IncomeResolvesLikeExpense(t *testing.T) {
+	income := func(guess string, accountID *uint64) orchestrator.CreateResult {
+		return orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
+			Type: "income", Amount: "300000", Currency: "ARS",
+			AccountID: accountID, AccountNameGuess: guess,
+			PaymentMethod: "transfer", Description: "sueldo", Date: "2026-08-22",
+		}}}
+	}
+
+	t.Run("sin cuenta nombrada cae en la default", func(t *testing.T) {
+		rows := movement.DecodeMovementRows(
+			buildCreateSeed(income("Banco Galicia", acctID(25)), nil, accountsUser3(), "me entraron 300 mil de sueldo"))
+		if rows[0].AccountID != "" {
+			t.Errorf("account_id = %q, want vacío: el id del modelo no vale en un income", rows[0].AccountID)
+		}
+	})
+
+	t.Run("con cuenta nombrada va a esa", func(t *testing.T) {
+		rows := movement.DecodeMovementRows(
+			buildCreateSeed(income("", nil), nil, accountsUser3(), "me entraron 300 mil de sueldo al banco galicia"))
+		if rows[0].AccountID != "25" {
+			t.Errorf("account_id = %q, want 25", rows[0].AccountID)
+		}
+	})
+}
+
+// userText es del TURNO, no de la fila: un mensaje que nombra una cuenta y carga
+// dos gastos le pone esa cuenta a los dos. Es lo correcto para "pagué luz 5000 y
+// gas 3000 con mercado pago" y lo equivocado si el usuario mezcla cuentas en un
+// mensaje. Se eligió así a sabiendas — sin casos medidos de lo segundo — y este
+// test está para que cambiarlo sea una decisión y no un descuido.
+func TestBuildCreateSeed_OneNamedAccountAppliesToEveryRowOfTheTurn(t *testing.T) {
+	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
+		draftARS("luz", nil, ""),
+		draftARS("gas", nil, ""),
+	}}
+	rows := movement.DecodeMovementRows(
+		buildCreateSeed(result, nil, accountsUser3(), "pagué luz 5000 y gas 3000 con mercado pago"))
+	if rows[0].AccountID != "27" || rows[1].AccountID != "27" {
+		t.Errorf("account_id = %q y %q, want 27 las dos", rows[0].AccountID, rows[1].AccountID)
+	}
+}
+
 // La exención de transfer no es un detalle: es la única razón por la que el campo
 // account_id sigue existiendo. "mercadopago" pegado NO llega a coverage 1.0 contra
 // "Mercado Pago", así que el paso 1 no salvaría esta pierna — sólo el id la salva.
