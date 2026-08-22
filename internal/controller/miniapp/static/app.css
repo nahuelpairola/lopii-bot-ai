@@ -87,6 +87,10 @@ a, button, .tab-link {
   justify-content: space-around;
   border-top: 1px solid var(--pico-muted-border-color);
   background: var(--pico-background-color);
+  /* La primera columna de la tabla de evolución es sticky con z-index:1, y sin
+     esto le gana a la barra: las filas se dibujan ENCIMA de las tabs al
+     scrollear. Cualquier valor > 1 alcanza. */
+  z-index: 2;
   padding: 0.5rem 0 calc(0.5rem + var(--tg-safe-area-inset-bottom, 0px));
 }
 
@@ -206,7 +210,17 @@ a, button, .tab-link {
    the borders belong to the table, not the cell, so a sticky cell scrolls
    away from its own border. separate + box-shadow is the fix. pico's rule
    lives in :where(), so this needs no extra specificity. */
-.evolution { border-collapse: separate; border-spacing: 0; width: auto; }
+.evolution {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: auto;
+  /* A tamaño de cuerpo, 6 meses + la columna de categoría miden 372px y no
+     entran en los 335px útiles de un teléfono de 360px: la tabla quedaba
+     cortada al medio de la última columna. A 0.85rem el caso típico entra
+     entero. Los montos largos y el período "Año" siguen desbordando: para eso
+     está .evolution-scroll. */
+  font-size: 0.85rem;
+}
 
 .evolution th, .evolution td {
   /* pico's own td,th padding makes 7 columns overflow a phone even with
