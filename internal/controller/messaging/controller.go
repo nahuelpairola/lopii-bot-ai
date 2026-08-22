@@ -35,7 +35,7 @@ type userRepository interface {
 	FindByChannel(channel, channelUserID string) (*user.User, error)
 	FindByID(id uint64) (*user.User, error)
 	Insert(u *user.User) error
-	LinkChannel(userID uint64, channel, channelUserID string) error
+	InsertWithChannel(u *user.User, channel, channelUserID string) error
 	FindChannelID(userID uint64, channel string) (string, error)
 }
 

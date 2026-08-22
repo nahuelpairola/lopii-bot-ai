@@ -53,6 +53,13 @@ func (r *fakeUserRepository) LinkChannel(userID uint64, channel, channelUserID s
 	return nil
 }
 
+func (r *fakeUserRepository) InsertWithChannel(u *user.User, channel, channelUserID string) error {
+	if err := r.Insert(u); err != nil {
+		return err
+	}
+	return r.LinkChannel(u.ID, channel, channelUserID)
+}
+
 func (r *fakeUserRepository) FindChannelID(userID uint64, channel string) (string, error) {
 	for channelUserID, uid := range r.linked {
 		if uid == userID {

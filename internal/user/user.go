@@ -3,6 +3,7 @@ package user
 import (
 	"time"
 
+	"gorm.io/gorm"
 	"lopiibot.com/internal/database"
 )
 
@@ -78,4 +79,21 @@ func (r *repository) FindByID(id uint64) (*User, error) {
 
 func (r *repository) Insert(u *User) error {
 	return r.conn.DB.Create(u).Error
+}
+
+// InsertWithChannel crea al usuario y su dirección en una sola transacción.
+// Son dos escrituras y tienen que ser atómicas: una fila en users sin su fila
+// en user_channels es un usuario sin dirección — invisible para FindByChannel,
+// y el reintento de /start inserta otra huérfana en vez de encontrarlo.
+func (r *repository) InsertWithChannel(u *User, channel, channelUserID string) error {
+	return r.conn.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(u).Error; err != nil {
+			return err
+		}
+		return tx.Create(&UserChannel{
+			UserID:        u.ID,
+			Channel:       channel,
+			ChannelUserID: channelUserID,
+		}).Error
+	})
 }

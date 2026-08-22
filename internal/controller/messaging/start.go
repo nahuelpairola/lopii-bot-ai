@@ -51,11 +51,7 @@ func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models
 			Username: update.Message.From.Username,
 			IsAdmin:  false,
 		}
-		if err := c.users.Insert(newUser); err != nil {
-			c.reply(ctx, b, update, msgUserCreationError)
-			return nil, err
-		}
-		if err := c.users.LinkChannel(newUser.ID, user.ChannelTelegram, telegramID); err != nil {
+		if err := c.users.InsertWithChannel(newUser, user.ChannelTelegram, telegramID); err != nil {
 			c.reply(ctx, b, update, msgUserCreationError)
 			return nil, err
 		}
