@@ -142,9 +142,8 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 			Group:            draft.Group,
 		}
 		// El account_id del modelo SÓLO vale en las piernas de un transfer. En un
-		// gasto es ruido: medido sobre llm_calls lo llenó en 30 de 43 filas y en
-		// ninguna el usuario había nombrado una cuenta. Ahí la cuenta la resuelve
-		// la app contra el mensaje (accountNamedInMessage).
+		// gasto es ruido; ahí la cuenta la resuelve la app contra el mensaje —
+		// la medición que lo decidió está en accountNamedInMessage.
 		if draft.AccountID != nil && draft.Type == constants.Transfer {
 			row.AccountID = strconv.FormatUint(*draft.AccountID, 10)
 		}

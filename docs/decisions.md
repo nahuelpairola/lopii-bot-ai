@@ -133,6 +133,33 @@ widening the window (it would undo the 24h margin the 04/08 case needed). Known 
   weekday stays in "Hoy es" anyway, despite this measurement reading neutral-or-worse for
   correction, because it serves QUERY, where "esta semana" resolves against the real day.
 
+### Why the app ignores the model's `account_id` on expenses (2026-08-22)
+
+Two expenses of user 3 were written to `Banco Galicia` instead of their default ARS account. The
+model had emitted `account_id: 25` on both, unasked; one also carried
+`account_name_guess: "Banco Galicia (ARS)"` — the literal render of `buildAccountsBlock`'s
+`"%d | %s (%s)"`, so it was copying a prompt line, not reading the message.
+
+Measured over the whole `llm_calls` table (52 `record_movements` rows): 30 of 43 `expense` rows
+carried an `account_id`, and in **0** of those 30 had the user named an account. 28 landed on the
+default anyway, because the account block is ordered by id and user 2's first ARS row *is* their
+default. User 3's first ARS row is not. Same model behaviour, two outcomes, decided by primary
+keys.
+
+`transfer` measured the opposite way: 8 of 8 legs carried an id and needed it. Two real messages
+spell the account as `mercadopago` / `mercadpago`, which no name match resolves — the model's id
+was the only thing that saved those legs. That is why the exemption is by movement type and not a
+blanket removal of the field.
+
+**Rejected:** validating the model's `account_id` against the message instead of ignoring it. It
+leaves the mirror-image hole — when the user names an account and the model puts it *only* in
+`account_id`, dropping the id writes silently to the default. Reading the message directly closes
+both directions with one rule.
+
+**Rejected:** lowering `TokenCoverage`'s 4-rune floor so an account named `FCI` resolves from the
+message. The helper is shared with `GuessNamesOwnAccount` and reference resolution; all 8 measured
+`FCI` rows are transfers, which are exempt. The limitation is documented instead.
+
 ## Groq quota, the 429 queue and rate limits
 
 - **A terminal Groq 429 is a typed error (`orchestrator.RateLimitedError`), not a string to re-parse.** `Client.send`'s existing retry loop already computes the best available wait (header priority over body-parsed text); wrapping that wait in a struct returned via `errors.As` means the pending-jobs queue (and any future consumer) never re-derives or re-parses anything Groq said — it reads `RetryAfter` off the error itself. The alternative (checking `errors.Is(err, someSentinel)` and separately re-parsing the body for the wait) would duplicate parsing logic `send` already did.

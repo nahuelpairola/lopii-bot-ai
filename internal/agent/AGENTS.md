@@ -23,6 +23,37 @@ two-leg transfer from splitting. When the turn can't finish it *parks* instead:
 `conversation.KeyGatePrompt` in the seed is what tells the two apart when the action is picked back
 up. Same park, different meaning — read it before adding a third case.
 
+## The account of an expense is resolved from the MESSAGE, never from the model
+
+`account_id` in a `record_movements` draft is honored **only on `transfer` legs**
+(`seed.go`, `buildCreateSeed`). On `expense`/`income` it is dropped and the account is
+resolved by `accountNamedInMessage` against the user's raw text.
+
+This looks like distrust of a field that works. It is not: the model fills `account_id` on
+most expenses whether or not the user named an account, and it picks by position in the
+prompt's account block — which is ordered by id and does not mark the default. A user whose
+first ARS row happens to be their default sees no bug; a user whose first row is some other
+account gets their expenses written to it.
+
+**Two rules hang off this and both are load-bearing:**
+
+- The match requires coverage of **1.0** — every token of the account name present in the
+  message. "Some token" matches the account `Mercado Pago` against the message
+  `pago de monotributo`, which is the single most common shape of message there is.
+- `matchNamedAccount` is called **only** from the `transfer` branch. In the other branch it
+  is unreachable by construction: it requires an exact name match, so anything it could
+  resolve `accountNamedInMessage` already found. Calling it there is dead code that reads
+  as live.
+
+`account_name_guess` survives for one job only — naming an account that does **not exist
+yet** ("pagué el curso con Brubank") so the gap can offer to create it. It no longer picks
+between accounts that already exist, and it is ignored unless the message backs it up.
+
+`userText` is the **turn's** message, not the row's: a message naming one account assigns it
+to every row of that turn. Correct for "pagué luz 5000 y gas 3000 con mercado pago", wrong if
+the user mixes accounts in one message. No measured case; the UPDATE path
+(`movement_update_flow.go`, `accountGapsFor`) does not use any of this.
+
 ## One reference resolver, and it has two windows
 
 `resolveCandidates` (`reference_resolution.go`) is the **only** candidate-search mechanism, and
