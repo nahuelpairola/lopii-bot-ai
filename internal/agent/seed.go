@@ -62,6 +62,57 @@ func matchNamedAccount(guess string, accounts []account.Account, cur string) uin
 	return found
 }
 
+// accountNamedInMessage resuelve, del lado de la app, cuál de las cuentas del
+// usuario nombra el MENSAJE — no el modelo. El account_id que manda el LLM en una
+// fila que no es transfer se ignora: medido sobre llm_calls lo llenó en 30 de 43
+// gastos, y en NINGUNO de esos 30 el usuario había nombrado una cuenta. Acertaba
+// la default por el orden de los ids, no por entender el mensaje.
+//
+// Exige coverage 1.0 —TODOS los tokens del nombre presentes— y no "algún token".
+// Con "algún token", "pago de monotributo" matchearía la cuenta "Mercado Pago"
+// por la palabra "pago", y ese es el caso más común que hay.
+//
+// (0, false) significa "el mensaje no nombra ninguna": la fila sigue al guess y,
+// si tampoco, cae en la default de su moneda dentro de movement.Normalize.
+// (0, true) es "nombra más de una": que pregunte.
+func accountNamedInMessage(msg string, accounts []account.Account, cur string) (found uint64, ambiguous bool) {
+	haystack := foldAccents(strings.ToLower(msg))
+	if haystack == "" {
+		return 0, false
+	}
+	for _, a := range accounts {
+		// La moneda tiene que coincidir: dos cuentas pueden llamarse igual en ARS
+		// y USD, y meter el gasto en la otra rompe los dos saldos.
+		if cur != "" && a.Currency.String() != cur {
+			continue
+		}
+		if flow.TokenCoverage(a.Name, haystack) < fullCoverage {
+			continue
+		}
+		if found != 0 {
+			return 0, true
+		}
+		found = uint64(a.ID)
+	}
+	return found, false
+}
+
+// guessBackedByMessage exige que el account_name_guess esté RESPALDADO por lo que
+// el usuario escribió. El modelo copia líneas del bloque CUENTAS DEL USUARIO del
+// prompt —se lo vio mandar "Banco Galicia (ARS)", con el paréntesis de la moneda
+// pegado— y sin esta compuerta ese invento abre un gap: le pregunta al usuario a
+// qué cuenta va un gasto donde nunca mencionó ninguna.
+func guessBackedByMessage(guess, msg string) bool {
+	if guess == "" {
+		return false
+	}
+	return flow.TokenCoverage(guess, foldAccents(strings.ToLower(msg))) >= fullCoverage
+}
+
+// fullCoverage es "todos los tokens del nombre aparecen en el mensaje". Se usa en
+// las dos compuertas de arriba, que tienen que exigir lo mismo.
+const fullCoverage = 1.0
+
 func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry, accounts []account.Account) conversation.Data {
 	rows := make([]movement.MovementRow, 0, len(result.Movements))
 	var categoryGaps, accountGaps []string
