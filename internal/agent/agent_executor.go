@@ -285,12 +285,12 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	// categoría que el sistema ya sabía.
 	result.Normalize()
 
-	// Las cuentas van al seed para resolver el nombre que dijo el usuario contra
-	// una cuenta real ANTES de decidir que hay que preguntar. Un error de lectura
-	// acá no puede inventar un gap: matchNamedAccount devuelve 0 y sigue el
-	// camino de hoy.
+	// Las cuentas y el MENSAJE CRUDO van al seed: en un gasto la cuenta se
+	// resuelve contra lo que el usuario escribió, no contra el account_id que
+	// manda el modelo. Un error de lectura acá no puede inventar un gap —
+	// sin cuentas no matchea nada y la fila cae en la default de su moneda.
 	accounts, _ := e.svc.FindUserAccounts(e.userID)
-	seed := buildCreateSeed(result, e.taxonomy, accounts)
+	seed := buildCreateSeed(result, e.taxonomy, accounts, e.userText)
 	seed[conversation.UserIDKey] = e.userID
 
 	hasGaps := len(conversation.DecodeStringSlice(seed, conversation.KeyPendingCategoryGaps)) > 0 ||
