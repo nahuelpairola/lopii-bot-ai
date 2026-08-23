@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -83,9 +84,21 @@ func toIncoming(u *models.Update, b *bot.Bot) (messenger.Incoming, bool) {
 	switch {
 	case u.CallbackQuery != nil:
 		cb := u.CallbackQuery
+		// MaybeInaccessibleMessage es una unión: Message viene poblado para un
+		// mensaje vivo, InaccessibleMessage para uno borrado o demasiado viejo
+		// (teclado inline sobre un mensaje que Telegram ya no entrega entero).
+		// Los dos brazos traen su propio Chat, así que el chat de la respuesta
+		// se recupera en ambos casos — no hay que perder el callback.
 		var chatID int64
-		if cb.Message.Message != nil {
+		switch {
+		case cb.Message.Message != nil:
 			chatID = cb.Message.Message.Chat.ID
+		case cb.Message.InaccessibleMessage != nil:
+			chatID = cb.Message.InaccessibleMessage.Chat.ID
+		}
+		if chatID == 0 {
+			slog.Warn("telegram: callback sin chat resoluble, se descarta", "callback_id", cb.ID)
+			return messenger.Incoming{}, false
 		}
 		return messenger.Incoming{
 			Channel:       user.ChannelTelegram,

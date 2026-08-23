@@ -32,6 +32,9 @@ func TestToIncoming_TextMessage(t *testing.T) {
 	if in.Input.CallbackData != "" {
 		t.Error("un mensaje de texto no trae CallbackData")
 	}
+	if got := in.Chat.(chat).chatID; got != 555 {
+		t.Errorf("chatID = %d, want 555 (el chat, no el sender 777)", got)
+	}
 }
 
 func TestToIncoming_Callback(t *testing.T) {
@@ -52,6 +55,44 @@ func TestToIncoming_Callback(t *testing.T) {
 	}
 	if in.Input.Text != "" {
 		t.Error("un callback no trae Text")
+	}
+	if got := in.Chat.(chat).chatID; got != 555 {
+		t.Errorf("chatID = %d, want 555 (el chat, no el sender 777)", got)
+	}
+}
+
+// Un callback sobre un mensaje inaccesible (borrado, o demasiado viejo) trae
+// Message.Message == nil, pero Message.InaccessibleMessage sigue trayendo el
+// Chat: hay que recuperar el chatID de ahí, no perder el callback.
+func TestToIncoming_CallbackOnInaccessibleMessage(t *testing.T) {
+	u := &models.Update{CallbackQuery: &models.CallbackQuery{
+		ID:   "cb1",
+		Data: "yes",
+		From: models.User{ID: 777},
+		Message: models.MaybeInaccessibleMessage{
+			InaccessibleMessage: &models.InaccessibleMessage{Chat: models.Chat{ID: 555}},
+		},
+	}}
+	in, ok := toIncoming(u, nil)
+	if !ok {
+		t.Fatal("un callback sobre un mensaje inaccesible igual tiene que traducirse, el Chat está en InaccessibleMessage")
+	}
+	if got := in.Chat.(chat).chatID; got != 555 {
+		t.Errorf("chatID = %d, want 555", got)
+	}
+}
+
+// Si ninguno de los dos brazos de la unión trae un chat resoluble, no hay que
+// devolver un Incoming con chatID 0 (mandaría al chat 0, en silencio):
+// se descarta el update.
+func TestToIncoming_CallbackWithNoResolvableChatIsDropped(t *testing.T) {
+	u := &models.Update{CallbackQuery: &models.CallbackQuery{
+		ID:   "cb1",
+		Data: "yes",
+		From: models.User{ID: 777},
+	}}
+	if _, ok := toIncoming(u, nil); ok {
+		t.Error("un callback sin chat resoluble no tiene que traducirse")
 	}
 }
 
