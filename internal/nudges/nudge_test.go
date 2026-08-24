@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -143,14 +143,14 @@ func (t *testServices) NudgesMarkTapped(userID uint64, key string) error {
 	return nil
 }
 
-func (t *testServices) SendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
+func (t *testServices) SendText(ctx context.Context, chat messenger.Chat, text string) {
 	t.texts = append(t.texts, text)
 }
 
 // SendPrompt replica el render de recordingTransport (movement_create_flow_test):
 // cada botón como "label data", así los tests pueden hacer strings.Contains sobre
 // el label Y el callback data.
-func (t *testServices) SendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
+func (t *testServices) SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
 	t.texts = append(t.texts, prompt.Text)
 	rows := make([]string, 0, len(prompt.Buttons))
 	for _, btn := range prompt.Buttons {
@@ -159,7 +159,7 @@ func (t *testServices) SendPrompt(ctx context.Context, b *bot.Bot, chatID int64,
 	t.markups = append(t.markups, strings.Join(rows, "\n"))
 }
 
-func (t *testServices) HandleQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
+func (t *testServices) HandleQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error) {
 	t.asked = text
 	return true, nil
 }
@@ -167,8 +167,8 @@ func (t *testServices) HandleQuery(ctx context.Context, b *bot.Bot, chatID int64
 func TestMaybeNudge_FiresCorrectTipAfterFirstMovement(t *testing.T) {
 	svc := &testServices{counts: 1}
 
-	b := &bot.Bot{}
-	Maybe(context.Background(), svc, b, 1, 1)
+	chat := &messenger.FakeChat{}
+	Maybe(context.Background(), svc, chat, 1)
 
 	if len(svc.texts) != 1 {
 		t.Fatalf("expected 1 nudge sent, got %d: %+v", len(svc.texts), svc.texts)
@@ -181,8 +181,8 @@ func TestMaybeNudge_FiresCorrectTipAfterFirstMovement(t *testing.T) {
 func TestMaybeNudge_SkipsWhenFlowInProgress(t *testing.T) {
 	svc := &testServices{counts: 1, engineActive: true}
 
-	b := &bot.Bot{}
-	Maybe(context.Background(), svc, b, 1, 1)
+	chat := &messenger.FakeChat{}
+	Maybe(context.Background(), svc, chat, 1)
 
 	if len(svc.texts) != 0 {
 		t.Fatalf("expected no nudge while a flow is in progress, got %+v", svc.texts)
@@ -192,8 +192,8 @@ func TestMaybeNudge_SkipsWhenFlowInProgress(t *testing.T) {
 func TestMaybeNudge_OnceEver(t *testing.T) {
 	svc := &testServices{counts: 1, sentKeys: map[string]bool{correctTip: true}}
 
-	b := &bot.Bot{}
-	Maybe(context.Background(), svc, b, 1, 1)
+	chat := &messenger.FakeChat{}
+	Maybe(context.Background(), svc, chat, 1)
 
 	if len(svc.texts) != 0 {
 		t.Fatalf("expected no nudge (correct_tip already sent once-ever, nothing else eligible), got %+v", svc.texts)
@@ -215,8 +215,8 @@ func TestMaybeNudge_QuestionTipCarriesButton(t *testing.T) {
 		question: "¿Cuánto gasté esta semana?",
 	}}
 
-	b := &bot.Bot{}
-	Maybe(context.Background(), svc, b, 1, 1)
+	chat := &messenger.FakeChat{}
+	Maybe(context.Background(), svc, chat, 1)
 
 	if len(svc.texts) != 1 {
 		t.Fatalf("expected 1 nudge sent, got %d: %+v", len(svc.texts), svc.texts)
@@ -245,7 +245,7 @@ func TestNudgeCallbackDataFitsTelegramLimit(t *testing.T) {
 func TestHandleNudgeQuery_RunsTheQuestionAndSealsTheTap(t *testing.T) {
 	svc := &testServices{queryAnswer: "Gastaste $5.000."}
 
-	handled := HandleCallback(context.Background(), svc, nil, 1, 1, nudgeQueryPrefix+nudgeQueryTip)
+	handled := HandleCallback(context.Background(), svc, &messenger.FakeChat{}, 1, nudgeQueryPrefix+nudgeQueryTip)
 
 	if !handled {
 		t.Fatal("expected the nudge callback to be handled")
@@ -261,10 +261,10 @@ func TestHandleNudgeQuery_RunsTheQuestionAndSealsTheTap(t *testing.T) {
 func TestHandleNudgeQuery_IgnoresOtherCallbacks(t *testing.T) {
 	svc := &testServices{}
 
-	if HandleCallback(context.Background(), svc, nil, 1, 1, "edit_proposal") {
+	if HandleCallback(context.Background(), svc, &messenger.FakeChat{}, 1, "edit_proposal") {
 		t.Error("a non-nudge callback must not be handled here — the engine owns it")
 	}
-	if HandleCallback(context.Background(), svc, nil, 1, 1, nudgeQueryPrefix+"key_que_no_existe") {
+	if HandleCallback(context.Background(), svc, &messenger.FakeChat{}, 1, nudgeQueryPrefix+"key_que_no_existe") {
 		t.Error("an unknown nudge key must not fire a query")
 	}
 	if svc.asked != "" {
@@ -275,8 +275,8 @@ func TestHandleNudgeQuery_IgnoresOtherCallbacks(t *testing.T) {
 func TestMaybeNudge_DailyCooldown(t *testing.T) {
 	svc := &testServices{counts: 1, lastSentAt: map[uint64]time.Time{1: time.Now()}}
 
-	b := &bot.Bot{}
-	Maybe(context.Background(), svc, b, 1, 1)
+	chat := &messenger.FakeChat{}
+	Maybe(context.Background(), svc, chat, 1)
 
 	if len(svc.texts) != 0 {
 		t.Fatalf("expected no nudge inside the daily cooldown, got %+v", svc.texts)

@@ -5,10 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-telegram/bot"
-
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 )
 
@@ -98,8 +97,7 @@ func TestSendQuestionMenu_KeepsTheBestInDeclaredOrder(t *testing.T) {
 		want = want[:menuMaxOptions]
 	}
 
-	b := &bot.Bot{}
-	sendQuestionMenu(context.Background(), svc, b, 1, 1)
+	sendQuestionMenu(context.Background(), svc, &messenger.FakeChat{}, 1)
 	if len(svc.markups) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(svc.markups))
 	}
@@ -122,8 +120,7 @@ func TestSendQuestionMenu_KeepsTheBestInDeclaredOrder(t *testing.T) {
 func TestHandleNudgeQuery_MenuCallbackSendsTheMenu(t *testing.T) {
 	svc, _ := activeUser()
 
-	b := &bot.Bot{}
-	if !HandleCallback(context.Background(), svc, b, 1, 1, nudgeMenuData) {
+	if !HandleCallback(context.Background(), svc, &messenger.FakeChat{}, 1, nudgeMenuData) {
 		t.Fatal("el callback del menú tiene que estar manejado")
 	}
 	if svc.asked != "" {

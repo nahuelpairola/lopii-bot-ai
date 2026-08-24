@@ -10,10 +10,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -48,7 +48,7 @@ type Services interface {
 	NudgesMarkTapped(userID uint64, key string) error
 
 	// Outbounds a Telegram y al loop de QUERY.
-	SendText(ctx context.Context, b *bot.Bot, chatID int64, text string)
-	SendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt)
-	HandleQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error)
+	SendText(ctx context.Context, chat messenger.Chat, text string)
+	SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt)
+	HandleQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error)
 }
