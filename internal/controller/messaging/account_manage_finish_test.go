@@ -7,6 +7,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 )
 
 func resolvedContains(m *fakeMetricRepo, outcome string) bool {
@@ -32,7 +33,7 @@ func TestFinishAccountManage_Rename_Success(t *testing.T) {
 		"account_currency":     "ARS",
 		"new_name":             "FCI",
 	}
-	c.finishAccountManageFlow(context.Background(), nil, 0, data)
+	c.finishAccountManageFlow(context.Background(), &messenger.FakeChat{}, data)
 
 	if accRepo.renamedID != 5 || accRepo.renamedName != "FCI" {
 		t.Errorf("renamed = %d/%q, want 5/FCI", accRepo.renamedID, accRepo.renamedName)
@@ -56,7 +57,7 @@ func TestFinishAccountManage_Rename_Collision(t *testing.T) {
 		"account_currency":     "ARS",
 		"new_name":             "FCI",
 	}
-	c.finishAccountManageFlow(context.Background(), nil, 0, data)
+	c.finishAccountManageFlow(context.Background(), &messenger.FakeChat{}, data)
 
 	if resolvedContains(metrics, outcomeAccountRenamed) {
 		t.Error("a name collision must not report a successful rename")
@@ -70,7 +71,7 @@ func TestFinishAccountManage_Cancelled_NoWrite(t *testing.T) {
 	c := &controller{accounts: accRepo, metrics: metrics}
 
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "cancelled": "true"}
-	c.finishAccountManageFlow(context.Background(), nil, 0, data)
+	c.finishAccountManageFlow(context.Background(), &messenger.FakeChat{}, data)
 
 	if accRepo.renamedID != 0 {
 		t.Error("a cancelled flow must not rename anything")
@@ -93,7 +94,7 @@ func TestFinishAccountManage_CreateNew_StartsCreate(t *testing.T) {
 		"operation":            "create_new",
 		"message":              "cuenta nueva de cedears",
 	}
-	c.finishAccountManageFlow(context.Background(), nil, 0, data)
+	c.finishAccountManageFlow(context.Background(), &messenger.FakeChat{}, data)
 
 	if store.flowName != flow.AccountCreateFlowName {
 		t.Errorf("started flow = %q, want %q", store.flowName, flow.AccountCreateFlowName)

@@ -137,8 +137,8 @@ func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 		},
 	}
 
-	// Call handleStart with nil bot (sendPrompt and reply guard against nil)
-	c.handleStart(context.Background(), nil, update)
+	// Call HandleStart with nil bot (sendPrompt and reply guard against nil)
+	c.HandleStart(context.Background(), nil, update)
 
 	// Verify: userRepository.Insert was called exactly once
 	if len(userRepo.inserted) != 1 {
@@ -211,7 +211,7 @@ func TestHandleStart_ExistingUser_DoesNotRestart(t *testing.T) {
 		},
 	}
 
-	c.handleStart(context.Background(), nil, update)
+	c.HandleStart(context.Background(), nil, update)
 
 	// Verify: no new user was inserted
 	if len(userRepo.inserted) != 0 {

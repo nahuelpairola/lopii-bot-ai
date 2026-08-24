@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -79,7 +80,7 @@ func TestFinishSubcategorySetupFlow_Cancelled_SkipsInsert(t *testing.T) {
 	repo := &fakeSubcatFinishRepo{}
 	c := &controller{subcategories: repo}
 
-	c.finishSubcategorySetupFlow(nil, nil, 0, conversation.Data{"cancelled": "true"})
+	c.finishSubcategorySetupFlow(nil, &messenger.FakeChat{}, conversation.Data{"cancelled": "true"})
 
 	if len(repo.inserted) != 0 {
 		t.Error("expected no insert when cancelled=true")

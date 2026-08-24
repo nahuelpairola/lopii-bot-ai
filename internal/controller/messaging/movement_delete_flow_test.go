@@ -5,6 +5,7 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 )
 
@@ -67,7 +68,7 @@ func TestFinishMovementDeleteFlow_Confirmed_Deletes(t *testing.T) {
 		),
 	}
 
-	flow.FinishMovementDelete(nil, c, newEdgeChat(nil, 0), data)
+	flow.FinishMovementDelete(nil, c, &messenger.FakeChat{}, data)
 
 	if len(movRepo.deletedIDs) != 1 || movRepo.deletedIDs[0] != 42 {
 		t.Errorf("deletedIDs = %v, want [42]", movRepo.deletedIDs)
@@ -83,7 +84,7 @@ func TestFinishMovementDeleteFlow_Cancelled_NoDelete(t *testing.T) {
 		"confirmed":            "false",
 	}
 
-	flow.FinishMovementDelete(nil, c, newEdgeChat(nil, 0), data)
+	flow.FinishMovementDelete(nil, c, &messenger.FakeChat{}, data)
 
 	if len(movRepo.deletedIDs) != 0 {
 		t.Error("cancelling should never delete anything")

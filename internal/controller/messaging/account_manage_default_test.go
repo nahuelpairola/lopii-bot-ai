@@ -8,6 +8,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 )
 
 func defaultData() conversation.Data {
@@ -46,7 +47,7 @@ func newDefaultController(prev *account.Account, prevBalance string) (*controlle
 // prev was captured BEFORE UnsetDefault (the fake clears byCurrency on unset).
 func TestFinishAccountDefault_OffersMove(t *testing.T) {
 	c, accRepo, _, store := newDefaultController(prevAccount(3, "Wallet"), "12000")
-	c.finishAccountDefault(context.Background(), nil, 0, defaultData())
+	c.finishAccountDefault(context.Background(), &messenger.FakeChat{}, defaultData())
 
 	if len(accRepo.unsetCalls) != 1 || accRepo.unsetCalls[0] != currency.ARS {
 		t.Errorf("unsetCalls = %v, want [ARS]", accRepo.unsetCalls)
@@ -65,7 +66,7 @@ func TestFinishAccountDefault_OffersMove(t *testing.T) {
 // (b) no previous default → apply, no offer.
 func TestFinishAccountDefault_NoPrev_NoOffer(t *testing.T) {
 	c, accRepo, _, store := newDefaultController(nil, "")
-	c.finishAccountDefault(context.Background(), nil, 0, defaultData())
+	c.finishAccountDefault(context.Background(), &messenger.FakeChat{}, defaultData())
 
 	if accRepo.setDefaultID != 7 {
 		t.Errorf("setDefaultID = %d, want 7", accRepo.setDefaultID)
@@ -78,7 +79,7 @@ func TestFinishAccountDefault_NoPrev_NoOffer(t *testing.T) {
 // (c) previous default is the same account → apply (idempotent), no offer.
 func TestFinishAccountDefault_PrevSameAccount_NoOffer(t *testing.T) {
 	c, _, _, store := newDefaultController(prevAccount(7, "Galicia"), "12000")
-	c.finishAccountDefault(context.Background(), nil, 0, defaultData())
+	c.finishAccountDefault(context.Background(), &messenger.FakeChat{}, defaultData())
 
 	if store.found {
 		t.Error("prev == new account → no move offer")
@@ -88,7 +89,7 @@ func TestFinishAccountDefault_PrevSameAccount_NoOffer(t *testing.T) {
 // (d) previous default distinct but with balance 0 → apply, no offer.
 func TestFinishAccountDefault_PrevZeroBalance_NoOffer(t *testing.T) {
 	c, _, _, store := newDefaultController(prevAccount(3, "Wallet"), "0")
-	c.finishAccountDefault(context.Background(), nil, 0, defaultData())
+	c.finishAccountDefault(context.Background(), &messenger.FakeChat{}, defaultData())
 
 	if store.found {
 		t.Error("prev balance 0 → no move offer")
@@ -107,7 +108,7 @@ func TestFinishAccountMoveOffer_Move(t *testing.T) {
 		"move_to_id":           "7",
 		"move_to_name":         "Galicia",
 	}
-	c.finishAccountMoveOffer(context.Background(), nil, 0, data)
+	c.finishAccountMoveOffer(context.Background(), &messenger.FakeChat{}, data)
 
 	if movRepo.reassignCalls != 1 || movRepo.reassignFrom != 3 || movRepo.reassignTo != 7 {
 		t.Errorf("reassign calls=%d from=%d to=%d, want 1/3/7", movRepo.reassignCalls, movRepo.reassignFrom, movRepo.reassignTo)
@@ -124,7 +125,7 @@ func TestFinishAccountMoveOffer_Keep(t *testing.T) {
 		"move_from_id":         "3",
 		"move_to_id":           "7",
 	}
-	c.finishAccountMoveOffer(context.Background(), nil, 0, data)
+	c.finishAccountMoveOffer(context.Background(), &messenger.FakeChat{}, data)
 
 	if movRepo.reassignCalls != 0 {
 		t.Errorf("reassign calls = %d, want 0 on keep", movRepo.reassignCalls)

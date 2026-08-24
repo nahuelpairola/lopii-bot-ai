@@ -6,20 +6,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -50,11 +48,10 @@ import (
 // eso el modelo está scripteado.
 
 type convHarness struct {
-	t   *testing.T
-	c   *controller
-	b   *bot.Bot
-	rt  *recordingTransport
-	orc *fakeFullOrchestrator
+	t    *testing.T
+	c    *controller
+	chat *messenger.FakeChat
+	orc  *fakeFullOrchestrator
 
 	conn *database.Connection
 	// userID es users.id — el que toma handleFreeText.
@@ -182,11 +179,7 @@ func newConversationHarness(t *testing.T) *convHarness {
 		t.Fatalf("insert banco con apertura: %v", err)
 	}
 
-	rt := &recordingTransport{}
-	b, err := bot.New("123:ABC", bot.WithSkipGetMe(), bot.WithHTTPClient(time.Second, &http.Client{Transport: rt}))
-	if err != nil {
-		t.Fatalf("bot.New: %v", err)
-	}
+	chat := &messenger.FakeChat{}
 
 	// Store REAL: el estado de la conversación tiene que sobrevivir entre turnos,
 	// que es todo el punto del nivel.
@@ -231,7 +224,7 @@ func newConversationHarness(t *testing.T) *convHarness {
 	}
 
 	return &convHarness{
-		t: t, c: c, b: b, rt: rt, orc: orc, conn: conn,
+		t: t, c: c, chat: chat, orc: orc, conn: conn,
 		userID: uid, telegramID: tgID, telegramNum: tgNum, chatID: 4242,
 		accounts: map[string]uint64{"Banco Test": uint64(banco.ID)},
 		cache:    cache,
@@ -280,22 +273,20 @@ func deleteMovementsCall(args string) scriptedCall {
 // SendText simula un mensaje de texto del usuario. Toma users.id.
 func (h *convHarness) SendText(text string) {
 	h.t.Helper()
-	if err := h.c.handleFreeText(context.Background(), h.b, h.chatID, h.userID, text); err != nil {
+	if err := h.c.handleFreeText(context.Background(), h.chat, h.userID, text); err != nil {
 		h.t.Fatalf("SendText(%q): %v", text, err)
 	}
 }
 
-// TapButton simula tocar un botón. handleConversationInput toma el *models.Update
-// crudo del webhook y resuelve el usuario por TELEGRAM id, no por users.id.
+// TapButton simula tocar un botón. Handle es el punto de entrada neutro y
+// resuelve el usuario por TELEGRAM id (ChannelUserID), no por users.id.
 func (h *convHarness) TapButton(data string) {
 	h.t.Helper()
-	h.c.handleConversationInput(context.Background(), h.b, &models.Update{
-		CallbackQuery: &models.CallbackQuery{
-			ID:      "cb",
-			Data:    data,
-			From:    models.User{ID: h.telegramNum},
-			Message: models.MaybeInaccessibleMessage{Message: &models.Message{Chat: models.Chat{ID: h.chatID}}},
-		},
+	h.c.Handle(context.Background(), messenger.Incoming{
+		Channel:       user.ChannelTelegram,
+		ChannelUserID: h.telegramID,
+		Chat:          h.chat,
+		Input:         conversation.Input{CallbackData: data},
 	})
 }
 
@@ -329,14 +320,17 @@ func (h *convHarness) AllMovements() []movement.Movement {
 }
 
 // Messages es la copia que salió, en orden.
-func (h *convHarness) Messages() []string { return h.rt.texts }
+func (h *convHarness) Messages() []string {
+	out := make([]string, len(h.chat.Sent))
+	for i, p := range h.chat.Sent {
+		out[i] = p.Text
+	}
+	return out
+}
 
 // LastMessage es la última copia que salió.
 func (h *convHarness) LastMessage() string {
-	if len(h.rt.texts) == 0 {
-		return ""
-	}
-	return h.rt.texts[len(h.rt.texts)-1]
+	return h.chat.LastText()
 }
 
 // SeedMovement inserta un movimiento ya existente, para los escenarios que
@@ -534,15 +528,17 @@ func (h *convHarness) insertCoffeeThenCorrection(t *testing.T) {
 	// que pasarían aunque el gate no hubiera marcado nada. Lo que se exige acá
 	// es que el RECIBO haya salido con los botones puestos.
 	if !h.lastMarkupHas(flow.NearDupPrefix) {
-		t.Fatalf("el recibo salió sin los botones del gate. Markups: %v", h.rt.markups)
+		t.Fatalf("el recibo salió sin los botones del gate. Sent: %+v", h.chat.Sent)
 	}
 }
 
-// lastMarkupHas dice si algún reply_markup emitido contiene el fragmento.
+// lastMarkupHas dice si algún botón emitido lleva el fragmento en su Data.
 func (h *convHarness) lastMarkupHas(want string) bool {
-	for _, m := range h.rt.markups {
-		if strings.Contains(m, want) {
-			return true
+	for _, p := range h.chat.Sent {
+		for _, btn := range p.Buttons {
+			if strings.Contains(btn.Data, want) {
+				return true
+			}
 		}
 	}
 	return false

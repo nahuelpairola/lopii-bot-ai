@@ -1,22 +1,19 @@
 package messaging
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
-	"net/http"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -770,28 +767,6 @@ func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 	}
 }
 
-// recordingTransport captures the "text" field of every Telegram sendMessage
-// call, in order — lets a test assert how many messages went out and what
-// each one said, without a live bot. go-telegram/bot sends multipart/form-data.
-// markups holds the raw reply_markup JSON of the same call (empty when the
-// message carried no keyboard), so a test can assert a button was attached.
-type recordingTransport struct {
-	texts   []string
-	markups []string
-}
-
-func (rt *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if err := req.ParseMultipartForm(1 << 20); err == nil {
-		rt.texts = append(rt.texts, req.FormValue("text"))
-		rt.markups = append(rt.markups, req.FormValue("reply_markup"))
-	}
-	return &http.Response{
-		StatusCode: 200,
-		Body:       io.NopCloser(bytes.NewReader([]byte(`{"ok":true,"result":{"message_id":1,"chat":{"id":1},"date":0}}`))),
-		Header:     make(http.Header),
-	}, nil
-}
-
 func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	sub := newSubForTest(1, "Alimentación", "Supermercado")
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
@@ -812,32 +787,31 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 		conversation.KeyFirstAccountName: "Galicia",
 	}
 
-	rt := &recordingTransport{}
-	b, err := bot.New("123:ABC", bot.WithSkipGetMe(), bot.WithHTTPClient(time.Second, &http.Client{Transport: rt}))
-	if err != nil {
-		t.Fatalf("bot.New: %v", err)
+	chat := &messenger.FakeChat{}
+	flow.FinishMovementCreate(context.Background(), c, chat, data)
+
+	if len(chat.Sent) != 3 {
+		t.Fatalf("expected 3 messages (recibo + R1 + R2), got %d: %+v", len(chat.Sent), chat.Sent)
 	}
-
-	flow.FinishMovementCreate(context.Background(), c, newEdgeChat(b, 1), data)
-
-	if len(rt.texts) != 3 {
-		t.Fatalf("expected 3 messages (recibo + R1 + R2), got %d: %+v", len(rt.texts), rt.texts)
+	texts := make([]string, len(chat.Sent))
+	for i, p := range chat.Sent {
+		texts[i] = p.Text
 	}
 	// La moneda tiene que estar nombrada: el default de cuenta es POR MONEDA, y
 	// sin decirla el mensaje es ambiguo con dos cuentas y falso con dos monedas.
 	want := msgFirstAccountDefault("Galicia", []string{"ARS"})
-	if rt.texts[1] != want {
-		t.Errorf("R1 = %q, want %q", rt.texts[1], want)
+	if texts[1] != want {
+		t.Errorf("R1 = %q, want %q", texts[1], want)
 	}
-	if !strings.Contains(rt.texts[1], "pesos") {
-		t.Errorf("R1 no nombra la moneda: %q", rt.texts[1])
+	if !strings.Contains(texts[1], "pesos") {
+		t.Errorf("R1 no nombra la moneda: %q", texts[1])
 	}
 	// Y la nombra hablado, no en jerga: "ARS" no lo lee nadie.
-	if strings.Contains(rt.texts[1], "ARS") {
-		t.Errorf("R1 muestra el código ISO en vez del nombre: %q", rt.texts[1])
+	if strings.Contains(texts[1], "ARS") {
+		t.Errorf("R1 muestra el código ISO en vez del nombre: %q", texts[1])
 	}
-	if rt.texts[2] != msgInviteMoreAccounts {
-		t.Errorf("R2 = %q, want %q", rt.texts[2], msgInviteMoreAccounts)
+	if texts[2] != msgInviteMoreAccounts {
+		t.Errorf("R2 = %q, want %q", texts[2], msgInviteMoreAccounts)
 	}
 }
 
