@@ -110,6 +110,13 @@ func toIncoming(u *models.Update, b *bot.Bot) (messenger.Incoming, bool) {
 
 	case u.Message != nil && u.Message.Text != "" && !strings.HasPrefix(u.Message.Text, "/"):
 		m := u.Message
+		if m.Chat.ID == 0 {
+			// Mismo invariante que la rama de callback: nunca devolver un
+			// Incoming con ok=true y chatID 0 (mandaría al chat 0, en
+			// silencio). Sin texto crudo del usuario en el log.
+			slog.Warn("telegram: mensaje sin chat resoluble, se descarta")
+			return messenger.Incoming{}, false
+		}
 		var name string
 		if m.From != nil {
 			name = m.From.Username
