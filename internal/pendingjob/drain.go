@@ -5,14 +5,19 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/user"
 )
+
+// chatResolver alcanza a un usuario que el drain está drenando, no uno que
+// acaba de escribir. Interfaz local: acá no se importa ningún tipo concreto
+// de transporte (house rule).
+type chatResolver interface {
+	ChatFor(userID uint64) (messenger.Chat, error)
+}
 
 const (
 	// JobDrainInterval: el gating (nextDrainAt) hace barato tickear seguido;
@@ -30,7 +35,7 @@ var (
 )
 
 // Run tickea cada interval hasta que ctx se cancela (patrón Sweeper.Run).
-func Run(ctx context.Context, s Services, repo Repository, b *bot.Bot, interval time.Duration) {
+func Run(ctx context.Context, s Services, repo Repository, chats chatResolver, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -38,12 +43,12 @@ func Run(ctx context.Context, s Services, repo Repository, b *bot.Bot, interval 
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			drainTick(ctx, s, repo, b, time.Now())
+			drainTick(ctx, s, repo, chats, time.Now())
 		}
 	}
 }
 
-func drainTick(ctx context.Context, s Services, repo Repository, b *bot.Bot, now time.Time) {
+func drainTick(ctx context.Context, s Services, repo Repository, chats chatResolver, now time.Time) {
 	drainMu.Lock()
 	gated := now.Before(nextDrainAt)
 	drainMu.Unlock()
@@ -56,24 +61,19 @@ func drainTick(ctx context.Context, s Services, repo Repository, b *bot.Bot, now
 		return
 	}
 	for _, userID := range userIDs {
-		drainUser(ctx, s, repo, b, userID, now)
+		drainUser(ctx, s, repo, chats, userID, now)
 	}
 }
 
-func drainUser(ctx context.Context, s Services, repo Repository, b *bot.Bot, userID uint64, now time.Time) {
+func drainUser(ctx context.Context, s Services, repo Repository, chats chatResolver, userID uint64, now time.Time) {
 	u, err := s.UsersFindByID(userID)
 	if err != nil {
 		slog.ErrorContext(ctx, "drain: user lookup failed", "user_id", userID, "err", err)
 		return
 	}
-	channelID, err := s.UsersFindChannelID(u.ID, user.ChannelTelegram)
+	chat, err := chats.ChatFor(u.ID)
 	if err != nil {
-		slog.ErrorContext(ctx, "drain: channel lookup failed", "user_id", userID, "err", err)
-		return
-	}
-	chatID, err := strconv.ParseInt(channelID, 10, 64)
-	if err != nil {
-		slog.ErrorContext(ctx, "drain: bad telegram_id", "user_id", userID, "err", err)
+		slog.ErrorContext(ctx, "drain: chat lookup failed", "user_id", userID, "err", err)
 		return
 	}
 	jobs, err := repo.ListByUserOrdered(userID)
@@ -88,7 +88,7 @@ func drainUser(ctx context.Context, s Services, repo Repository, b *bot.Bot, use
 		// backoff corto → drain sigue tickeando → la edad dispara igual.
 		if now.Sub(job.CreatedAt) > MaxJobAge {
 			slog.WarnContext(ctx, "drain: job gave up", "event", "job_gave_up", "user_id", userID, "kind", job.Kind, "age", now.Sub(job.CreatedAt).String())
-			s.SendText(ctx, b, chatID, msgJobGaveUp(job))
+			s.SendText(ctx, chat, msgJobGaveUp(job))
 			_ = repo.Delete(job.ID)
 			continue
 		}
@@ -99,7 +99,7 @@ func drainUser(ctx context.Context, s Services, repo Repository, b *bot.Bot, use
 		// las tres capas. Ver traced() en trace.go.
 		var err error
 		s.Traced(ctx, updateTypeReplay, "", func(tctx context.Context) (*uint64, error) {
-			err = replayJob(WithReplaying(tctx), s, b, chatID, userID, job)
+			err = replayJob(WithReplaying(tctx), s, chat, userID, job)
 			return &userID, err
 		})
 		var rl *orchestrator.RateLimitedError
@@ -126,20 +126,20 @@ const updateTypeReplay = "replay"
 // replayJob recibe el ctx YA marcado como replay (ver el call site en drainUser):
 // el flag se pone una sola vez, afuera, y no en cada case — un case nuevo que se
 // olvidara de marcarlo volvería a encolar el job que está drenando, en loop.
-func replayJob(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uint64, job PendingJob) error {
+func replayJob(ctx context.Context, s Services, chat messenger.Chat, userID uint64, job PendingJob) error {
 	switch job.Kind {
 	case KindFreeText:
 		var p FreeTextPayload
 		if err := json.Unmarshal(job.Payload, &p); err != nil {
 			return nil // payload corrupto → no-429 → Delete. ponytail: nunca bloquea la cola.
 		}
-		return s.HandleFreeText(ctx, b, chatID, userID, p.Text)
+		return s.HandleFreeText(ctx, chat, userID, p.Text)
 	case KindUpdatePick:
 		var p UpdatePickPayload
 		if err := json.Unmarshal(job.Payload, &p); err != nil {
 			return nil
 		}
-		return s.ProceedToUpdateConfirm(ctx, b, chatID, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows)
+		return s.ProceedToUpdateConfirm(ctx, chat, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows)
 	default:
 		slog.WarnContext(ctx, "drain: unknown kind", "kind", job.Kind)
 		return nil
