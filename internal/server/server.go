@@ -86,6 +86,13 @@ func InitServer(conf *config.Config) error {
 	conversationRepo := conversation.NewRepository(conn)
 	actionsRepo := pendingaction.NewRepository(conn)
 
+	// tgTransport alcanza a un usuario a partir de su userID (el sweeper, el
+	// drenaje de 429, admin) y sirve el webhook una vez que existe el handler
+	// neutro (messagingController.Handle, más abajo). Se arma acá, apenas
+	// existe userRepo, para que el resto del arranque se lea de arriba a
+	// abajo sin un salto hacia atrás.
+	tgTransport := telegram.New(tgBot, userRepo)
+
 	llmOrchestrator := buildOrchestrator(conf, llmCallRecorder{insert: metricRepo.InsertLLMCall})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
@@ -98,20 +105,14 @@ func InitServer(conf *config.Config) error {
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
 		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo, actionsRepo,
 	)
-	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
+	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgTransport)
 	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, invitationRepo, conf.Telegram.Token, conf.Telegram.Username)
 
 	healthController.RegisterRoutes(ginEngine)
 	adminController.RegisterRoutes(ginEngine)
-	messagingController.RegisterHandlers(tgBot)
+	tgTransport.RegisterCommand("/start", messagingController.HandleStart)
+	ginEngine.POST("/webhook/telegram", gin.WrapH(tgTransport.Serve(messagingController.Handle)))
 	miniappController.RegisterRoutes(ginEngine)
-
-	// tgTransport alcanza a un usuario que no acaba de escribir (el sweeper, el
-	// drenaje de 429): resuelve un messenger.Chat a partir de un userID, en vez
-	// de una respuesta a un update entrante. Es el mismo adapter que RegisterHandlers
-	// usará para el borde del webhook cuando ese wiring migre (Task 6) — por eso
-	// vive acá y no adentro de un paquete consumer.
-	tgTransport := telegram.New(tgBot, userRepo)
 
 	// Las dos goroutines de fondo: el sweeper (recordatorios, resumen semanal,
 	// retención de trazas, cotizaciones) y el drenaje de la cola de 429.

@@ -50,8 +50,6 @@ func initializeBot(conf *config.Config, engine *gin.Engine) (*bot.Bot, error) {
 		return nil, err
 	}
 
-	engine.POST("/webhook/telegram", gin.WrapH(tgBot.WebhookHandler()))
-
 	// The Mini App menu button is cosmetic — register it best-effort, OFF the
 	// boot critical path. A slow or failing Telegram call here must never
 	// delay or abort the webhook loop (the bot's core function).
