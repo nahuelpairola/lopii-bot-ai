@@ -62,3 +62,11 @@ func TestPeriodFromQuery_AnchorAndCurrency(t *testing.T) {
 		t.Errorf("Currency = %s, want ARS", p.Currency)
 	}
 }
+
+// appStateHas busca un input del bloque #app-state, el que la tab bar arrastra
+// con hx-include. Se acopla al orden de atributos que templ emite (name antes
+// que value, como están escritos en period.templ) porque el par junto es lo
+// único que prueba que ESE param lleva ESE valor.
+func appStateHas(body, param, value string) bool {
+	return bodyContains(body, `name="`+param+`" value="`+value+`"`)
+}

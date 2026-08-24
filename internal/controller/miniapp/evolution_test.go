@@ -147,3 +147,29 @@ func TestHandleEvolution_ExpandShowsSubcategories(t *testing.T) {
 		t.Fatal("expandir una categoría debe mostrar sus subcategorías")
 	}
 }
+
+// El caso reportado, mitad vuelta: Evolución no ofrece "Mes", así que lo
+// coacciona a 6M para renderizar. Esa coerción NO puede escribirse de vuelta
+// en el slot de las vistas de un período — Resumen sí ofrece 6M y lo aceptaría
+// como si lo hubiera elegido el usuario.
+func TestHandleEvolution_AppStateKeepsTheSinglePeriodScope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	current := templates.CurrentMonth(nowInART()).Format("2006-01")
+	movements := stubMovementsEvolution{byMonth: map[string][]movement.CategorySum{
+		current: {{Label: "Alimentación", Total: d(1500)}},
+	}}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/evolution?p=month&pt=6m"))
+
+	body := w.Body.String()
+	if !appStateHas(body, "pt", "6m") {
+		t.Error("Evolución debe publicar su propio preset en #app-state")
+	}
+	if !appStateHas(body, "p", "month") {
+		t.Error("Evolución pisó el preset de las vistas de un período: ése es el bug")
+	}
+}
