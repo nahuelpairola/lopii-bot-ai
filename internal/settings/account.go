@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"strconv"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -17,16 +17,16 @@ import (
 // manage menu; wants-new → the existing (prefill-seeded) create flow;
 // unclear → the candidate picker. Candidates are always seeded — the pick
 // step needs them, the menu path skips it via SkipIf.
-func StartAccountManage(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uint64, text string) error {
+func StartAccountManage(ctx context.Context, s Services, chat messenger.Chat, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.AccountManageFlowName, "user_id", userID)
 	accs, err := s.FindUserAccounts(userID)
 	if err != nil {
-		s.SendText(ctx, b, chatID, flow.MsgCouldNotLoad)
+		s.SendText(ctx, chat, flow.MsgCouldNotLoad)
 		return fmt.Errorf("account manage: find accounts: %w", err)
 	}
 	if len(accs) == 0 {
 		s.ResolveMetric(ctx, userID, flow.OutcomeAccountCreateRouted)
-		return StartAccountCreate(ctx, s, b, chatID, userID, text)
+		return StartAccountCreate(ctx, s, chat, userID, text)
 	}
 
 	opts := make([]orchestrator.AccountOption, 0, len(accs))
@@ -35,15 +35,15 @@ func StartAccountManage(ctx context.Context, s Services, b *bot.Bot, chatID int6
 	}
 	res, err := s.ResolveAccountManage(ctx, text, opts)
 	if err != nil {
-		if handled, oerr := s.HandleGroqError(ctx, b, chatID, userID, text, err); handled {
+		if handled, oerr := s.HandleGroqError(ctx, chat, userID, text, err); handled {
 			return oerr
 		}
-		s.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
+		s.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return fmt.Errorf("account manage: resolve: %w", err)
 	}
 	if res.WantsNewAccount {
 		s.ResolveMetric(ctx, userID, flow.OutcomeAccountCreateRouted)
-		return StartAccountCreate(ctx, s, b, chatID, userID, text)
+		return StartAccountCreate(ctx, s, chat, userID, text)
 	}
 
 	ids := make([]string, 0, len(accs))
@@ -75,13 +75,13 @@ func StartAccountManage(ctx context.Context, s Services, b *bot.Bot, chatID int6
 		}
 	}
 
-	return s.StartFlow(ctx, b, chatID, userID, flow.AccountManageFlowName, seed, "account manage: start account_manage flow")
+	return s.StartFlow(ctx, chat, userID, flow.AccountManageFlowName, seed, "account manage: start account_manage flow")
 }
 
-func StartAccountCreate(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uint64, text string) error {
+func StartAccountCreate(ctx context.Context, s Services, chat messenger.Chat, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.AccountCreateFlowName, "user_id", userID)
 	seed := accountCreateSeed(ctx, s, text)
-	return s.StartFlow(ctx, b, chatID, userID, flow.AccountCreateFlowName, seed, "start account_create flow")
+	return s.StartFlow(ctx, chat, userID, flow.AccountCreateFlowName, seed, "start account_create flow")
 }
 
 // accountCreateSeed reuses ClassifyOnboarding to prefill the flow when the

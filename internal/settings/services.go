@@ -3,9 +3,9 @@ package settings
 import (
 	"context"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -33,12 +33,12 @@ type Services interface {
 	ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error)
 
 	// Outbound
-	SendText(ctx context.Context, b *bot.Bot, chatID int64, text string)
-	SendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt)
-	StartFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error
+	SendText(ctx context.Context, chat messenger.Chat, text string)
+	SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt)
+	StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error
 	EngineStartWithData(userID uint64, flowName string, seed conversation.Data) (conversation.Prompt, error)
 	ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint)
 	// HandleGroqError atiende el 429 antes que cualquier fallback: sin esto un
 	// problema de cupo se disfraza de "no te entendí". Ver internal/pendingjob.
-	HandleGroqError(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, err error) (bool, error)
+	HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error)
 }
