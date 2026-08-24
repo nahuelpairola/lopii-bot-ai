@@ -471,12 +471,18 @@ func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome s
 }
 
 func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text string) {
-	b, chatID, _ := asTelegramPair(chat)
+	b, chatID, ok := pairOrLog(ctx, chat, "SendText")
+	if !ok {
+		return
+	}
 	c.sendText(ctx, b, chatID, text)
 }
 
 func (c *controller) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
-	b, chatID, _ := asTelegramPair(chat)
+	b, chatID, ok := pairOrLog(ctx, chat, "StartFlow")
+	if !ok {
+		return fmt.Errorf("%s: chat sin (bot, chatID) recuperable", errCtx)
+	}
 	return c.startFlow(ctx, b, chatID, userID, flowName, seed, errCtx)
 }
 
@@ -516,7 +522,10 @@ func (c *controller) ReassignAccountMovements(fromID, toID uint64) error {
 }
 
 func (c *controller) StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
-	b, chatID, _ := asTelegramPair(chat)
+	b, chatID, ok := pairOrLog(ctx, chat, "StartAccountCreate")
+	if !ok {
+		return fmt.Errorf("start account create: chat sin (bot, chatID) recuperable")
+	}
 	return settings.StartAccountCreate(ctx, settingsBridge{c}, b, chatID, userID, text)
 }
 

@@ -2,6 +2,7 @@ package messaging
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
@@ -60,6 +61,22 @@ func asTelegramPair(chat messenger.Chat) (*bot.Bot, int64, bool) {
 		return nil, 0, false
 	}
 	return ec.b, ec.chatID, true
+}
+
+// pairOrLog es lo que cada puente de este archivo usa en vez de llamar a
+// asTelegramPair a mano: hoy el `false` nunca pasa —todo call site de este
+// paquete arranca con newEdgeChat— pero es un invariante que sostiene la
+// convención, no el compilador. Si algún día llega acá un messenger.Chat que
+// no es un edgeChat, silencio total sería peor que un log: cada
+// sendText/sendPrompt/startFlow de más abajo haría un no-op mudo con (nil, 0).
+// Muere junto con el resto de chat_bridge.go cuando settings/pendingjob/
+// nudges/query migren (Tasks 6-8).
+func pairOrLog(ctx context.Context, chat messenger.Chat, method string) (*bot.Bot, int64, bool) {
+	b, chatID, ok := asTelegramPair(chat)
+	if !ok {
+		slog.ErrorContext(ctx, "chat_bridge: el messenger.Chat recibido no es un edgeChat, no se puede recuperar (bot, chatID)", "method", method)
+	}
+	return b, chatID, ok
 }
 
 // settingsBridge implementa settings.Services traduciendo las llamadas viejas

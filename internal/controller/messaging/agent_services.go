@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"lopiibot.com/internal/chathistory"
@@ -103,7 +104,10 @@ func (c *controller) ResolveUpdate(ctx context.Context, text string, candidate o
 }
 
 func (c *controller) SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
-	b, chatID, _ := asTelegramPair(chat)
+	b, chatID, ok := pairOrLog(ctx, chat, "SendPrompt")
+	if !ok {
+		return
+	}
 	c.sendPrompt(ctx, b, chatID, prompt)
 }
 
@@ -124,21 +128,33 @@ func (c *controller) ResolveAndInsertMovements(data conversation.Data) ([]moveme
 }
 
 func (c *controller) HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
-	b, chatID, _ := asTelegramPair(chat)
+	b, chatID, ok := pairOrLog(ctx, chat, "HandleGroqError")
+	if !ok {
+		return false, fmt.Errorf("handle groq error: chat sin (bot, chatID) recuperable")
+	}
 	return pendingjob.HandleGroqError(ctx, pendingjobBridge{c}, c.jobs, b, chatID, userID, text, err)
 }
 
 func (c *controller) EnqueueUpdatePickIfRateLimited(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
-	b, chatID, _ := asTelegramPair(chat)
+	b, chatID, ok := pairOrLog(ctx, chat, "EnqueueUpdatePickIfRateLimited")
+	if !ok {
+		return false
+	}
 	return pendingjob.EnqueueUpdatePick(ctx, pendingjobBridge{c}, c.jobs, b, chatID, userID, message, transactionID, oldIDs, beforeRows, err)
 }
 
 func (c *controller) FinishAnswerQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
-	b, chatID, _ := asTelegramPair(chat)
+	b, chatID, ok := pairOrLog(ctx, chat, "FinishAnswerQuery")
+	if !ok {
+		return fmt.Errorf("finish answer query: chat sin (bot, chatID) recuperable")
+	}
 	return c.finishAnswerQuery(ctx, b, chatID, userID, text)
 }
 
 func (c *controller) FinishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error {
-	b, chatID, _ := asTelegramPair(chat)
+	b, chatID, ok := pairOrLog(ctx, chat, "FinishManageSettings")
+	if !ok {
+		return fmt.Errorf("finish manage settings: chat sin (bot, chatID) recuperable")
+	}
 	return c.finishManageSettings(ctx, b, chatID, userID, text, area)
 }
