@@ -3,18 +3,16 @@ package messaging
 import (
 	"context"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/messenger"
 )
 
 // sendText manda texto plano por el chat ya resuelto — vía messenger.SendText,
-// no por un (bot, chatID) desenvuelto a mano. edgeChat.Send trae su propia
-// guarda de bot nil (los tests directos de handleFreeText pasan b=nil), y
-// cualquier otro messenger.Chat (FakeChat, uno resuelto por chatResolver) ya
-// sabe manejarse solo. Task 8 fix round 1: antes de esto pasaba por
-// pairOrLog, que sólo reconocía un edgeChat — un chat resuelto por el drenaje
-// de 429 lo hacía fallar en silencio.
+// nunca desenvuelto a un (bot, chatID) a mano. Task 8 fix round 1: antes de
+// esto pasaba por pairOrLog, que sólo reconocía el tipo concreto que armaba
+// el borde del webhook — un chat resuelto por el drenaje de 429 lo hacía
+// fallar en silencio. pairOrLog y ese tipo (edgeChat) se borraron en la
+// Task 6.
 func (c *controller) sendText(ctx context.Context, chat messenger.Chat, text string) {
 	_ = messenger.SendText(ctx, chat, text)
 }
@@ -30,6 +28,6 @@ func (c *controller) sendText(ctx context.Context, chat messenger.Chat, text str
 // Los wizards NO se van: siguen siendo la UI del lado de la app. Lo que cambia
 // es cómo se llega — el loop parkea en ellos, en vez de un router que decide de
 // antemano.
-func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	return agent.StartLoop(ctx, c, newEdgeChat(b, chatID), userID, text)
+func (c *controller) handleFreeText(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
+	return agent.StartLoop(ctx, c, chat, userID, text)
 }

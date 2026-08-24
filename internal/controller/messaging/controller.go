@@ -5,13 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"slices"
-	"strings"
 	"time"
-	"unicode/utf8"
 
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/agent"
@@ -234,32 +229,11 @@ func (c *controller) FindSubcategory(userID uint64, category, subcategory string
 	return c.subcategories.FindByCategoryAndSubcategory(userID, category, subcategory)
 }
 
-func (c *controller) RegisterHandlers(b *bot.Bot) {
-	b.RegisterHandler(bot.HandlerTypeMessageText, "/start", bot.MatchTypePrefix, c.handleStart)
-	b.RegisterHandlerMatchFunc(c.hasIncomingInput, c.handleConversationInput)
-}
-
-// hasIncomingInput matchea cualquier mensaje de texto (que no sea
-// comando) o callback de botón — son los únicos tipos de update que el
-// motor de conversaciones puede llegar a procesar.
-func (c *controller) hasIncomingInput(update *models.Update) bool {
-	if update.CallbackQuery != nil {
-		return true
-	}
-	if update.Message != nil && update.Message.Text != "" && !strings.HasPrefix(update.Message.Text, "/") {
-		return true
-	}
-	return false
-}
-
-// handleConversationInput le pasa el input al motor de conversaciones.
-func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.withTrace(ctx, update, func(ctx context.Context) (*uint64, error) {
-		telegramID := updateTelegramID(update)
-		if telegramID == "" {
-			return nil, nil
-		}
-		u, err := c.users.FindByChannel(user.ChannelTelegram, telegramID)
+// Handle es EL punto de entrada neutro: satisface messenger.Handler. No sabe
+// por qué canal llegó el mensaje y no ramifica sobre in.Channel.
+func (c *controller) Handle(ctx context.Context, in messenger.Incoming) {
+	c.traced(ctx, kindOf(in), rawOf(in), func(ctx context.Context) (*uint64, error) {
+		u, err := c.users.FindByChannel(in.Channel, in.ChannelUserID)
 		if err != nil {
 			return nil, err
 		}
@@ -274,58 +248,62 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		// la cola: para eso está la cadena de modelos de respaldo.
 		defer c.locks.lock(uid)()
 
-		if cb := update.CallbackQuery; cb != nil {
-			b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: cb.ID})
-		}
+		return c.dispatch(ctx, in, u)
+	})
+}
 
-		input := toConversationInput(update)
-		chatID := updateChatID(update)
+// dispatch es el resto de lo que antes era handleConversationInput, desde el
+// chequeo de callbacks que no pasan por el engine. El ack del callback ya lo
+// hizo el adapter (telegram.Transport.Serve) antes de llamar a Handle.
+func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *user.User) (*uint64, error) {
+	uid := u.ID
+	chat := in.Chat
+	input := in.Input
 
-		// El tap del botón de un tip no pasa por el engine ni por el router.
-		// Va acá arriba para que un flow abierto no se coma el callback como si
-		// fuera una opción suya; la consulta es read-only y lo deja intacto.
-		if nudges.HandleCallback(ctx, c, newEdgeChat(b, chatID), u.ID, input.CallbackData) {
-			return &uid, nil
-		}
-		// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
-		// una opción de ningún flow, y un flow abierto no puede comérselo.
-		if flow.HandleNearDuplicateChoice(ctx, c, newEdgeChat(b, chatID), u.ID, input.CallbackData) {
-			return &uid, nil
-		}
+	// El tap del botón de un tip no pasa por el engine ni por el router.
+	// Va acá arriba para que un flow abierto no se coma el callback como si
+	// fuera una opción suya; la consulta es read-only y lo deja intacto.
+	if nudges.HandleCallback(ctx, c, chat, u.ID, input.CallbackData) {
+		return &uid, nil
+	}
+	// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
+	// una opción de ningún flow, y un flow abierto no puede comérselo.
+	if flow.HandleNearDuplicateChoice(ctx, c, chat, u.ID, input.CallbackData) {
+		return &uid, nil
+	}
 
-		result, found, err := c.engine.Handle(u.ID, input)
-		if err != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
+	result, found, err := c.engine.Handle(u.ID, input)
+	if err != nil {
+		c.sendText(ctx, chat, msgSomethingBroke)
+		return &uid, err
+	}
+	if !found {
+		if input.Text != "" {
+			if pendingjob.EnqueueBehindPending(ctx, c, c.jobs, chat, u.ID, input.Text) {
+				return &uid, nil
+			}
+			err := c.handleFreeText(ctx, chat, u.ID, input.Text)
+			nudges.Maybe(ctx, c, chat, u.ID)
 			return &uid, err
 		}
-		if !found {
-			if input.Text != "" {
-				if pendingjob.EnqueueBehindPending(ctx, c, c.jobs, newEdgeChat(b, chatID), u.ID, input.Text) {
-					return &uid, nil
-				}
-				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
-				nudges.Maybe(ctx, c, newEdgeChat(b, chatID), u.ID)
-				return &uid, err
-			}
-			return &uid, nil
-		}
-		if result.Finished {
-			c.handleFlowFinished(ctx, b, chatID, result)
-			nudges.Maybe(ctx, c, newEdgeChat(b, chatID), u.ID)
-			return &uid, nil
-		}
-		c.sendPrompt(ctx, newEdgeChat(b, chatID), result.Prompt)
 		return &uid, nil
-	})
+	}
+	if result.Finished {
+		c.handleFlowFinished(ctx, chat, result)
+		nudges.Maybe(ctx, c, chat, u.ID)
+		return &uid, nil
+	}
+	c.sendPrompt(ctx, chat, result.Prompt)
+	return &uid, nil
 }
 
 // handleFlowFinished ejecuta la acción real correspondiente a un flow que
 // acaba de terminar (crear cuenta, insertar movimiento, etc.), según su
 // nombre. Agregar un flow nuevo implica agregar un case acá.
-func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID int64, result conversation.Result) {
+func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat, result conversation.Result) {
 	slog.InfoContext(ctx, "flow finished", "flow", result.FlowName)
 	if conversation.StringOrEmpty(result.Data[conversation.ResumeCancelledKey]) == "true" {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgResumeCancelled})
+		c.sendText(ctx, chat, msgResumeCancelled)
 		return
 	}
 	// ask_user se maneja aparte porque él mismo decide qué sigue (retomar la
@@ -333,104 +311,61 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	// destapan la cola: es el único momento en que se sabe que no hay nada
 	// abierto, y por eso el WIP=1 se sostiene solo.
 	if result.FlowName == flow.AskUserFlowName {
-		agent.FinishAskUser(ctx, c, newEdgeChat(b, chatID), result.Data)
+		agent.FinishAskUser(ctx, c, chat, result.Data)
 		return
 	}
 	defer func() {
-		if err := agent.DrainNextAction(ctx, c, newEdgeChat(b, chatID), result.Data.UserID()); err != nil {
+		if err := agent.DrainNextAction(ctx, c, chat, result.Data.UserID()); err != nil {
 			slog.ErrorContext(ctx, "drain parked actions failed", "err", err)
 		}
 	}()
 
 	switch result.FlowName {
 	case flow.MovementCreateFlowName:
-		flow.FinishMovementCreate(ctx, c, newEdgeChat(b, chatID), result.Data)
+		flow.FinishMovementCreate(ctx, c, chat, result.Data)
 	case flow.MovementUpdatePickFlowName:
-		agent.FinishMovementUpdatePick(ctx, c, newEdgeChat(b, chatID), result.Data)
+		agent.FinishMovementUpdatePick(ctx, c, chat, result.Data)
 	case flow.MovementUpdateConfirmFlowName:
-		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
+		c.finishMovementUpdateConfirmFlow(ctx, chat, result.Data)
 	case flow.MovementDeleteFlowName:
-		flow.FinishMovementDelete(ctx, c, newEdgeChat(b, chatID), result.Data)
+		flow.FinishMovementDelete(ctx, c, chat, result.Data)
 	case flow.AccountCreateFlowName:
-		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
+		c.finishAccountCreateFlow(ctx, chat, result.Data)
 	case flow.AccountManageFlowName:
-		c.finishAccountManageFlow(ctx, b, chatID, result.Data)
+		c.finishAccountManageFlow(ctx, chat, result.Data)
 	case flow.AccountMoveOfferFlowName:
-		c.finishAccountMoveOffer(ctx, b, chatID, result.Data)
+		c.finishAccountMoveOffer(ctx, chat, result.Data)
 	case flow.SubcategorySetupFlowName:
-		c.finishSubcategorySetupFlow(ctx, b, chatID, result.Data)
+		c.finishSubcategorySetupFlow(ctx, chat, result.Data)
 	case flow.CategoryMatchOfferFlowName:
-		c.finishCategoryMatchOffer(ctx, b, chatID, result.Data)
+		c.finishCategoryMatchOffer(ctx, chat, result.Data)
 	case flow.CategoryProposalConfirmFlowName:
-		c.finishCategoryProposalConfirm(ctx, b, chatID, result.Data)
+		c.finishCategoryProposalConfirm(ctx, chat, result.Data)
 	case flow.CategoryManagePickFlowName:
-		c.finishCategoryManagePickFlow(ctx, b, chatID, result.Data)
+		c.finishCategoryManagePickFlow(ctx, chat, result.Data)
 	case flow.CategoryManageTargetFlowName:
-		c.finishCategoryManageTargetFlow(ctx, b, chatID, result.Data)
+		c.finishCategoryManageTargetFlow(ctx, chat, result.Data)
 	case flow.MovementNegativeConfirmFlowName:
-		flow.FinishMovementNegativeConfirm(ctx, c, newEdgeChat(b, chatID), result.Data)
+		flow.FinishMovementNegativeConfirm(ctx, c, chat, result.Data)
 	case flow.ReminderSetupFlowName:
-		c.finishReminderSetup(ctx, b, chatID, result.Data)
+		c.finishReminderSetup(ctx, chat, result.Data)
 	default:
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: msgSomethingBroke})
+		c.sendText(ctx, chat, msgSomethingBroke)
 	}
 }
 
 // finishMovementUpdateConfirmFlow es el puente al finish que ahora vive en flow
 // (FinishMovementUpdateConfirm). Los tests del borde lo llaman por este nombre;
 // el puente se borra al cerrar la costura.
-func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishMovementUpdateConfirm(ctx, c, newEdgeChat(b, chatID), data)
-}
-
-// buttonsPerRow caps how many inline-keyboard buttons Telegram renders
-// per row — putting every option in a single row (the old behavior) is
-// what made category/subcategory/account buttons unreadably small.
-const buttonsPerRow = 2
-
-// maxLabelForTwoPerRow es el largo a partir del cual una etiqueta ya no entra en
-// media pantalla y Telegram la corta.
-//
-// Con dos por fila, un candidato de corrección ("🔴 Cafe · $2.000 · 27/07")
-// llega cortado JUSTO por el final — que es la fecha, o sea lo único que lo
-// distingue de los otros dos candidatos. El picker queda inservible: tres
-// botones que se leen igual.
-//
-// El largo es el problema, no la cantidad: las categorías ("🍔 Alimentación")
-// entran de a dos y son ~16, así que forzarlas a una por fila duplicaría el
-// alto del teclado sin ganar nada.
-const maxLabelForTwoPerRow = 20
-
-// rowWidth decide cuántos botones por fila entran sin que se corte ninguno.
-// Alcanza con que UNA etiqueta sea larga: las filas son parejas, así que la más
-// larga manda.
-func rowWidth(buttons []conversation.Button) int {
-	for _, b := range buttons {
-		if utf8.RuneCountInString(b.Label) > maxLabelForTwoPerRow {
-			return 1
-		}
-	}
-	return buttonsPerRow
-}
-
-func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton {
-	var rows [][]models.InlineKeyboardButton
-	for chunk := range slices.Chunk(buttons, rowWidth(buttons)) {
-		row := make([]models.InlineKeyboardButton, 0, len(chunk))
-		for _, btn := range chunk {
-			row = append(row, models.InlineKeyboardButton{Text: btn.Label, CallbackData: btn.Data})
-		}
-		rows = append(rows, row)
-	}
-	return rows
+func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, chat messenger.Chat, data conversation.Data) {
+	flow.FinishMovementUpdateConfirm(ctx, c, chat, data)
 }
 
 // sendPrompt manda un conversation.Prompt (texto + botones) por el chat ya
-// resuelto. chunkButtons/rowWidth siguen definidos y probados
-// (controller_test.go) — el chat real (telegram.chat, vía Chat.Send) hace su
-// propia traducción a botones inline con la misma grilla, así que este
-// helper no la duplica más. Fix round 1 de la Task 8: antes desenvolvía
-// (bot, chatID) con pairOrLog, que sólo reconocía un edgeChat.
+// resuelto — el chat real (telegram.chat, vía Chat.Send) hace su propia
+// traducción a botones inline (chunkButtons/rowWidth viven ahora en
+// internal/messenger/telegram, probados ahí). Fix round 1 de la Task 8: antes
+// desenvolvía (bot, chatID) con pairOrLog, que sólo reconocía un edgeChat.
 func (c *controller) sendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
 	if err := chat.Send(ctx, prompt); err != nil {
 		slog.ErrorContext(ctx, "controller: send prompt failed", "err", err)
@@ -442,7 +377,7 @@ func (c *controller) sendPrompt(ctx context.Context, chat messenger.Chat, prompt
 // forma: avisarle al usuario y devolver el error envuelto.
 //
 // errCtx es el prefijo del error. No es cosmético: ese string sube hasta
-// withTrace y termina en la columna request_traces.error, así que es lo único
+// traced y termina en la columna request_traces.error, así que es lo único
 // que distingue "no arrancó el flujo de cuentas" de "no arrancó el de
 // movimientos" cuando se mira la traza después.
 //
@@ -469,11 +404,11 @@ func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome s
 
 // SendText implementa flow.runner/agentServices/nudges.Services/
 // settings.Services/pendingjob.Services. Va directo por messenger.SendText,
-// como QuerySendText (query_services.go) desde la Task 7 — no por pairOrLog:
-// un chat resuelto por chatResolver.ChatFor (el sweeper, el drenaje de 429)
-// nunca es un edgeChat, así que pairOrLog fallaría siempre para esos
-// llamadores. edgeChat.Send ya trae su propia guarda de bot nil, así que el
-// comportamiento para el borde del webhook no cambia.
+// como QuerySendText (query_services.go) desde la Task 7 — no por pairOrLog,
+// el unwrap que asumía un solo tipo concreto de chat y por eso fallaba en
+// silencio para un chat resuelto por chatResolver.ChatFor (el sweeper, el
+// drenaje de 429). pairOrLog y el tipo que envolvía (edgeChat) se borraron
+// en la Task 6: hoy no hay nada que desenvolver.
 func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text string) {
 	if err := messenger.SendText(ctx, chat, text); err != nil {
 		slog.ErrorContext(ctx, "controller: send text failed", "err", err)
@@ -565,38 +500,4 @@ func (c *controller) SetWeeklySummary(userID uint64, enabled bool) error {
 
 func (c *controller) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error) {
 	return c.movements.FindRecentlyCreatedForUser(userID, since, limit)
-}
-
-func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
-	if b == nil {
-		return
-	}
-	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text})
-}
-
-func toConversationInput(update *models.Update) conversation.Input {
-	if update.CallbackQuery != nil {
-		return conversation.Input{CallbackData: update.CallbackQuery.Data}
-	}
-	return conversation.Input{Text: update.Message.Text}
-}
-
-func updateTelegramID(update *models.Update) string {
-	if update.Message != nil && update.Message.From != nil {
-		return fmt.Sprint(update.Message.From.ID)
-	}
-	if update.CallbackQuery != nil {
-		return fmt.Sprint(update.CallbackQuery.From.ID)
-	}
-	return ""
-}
-
-func updateChatID(update *models.Update) int64 {
-	if update.Message != nil {
-		return update.Message.Chat.ID
-	}
-	if update.CallbackQuery != nil && update.CallbackQuery.Message.Message != nil {
-		return update.CallbackQuery.Message.Message.Chat.ID
-	}
-	return 0
 }

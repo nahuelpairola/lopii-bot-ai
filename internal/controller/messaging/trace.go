@@ -5,18 +5,13 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/go-telegram/bot/models"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/trace"
 )
 
-// withTrace envuelve un entrypoint: genera trace_id, lo mete en ctx, mide
+// traced envuelve un entrypoint: genera trace_id, lo mete en ctx, mide
 // received→done y graba el spine. fn devuelve el userID resuelto (nil si no) y
 // el error top-level (para request_traces.error). Fire-and-forget en el grabado.
-func (c *controller) withTrace(ctx context.Context, update *models.Update, fn func(ctx context.Context) (*uint64, error)) {
-	c.traced(ctx, updateType(update), rawText(update), fn)
-}
-
-// traced es el cuerpo de withTrace sin el *models.Update.
 //
 // Existe porque hay una segunda entrada al sistema que NO es un update de
 // Telegram: el drenaje de pending_llm_jobs (job_drain.go), un ticker cuyo ctx
@@ -26,7 +21,7 @@ func (c *controller) withTrace(ctx context.Context, update *models.Update, fn fu
 // mirarlo, que es cuando algo salió mal.
 //
 // kind va a request_traces.update_type; raw es SOLO para el log de Debug (ver
-// rawText: el texto del usuario no puede llegar a un log de tercero).
+// rawOf: el texto del usuario no puede llegar a un log de tercero).
 func (c *controller) traced(ctx context.Context, kind, raw string, fn func(ctx context.Context) (*uint64, error)) {
 	traceID := trace.NewID()
 	ctx = trace.WithID(ctx, traceID)
@@ -54,28 +49,20 @@ func (c *controller) traced(ctx context.Context, kind, raw string, fn func(ctx c
 	}
 }
 
-// updateType clasifica el update para la columna update_type.
-func updateType(u *models.Update) string {
-	switch {
-	case u.CallbackQuery != nil:
+// kindOf y rawOf reemplazan a updateType y rawText: derivaban del
+// *models.Update y ahora derivan de Input, que es lo mismo sin el canal.
+// raw es SOLO para el log de Debug — el texto del usuario no puede llegar a
+// un log de tercero.
+func kindOf(in messenger.Incoming) string {
+	if in.Input.CallbackData != "" {
 		return "callback"
-	case u.Message != nil && len(u.Message.Text) > 0 && u.Message.Text[0] == '/':
-		return "command"
-	default:
-		return "text"
 	}
+	return "text"
 }
 
-// rawText pulls the user's message text for Debug-level logging only. Never
-// call this from an Info/Warn/Error site — raw text must not reach a
-// third-party log (see the spec's privacy invariant).
-func rawText(u *models.Update) string {
-	switch {
-	case u.CallbackQuery != nil:
-		return u.CallbackQuery.Data
-	case u.Message != nil:
-		return u.Message.Text
-	default:
-		return ""
+func rawOf(in messenger.Incoming) string {
+	if in.Input.CallbackData != "" {
+		return in.Input.CallbackData
 	}
+	return in.Input.Text
 }

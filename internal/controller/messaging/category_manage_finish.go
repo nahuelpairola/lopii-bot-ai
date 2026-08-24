@@ -3,9 +3,9 @@ package messaging
 import (
 	"context"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/settings"
 	"lopiibot.com/internal/subcategory"
 )
@@ -13,16 +13,16 @@ import (
 // Los finishes de CATEGORY_MANAGE viven en flow (category_finish.go). Estos
 // delegadores conservan los nombres de borde mientras los tests y
 // handleFlowFinished los usen.
-func (c *controller) finishCategoryManagePickFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishCategoryManagePickFlow(ctx, c, newEdgeChat(b, chatID), data)
+func (c *controller) finishCategoryManagePickFlow(ctx context.Context, chat messenger.Chat, data conversation.Data) {
+	flow.FinishCategoryManagePickFlow(ctx, c, chat, data)
 }
 
-func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishCategoryManageTargetFlow(ctx, c, newEdgeChat(b, chatID), data)
+func (c *controller) finishCategoryManageTargetFlow(ctx context.Context, chat messenger.Chat, data conversation.Data) {
+	flow.FinishCategoryManageTargetFlow(ctx, c, chat, data)
 }
 
-func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) error {
-	return flow.ProceedToCategoryTarget(ctx, c, newEdgeChat(b, chatID), data)
+func (c *controller) proceedToCategoryTarget(ctx context.Context, chat messenger.Chat, data conversation.Data) error {
+	return flow.ProceedToCategoryTarget(ctx, c, chat, data)
 }
 
 // suggestMergeTarget es el puente que flow alcanza via runner: la sugerencia de

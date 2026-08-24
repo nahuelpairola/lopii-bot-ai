@@ -11,7 +11,6 @@ import (
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/conversation"
-	"lopiibot.com/internal/messenger"
 )
 
 // buttonsPerRow caps how many inline-keyboard buttons Telegram renders
@@ -41,14 +40,6 @@ const htmlParseMode = models.ParseModeHTML
 type chat struct {
 	b      *bot.Bot
 	chatID int64
-}
-
-// ChatFrom construye un Chat a partir del par (bot, chatID) que todavía viaja
-// por el borde. Es un puente TEMPORAL para que las capas migren de a una sin
-// romper el build: cuando controller/messaging deje de tener ese par a mano,
-// esta función se borra.
-func ChatFrom(b *bot.Bot, chatID int64) messenger.Chat {
-	return chat{b: b, chatID: chatID}
 }
 
 func (c chat) Send(ctx context.Context, p conversation.Prompt) error {

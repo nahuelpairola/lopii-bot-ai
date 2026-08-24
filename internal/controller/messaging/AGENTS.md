@@ -27,16 +27,17 @@ cheapest possible reminder.
 
 ## One update per user at a time
 
-`handleConversationInput` takes `c.locks.lock(uid)` before anything else. Everything downstream is
-keyed by `user_id` and assumes one message in flight: the single `conversation_states` row, the
-`pending_actions` drain, and the "most recent pending" that closes an `intent_event`.
+`Handle` — the neutral entry point, `messenger.Handler` — takes `c.locks.lock(uid)` before anything
+else. Everything downstream is keyed by `user_id` and assumes one message in flight: the single
+`conversation_states` row, the `pending_actions` drain, and the "most recent pending" that closes an
+`intent_event`.
 
 `userLocks` is an in-memory mutex, so it holds for **one process only**. With a second instance the
 upgrade is `pg_advisory_xact_lock(user_id)`. Documented at the mutex itself.
 
 ## Two callbacks bypass the engine, deliberately
 
-In `handleConversationInput`, *before* `c.engine.Handle`:
+In `dispatch` (the body `Handle` runs under the per-user lock), *before* `c.engine.Handle`:
 
 1. `nudges.HandleCallback` — a tip's button tap.
 2. `flow.HandleNearDuplicateChoice` — the near-duplicate gate's tap.
@@ -51,10 +52,10 @@ open flow intact.
 text — it is what keeps "no, 600" from being processed before "gasté 500" when the user still has
 jobs waiting.
 
-It is called from **this webhook edge only, never from `handleFreeText`**: called from there, a
-drained replay would re-enqueue itself forever. `pendingjob`'s replay ctx flag is what tells a real
-webhook call from a replay, and the drain deliberately replays through the *real* handler rather
-than a copy, so the two paths cannot drift.
+It is called from `dispatch` only, never from `handleFreeText`: called from there, a drained replay
+would re-enqueue itself forever. `pendingjob`'s replay ctx flag is what tells a real webhook call
+from a replay, and the drain deliberately replays through the *real* handler rather than a copy, so
+the two paths cannot drift.
 
 ## There is no router
 
@@ -72,17 +73,19 @@ it. The wizards did not go away; the loop **parks** into one when it needs an an
 Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
 model) **before** editing. The anti-pattern list is in `docs/ARCHITECTURE.md`.
 
-In tests `b` is nil. `c.sendText`/`c.sendPrompt`/`c.startFlow` take a `messenger.Chat`, not
-`(b, chatID)` — pass `newEdgeChat(b, chatID)`, whose `Send`/`Typing` guard a nil `b` themselves. A
-direct `b.SendMessage` still panics on a nil `b`.
+In tests, `c.sendText`/`c.sendPrompt`/`c.startFlow`/`c.handleFreeText` and every `finish*` bridge
+take a `messenger.Chat` directly — pass `&messenger.FakeChat{}`, not a Telegram `(bot, chatID)`
+pair. `edgeChat` and `newEdgeChat`, the temporary wrapper that used to stand in for that pair, are
+gone as of Task 6: the webhook edge now arrives with `in.Chat` already resolved by the adapter
+(`internal/messenger/telegram`), so there is nothing left to wrap.
 
 Every bridge reachable from more than one entry point (the webhook edge AND `pendingjob`'s drain —
 `SendText`, `SendPrompt`, `StartFlow`, `HandleFreeText`, `FinishAnswerQuery`,
 `FinishManageSettings`) must go straight through `messenger.SendText`/`chat.Send`/`agent.StartLoop`
 on the `messenger.Chat` it receives — never unwrap it back to `(bot, chatID)` first. A chat that
-`chatResolver.ChatFor` resolves (the sweeper, the 429 drain) is never the `edgeChat` this package
-builds at the webhook edge, so any unwrap that only recognizes `edgeChat` fails silently for the
-drain — and "silently" here means a replayed message that needs to ask the user something (a
+`chatResolver.ChatFor` resolves (the sweeper, the 429 drain) is a different concrete type than one
+the webhook edge hands in, so any unwrap that only recognizes one concrete type fails silently for
+the other — and "silently" here means a replayed message that needs to ask the user something (a
 gap-fill, a QUERY reply, a settings wizard) gets dropped with no error and no message, which is
 exactly the "never silent" invariant `pendingjob/AGENTS.md` protects. This is why `asTelegramPair`
 and `pairOrLog` — the unwrap helpers that used to sit in `chat_bridge.go` — are gone: they were the

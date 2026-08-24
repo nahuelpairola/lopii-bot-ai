@@ -20,10 +20,10 @@ var _ pendingjob.Services = (*controller)(nil)
 // UsersFindByID is already implemented in nudges_services.go (shared bridge).
 
 // HandleFreeText no pasa por c.handleFreeText (free_text.go): ese helper
-// existe para el borde del webhook, que todavía arma el chat a mano con
-// (bot, chatID). Acá el chat ya viene resuelto — por chatResolver.ChatFor en
-// el drenaje, nunca un edgeChat — así que se llama a agent.StartLoop
-// directo, igual que hace handleFreeText por dentro.
+// existe para el borde del webhook, que llama con el chat que Handle recibió
+// en messenger.Incoming. Acá el chat viene de otro lado — chatResolver.ChatFor
+// en el drenaje — pero es el mismo messenger.Chat, así que se llama a
+// agent.StartLoop directo, igual que hace handleFreeText por dentro.
 func (c *controller) HandleFreeText(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
 	return agent.StartLoop(ctx, c, chat, userID, text)
 }
