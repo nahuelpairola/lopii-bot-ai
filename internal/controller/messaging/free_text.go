@@ -5,17 +5,18 @@ import (
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/agent"
+	"lopiibot.com/internal/messenger"
 )
 
-// sendText is a small helper that guards every b.SendMessage call with a
-// nil check — b is nil in unit tests that exercise these entry points
-// directly (see free_text_test.go), matching the same guard pattern
-// already used throughout movement_update_flow.go/movement_delete_flow.go.
-func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
-	if b == nil {
-		return
-	}
-	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text})
+// sendText manda texto plano por el chat ya resuelto — vía messenger.SendText,
+// no por un (bot, chatID) desenvuelto a mano. edgeChat.Send trae su propia
+// guarda de bot nil (los tests directos de handleFreeText pasan b=nil), y
+// cualquier otro messenger.Chat (FakeChat, uno resuelto por chatResolver) ya
+// sabe manejarse solo. Task 8 fix round 1: antes de esto pasaba por
+// pairOrLog, que sólo reconocía un edgeChat — un chat resuelto por el drenaje
+// de 429 lo hacía fallar en silencio.
+func (c *controller) sendText(ctx context.Context, chat messenger.Chat, text string) {
+	_ = messenger.SendText(ctx, chat, text)
 }
 
 // handleFreeText es EL punto de entrada de cualquier mensaje sin flow abierto.

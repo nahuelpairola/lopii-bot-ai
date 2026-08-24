@@ -2,7 +2,6 @@ package messaging
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
@@ -10,13 +9,22 @@ import (
 	"lopiibot.com/internal/messenger/telegram"
 )
 
-// edgeChat es un messenger.Chat que retiene el (bot, chatID) que lo armó.
-// PUENTE TEMPORAL de la Task 5: flow, agent y ahora pendingjob (Task 8) ya
-// sólo conocen messenger.Chat, pero este paquete todavía necesita el par
-// crudo — sendText y sendPrompt (free_text.go, controller.go) no migran
-// hasta la Task 6. Es el único lugar del árbol donde ese par se puede
-// recuperar de un messenger.Chat opaco, y se borra cuando la Task 6 mude
-// sendText/sendPrompt a messenger.Chat.
+// edgeChat es un messenger.Chat que retiene el (bot, chatID) que lo armó, y
+// sólo para eso: pisar el nil-bot guard de Send/Typing que este paquete
+// necesita en sus propios tests (ver abajo). PUENTE TEMPORAL de la Task 5:
+// el borde del webhook todavía arma el chat a mano en cada handler — eso
+// migra en la Task 6, que es cuando este tipo se borra.
+//
+// Task 8, fix round 1: hasta acá edgeChat también existía para que
+// asTelegramPair/pairOrLog pudieran desenvolver (bot, chatID) de vuelta, y
+// las bridges hacia agent/flow/pendingjob (SendPrompt, StartFlow,
+// FinishAnswerQuery, FinishManageSettings, SendText, HandleFreeText) pasaban
+// por ahí. Eso rompía en silencio cualquier chat NO armado con newEdgeChat —
+// exactamente lo que devuelve chatResolver.ChatFor (el sweeper, el drenaje
+// de 429) — porque el type assertion a edgeChat fallaba siempre para un
+// chat de otro tipo concreto. Las bridges ahora van directo por
+// messenger.SendText/chat.Send; asTelegramPair y pairOrLog quedaron sin
+// llamadores y se borraron.
 type edgeChat struct {
 	messenger.Chat
 	b      *bot.Bot
@@ -24,8 +32,7 @@ type edgeChat struct {
 }
 
 // newEdgeChat es lo que este paquete usa en vez de telegram.ChatFrom en todo
-// sitio que arranca una llamada a flow, agent o pendingjob: el resultado
-// tiene que poder volver a dar (bot, chatID) más adelante, vía pairOrLog.
+// sitio que arranca una llamada a flow, agent o pendingjob.
 func newEdgeChat(b *bot.Bot, chatID int64) edgeChat {
 	return edgeChat{Chat: telegram.ChatFrom(b, chatID), b: b, chatID: chatID}
 }
@@ -48,32 +55,4 @@ func (ec edgeChat) Typing(ctx context.Context) error {
 		return nil
 	}
 	return ec.Chat.Typing(ctx)
-}
-
-// asTelegramPair recupera el (bot, chatID) de un messenger.Chat armado acá. Si
-// el chat vino de otro lado (no debería, en este paquete) el segundo valor de
-// retorno es false y (nil, 0) no se puede usar.
-func asTelegramPair(chat messenger.Chat) (*bot.Bot, int64, bool) {
-	ec, ok := chat.(edgeChat)
-	if !ok {
-		return nil, 0, false
-	}
-	return ec.b, ec.chatID, true
-}
-
-// pairOrLog es lo que este paquete usa (en free_text.go, agent_services.go,
-// agent_delegates.go, controller.go) en vez de llamar a asTelegramPair a
-// mano: hoy el `false` nunca pasa —todo call site de este paquete arranca
-// con newEdgeChat— pero es un invariante que sostiene la convención, no el
-// compilador. Si algún día llega acá un messenger.Chat que no es un
-// edgeChat, silencio total sería peor que un log: cada
-// sendText/sendPrompt/startFlow de más abajo haría un no-op mudo con (nil, 0).
-// Muere junto con el resto de chat_bridge.go cuando la Task 6 mude
-// sendText/sendPrompt a messenger.Chat.
-func pairOrLog(ctx context.Context, chat messenger.Chat, method string) (*bot.Bot, int64, bool) {
-	b, chatID, ok := asTelegramPair(chat)
-	if !ok {
-		slog.ErrorContext(ctx, "chat_bridge: el messenger.Chat recibido no es un edgeChat, no se puede recuperar (bot, chatID)", "method", method)
-	}
-	return b, chatID, ok
 }

@@ -314,7 +314,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 			nudges.Maybe(ctx, c, newEdgeChat(b, chatID), u.ID)
 			return &uid, nil
 		}
-		c.sendPrompt(ctx, b, chatID, result.Prompt)
+		c.sendPrompt(ctx, newEdgeChat(b, chatID), result.Prompt)
 		return &uid, nil
 	})
 }
@@ -425,19 +425,16 @@ func chunkButtons(buttons []conversation.Button) [][]models.InlineKeyboardButton
 	return rows
 }
 
-// sendPrompt traduce un conversation.Prompt neutro al formato real de
-// Telegram (botones inline, en grilla de buttonsPerRow por fila).
-func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
-	if b == nil {
-		return
+// sendPrompt manda un conversation.Prompt (texto + botones) por el chat ya
+// resuelto. chunkButtons/rowWidth siguen definidos y probados
+// (controller_test.go) — el chat real (telegram.chat, vía Chat.Send) hace su
+// propia traducción a botones inline con la misma grilla, así que este
+// helper no la duplica más. Fix round 1 de la Task 8: antes desenvolvía
+// (bot, chatID) con pairOrLog, que sólo reconocía un edgeChat.
+func (c *controller) sendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
+	if err := chat.Send(ctx, prompt); err != nil {
+		slog.ErrorContext(ctx, "controller: send prompt failed", "err", err)
 	}
-	params := &bot.SendMessageParams{ChatID: chatID, Text: prompt.Text, ParseMode: models.ParseModeHTML}
-
-	if rows := chunkButtons(prompt.Buttons); len(rows) > 0 {
-		params.ReplyMarkup = &models.InlineKeyboardMarkup{InlineKeyboard: rows}
-	}
-
-	b.SendMessage(ctx, params)
 }
 
 // startFlow arranca un flow sembrado y manda su primer prompt. Absorbe el bloque
@@ -452,13 +449,13 @@ func (c *controller) sendPrompt(ctx context.Context, b *bot.Bot, chatID int64, p
 // Los call sites que fallan distinto (los que caen al wizard, los que no
 // devuelven error, los que no le avisan al usuario) NO usan este helper — meter
 // esas variantes acá pediría un callback por caso y sería más código, no menos.
-func (c *controller) startFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
+func (c *controller) startFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
 	prompt, err := c.engine.StartWithData(userID, flowName, seed)
 	if err != nil {
-		c.sendText(ctx, b, chatID, msgSomethingBroke)
+		c.sendText(ctx, chat, msgSomethingBroke)
 		return fmt.Errorf("%s: %w", errCtx, err)
 	}
-	c.sendPrompt(ctx, b, chatID, prompt)
+	c.sendPrompt(ctx, chat, prompt)
 	return nil
 }
 
@@ -484,11 +481,7 @@ func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text str
 }
 
 func (c *controller) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
-	b, chatID, ok := pairOrLog(ctx, chat, "StartFlow")
-	if !ok {
-		return fmt.Errorf("%s: chat sin (bot, chatID) recuperable", errCtx)
-	}
-	return c.startFlow(ctx, b, chatID, userID, flowName, seed, errCtx)
+	return c.startFlow(ctx, chat, userID, flowName, seed, errCtx)
 }
 
 func (c *controller) MarkTipSent(userID uint64, tip string) error {

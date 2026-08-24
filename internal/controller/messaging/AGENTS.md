@@ -72,7 +72,21 @@ it. The wizards did not go away; the loop **parks** into one when it needs an an
 Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
 model) **before** editing. The anti-pattern list is in `docs/ARCHITECTURE.md`.
 
-In tests `b` is nil. Use `c.sendText(...)`, which guards; a direct `b.SendMessage` panics.
+In tests `b` is nil. `c.sendText`/`c.sendPrompt`/`c.startFlow` take a `messenger.Chat`, not
+`(b, chatID)` — pass `newEdgeChat(b, chatID)`, whose `Send`/`Typing` guard a nil `b` themselves. A
+direct `b.SendMessage` still panics on a nil `b`.
+
+Every bridge reachable from more than one entry point (the webhook edge AND `pendingjob`'s drain —
+`SendText`, `SendPrompt`, `StartFlow`, `HandleFreeText`, `FinishAnswerQuery`,
+`FinishManageSettings`) must go straight through `messenger.SendText`/`chat.Send`/`agent.StartLoop`
+on the `messenger.Chat` it receives — never unwrap it back to `(bot, chatID)` first. A chat that
+`chatResolver.ChatFor` resolves (the sweeper, the 429 drain) is never the `edgeChat` this package
+builds at the webhook edge, so any unwrap that only recognizes `edgeChat` fails silently for the
+drain — and "silently" here means a replayed message that needs to ask the user something (a
+gap-fill, a QUERY reply, a settings wizard) gets dropped with no error and no message, which is
+exactly the "never silent" invariant `pendingjob/AGENTS.md` protects. This is why `asTelegramPair`
+and `pairOrLog` — the unwrap helpers that used to sit in `chat_bridge.go` — are gone: they were the
+bug, found in Task 8's first review round.
 
 ---
 

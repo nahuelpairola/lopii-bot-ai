@@ -20,6 +20,7 @@ import (
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
@@ -213,6 +214,171 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 	}
 	if movs[0].AccountID == nil || *movs[0].AccountID != bancoID {
 		t.Errorf("account_id = %v, want %d: un gasto sin cuenta no le baja el saldo a nadie", movs[0].AccountID, bancoID)
+	}
+}
+
+// El bug de la ronda 1 de review de la Task 8: SendPrompt/StartFlow/
+// FinishAnswerQuery/FinishManageSettings pasaban por pairOrLog, que sólo
+// reconocía un edgeChat — el tipo concreto que arma el borde del webhook con
+// newEdgeChat. Un chat resuelto por chatResolver.ChatFor (exactamente lo que
+// el drenaje usa) es OTRO tipo concreto, así que el type assertion fallaba
+// siempre, en silencio: replayJob devolvía nil (ni error ni 429), el job se
+// borraba, y el usuario no recibía nada — peor que antes del refactor, y en
+// contra del "nunca en silencio" de pendingjob/AGENTS.md.
+//
+// Este test reproduce exactamente ese camino: un replay cuyo turno NO puede
+// cerrar solo — necesita preguntarle algo al usuario — y afirma que la
+// pregunta LLEGÓ al chat. TestQueueDrain_ReplayInsertsTheMovement (arriba)
+// sólo cubre el camino feliz (CREATE que cierra sin preguntar nada) y por
+// construcción no podía haber atrapado este bug: nunca pasa por SendPrompt.
+//
+// El camino elegido es correct_movement con una corrección ambigua: dos
+// movimientos recientes sin relación textual con el mensaje, así que
+// resolveCandidates arma un picker (agent_executor.go:park, rama default) en
+// vez de resolver solo — eso es lo que fuerza el park CON Questions, que es
+// lo único que abre openAskUser en vez de resumeAgentAction (el otro sitio
+// afectado, StartFlow, ya lo cubre TestQueueDrain_ReplayInsertsTheMovement
+// indirectamente en el camino feliz).
+func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
+	conn := queueDrainConn(t)
+
+	accRepo := account.NewRepository(conn)
+	movRepo := movement.InitRepository(conn)
+	subRepo := subcategory.NewRepository(conn)
+	cache, err := subcategory.NewCache(subRepo)
+	if err != nil {
+		t.Fatalf("subcategory cache: %v", err)
+	}
+	jobsRepo := pendingjob.NewRepository(conn)
+	actionsRepo := pendingaction.NewRepository(conn)
+
+	uid, cleanup := queueDrainUser(t, conn)
+	t.Cleanup(cleanup)
+	// t.Cleanup es LIFO: registrado DESPUÉS de cleanup, así que corre ANTES —
+	// pending_actions tiene FK a users, y este escenario deja una fila viva a
+	// propósito (el picker sigue abierto, sin contestar).
+	t.Cleanup(func() {
+		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&pendingaction.PendingAction{})
+	})
+
+	banco := &account.Account{UserID: uid, Name: "Banco AskUserGap", Type: account.StandardType, Currency: currency.ARS, IsDefault: true}
+	if err := accRepo.Insert(banco); err != nil {
+		t.Fatalf("insert banco: %v", err)
+	}
+	bancoID := uint64(banco.ID)
+
+	saldoInicial, err := cache.FindByCategoryAndSubcategory(uid, "Sistema", "Saldo inicial")
+	if err != nil {
+		t.Fatalf("find Sistema|Saldo inicial: %v", err)
+	}
+	opening := movement.Movement{
+		UserID: uid, AccountID: &bancoID, SubcategoryID: uint64(saldoInicial.ID),
+		Date: time.Now(), Type: movement.Transfer, Amount: decimal.RequireFromString("10000"), Currency: currency.ARS,
+	}
+	if err := movRepo.InsertBatch([]movement.Movement{opening}); err != nil {
+		t.Fatalf("insert saldo de apertura: %v", err)
+	}
+
+	// Dos gastos recientes, sin relación textual con el mensaje de corrección
+	// de abajo — ninguno matchea, así que resolveCandidates cae en el
+	// fallback por recencia con AMBOS como candidatos, y park() abre el
+	// picker en vez de resolver uno solo.
+	comida, err := cache.FindByCategoryAndSubcategory(uid, "Alimentación", "Supermercado")
+	if err != nil {
+		t.Fatalf("find Alimentación|Supermercado: %v", err)
+	}
+	desc1, desc2 := "compra en el supermercado", "carga de nafta en la estación"
+	rows := []movement.Movement{
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: uint64(comida.ID), Date: time.Now(),
+			Type: movement.Expense, Amount: decimal.RequireFromString("-500"), Currency: currency.ARS, Description: &desc1},
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: uint64(comida.ID), Date: time.Now(),
+			Type: movement.Expense, Amount: decimal.RequireFromString("-300"), Currency: currency.ARS, Description: &desc2},
+	}
+	if err := movRepo.InsertBatch(rows); err != nil {
+		t.Fatalf("insert los dos gastos ambiguos: %v", err)
+	}
+	// resolveCandidates tiene un atajo (reference_resolution.go): si nada
+	// matchea textualmente pero el usuario "acaba de cargar algo"
+	// (CreatedAt dentro de flow.JustCreatedWindow, 10 min), devuelve UN solo
+	// candidato — el recién cargado — en vez de un picker. Envejecer los dos
+	// movimientos desactiva ese atajo a propósito, para forzar el picker que
+	// este test necesita.
+	old := time.Now().Add(-20 * time.Minute)
+	if err := conn.DB.Model(&movement.Movement{}).Where("id IN ?", []uint{rows[0].ID, rows[1].ID}).Update("created_at", old).Error; err != nil {
+		t.Fatalf("age the two movements: %v", err)
+	}
+
+	// ask_user tiene que estar registrado: es el flow que abre la pregunta del
+	// picker. movement_create no hace falta acá — este escenario no llega a
+	// record_movements.
+	engine := conversation.NewEngine(conversation.NewRepository(conn), FlowResumeLabel)
+	engine.Register(flow.NewAskUserFlow())
+
+	orch := &fakeFullOrchestrator{
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			args := `{"change":"corregir el monto","changes":[{"field":"amount","op":"set","value":"700"}]}`
+			return execute(orchestrator.ToolCorrectMovement, json.RawMessage(args))
+		},
+	}
+
+	chatHist := chathistory.InitRepository(conn, 24*time.Hour, 20)
+	c := &controller{
+		users: user.NewRepository(conn), accounts: accRepo, movements: movRepo,
+		subcategories: cache, engine: engine, orchestrator: orch, jobs: jobsRepo,
+		chatHistory: chatHist, actions: actionsRepo,
+	}
+
+	// El mensaje encolado no comparte ningún token con las dos descripciones
+	// de arriba — a propósito, para forzar el fallback por recencia.
+	payload, _ := json.Marshal(pendingjob.FreeTextPayload{Text: "che, corregime el monto a setecientos"})
+	job := &pendingjob.PendingJob{UserID: uid, Kind: pendingjob.KindFreeText, Payload: payload}
+	if err := jobsRepo.Insert(job); err != nil {
+		t.Fatalf("insert pending job: %v", err)
+	}
+
+	chat := &messenger.FakeChat{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: chat}, 50*time.Millisecond)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		n, err := jobsRepo.CountByUser(uid)
+		if err != nil {
+			t.Fatalf("count pending jobs: %v", err)
+		}
+		if n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("el job quedó pendiente después de 10s (count=%d): el drenaje no lo tomó", n)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !orch.runCalled {
+		t.Fatal("el replay no llegó al loop: se drenó el job sin ejecutar nada")
+	}
+
+	// LA aserción: el bug de la ronda 1 hacía que esto quedara vacío — el
+	// picker se armaba (parkAgentActions insertaba la pending_action) pero
+	// SendPrompt nunca llegaba a mandarlo, y el job se borraba igual.
+	if len(chat.Sent) == 0 {
+		t.Fatal("el usuario no recibió NADA: el gap-fill se perdió en silencio (el bug de la ronda 1)")
+	}
+	last := chat.Sent[len(chat.Sent)-1]
+	if len(last.Buttons) == 0 {
+		t.Fatalf("el último mensaje no trae el picker de candidatos: %+v", last)
+	}
+
+	// Y en la base: la acción quedó parkeada esperando la respuesta, no
+	// resuelta ni perdida.
+	pending, err := actionsRepo.NextForUser(uid)
+	if err != nil {
+		t.Fatalf("expected a pending action open, got err: %v", err)
+	}
+	if pending.Tool != orchestrator.ToolCorrectMovement {
+		t.Errorf("pending action tool = %q, want %q", pending.Tool, orchestrator.ToolCorrectMovement)
 	}
 }
 

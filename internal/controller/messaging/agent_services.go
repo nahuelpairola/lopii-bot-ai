@@ -3,7 +3,6 @@ package messaging
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"lopiibot.com/internal/chathistory"
@@ -104,11 +103,7 @@ func (c *controller) ResolveUpdate(ctx context.Context, text string, candidate o
 }
 
 func (c *controller) SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
-	b, chatID, ok := pairOrLog(ctx, chat, "SendPrompt")
-	if !ok {
-		return
-	}
-	c.sendPrompt(ctx, b, chatID, prompt)
+	c.sendPrompt(ctx, chat, prompt)
 }
 
 func (c *controller) EngineStartWithData(userID uint64, flowName string, seed conversation.Data) (conversation.Prompt, error) {
@@ -136,17 +131,9 @@ func (c *controller) EnqueueUpdatePickIfRateLimited(ctx context.Context, chat me
 }
 
 func (c *controller) FinishAnswerQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
-	b, chatID, ok := pairOrLog(ctx, chat, "FinishAnswerQuery")
-	if !ok {
-		return fmt.Errorf("finish answer query: chat sin (bot, chatID) recuperable")
-	}
-	return c.finishAnswerQuery(ctx, b, chatID, userID, text)
+	return c.finishAnswerQuery(ctx, chat, userID, text)
 }
 
 func (c *controller) FinishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error {
-	b, chatID, ok := pairOrLog(ctx, chat, "FinishManageSettings")
-	if !ok {
-		return fmt.Errorf("finish manage settings: chat sin (bot, chatID) recuperable")
-	}
-	return c.finishManageSettings(ctx, b, chatID, userID, text, area)
+	return c.finishManageSettings(ctx, chat, userID, text, area)
 }
