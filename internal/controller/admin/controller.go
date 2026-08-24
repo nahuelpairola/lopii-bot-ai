@@ -3,11 +3,10 @@ package admin
 import (
 	"context"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-telegram/bot"
 	messagingctrl "lopiibot.com/internal/controller/messaging"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/middleware"
 	"lopiibot.com/internal/user"
 )
@@ -22,16 +21,22 @@ type onboardingEngine interface {
 	Clear(userID uint64) error
 }
 
+// chatResolver alcanza a un usuario por ID, sin conocer el canal concreto —
+// misma interfaz local que notifier y pendingjob.
+type chatResolver interface {
+	ChatFor(userID uint64) (messenger.Chat, error)
+}
+
 type controller struct {
 	users     userReader
 	accounts  resetter
 	movements resetter
 	engine    onboardingEngine
-	bot       *bot.Bot
+	chats     chatResolver
 }
 
-func NewController(users userReader, accounts, movements resetter, engine onboardingEngine, b *bot.Bot) *controller {
-	return &controller{users: users, accounts: accounts, movements: movements, engine: engine, bot: b}
+func NewController(users userReader, accounts, movements resetter, engine onboardingEngine, chats chatResolver) *controller {
+	return &controller{users: users, accounts: accounts, movements: movements, engine: engine, chats: chats}
 }
 
 func (c *controller) RegisterRoutes(engine *gin.Engine) {
@@ -61,11 +66,9 @@ func (c *controller) Reset(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "could not clear flow state"})
 		return
 	}
-	if c.bot != nil {
-		if chatID, convErr := strconv.ParseInt(telegramID, 10, 64); convErr == nil {
-			c.bot.SendMessage(context.Background(), &bot.SendMessageParams{ChatID: chatID, Text: messagingctrl.MsgAccountReset})
-			c.bot.SendMessage(context.Background(), &bot.SendMessageParams{ChatID: chatID, Text: messagingctrl.MsgWelcome})
-		}
+	if chat, chatErr := c.chats.ChatFor(u.ID); chatErr == nil {
+		_ = messenger.SendText(context.Background(), chat, messagingctrl.MsgAccountReset)
+		_ = messenger.SendText(context.Background(), chat, messagingctrl.MsgWelcome)
 	}
 	ctx.JSON(http.StatusOK, gin.H{"status": "reset", "telegram_id": telegramID})
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/user"
 )
 
@@ -21,11 +22,18 @@ type fakeEngine struct{ cleared uint64 }
 
 func (f *fakeEngine) Clear(id uint64) error { f.cleared = id; return nil }
 
+// fakeChats es el chatResolver de los tests: siempre devuelve el mismo
+// *messenger.FakeChat, así los tests afirman sobre chat.Sent en vez de un
+// bot concreto de Telegram.
+type fakeChats struct{ chat *messenger.FakeChat }
+
+func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }
+
 func TestReset_SoftDeletesAndClearsFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	users := &fakeUsers{u: &user.User{ID: 42}}
 	accs, movs, eng := &fakeReset{}, &fakeReset{}, &fakeEngine{}
-	c := NewController(users, accs, movs, eng, nil) // nil bot: SendMessage guarded
+	c := NewController(users, accs, movs, eng, fakeChats{chat: &messenger.FakeChat{}})
 
 	r := gin.New()
 	c.RegisterRoutes(r)
