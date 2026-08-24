@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -49,14 +49,14 @@ type runner interface {
 	DisableReminder(userID uint64) error
 	SetWeeklySummary(userID uint64, enabled bool) error
 
-	// Outbound + métricas: lo que un finish de movimiento toca de Telegram y
+	// Outbound + métricas: lo que un finish de movimiento toca del canal y
 	// del borde (intent_events, nudges, borrado físico) y que flow no quiere
 	// conocer. SendText y StartFlow son los que vuelven a flow como salida.
 	ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint)
-	SendText(ctx context.Context, b *bot.Bot, chatID int64, text string)
-	StartFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error
+	SendText(ctx context.Context, chat messenger.Chat, text string)
+	StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error
 	MarkTipSent(userID uint64, tip string) error
 	SoftDeleteByIDs(ids []uint) error
-	StartAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error
+	StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error
 	SuggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory
 }

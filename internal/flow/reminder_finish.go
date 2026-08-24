@@ -4,44 +4,44 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/reminder"
 )
 
 // FinishReminderSetup applies the completed reminder_setup flow: disable, set
 // (preset or custom), or cancel — then sends a receipt. No confirm gate.
-func FinishReminderSetup(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishReminderSetup(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	userID := data.UserID()
 
 	if conversation.Flag(data, conversation.KeyCancelled) {
-		r.SendText(ctx, b, chatID, MsgReminderCancelled)
+		r.SendText(ctx, chat, MsgReminderCancelled)
 		return
 	}
 
 	switch conversation.StringOrEmpty(data[ReminderActionKey]) {
 	case ReminderActionOff:
 		if err := r.DisableReminder(userID); err != nil {
-			r.SendText(ctx, b, chatID, MsgCouldNotSave("tu recordatorio"))
+			r.SendText(ctx, chat, MsgCouldNotSave("tu recordatorio"))
 			return
 		}
-		r.SendText(ctx, b, chatID, MsgReminderDisabled)
+		r.SendText(ctx, chat, MsgReminderDisabled)
 		return
 
 	case ReminderActionOffAll:
 		if err := r.DisableReminder(userID); err != nil {
-			r.SendText(ctx, b, chatID, MsgCouldNotSave("tu recordatorio"))
+			r.SendText(ctx, chat, MsgCouldNotSave("tu recordatorio"))
 			return
 		}
 		if err := r.SetWeeklySummary(userID, false); err != nil {
-			r.SendText(ctx, b, chatID, MsgCouldNotSave("el resumen semanal"))
+			r.SendText(ctx, chat, MsgCouldNotSave("el resumen semanal"))
 			return
 		}
-		r.SendText(ctx, b, chatID, MsgReminderAllOff)
+		r.SendText(ctx, chat, MsgReminderAllOff)
 		return
 
 	case ReminderActionSoftExit:
-		r.SendText(ctx, b, chatID, MsgReminderHubExit)
+		r.SendText(ctx, chat, MsgReminderHubExit)
 		return
 
 	case ReminderActionWeeklyOnly:
@@ -54,20 +54,20 @@ func FinishReminderSetup(ctx context.Context, r runner, b *bot.Bot, chatID int64
 				Enabled:              false,
 				WeeklySummaryEnabled: true,
 			}); err != nil {
-				r.SendText(ctx, b, chatID, MsgCouldNotSave("el resumen semanal"))
+				r.SendText(ctx, chat, MsgCouldNotSave("el resumen semanal"))
 				return
 			}
-			r.SendText(ctx, b, chatID, MsgWeeklySummaryOn)
+			r.SendText(ctx, chat, MsgWeeklySummaryOn)
 			return
 		}
 		if err := r.SetWeeklySummary(userID, on); err != nil {
-			r.SendText(ctx, b, chatID, MsgCouldNotSave("el resumen semanal"))
+			r.SendText(ctx, chat, MsgCouldNotSave("el resumen semanal"))
 			return
 		}
 		if on {
-			r.SendText(ctx, b, chatID, MsgWeeklySummaryOn)
+			r.SendText(ctx, chat, MsgWeeklySummaryOn)
 		} else {
-			r.SendText(ctx, b, chatID, MsgWeeklySummaryOff)
+			r.SendText(ctx, chat, MsgWeeklySummaryOff)
 		}
 		return
 	}
@@ -79,7 +79,7 @@ func FinishReminderSetup(ctx context.Context, r runner, b *bot.Bot, chatID int64
 	if err != nil || err2 != nil {
 		startMin, endMin, err = ParseWindow(conversation.StringOrEmpty(data[ReminderCustomKey]))
 		if err != nil {
-			r.SendText(ctx, b, chatID, MsgSomethingBroke)
+			r.SendText(ctx, chat, MsgSomethingBroke)
 			return
 		}
 	}
@@ -91,8 +91,8 @@ func FinishReminderSetup(ctx context.Context, r runner, b *bot.Bot, chatID int64
 		Enabled:              true,
 		WeeklySummaryEnabled: conversation.Flag(data, conversation.KeyWeeklySummary),
 	}); err != nil {
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("tu recordatorio"))
+		r.SendText(ctx, chat, MsgCouldNotSave("tu recordatorio"))
 		return
 	}
-	r.SendText(ctx, b, chatID, MsgReminderSet(startMin, endMin))
+	r.SendText(ctx, chat, MsgReminderSet(startMin, endMin))
 }

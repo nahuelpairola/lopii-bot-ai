@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 )
 
@@ -77,7 +77,7 @@ func MaybeNearDuplicate(r runner, userID uint64, inserted []movement.Movement) [
 // HandleNearDuplicateChoice atiende el tap. Va ANTES del engine, como el de los
 // tips: un flow abierto no se puede comer este callback como si fuera una
 // opción suya. Devuelve true si el callback era nuestro.
-func HandleNearDuplicateChoice(ctx context.Context, r runner, b *bot.Bot, chatID int64, userID uint64, data string) bool {
+func HandleNearDuplicateChoice(ctx context.Context, r runner, chat messenger.Chat, userID uint64, data string) bool {
 	if !strings.HasPrefix(data, NearDupPrefix) {
 		return false
 	}
@@ -93,17 +93,17 @@ func HandleNearDuplicateChoice(ctx context.Context, r runner, b *bot.Bot, chatID
 	}
 
 	if action == NearDupSeparte {
-		r.SendText(ctx, b, chatID, MsgNearDupSeparate)
+		r.SendText(ctx, chat, MsgNearDupSeparate)
 		return true
 	}
 
 	if err := ApplyNearDuplicateChoice(r, userID, action, uint(insertedID), uint(priorID)); err != nil {
 		slog.ErrorContext(ctx, "near duplicate choice failed",
 			"user_id", userID, "action", action, "inserted", insertedID, "prior", priorID, "err", err)
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("el cambio"))
+		r.SendText(ctx, chat, MsgCouldNotSave("el cambio"))
 		return true
 	}
-	r.SendText(ctx, b, chatID, MsgNearDupMerged)
+	r.SendText(ctx, chat, MsgNearDupMerged)
 	return true
 }
 

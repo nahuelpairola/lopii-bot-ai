@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"strconv"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -18,9 +18,9 @@ import (
 // FinishAccountCreate is the Telegram-facing finish of the ACCOUNT_CREATE
 // confirm: cancel → cancel copy; duplicate name → friendly copy; success →
 // opening movement + success copy.
-func FinishAccountCreate(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishAccountCreate(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
-		r.SendText(ctx, b, chatID, MsgAccountCreateCancelled)
+		r.SendText(ctx, chat, MsgAccountCreateCancelled)
 		return
 	}
 
@@ -35,10 +35,10 @@ func FinishAccountCreate(ctx context.Context, r runner, b *bot.Bot, chatID int64
 	}
 	if err := r.InsertAccount(newAccount); err != nil {
 		if errors.Is(err, account.ErrAccountAlreadyExists) {
-			r.SendText(ctx, b, chatID, account.MsgAccountAlreadyExists(name, cur))
+			r.SendText(ctx, chat, account.MsgAccountAlreadyExists(name, cur))
 			return
 		}
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("tu cuenta"))
+		r.SendText(ctx, chat, MsgCouldNotSave("tu cuenta"))
 		return
 	}
 
@@ -48,11 +48,11 @@ func FinishAccountCreate(ctx context.Context, r runner, b *bot.Bot, chatID int64
 		// (ni en slog ni en request_traces) y la cuenta queda creada sin él.
 		slog.ErrorContext(ctx, "account opening movement failed",
 			"user_id", data.UserID(), "account_id", newAccount.ID, "err", err)
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("tu cuenta"))
+		r.SendText(ctx, chat, MsgCouldNotSave("tu cuenta"))
 		return
 	}
 
-	r.SendText(ctx, b, chatID, MsgAccountCreateSuccess(name, cur, balance))
+	r.SendText(ctx, chat, MsgAccountCreateSuccess(name, cur, balance))
 }
 
 // InsertAccountOpeningMovement inserts the opening transfer movement for
@@ -95,78 +95,78 @@ func InsertAccountOpeningMovement(r runner, acc *account.Account, balanceText st
 
 // FinishAccountManage applies the confirmed operation. Every branch
 // already passed its confirm gate inside the flow — this is pure execution.
-func FinishAccountManage(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishAccountManage(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeAccountManageCancelled)
-		r.SendText(ctx, b, chatID, MsgFlowCancelled)
+		r.SendText(ctx, chat, MsgFlowCancelled)
 		return
 	}
 
 	switch conversation.StringOrEmpty(data[conversation.KeyOperation]) {
 	case OpCreateNew:
 		r.ResolveMetric(ctx, data.UserID(), OutcomeAccountCreateRouted)
-		_ = r.StartAccountCreate(ctx, b, chatID, data.UserID(), conversation.StringOrEmpty(data[conversation.KeyMessage]))
+		_ = r.StartAccountCreate(ctx, chat, data.UserID(), conversation.StringOrEmpty(data[conversation.KeyMessage]))
 	case OpRename:
-		FinishAccountRename(ctx, r, b, chatID, data)
+		FinishAccountRename(ctx, r, chat, data)
 	case OpAdjust:
-		FinishAccountAdjust(ctx, r, b, chatID, data) // Task 7
+		FinishAccountAdjust(ctx, r, chat, data) // Task 7
 	case OpDefault:
-		FinishAccountDefault(ctx, r, b, chatID, data) // Task 8
+		FinishAccountDefault(ctx, r, chat, data) // Task 8
 	default:
-		r.SendText(ctx, b, chatID, MsgSomethingBroke)
+		r.SendText(ctx, chat, MsgSomethingBroke)
 	}
 }
 
-func FinishAccountRename(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishAccountRename(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	id, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeyAccountID]), 10, 64)
 	if err != nil {
-		r.SendText(ctx, b, chatID, MsgSomethingBroke)
+		r.SendText(ctx, chat, MsgSomethingBroke)
 		return
 	}
 	newName := conversation.StringOrEmpty(data[conversation.KeyNewName])
 	if err := r.RenameAccount(id, newName); err != nil {
 		if errors.Is(err, account.ErrAccountAlreadyExists) {
-			r.SendText(ctx, b, chatID, account.MsgAccountAlreadyExists(newName, conversation.StringOrEmpty(data[conversation.KeyAccountCurrency])))
+			r.SendText(ctx, chat, account.MsgAccountAlreadyExists(newName, conversation.StringOrEmpty(data[conversation.KeyAccountCurrency])))
 			return
 		}
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("el cambio"))
+		r.SendText(ctx, chat, MsgCouldNotSave("el cambio"))
 		return
 	}
 	r.ResolveMetric(ctx, data.UserID(), OutcomeAccountRenamed)
-	r.SendText(ctx, b, chatID, "Listo, ahora se llama "+newName+".")
+	r.SendText(ctx, chat, "Listo, ahora se llama "+newName+".")
 }
 
 // FinishAccountAdjust inserts THE adjustment movement: delta between the
 // declared new total and SUM(amount). The app owns the sign here exactly
 // like the guard does: income → +Abs, expense → -Abs. Never the LLM (the
 // LLM never even saw the number — it came from a validated TextStep).
-func FinishAccountAdjust(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishAccountAdjust(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	accountID, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeyAccountID]), 10, 64)
 	if err != nil {
-		r.SendText(ctx, b, chatID, MsgSomethingBroke)
+		r.SendText(ctx, chat, MsgSomethingBroke)
 		return
 	}
 	newTotal, err := movement.ParseARAmount(conversation.StringOrEmpty(data[conversation.KeyNewTotal]))
 	if err != nil {
-		r.SendText(ctx, b, chatID, MsgSomethingBroke)
+		r.SendText(ctx, chat, MsgSomethingBroke)
 		return
 	}
 	current, err := r.SumAmountForAccount(accountID)
 	if err != nil {
-		r.SendText(ctx, b, chatID, MsgCouldNotLoad)
+		r.SendText(ctx, chat, MsgCouldNotLoad)
 		return
 	}
 
 	delta := newTotal.Sub(current)
 	if delta.IsZero() {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeAccountAdjusted)
-		r.SendText(ctx, b, chatID, MsgAccountManageNoChange)
+		r.SendText(ctx, chat, MsgAccountManageNoChange)
 		return
 	}
 
 	sub, err := r.FindSubcategory(data.UserID(), subcategory.CategorySystem, "Ajuste de saldo")
 	if err != nil {
-		r.SendText(ctx, b, chatID, MsgCouldNotLoad)
+		r.SendText(ctx, chat, MsgCouldNotLoad)
 		return
 	}
 
@@ -178,7 +178,7 @@ func FinishAccountAdjust(ctx context.Context, r runner, b *bot.Bot, chatID int64
 	// la moneda de cada fila.
 	acc, err := r.GetAccount(accountID)
 	if err != nil {
-		r.SendText(ctx, b, chatID, MsgCouldNotLoad)
+		r.SendText(ctx, chat, MsgCouldNotLoad)
 		return
 	}
 
@@ -205,7 +205,7 @@ func FinishAccountAdjust(ctx context.Context, r runner, b *bot.Bot, chatID int64
 	if err != nil {
 		slog.ErrorContext(ctx, "balance adjustment rejected by guard",
 			"user_id", data.UserID(), "account_id", accountID, "reason", GuardReason(err))
-		r.SendText(ctx, b, chatID, CreateErrorCopy(err))
+		r.SendText(ctx, chat, CreateErrorCopy(err))
 		return
 	}
 
@@ -215,18 +215,18 @@ func FinishAccountAdjust(ctx context.Context, r runner, b *bot.Bot, chatID int64
 		// invisible en producción.
 		slog.ErrorContext(ctx, "balance adjustment insert failed",
 			"user_id", data.UserID(), "account_id", accountID, "err", err)
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("el ajuste"))
+		r.SendText(ctx, chat, MsgCouldNotSave("el ajuste"))
 		return
 	}
 	r.ResolveMetric(ctx, data.UserID(), OutcomeAccountAdjusted)
-	r.SendText(ctx, b, chatID, fmt.Sprintf("%s: %s %s.",
+	r.SendText(ctx, chat, fmt.Sprintf("%s: %s %s.",
 		conversation.StringOrEmpty(data[conversation.KeyAccountName]), newTotal.String(), conversation.StringOrEmpty(data[conversation.KeyAccountCurrency])))
 }
 
-func FinishAccountDefault(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishAccountDefault(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	accountID, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeyAccountID]), 10, 64)
 	if err != nil {
-		r.SendText(ctx, b, chatID, MsgSomethingBroke)
+		r.SendText(ctx, chat, MsgSomethingBroke)
 		return
 	}
 	cur := currency.Currency(conversation.StringOrEmpty(data[conversation.KeyAccountCurrency]))
@@ -236,15 +236,15 @@ func FinishAccountDefault(ctx context.Context, r runner, b *bot.Bot, chatID int6
 	prev, prevErr := r.FindDefaultAccountByCurrency(data.UserID(), cur)
 
 	if err := r.UnsetDefaultAccount(data.UserID(), cur); err != nil {
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("el cambio"))
+		r.SendText(ctx, chat, MsgCouldNotSave("el cambio"))
 		return
 	}
 	if err := r.SetDefaultAccount(accountID); err != nil {
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("el cambio"))
+		r.SendText(ctx, chat, MsgCouldNotSave("el cambio"))
 		return
 	}
 	r.ResolveMetric(ctx, data.UserID(), OutcomeAccountDefaultSet)
-	r.SendText(ctx, b, chatID, fmt.Sprintf("⭐ %s es tu cuenta en %s por defecto.", name, cur.String()))
+	r.SendText(ctx, chat, fmt.Sprintf("⭐ %s es tu cuenta en %s por defecto.", name, cur.String()))
 
 	// same-currency guaranteed: prev is the old default OF THIS currency
 	if prevErr != nil || prev == nil || uint64(prev.ID) == accountID {
@@ -265,24 +265,24 @@ func FinishAccountDefault(ctx context.Context, r runner, b *bot.Bot, chatID int6
 		conversation.KeyMoveToID:        strconv.FormatUint(accountID, 10),
 		conversation.KeyMoveToName:      name,
 	}
-	_ = r.StartFlow(ctx, b, chatID, data.UserID(), AccountMoveOfferFlowName, seed, "account_manage: start move-offer flow")
+	_ = r.StartFlow(ctx, chat, data.UserID(), AccountMoveOfferFlowName, seed, "account_manage: start move-offer flow")
 }
 
-func FinishAccountMoveOffer(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishAccountMoveOffer(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.StringOrEmpty(data[conversation.KeyMoveChoice]) != MoveChoiceMove {
-		r.SendText(ctx, b, chatID, "Listo, dejé todo como estaba.")
+		r.SendText(ctx, chat, "Listo, dejé todo como estaba.")
 		return
 	}
 	fromID, err1 := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeyMoveFromID]), 10, 64)
 	toID, err2 := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeyMoveToID]), 10, 64)
 	if err1 != nil || err2 != nil {
-		r.SendText(ctx, b, chatID, MsgSomethingBroke)
+		r.SendText(ctx, chat, MsgSomethingBroke)
 		return
 	}
 	if err := r.ReassignAccountMovements(fromID, toID); err != nil {
-		r.SendText(ctx, b, chatID, MsgCouldNotSave("el cambio"))
+		r.SendText(ctx, chat, MsgCouldNotSave("el cambio"))
 		return
 	}
-	r.SendText(ctx, b, chatID, fmt.Sprintf("Listo: los movimientos de %s ahora están en %s. %s quedó en 0.",
+	r.SendText(ctx, chat, fmt.Sprintf("Listo: los movimientos de %s ahora están en %s. %s quedó en 0.",
 		conversation.StringOrEmpty(data[conversation.KeyMoveFromName]), conversation.StringOrEmpty(data[conversation.KeyMoveToName]), conversation.StringOrEmpty(data[conversation.KeyMoveFromName])))
 }

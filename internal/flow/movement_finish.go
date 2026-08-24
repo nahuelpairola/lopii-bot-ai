@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"strconv"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 )
 
@@ -22,12 +22,10 @@ const NudgeCorrectTip = "correct_tip"
 // negative-confirm gate; guard rejection → reason log + failure metric + copy;
 // success → success metric (with movement ids) + receipt + first-account
 // default invite.
-func FinishMovementCreate(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishMovementCreate(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeCreateCancelled)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgCreateCancelled})
-		}
+		_ = messenger.SendText(ctx, chat, MsgCreateCancelled)
 		return
 	}
 
@@ -40,101 +38,85 @@ func FinishMovementCreate(ctx context.Context, r runner, b *bot.Bot, chatID int6
 		if errors.As(err, &short) {
 			gateSeed := conversation.CopyData(data)
 			gateSeed[conversation.KeyGatePrompt] = MsgInsufficientFunds(short.Shortfalls)
-			if serr := r.StartFlow(ctx, b, chatID, data.UserID(), MovementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow"); serr != nil {
+			if serr := r.StartFlow(ctx, chat, data.UserID(), MovementNegativeConfirmFlowName, gateSeed, "create: start negative-confirm flow"); serr != nil {
 				slog.ErrorContext(ctx, "negative-confirm flow failed to start", "user_id", data.UserID(), "error", serr)
 			}
 			return
 		}
 		slog.ErrorContext(ctx, "movement insert failed", "user_id", data.UserID(), "reason", GuardReason(err))
 		r.ResolveMetric(ctx, data.UserID(), FailureOutcomeFor(data))
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: CreateErrorCopy(err)})
-		}
+		_ = messenger.SendText(ctx, chat, CreateErrorCopy(err))
 		return
 	}
 	r.ResolveMetric(ctx, data.UserID(), WriteOutcomeFor(data), CollectMovementIDs(inserted)...)
-	if b != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgConfirmMovements(inserted)})
-		if name := conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]); name != "" {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgFirstAccountDefault(name, conversation.DecodeStringSlice(data, conversation.KeyFirstAccountCurrencies))})
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgInviteMoreAccounts})
-			// R1/R2 just fired — mark correct_tip sent (not delivered) so the
-			// post-message nudge hook doesn't stack a 3rd tip on this same turn.
-			_ = r.MarkTipSent(data.UserID(), NudgeCorrectTip)
-		}
+	_ = messenger.SendText(ctx, chat, MsgConfirmMovements(inserted))
+	if name := conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]); name != "" {
+		_ = messenger.SendText(ctx, chat, MsgFirstAccountDefault(name, conversation.DecodeStringSlice(data, conversation.KeyFirstAccountCurrencies)))
+		_ = messenger.SendText(ctx, chat, MsgInviteMoreAccounts)
+		// R1/R2 just fired — mark correct_tip sent (not delivered) so the
+		// post-message nudge hook doesn't stack a 3rd tip on this same turn.
+		_ = r.MarkTipSent(data.UserID(), NudgeCorrectTip)
 	}
 }
 
 // FinishMovementNegativeConfirm applies the user's choice on the
 // insufficient-funds gate.
-func FinishMovementNegativeConfirm(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishMovementNegativeConfirm(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	switch conversation.StringOrEmpty(data[gateChoiceKey]) {
 	case "register":
 		conversation.SetFlag(data, conversation.KeySkipBalanceCheck)
 		inserted, err := ResolveAndInsertMovements(r, data)
 		if err != nil {
-			r.SendText(ctx, b, chatID, CreateErrorCopy(err))
+			r.SendText(ctx, chat, CreateErrorCopy(err))
 			return
 		}
 		r.ResolveMetric(ctx, data.UserID(), WriteOutcomeFor(data), CollectMovementIDs(inserted)...)
-		r.SendText(ctx, b, chatID, MsgConfirmMovements(inserted))
+		r.SendText(ctx, chat, MsgConfirmMovements(inserted))
 	case "missing":
-		r.SendText(ctx, b, chatID, MsgLogMissingFirst)
+		r.SendText(ctx, chat, MsgLogMissingFirst)
 	default: // rewrite / anything else: drop it, the user re-sends
-		r.SendText(ctx, b, chatID, MsgNotUnderstood)
+		r.SendText(ctx, chat, MsgNotUnderstood)
 	}
 }
 
 // FinishMovementDelete applies (or discards) the delete depending on which
 // button the user pressed.
-func FinishMovementDelete(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishMovementDelete(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if !conversation.Flag(data, conversation.KeyConfirmed) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeDeleteCancelled)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgDeleteCancelled})
-		}
+		_ = messenger.SendText(ctx, chat, MsgDeleteCancelled)
 		return
 	}
 
 	idx, err := strconv.Atoi(conversation.StringOrEmpty(data[conversation.KeyResolvedIndex]))
 	candidates := DecodeCandidateGroups(data)
 	if err != nil || idx < 0 || idx >= len(candidates) {
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgSomethingBroke})
-		}
+		_ = messenger.SendText(ctx, chat, MsgSomethingBroke)
 		return
 	}
 
 	ids, err := ParseUintSlice(candidates[idx].OldIDs)
 	if err != nil {
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgSomethingBroke})
-		}
+		_ = messenger.SendText(ctx, chat, MsgSomethingBroke)
 		return
 	}
 
 	if err := r.SoftDeleteByIDs(ids); err != nil {
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgCouldNotDelete("tu movimiento")})
-		}
+		_ = messenger.SendText(ctx, chat, MsgCouldNotDelete("tu movimiento"))
 		return
 	}
 
 	r.ResolveMetric(ctx, data.UserID(), OutcomeDeleteConfirmed, ids...)
-	if b != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgDeleteApplied})
-	}
+	_ = messenger.SendText(ctx, chat, MsgDeleteApplied)
 }
 
 // FinishMovementUpdateConfirm applies (or discards) a confirmed UPDATE.
 // The confirm ChoiceStep always finishes with KeyConfirmed set to one of
 // "true"/"false" — never both, never neither.
-func FinishMovementUpdateConfirm(ctx context.Context, r runner, b *bot.Bot, chatID int64, data conversation.Data) {
+func FinishMovementUpdateConfirm(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if !conversation.Flag(data, conversation.KeyConfirmed) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeUpdateCancelled)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgUpdateCancelled})
-		}
+		_ = messenger.SendText(ctx, chat, MsgUpdateCancelled)
 		return
 	}
 
@@ -155,17 +137,15 @@ func FinishMovementUpdateConfirm(ctx context.Context, r runner, b *bot.Bot, chat
 			// está. Decirle que falló sería mentirle, y lo mandaría a reintentar.
 			if errors.Is(err, movement.ErrMovementNotFound) {
 				r.ResolveMetric(ctx, data.UserID(), OutcomeUpdateConfirmed, oldIDs...)
-				r.SendText(ctx, b, chatID, MsgUpdateDeleted)
+				r.SendText(ctx, chat, MsgUpdateDeleted)
 				return
 			}
 			r.ResolveMetric(ctx, data.UserID(), OutcomeWriteFailed)
-			r.SendText(ctx, b, chatID, MsgCouldNotSave("el cambio"))
+			r.SendText(ctx, chat, MsgCouldNotSave("el cambio"))
 			return
 		}
 		r.ResolveMetric(ctx, data.UserID(), OutcomeUpdateConfirmed, oldIDs...)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgUpdateDeleted})
-		}
+		_ = messenger.SendText(ctx, chat, MsgUpdateDeleted)
 		return
 	}
 
@@ -173,13 +153,9 @@ func FinishMovementUpdateConfirm(ctx context.Context, r runner, b *bot.Bot, chat
 	if err != nil {
 		slog.ErrorContext(ctx, "update insert failed", "user_id", data.UserID(), "err", err)
 		r.ResolveMetric(ctx, data.UserID(), OutcomeWriteFailed)
-		if b != nil {
-			b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: CreateErrorCopy(err)})
-		}
+		_ = messenger.SendText(ctx, chat, CreateErrorCopy(err))
 		return
 	}
 	r.ResolveMetric(ctx, data.UserID(), OutcomeUpdateConfirmed, CollectMovementIDs(inserted)...)
-	if b != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: MsgUpdateApplied})
-	}
+	_ = messenger.SendText(ctx, chat, MsgUpdateApplied)
 }
