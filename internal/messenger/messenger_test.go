@@ -41,3 +41,23 @@ func TestFakeChat_RecordsPromptsAndTyping(t *testing.T) {
 		t.Errorf("Typed = %d, want 1", f.Typed)
 	}
 }
+
+// FakeChat.Err simula una llamada que falló: ninguno de los dos métodos debe
+// dejar rastro cuando eso pasa. Send ya lo hacía; Typing sumaba a Typed antes
+// de devolver el error, así que un test que afirmara "no se mandó nada en el
+// error" pasaba mintiendo en la mitad callback-Typing.
+func TestFakeChat_ErrShortCircuitsBeforeRecording(t *testing.T) {
+	f := &FakeChat{Err: context.DeadlineExceeded}
+	if err := f.Send(context.Background(), conversation.Prompt{Text: "hola"}); err == nil {
+		t.Fatal("Send: quería el error simulado")
+	}
+	if len(f.Sent) != 0 {
+		t.Errorf("Sent = %+v, quería vacío tras error", f.Sent)
+	}
+	if err := f.Typing(context.Background()); err == nil {
+		t.Fatal("Typing: quería el error simulado")
+	}
+	if f.Typed != 0 {
+		t.Errorf("Typed = %d, quería 0 tras error", f.Typed)
+	}
+}
