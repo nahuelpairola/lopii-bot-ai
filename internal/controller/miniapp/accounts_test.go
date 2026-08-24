@@ -247,8 +247,13 @@ func TestTaxonomyNote(t *testing.T) {
 // hoja. Ancla en p=6m porque ese preset sale sólo de WithPreset: los links de
 // vuelta y los de las filas llevan el período actual. Desescapa el & primero,
 // que templ escapa dentro de los atributos.
+//
+// El "pt=6m" del medio no es decorativo: el drill viaja después de TODOS los
+// params del período (url.Values ordena las claves), así que si el link se
+// armara con un solo ámbito esta aserción no matchearía. La hoja es una vista
+// single-period, así que su chip escribe "p" y "pt" queda en su default.
 func leafKeepsDrill(body, drill string) bool {
-	return bodyContains(strings.ReplaceAll(body, "&amp;", "&"), "p=6m"+drill)
+	return bodyContains(strings.ReplaceAll(body, "&amp;", "&"), "p=6m&pt=6m"+drill)
 }
 
 func TestHandleAccountLeaf_PeriodChipsKeepTheAccount(t *testing.T) {

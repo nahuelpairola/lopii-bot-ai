@@ -117,7 +117,10 @@ func TestHandleOverview_FormatsMoneyAndShowsPeriod(t *testing.T) {
 	// El label se computa contra el mes corriente para que el test no
 	// caduque al cambiar de mes.
 	current := templates.CurrentMonth(nowInART())
-	want := templates.NewPeriod(templates.RouteOverview, templates.Preset6M, current, current, currency.ARS, templates.AllPresets).Label
+	want := templates.NewPeriod(templates.RouteOverview, templates.SinglePeriodScope,
+		map[string]string{templates.SinglePeriodScope.Param: templates.Preset6M,
+			templates.TrendScope.Param: templates.Preset6M},
+		current, current, currency.ARS).Label
 	if !bodyContains(body, want) {
 		t.Fatalf("el período %q debe estar escrito en pantalla", want)
 	}
