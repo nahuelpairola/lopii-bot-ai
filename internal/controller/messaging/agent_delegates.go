@@ -16,7 +16,7 @@ import (
 // loop unificado — que es justo el que está saturado. Meterla adentro movería
 // ~800 tokens de schemas de lectura al bucket equivocado.
 func (c *controller) finishAnswerQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	answered, qErr := c.handleQuery(ctx, b, chatID, userID, text)
+	answered, qErr := c.handleQuery(ctx, newEdgeChat(b, chatID), userID, text)
 	if answered {
 		c.resolveMetric(ctx, userID, outcomeQueryAnswered)
 		return nil
@@ -38,5 +38,5 @@ func (c *controller) finishAnswerQuery(ctx context.Context, b *bot.Bot, chatID i
 // finishManageSettings entrega al cluster de wizards de configuración. El
 // despacho por área vive en settings.Dispatch (internal/settings).
 func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text, area string) error {
-	return settings.Dispatch(ctx, settingsBridge{c}, b, chatID, userID, text, area)
+	return settings.Dispatch(ctx, c, newEdgeChat(b, chatID), userID, text, area)
 }

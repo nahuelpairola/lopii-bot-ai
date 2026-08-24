@@ -284,7 +284,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		// El tap del botón de un tip no pasa por el engine ni por el router.
 		// Va acá arriba para que un flow abierto no se coma el callback como si
 		// fuera una opción suya; la consulta es read-only y lo deja intacto.
-		if nudges.HandleCallback(ctx, nudgesBridge{c}, b, chatID, u.ID, input.CallbackData) {
+		if nudges.HandleCallback(ctx, c, newEdgeChat(b, chatID), u.ID, input.CallbackData) {
 			return &uid, nil
 		}
 		// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
@@ -304,14 +304,14 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 					return &uid, nil
 				}
 				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
-				nudges.Maybe(ctx, nudgesBridge{c}, b, chatID, u.ID)
+				nudges.Maybe(ctx, c, newEdgeChat(b, chatID), u.ID)
 				return &uid, err
 			}
 			return &uid, nil
 		}
 		if result.Finished {
 			c.handleFlowFinished(ctx, b, chatID, result)
-			nudges.Maybe(ctx, nudgesBridge{c}, b, chatID, u.ID)
+			nudges.Maybe(ctx, c, newEdgeChat(b, chatID), u.ID)
 			return &uid, nil
 		}
 		c.sendPrompt(ctx, b, chatID, result.Prompt)
@@ -522,11 +522,7 @@ func (c *controller) ReassignAccountMovements(fromID, toID uint64) error {
 }
 
 func (c *controller) StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
-	b, chatID, ok := pairOrLog(ctx, chat, "StartAccountCreate")
-	if !ok {
-		return fmt.Errorf("start account create: chat sin (bot, chatID) recuperable")
-	}
-	return settings.StartAccountCreate(ctx, settingsBridge{c}, b, chatID, userID, text)
+	return settings.StartAccountCreate(ctx, c, chat, userID, text)
 }
 
 func (c *controller) SubcategoryIconForCategory(userID uint64, category string) string {

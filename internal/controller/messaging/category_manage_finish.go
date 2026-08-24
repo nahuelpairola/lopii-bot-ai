@@ -28,5 +28,5 @@ func (c *controller) proceedToCategoryTarget(ctx context.Context, b *bot.Bot, ch
 // suggestMergeTarget es el puente que flow alcanza via runner: la sugerencia de
 // fusión toca el LLM y por eso vive en settings, que flow no importa.
 func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {
-	return settings.SuggestMergeTarget(ctx, settingsBridge{c}, userID, sourceID, data)
+	return settings.SuggestMergeTarget(ctx, c, userID, sourceID, data)
 }

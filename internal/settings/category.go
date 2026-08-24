@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"lopiibot.com/internal/conversation"
-	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 )
