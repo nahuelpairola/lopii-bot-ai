@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -66,7 +67,7 @@ func TestDrain_OpensExactlyOneAtATime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := drainNextAgentAction(context.Background(), svc, nil, 0, 1); err != nil {
+	if err := drainNextAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1); err != nil {
 		t.Fatal(err)
 	}
 	inProgress, err := svc.engine.InProgress(1)
@@ -98,7 +99,7 @@ func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := drainNextAgentAction(context.Background(), svc, nil, 0, 1); err != nil {
+	if err := drainNextAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -112,7 +113,7 @@ func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
 
 func TestDrain_NothingParkedIsANoOp(t *testing.T) {
 	svc := newDispatchServices(t, &fakeActionsRepo{})
-	if err := drainNextAgentAction(context.Background(), svc, nil, 0, 1); err != nil {
+	if err := drainNextAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1); err != nil {
 		t.Fatalf("sin nada parkeado el drenaje no puede fallar: %v", err)
 	}
 	if inProgress, _ := svc.engine.InProgress(1); inProgress {
@@ -160,7 +161,7 @@ func TestDiscard_NamesWhatWasDropped(t *testing.T) {
 	}
 	action := repo.rows[0]
 
-	if err := discardAgentAction(context.Background(), svc, nil, 0, 1, action); err != nil {
+	if err := discardAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1, action); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
@@ -181,7 +182,7 @@ func TestBudgetExhausted_DiscardsInsteadOfAskingAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := openAskUser(context.Background(), svc, nil, 0, 1, repo.rows[0], 0); err != nil {
+	if err := openAskUser(context.Background(), svc, &messenger.FakeChat{}, 1, repo.rows[0], 0); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
@@ -209,7 +210,7 @@ func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := resumeAgentAction(context.Background(), svc, nil, 0, 1, action); err != nil {
+	if err := resumeAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1, action); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
@@ -232,7 +233,7 @@ func TestResume_RefusesACandidateOutOfRange(t *testing.T) {
 	if err := repo.Insert(action); err != nil {
 		t.Fatal(err)
 	}
-	if err := resumeAgentAction(context.Background(), svc, nil, 0, 1, action); err == nil {
+	if err := resumeAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1, action); err == nil {
 		t.Fatal("un índice fuera de rango tiene que fallar, no elegir cualquiera")
 	}
 	if n, _ := repo.CountForUser(1); n != 1 {
@@ -296,7 +297,7 @@ func TestFinishAskUser_CancelResuelveLaMetrica(t *testing.T) {
 	}
 	conversation.SetFlag(data, conversation.KeyCancelled)
 
-	finishAskUserFlow(context.Background(), svc, nil, 0, data)
+	finishAskUserFlow(context.Background(), svc, &messenger.FakeChat{}, data)
 
 	if len(svc.metrics.resolved) != 1 || svc.metrics.resolved[0] != flow.OutcomeUpdateCancelled {
 		t.Fatalf("want %q, got %v", flow.OutcomeUpdateCancelled, svc.metrics.resolved)
@@ -337,7 +338,7 @@ func TestFinishAskUser_TextoLibreVuelveABuscar(t *testing.T) {
 		conversation.KeyAskBudget: "2",
 	}
 
-	finishAskUserFlow(context.Background(), svc, nil, 0, data)
+	finishAskUserFlow(context.Background(), svc, &messenger.FakeChat{}, data)
 
 	var payload agentPayload
 	if err := json.Unmarshal(repo.rows[0].Payload, &payload); err != nil {
@@ -384,7 +385,7 @@ func TestFinishAskUser_ReBusquedaSinMatchAvisaFallback(t *testing.T) {
 		conversation.KeyAskBudget: "2",
 	}
 
-	finishAskUserFlow(context.Background(), svc, nil, 0, data)
+	finishAskUserFlow(context.Background(), svc, &messenger.FakeChat{}, data)
 
 	var questions []pendingaction.OpenQuestion
 	if err := json.Unmarshal(repo.rows[0].Questions, &questions); err != nil {
@@ -426,7 +427,7 @@ func TestFinishAskUser_LaReBusquedaRespetaLaVentana(t *testing.T) {
 		conversation.KeyAskBudget: "2",
 	}
 
-	finishAskUserFlow(context.Background(), svc, nil, 0, data)
+	finishAskUserFlow(context.Background(), svc, &messenger.FakeChat{}, data)
 
 	if fake.recencyCalled {
 		t.Fatal("la re-búsqueda cayó en la ventana por created_at: perdió el localizador de fecha")

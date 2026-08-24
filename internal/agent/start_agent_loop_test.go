@@ -10,6 +10,7 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -55,7 +56,7 @@ func TestLoop_EmptyChangesAsksWhatToChange(t *testing.T) {
 	svc.actions = repo
 	svc.movements = movements
 
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "editá la panaderia"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "editá la panaderia"); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.rows) != 1 {
@@ -79,7 +80,7 @@ func TestLoop_AmbiguousCorrectionParksAndAsks(t *testing.T) {
 	svc.actions = repo
 	svc.movements = movements
 
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "la panaderia era 2000"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.rows) != 1 {
@@ -111,7 +112,7 @@ func TestLoop_SingleCandidateGoesStraightToTheGate(t *testing.T) {
 	svc.actions = repo
 	svc.movements = movements
 
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "la panaderia era 2000"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.rows) != 0 {
@@ -138,7 +139,7 @@ func TestLoop_OurCopyBeatsTheModelNarration(t *testing.T) {
 
 	// Sin bot no se puede leer lo enviado; lo que se verifica es que el executor
 	// deje la copia nuestra cargada y que el turno cierre limpio.
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "¿qué podés hacer?"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "¿qué podés hacer?"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -156,7 +157,7 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 		metrics: &fakeMetricRepo{},
 	}
 
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "corregí el asado"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "corregí el asado"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(orch.gotRunPrompt, "CUENTAS DEL USUARIO") {
@@ -250,7 +251,7 @@ func TestLoop_AlwaysResolvesTheMetric(t *testing.T) {
 			svc.orch = orch
 			svc.metrics = metrics
 
-			if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "algo"); err != nil {
+			if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "algo"); err != nil {
 				t.Fatal(err)
 			}
 			if len(metrics.resolved) != 1 || metrics.resolved[0] != tc.want {
@@ -274,7 +275,7 @@ func TestLoop_LeavesTheMetricPendingWhenSomethingIsOpen(t *testing.T) {
 	svc.metrics = metrics
 	svc.movements = movements
 
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "la panaderia estaba mal"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "la panaderia estaba mal"); err != nil {
 		t.Fatal(err)
 	}
 	if len(metrics.resolved) != 0 {
@@ -307,7 +308,7 @@ func TestLoop_InsertedResolvesCreateInserted(t *testing.T) {
 	svc.subcategories = subcategoriesForTest()
 	svc.movements = movementsWithBalance("100000")
 
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "gasté 5000 en el super"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
 		t.Fatal(err)
 	}
 	if len(metrics.resolved) != 1 || metrics.resolved[0] != flow.OutcomeCreateInserted {
@@ -340,7 +341,7 @@ func TestLoop_NoQueueAfterAWrite(t *testing.T) {
 	svc.subcategories = subcategoriesForTest()
 	svc.movements = movementsWithBalance("100000")
 
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "gasté 5000 en el super"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
 		t.Fatal(err)
 	}
 	if svc.enqueued != 0 {
@@ -361,7 +362,7 @@ func TestDrainAfterLoop_OpensTheQuestion(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := drainNextAgentAction(context.Background(), svc, nil, 0, 1); err != nil {
+	if err := drainNextAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1); err != nil {
 		t.Fatal(err)
 	}
 	if inProgress, _ := svc.engine.InProgress(1); !inProgress {
@@ -386,14 +387,14 @@ func TestLoop_ReplayDoesNotOpenANewIntentEvent(t *testing.T) {
 	svc.metrics = metrics
 
 	// Turno normal del webhook: abre el evento.
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "que podés hacer"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "que podés hacer"); err != nil {
 		t.Fatal(err)
 	}
 	afterWebhook := len(metrics.logged)
 
 	// El mismo mensaje, ahora drenado: no puede abrir otro.
 	svc.replaying = true
-	if err := startAgentLoop(context.Background(), svc, nil, 0, 1, "que podés hacer"); err != nil {
+	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "que podés hacer"); err != nil {
 		t.Fatal(err)
 	}
 	if len(metrics.logged) != afterWebhook {
