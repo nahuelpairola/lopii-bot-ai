@@ -13,12 +13,15 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.withTrace(ctx, update, func(ctx context.Context) (*uint64, error) {
+// HandleStart es el handler de /start CODE — un canje de invitación por
+// deep-link de Telegram, no un concepto neutro. Exportado porque la Task 9 lo
+// cuelga con Transport.RegisterCommand, fuera de este paquete.
+func (c *controller) HandleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
+	c.traced(ctx, "command", update.Message.Text, func(ctx context.Context) (*uint64, error) {
 		telegramID := fmt.Sprint(update.Message.From.ID)
 		code := extractStartCode(update.Message.Text)
 
-		if existing, err := c.users.FindByTelegramID(telegramID); err == nil {
+		if existing, err := c.users.FindByChannel(user.ChannelTelegram, telegramID); err == nil {
 			c.reply(ctx, b, update, msgAlreadyHasAccount)
 			uid := existing.ID
 			return &uid, nil
@@ -48,11 +51,10 @@ func (c *controller) handleStart(ctx context.Context, b *bot.Bot, update *models
 		}
 
 		newUser := &user.User{
-			TelegramID: telegramID,
-			Username:   update.Message.From.Username,
-			IsAdmin:    false,
+			Username: update.Message.From.Username,
+			IsAdmin:  false,
 		}
-		if err := c.users.Insert(newUser); err != nil {
+		if err := c.users.InsertWithChannel(newUser, user.ChannelTelegram, telegramID); err != nil {
 			c.reply(ctx, b, update, msgUserCreationError)
 			return nil, err
 		}
@@ -72,4 +74,14 @@ func extractStartCode(text string) string {
 		return ""
 	}
 	return parts[1]
+}
+
+// reply es Telegram-shaped a propósito: el onboarding sigue siendo un
+// deep-link de Telegram, no un concepto neutro (ver el comentario de
+// HandleStart). Su único llamador es HandleStart.
+func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
+	if b == nil {
+		return
+	}
+	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: update.Message.Chat.ID, Text: text})
 }

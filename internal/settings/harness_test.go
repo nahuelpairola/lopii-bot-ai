@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
@@ -144,13 +144,13 @@ func (s *testServices) ClassifyCategoryCreate(_ context.Context, text string, ta
 	return orchestrator.CategoryCreateResult{Match: s.match, Proposal: s.proposal}, nil
 }
 
-func (s *testServices) SendText(_ context.Context, _ *bot.Bot, _ int64, text string) {
+func (s *testServices) SendText(_ context.Context, _ messenger.Chat, text string) {
 	s.texts = append(s.texts, text)
 }
 
-func (s *testServices) SendPrompt(context.Context, *bot.Bot, int64, conversation.Prompt) {}
+func (s *testServices) SendPrompt(context.Context, messenger.Chat, conversation.Prompt) {}
 
-func (s *testServices) StartFlow(_ context.Context, _ *bot.Bot, _ int64, userID uint64, flowName string, seed conversation.Data, _ string) error {
+func (s *testServices) StartFlow(_ context.Context, _ messenger.Chat, userID uint64, flowName string, seed conversation.Data, _ string) error {
 	s.startedFlow = flowName
 	_, err := s.engine.StartWithData(userID, flowName, seed)
 	return err
@@ -164,6 +164,6 @@ func (s *testServices) ResolveMetric(_ context.Context, _ uint64, outcome string
 	s.resolved = append(s.resolved, outcome)
 }
 
-func (s *testServices) HandleGroqError(context.Context, *bot.Bot, int64, uint64, string, error) (bool, error) {
+func (s *testServices) HandleGroqError(context.Context, messenger.Chat, uint64, string, error) (bool, error) {
 	return s.groqHandled, nil
 }

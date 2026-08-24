@@ -11,6 +11,9 @@ import (
 // settingsServices implements settings.Services for *controller. El resto de los
 // métodos que la interfaz pide ya existen: los repos y el outbound los trae el
 // runner de flow (controller.go) y el loop del agente (agent_services.go).
+// *controller implementa la interfaz directamente desde la Task 7 — settings
+// ya sólo pide messenger.Chat, igual que SendText/SendPrompt/StartFlow/
+// HandleGroqError en controller.go — así que no hace falta un puente.
 var _ settings.Services = (*controller)(nil)
 
 func (c *controller) DistinctCategoriesForUser(userID uint64) ([]string, error) {

@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 
@@ -21,6 +20,7 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -157,14 +157,14 @@ func (f *fakeServices) ResolveUpdate(ctx context.Context, text string, candidate
 
 // --- agentServices: outbounds a Telegram y a los flows. ---
 
-func (f *fakeServices) SendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
+func (f *fakeServices) SendText(ctx context.Context, chat messenger.Chat, text string) {
 	f.sendTexts = append(f.sendTexts, text)
 }
 
-func (f *fakeServices) SendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
+func (f *fakeServices) SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
 }
 
-func (f *fakeServices) StartFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
+func (f *fakeServices) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
 	_, _ = f.engine.StartWithData(userID, flowName, seed)
 	return nil
 }
@@ -189,21 +189,21 @@ func (f *fakeServices) ResolveAndInsertMovements(data conversation.Data) ([]move
 
 // --- agentServices: el 429 y los loops vecinos. ---
 
-func (f *fakeServices) HandleGroqError(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, err error) (bool, error) {
+func (f *fakeServices) HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
 	f.handledGroq = true
 	f.enqueued++
 	return true, nil
 }
 
-func (f *fakeServices) EnqueueUpdatePickIfRateLimited(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
+func (f *fakeServices) EnqueueUpdatePickIfRateLimited(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
 	return false
 }
 
-func (f *fakeServices) FinishAnswerQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+func (f *fakeServices) FinishAnswerQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
 	return nil
 }
 
-func (f *fakeServices) FinishManageSettings(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text, area string) error {
+func (f *fakeServices) FinishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error {
 	return nil
 }
 
@@ -289,7 +289,7 @@ func (f *fakeServices) SetWeeklySummary(userID uint64, enabled bool) error {
 	return nil
 }
 func (f *fakeServices) MarkTipSent(userID uint64, tip string) error { return nil }
-func (f *fakeServices) StartAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
+func (f *fakeServices) StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
 	return nil
 }
 func (f *fakeServices) SuggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {

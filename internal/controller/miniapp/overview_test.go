@@ -45,8 +45,8 @@ func (stubAccounts) FindByUserID(userID uint64) ([]account.Account, error) { ret
 
 type stubUsers struct{}
 
-func (stubUsers) FindByTelegramID(telegramID string) (*user.User, error) {
-	return &user.User{ID: 1, TelegramID: telegramID}, nil
+func (stubUsers) FindByChannel(channel, channelUserID string) (*user.User, error) {
+	return &user.User{ID: 1}, nil
 }
 
 func TestHandleOverview_RendersOK(t *testing.T) {

@@ -15,13 +15,13 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/reminder"
@@ -41,7 +41,7 @@ type services interface {
 	QueryReminderByUser(userID uint64) (*reminder.Reminder, error)
 	QueryChatRecent(userID uint64) ([]chathistory.Turn, error)
 	QueryChatAppend(userID uint64, question, answer string) error
-	QuerySendText(ctx context.Context, b *bot.Bot, chatID int64, text string)
+	QuerySendText(ctx context.Context, chat messenger.Chat, text string)
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
@@ -153,7 +153,7 @@ type queryToolArgs struct {
 // y se ackea (handleGroqError); si esta función mandara msgQueryFailed por su cuenta,
 // el usuario leería "no pude responder" Y el ack de la cola por el mismo mensaje.
 // Solo el caller sabe distinguir un 429 encolado de un fracaso de verdad.
-func Run(ctx context.Context, svc services, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
+func Run(ctx context.Context, svc services, chat messenger.Chat, userID uint64, text string) (bool, error) {
 	prompt := SystemPrompt()
 
 	// El wrapper mira lo que DEVOLVIÓ el ejecutor, no lo que el modelo hizo con eso:
@@ -191,7 +191,7 @@ func Run(ctx context.Context, svc services, b *bot.Bot, chatID int64, userID uin
 	}
 	answer = reinstateAppVerdict(answer, appVerdict)
 	answer = appendConsultedRange(answer, rangeFrom, rangeTo)
-	svc.QuerySendText(ctx, b, chatID, answer)
+	svc.QuerySendText(ctx, chat, answer)
 	// Best-effort append: a failure here never fails the answer the user already got.
 	_ = svc.QueryChatAppend(userID, text, answer)
 	return true, nil

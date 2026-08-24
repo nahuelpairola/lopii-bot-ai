@@ -6,11 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/messages"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -20,16 +19,16 @@ import (
 // Desde la etapa 5 lo alcanza TODO: handleFreeText no hace otra cosa que llamar
 // acá. No hay router que filtre antes, así que este es el único lugar donde se
 // decide qué se hace con un mensaje, y lo decide el loop eligiendo herramienta.
-func startAgentLoop(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, text string) error {
+func startAgentLoop(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, text string) error {
 	// El loop tarda más que una sola llamada, y el silencio se lee como colgado.
-	sendTyping(ctx, b, chatID)
+	_ = chat.Typing(ctx)
 
 	// El toolbox y el prompt salen de la MISMA lista: el prompt no puede nombrar
 	// una tool que no se manda. Ver wiredAgentTools.
 	tools := wiredAgentTools()
 	prompt, taxonomy, err := buildAgentSystemPrompt(svc, userID, tools)
 	if err != nil {
-		svc.SendText(ctx, b, chatID, flow.MsgCouldNotLoad)
+		svc.SendText(ctx, chat, flow.MsgCouldNotLoad)
 		return err
 	}
 
@@ -70,47 +69,47 @@ func startAgentLoop(ctx context.Context, svc agentServices, b *bot.Bot, chatID i
 		// parcial y se corta ahí. Spec 8.2.
 		if executor.wrote {
 			resolveMetric(ctx, svc, userID, flow.OutcomeCreateInserted, collectMovementIDs(executor.inserted)...)
-			svc.SendText(ctx, b, chatID, messages.MsgPartialSuccessAfterWrite)
+			svc.SendText(ctx, chat, messages.MsgPartialSuccessAfterWrite)
 			slog.WarnContext(ctx, "agent loop failed after a write: not queued", "user_id", userID, "err", err)
 			return nil
 		}
 		// El 429 encola el mensaje para reintentarlo: ahí el intent_event tiene
 		// que seguir pendiente, porque la historia no terminó.
-		if handled, oerr := svc.HandleGroqError(ctx, b, chatID, userID, text, err); handled {
+		if handled, oerr := svc.HandleGroqError(ctx, chat, userID, text, err); handled {
 			return oerr
 		}
 		resolveMetric(ctx, svc, userID, outcomeLoopErrored)
 		slog.ErrorContext(ctx, "agent loop failed", "user_id", userID, "err", err)
-		svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
+		svc.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return fmt.Errorf("agent loop: %w", err)
 	}
 
 	// Las dos tools que delegan a otro subsistema. Van antes de la narración: la
 	// respuesta se la da el que atiende, no el loop.
 	if executor.answerQuery {
-		return svc.FinishAnswerQuery(ctx, b, chatID, userID, text)
+		return svc.FinishAnswerQuery(ctx, chat, userID, text)
 	}
 	if executor.settingsArea != "" {
-		return svc.FinishManageSettings(ctx, b, chatID, userID, text, executor.settingsArea)
+		return svc.FinishManageSettings(ctx, chat, userID, text, executor.settingsArea)
 	}
 
 	// La copia nuestra (ayuda, pedir reescritura) le gana a la narración del
 	// modelo: es texto tuneado y tiene que salir textual.
 	if executor.reply != "" {
 		if len(executor.replyButtons) > 0 {
-			svc.SendPrompt(ctx, b, chatID, conversation.Prompt{Text: executor.reply, Buttons: executor.replyButtons})
+			svc.SendPrompt(ctx, chat, conversation.Prompt{Text: executor.reply, Buttons: executor.replyButtons})
 		} else {
-			svc.SendText(ctx, b, chatID, executor.reply)
+			svc.SendText(ctx, chat, executor.reply)
 		}
 	} else if narration := strings.TrimSpace(answer); narration != "" {
-		svc.SendText(ctx, b, chatID, narration)
+		svc.SendText(ctx, chat, narration)
 	}
 
 	if len(executor.parked) > 0 {
 		if err := parkAgentActions(ctx, svc, userID, executor.parked); err != nil {
 			resolveMetric(ctx, svc, userID, outcomeParkFailed)
 			slog.ErrorContext(ctx, "park agent actions failed", "user_id", userID, "err", err)
-			svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
+			svc.SendText(ctx, chat, flow.MsgSomethingBroke)
 			return err
 		}
 	}
@@ -132,7 +131,7 @@ func startAgentLoop(ctx context.Context, svc agentServices, b *bot.Bot, chatID i
 
 	// Destapa la cola acá mismo: este mensaje no abrió ningún flujo, así que no
 	// va a haber un terminal que dispare el drenaje más tarde.
-	return drainNextAgentAction(ctx, svc, b, chatID, userID)
+	return drainNextAgentAction(ctx, svc, chat, userID)
 }
 
 // firstNonEmpty devuelve el primero que no esté vacío.
@@ -205,15 +204,4 @@ func buildAgentSystemPrompt(svc agentServices, userID uint64, tools []orchestrat
 	today := movement.TodayCivil()
 	return orchestrator.BuildAgentPrompt(movement.WeekdayEs(today)+" "+today.Format("2006-01-02"), accountOptions, taxonomy, "", tools,
 		BuildRecentEntities(svc, userID)), taxonomy, nil
-}
-
-// sendTyping avisa que el bot está pensando. Best-effort: que falle el aviso no
-// puede tumbar el pedido real.
-func sendTyping(ctx context.Context, b *bot.Bot, chatID int64) {
-	if b == nil {
-		return
-	}
-	if _, err := b.SendChatAction(ctx, &bot.SendChatActionParams{ChatID: chatID, Action: models.ChatActionTyping}); err != nil {
-		slog.DebugContext(ctx, "send chat action failed", "err", err)
-	}
 }

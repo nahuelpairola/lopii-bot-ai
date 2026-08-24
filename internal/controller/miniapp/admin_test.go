@@ -15,8 +15,8 @@ import (
 // devuelve uno común, que es justo el caso del 403.
 type stubAdminUsers struct{}
 
-func (stubAdminUsers) FindByTelegramID(telegramID string) (*user.User, error) {
-	return &user.User{ID: 1, TelegramID: telegramID, IsAdmin: true}, nil
+func (stubAdminUsers) FindByChannel(channel, channelUserID string) (*user.User, error) {
+	return &user.User{ID: 1, IsAdmin: true}, nil
 }
 
 type stubInvitations struct {

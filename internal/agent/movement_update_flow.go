@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/messages"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -165,13 +165,13 @@ func amountOnlyCorrection(before []movement.MovementRow, ask ChangeAsk) ([]orche
 // ask lleva en qué punto está la pregunta de "qué cambiar": si nunca se
 // preguntó, si el usuario tocó un botón (nombró el campo, falta el valor) o si
 // ya intentó decir el valor. Sólo el drenaje la manda con algo adentro.
-func proceedToUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask ChangeAsk) error {
+func proceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask ChangeAsk) error {
 	// Si lo único que se sumó al pedido fue el NOMBRE del campo ("La
 	// categoría"), no hay ningún valor que resolver todavía. Preguntarlo antes
 	// de llamar al modelo ahorra la llamada entera — ~1.100 tokens que iban a
 	// volver sin cambiar nada.
 	if ask.pickedField && !ask.gaveValue {
-		return parkChangeQuestion(ctx, svc, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
+		return parkChangeQuestion(ctx, svc, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
 	// Atajo del monto. La pregunta fue "¿Cuánto era?" y contestó un número: no
@@ -182,7 +182,7 @@ func proceedToUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bot, 
 	// El gate de confirmación NO se saltea: sigue pasando por
 	// seedAndStartUpdateConfirm, así que el usuario ve el antes/después igual.
 	if after, ok := amountOnlyCorrection(beforeRows, ask); ok {
-		return seedAndStartUpdateConfirm(ctx, svc, b, chatID, userID, message, oldIDs, beforeRows,
+		return seedAndStartUpdateConfirm(ctx, svc, chat, userID, message, oldIDs, beforeRows,
 			orchestrator.UpdateResult{Resolved: true, Movements: after})
 	}
 
@@ -223,7 +223,7 @@ func proceedToUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bot, 
 			// Ya nos dijo el valor por texto y seguimos sin entender: cortar es
 			// más honesto que volver a preguntar lo mismo.
 			resolveMetric(ctx, svc, userID, outcomeLoopDidNothing)
-			svc.SendText(ctx, b, chatID, messages.MsgStillCannotCorrect)
+			svc.SendText(ctx, chat, messages.MsgStillCannotCorrect)
 			return nil
 		}
 		// El candidato ya está resuelto acá: lo que falló es entender el CAMBIO.
@@ -231,10 +231,10 @@ func proceedToUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bot, 
 		// nuevo"— y el usuario que había nombrado bien el movimiento se quedaba
 		// sin nada. Ahora se le pregunta, que es la máquina de preguntas que la
 		// etapa 2 ya construyó.
-		return parkChangeQuestion(ctx, svc, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
+		return parkChangeQuestion(ctx, svc, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
-	return seedAndStartUpdateConfirm(ctx, svc, b, chatID, userID, message, oldIDs, beforeRows, result)
+	return seedAndStartUpdateConfirm(ctx, svc, chat, userID, message, oldIDs, beforeRows, result)
 }
 
 // correctionIsNoOp dice si la corrección "resuelta" deja el movimiento igual
@@ -294,12 +294,12 @@ func sameAmount(before, after string) bool {
 // El candidato no se vuelve a buscar: encontrarlo fue la mitad cara, y volver a
 // resolverlo con el texto nuevo ("2000") lo perdería — ese texto no nombra
 // ningún movimiento.
-func parkChangeQuestion(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, change, transactionID string, oldIDs []string, rows []movement.MovementRow, ask ChangeAsk) error {
+func parkChangeQuestion(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, change, transactionID string, oldIDs []string, rows []movement.MovementRow, ask ChangeAsk) error {
 	if !svc.ActionsEnabled() {
 		// Sin cola no hay a dónde parkear: el camino viejo sigue siendo mejor
 		// que quedarse mudo.
 		resolveMetric(ctx, svc, userID, outcomeParkFailed)
-		svc.SendText(ctx, b, chatID, flow.MsgSomethingBroke)
+		svc.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return nil
 	}
 	payload, err := json.Marshal(agentPayload{
@@ -334,7 +334,7 @@ func parkChangeQuestion(ctx context.Context, svc agentServices, b *bot.Bot, chat
 	if err := svc.ActionsInsert(row); err != nil {
 		return fmt.Errorf("park change question: %w", err)
 	}
-	return drainNextAgentAction(ctx, svc, b, chatID, userID)
+	return drainNextAgentAction(ctx, svc, chat, userID)
 }
 
 // seedAndStartUpdateConfirm builds the confirm flow's seed from an
@@ -363,7 +363,7 @@ func userTaxonomy(svc agentServices, userID uint64) []orchestrator.TaxonomyEntry
 // paso algo que nadie le pidió — que es literalmente lo que pasó con "el café
 // estaba mal" (traza 317df846). El gate de confirmación NO se saltea: el usuario
 // ve el antes/después igual.
-func applyStructuredCorrection(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, payload agentPayload, groups []flow.CandidateGroup) error {
+func applyStructuredCorrection(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, payload agentPayload, groups []flow.CandidateGroup) error {
 	before := make([][]movement.MovementRow, 0, len(groups))
 	var oldIDs []string
 	for _, g := range groups {
@@ -393,18 +393,18 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, b *bot.Bo
 		// acepta, un valor ilegible), no cosas que el usuario pueda arreglar
 		// sabiendo cuál fue.
 		if errors.Is(err, errRefundThatGrows) {
-			svc.SendText(ctx, b, chatID, messages.MsgRefundWouldGrow)
+			svc.SendText(ctx, chat, messages.MsgRefundWouldGrow)
 			return nil
 		}
 		if errors.Is(err, errRefundExceedsAmount) {
-			svc.SendText(ctx, b, chatID, messages.MsgRefundExceeds)
+			svc.SendText(ctx, chat, messages.MsgRefundExceeds)
 			return nil
 		}
 		if errors.Is(err, errAmbiguousSetAll) {
-			svc.SendText(ctx, b, chatID, messages.MsgAmbiguousSetAll)
+			svc.SendText(ctx, chat, messages.MsgAmbiguousSetAll)
 			return nil
 		}
-		svc.SendText(ctx, b, chatID, messages.MsgStillCannotCorrect)
+		svc.SendText(ctx, chat, messages.MsgStillCannotCorrect)
 		return nil
 	}
 
@@ -451,11 +451,11 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, b *bot.Bo
 	// que el movimiento YA tenía reemplazó la fila igual.
 	if correctionIsNoOp(beforeRows, drafts) {
 		resolveMetric(ctx, svc, userID, outcomeNothingToChange)
-		svc.SendText(ctx, b, chatID, messages.MsgCorrectionChangesNothing)
+		svc.SendText(ctx, chat, messages.MsgCorrectionChangesNothing)
 		return nil
 	}
 
-	return seedAndStartUpdateConfirm(ctx, svc, b, chatID, userID, payload.Change, oldIDs, beforeRows,
+	return seedAndStartUpdateConfirm(ctx, svc, chat, userID, payload.Change, oldIDs, beforeRows,
 		orchestrator.UpdateResult{Resolved: true, Movements: drafts})
 }
 
@@ -502,7 +502,7 @@ func accountNamedIn(svc agentServices, userID uint64, message string) string {
 	return ""
 }
 
-func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, userMessage string, oldIDs []string, beforeRows []movement.MovementRow, result orchestrator.UpdateResult) error {
+func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, userMessage string, oldIDs []string, beforeRows []movement.MovementRow, result orchestrator.UpdateResult) error {
 	accs, _ := svc.FindUserAccounts(userID)
 	nameByID := make(map[string]string, len(accs))
 	for _, a := range accs {
@@ -563,7 +563,7 @@ func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bo
 	if err != nil {
 		return err
 	}
-	svc.SendPrompt(ctx, b, chatID, prompt)
+	svc.SendPrompt(ctx, chat, prompt)
 	return nil
 }
 
@@ -571,26 +571,26 @@ func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bo
 // candidate from an ambiguous list — it resolves the index back to the
 // full candidate (both were seeded together) and hands off to
 // proceedToUpdateConfirm.
-func finishMovementUpdatePickFlow(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, data conversation.Data) {
+func finishMovementUpdatePickFlow(ctx context.Context, svc agentServices, chat messenger.Chat, data conversation.Data) {
 	idx, err := strconv.Atoi(conversation.StringOrEmpty(data["chosen_index"]))
 	if err != nil {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: flow.MsgSomethingBroke})
+		_ = messenger.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return
 	}
 
 	candidates := flow.DecodeCandidateGroups(data)
 	if idx < 0 || idx >= len(candidates) {
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: flow.MsgSomethingBroke})
+		_ = messenger.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return
 	}
 	chosen := candidates[idx]
 
 	message := conversation.StringOrEmpty(data["message"])
-	if err := proceedToUpdateConfirm(ctx, svc, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, ChangeAsk{}); err != nil {
-		if svc.EnqueueUpdatePickIfRateLimited(ctx, b, chatID, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
+	if err := proceedToUpdateConfirm(ctx, svc, chat, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, ChangeAsk{}); err != nil {
+		if svc.EnqueueUpdatePickIfRateLimited(ctx, chat, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
 			return
 		}
-		b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: flow.MsgSomethingBroke})
+		_ = messenger.SendText(ctx, chat, flow.MsgSomethingBroke)
 	}
 }
 

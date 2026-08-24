@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot/models"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/user"
@@ -36,18 +36,22 @@ func (f *fakeMovements) FindRecentlyCreatedForUser(userID uint64, _ time.Time, l
 type fakeUsers struct{}
 
 func (fakeUsers) FindByID(id uint64) (*user.User, error) {
-	return &user.User{ID: id, TelegramID: "1000"}, nil
+	return &user.User{ID: id}, nil
 }
 
-func newSweeper(r *fakeReminders, m *fakeMovements, sent *[]int64) *Sweeper {
+// fakeChats es el chatResolver de los tests: siempre devuelve el mismo
+// *messenger.FakeChat, así los tests afirman sobre chat.Sent en vez de
+// interceptar el (chatID, texto) que viajaba por el viejo `send`.
+type fakeChats struct{ chat *messenger.FakeChat }
+
+func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }
+
+func newSweeper(r *fakeReminders, m *fakeMovements, chat *messenger.FakeChat) *Sweeper {
 	return &Sweeper{
 		reminders: r,
 		movements: m,
 		users:     fakeUsers{},
-		send: func(_ context.Context, chatID int64, _ string, _ *models.InlineKeyboardMarkup) error {
-			*sent = append(*sent, chatID)
-			return nil
-		},
+		chats:     fakeChats{chat: chat},
 	}
 }
 
@@ -56,12 +60,15 @@ func at(h, m int) time.Time { return time.Date(2026, 7, 9, h, m, 0, 0, time.UTC)
 func TestSweep_FiresPastMidpointWhenNoActivity(t *testing.T) {
 	r := &fakeReminders{due: []reminder.Reminder{{UserID: 1, WindowStartMin: 1200, WindowEndMin: 1260}}} // 20:00-21:00, midpoint 20:30
 	m := &fakeMovements{byUser: map[uint64]int{}}
-	var sent []int64
-	s := newSweeper(r, m, &sent)
+	chat := &messenger.FakeChat{}
+	s := newSweeper(r, m, chat)
 
 	s.sweepReminders(context.Background(), at(20, 30)) // exactly midpoint
-	if len(sent) != 1 || sent[0] != 1000 {
-		t.Fatalf("expected one send to chat 1000, got %v", sent)
+	if len(chat.Sent) != 1 {
+		t.Fatalf("expected one send, got %v", chat.Sent)
+	}
+	if chat.LastText() == "" {
+		t.Error("expected a non-empty reminder text")
 	}
 	if _, ok := r.remindedT[1]; !ok {
 		t.Error("expected SetLastRemindedOn to be called")
@@ -71,22 +78,22 @@ func TestSweep_FiresPastMidpointWhenNoActivity(t *testing.T) {
 func TestSweep_SkipsBeforeMidpoint(t *testing.T) {
 	r := &fakeReminders{due: []reminder.Reminder{{UserID: 1, WindowStartMin: 1200, WindowEndMin: 1260}}}
 	m := &fakeMovements{byUser: map[uint64]int{}}
-	var sent []int64
-	s := newSweeper(r, m, &sent)
+	chat := &messenger.FakeChat{}
+	s := newSweeper(r, m, chat)
 	s.sweepReminders(context.Background(), at(20, 15)) // before 20:30
-	if len(sent) != 0 {
-		t.Fatalf("expected no send before midpoint, got %v", sent)
+	if len(chat.Sent) != 0 {
+		t.Fatalf("expected no send before midpoint, got %v", chat.Sent)
 	}
 }
 
 func TestSweep_SkipsWhenLoggedToday(t *testing.T) {
 	r := &fakeReminders{due: []reminder.Reminder{{UserID: 1, WindowStartMin: 1200, WindowEndMin: 1260}}}
 	m := &fakeMovements{byUser: map[uint64]int{1: 3}} // logged 3 today
-	var sent []int64
-	s := newSweeper(r, m, &sent)
+	chat := &messenger.FakeChat{}
+	s := newSweeper(r, m, chat)
 	s.sweepReminders(context.Background(), at(20, 45))
-	if len(sent) != 0 {
-		t.Fatalf("expected no send when already logged today, got %v", sent)
+	if len(chat.Sent) != 0 {
+		t.Fatalf("expected no send when already logged today, got %v", chat.Sent)
 	}
 }
 

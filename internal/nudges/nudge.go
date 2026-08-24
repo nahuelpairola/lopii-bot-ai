@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -265,9 +265,9 @@ func hasMultipleAccountsNoTransfer(s Services, userID uint64) bool {
 // Si Groq está caído el tap se pierde con msgQueryFailed, y está bien: el
 // botón sigue tocable en el historial, así que el reintento es tocarlo de
 // nuevo. Encolarlo sería contestar veinte minutos tarde algo que ya no importa.
-func HandleCallback(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uint64, data string) bool {
+func HandleCallback(ctx context.Context, s Services, chat messenger.Chat, userID uint64, data string) bool {
 	if data == nudgeMenuData {
-		sendQuestionMenu(ctx, s, b, chatID, userID)
+		sendQuestionMenu(ctx, s, chat, userID)
 		return true
 	}
 	if !strings.HasPrefix(data, nudgeQueryPrefix) {
@@ -287,11 +287,11 @@ func HandleCallback(ctx context.Context, s Services, b *bot.Bot, chatID int64, u
 	// La copy de fracaso la manda el caller (ver handleQuery): acá se manda siempre,
 	// incluso con un 429, que es justo lo que dice el comentario de arriba — el tap
 	// no se encola porque el botón sigue tocable en el historial.
-	if answered, err := s.HandleQuery(ctx, b, chatID, userID, question); !answered {
+	if answered, err := s.HandleQuery(ctx, chat, userID, question); !answered {
 		if err != nil {
 			slog.ErrorContext(ctx, "nudge query failed", "key", key, "err", err)
 		}
-		s.SendText(ctx, b, chatID, msgQueryFailed)
+		s.SendText(ctx, chat, msgQueryFailed)
 	}
 	return true
 }
@@ -299,8 +299,8 @@ func HandleCallback(ctx context.Context, s Services, b *bot.Bot, chatID int64, u
 // Maybe dispara como mucho un nudge tras procesar un mensaje. Guard:
 // nunca con un flow en curso; cooldown por tipo de tip; once-ever por
 // (user, nudge). Best-effort: cualquier error se loguea y se sigue.
-func Maybe(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uint64) {
-	if !s.NudgesAvailable() || b == nil {
+func Maybe(ctx context.Context, s Services, chat messenger.Chat, userID uint64) {
+	if !s.NudgesAvailable() {
 		return
 	}
 	if inProgress, err := s.EngineInProgress(userID); err != nil || inProgress {
@@ -348,17 +348,17 @@ func Maybe(ctx context.Context, s Services, b *bot.Bot, chatID int64, userID uin
 		}
 		switch {
 		case n.recurring:
-			s.SendPrompt(ctx, b, chatID, conversation.Prompt{
+			s.SendPrompt(ctx, chat, conversation.Prompt{
 				Text:    n.text,
 				Buttons: []conversation.Button{{Label: msgMenuButton, Data: nudgeMenuData}},
 			})
 		case n.question != "":
-			s.SendPrompt(ctx, b, chatID, conversation.Prompt{
+			s.SendPrompt(ctx, chat, conversation.Prompt{
 				Text:    n.text,
 				Buttons: []conversation.Button{{Label: n.question, Data: nudgeQueryPrefix + n.key}},
 			})
 		default:
-			s.SendText(ctx, b, chatID, n.text)
+			s.SendText(ctx, chat, n.text)
 		}
 		return
 	}

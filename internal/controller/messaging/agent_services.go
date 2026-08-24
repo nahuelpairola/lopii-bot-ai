@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -102,8 +102,8 @@ func (c *controller) ResolveUpdate(ctx context.Context, text string, candidate o
 	return c.orchestrator.ResolveUpdate(ctx, text, candidate, accounts)
 }
 
-func (c *controller) SendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt) {
-	c.sendPrompt(ctx, b, chatID, prompt)
+func (c *controller) SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
+	c.sendPrompt(ctx, chat, prompt)
 }
 
 func (c *controller) EngineStartWithData(userID uint64, flowName string, seed conversation.Data) (conversation.Prompt, error) {
@@ -122,18 +122,18 @@ func (c *controller) ResolveAndInsertMovements(data conversation.Data) ([]moveme
 	return flow.ResolveAndInsertMovements(c, data)
 }
 
-func (c *controller) HandleGroqError(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, err error) (bool, error) {
-	return pendingjob.HandleGroqError(ctx, c, c.jobs, b, chatID, userID, text, err)
+func (c *controller) HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
+	return pendingjob.HandleGroqError(ctx, c, c.jobs, chat, userID, text, err)
 }
 
-func (c *controller) EnqueueUpdatePickIfRateLimited(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
-	return pendingjob.EnqueueUpdatePick(ctx, c, c.jobs, b, chatID, userID, message, transactionID, oldIDs, beforeRows, err)
+func (c *controller) EnqueueUpdatePickIfRateLimited(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
+	return pendingjob.EnqueueUpdatePick(ctx, c, c.jobs, chat, userID, message, transactionID, oldIDs, beforeRows, err)
 }
 
-func (c *controller) FinishAnswerQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	return c.finishAnswerQuery(ctx, b, chatID, userID, text)
+func (c *controller) FinishAnswerQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
+	return c.finishAnswerQuery(ctx, chat, userID, text)
 }
 
-func (c *controller) FinishManageSettings(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text, area string) error {
-	return c.finishManageSettings(ctx, b, chatID, userID, text, area)
+func (c *controller) FinishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error {
+	return c.finishManageSettings(ctx, chat, userID, text, area)
 }

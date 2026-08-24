@@ -7,6 +7,7 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 )
 
 func newLoopController(t *testing.T, orch *fakeFullOrchestrator, repo *fakeActionsRepo, movements *fakeMovementRepoFull) *controller {
@@ -43,7 +44,7 @@ func TestRouting_EverythingGoesThroughTheLoop(t *testing.T) {
 			}
 			c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
 
-			if err := c.handleFreeText(context.Background(), nil, 0, 1, msg); err != nil {
+			if err := c.handleFreeText(context.Background(), &messenger.FakeChat{}, 1, msg); err != nil {
 				t.Fatal(err)
 			}
 			if !called {

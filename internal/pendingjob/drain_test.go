@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/trace"
 	"lopiibot.com/internal/user"
@@ -29,7 +29,13 @@ func (d *drainJobs) CountByUser(uint64) (int64, error)              { return int
 
 type fakeUsers struct{}
 
-func (fakeUsers) FindByID(uint64) (*user.User, error) { return &user.User{TelegramID: "100"}, nil }
+func (fakeUsers) FindByID(uint64) (*user.User, error) { return &user.User{}, nil }
+
+// fakeChats es el chatResolver de los tests: siempre devuelve el mismo
+// *messenger.FakeChat.
+type fakeChats struct{ chat *messenger.FakeChat }
+
+func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }
 
 type testServices struct {
 	users          fakeUsers
@@ -42,14 +48,16 @@ type testServices struct {
 func (s *testServices) UsersFindByID(userID uint64) (*user.User, error) {
 	return s.users.FindByID(userID)
 }
-func (s *testServices) HandleFreeText(_ context.Context, _ *bot.Bot, _ int64, _ uint64, text string) error {
+func (s *testServices) HandleFreeText(_ context.Context, _ messenger.Chat, _ uint64, text string) error {
 	s.texts = append(s.texts, text)
 	return nil
 }
-func (s *testServices) ProceedToUpdateConfirm(_ context.Context, _ *bot.Bot, _ int64, _ uint64, _ string, _ string, _ []string, _ []movement.MovementRow) error {
+func (s *testServices) ProceedToUpdateConfirm(_ context.Context, _ messenger.Chat, _ uint64, _ string, _ string, _ []string, _ []movement.MovementRow) error {
 	return nil
 }
-func (s *testServices) SendText(_ context.Context, _ *bot.Bot, _ int64, _ string) {}
+func (s *testServices) SendText(ctx context.Context, chat messenger.Chat, text string) {
+	_ = messenger.SendText(ctx, chat, text)
+}
 func (s *testServices) Traced(ctx context.Context, kind string, traceID string, fn func(context.Context) (*uint64, error)) {
 	if s.tracedFn != nil {
 		s.tracedFn(ctx, kind, traceID, fn)
@@ -66,11 +74,15 @@ func TestDrain_GiveUp_OldJob(t *testing.T) {
 		{ID: 42, UserID: 7, Kind: KindFreeText, Payload: payload, CreatedAt: time.Now().Add(-3 * time.Hour)},
 	}}
 	svc := &testServices{}
+	chats := fakeChats{chat: &messenger.FakeChat{}}
 
-	drainTick(context.Background(), svc, jobs, nil, time.Now())
+	drainTick(context.Background(), svc, jobs, chats, time.Now())
 
 	if len(jobs.deleted) != 1 || jobs.deleted[0] != 42 {
 		t.Fatalf("want job 42 deleted, got %v", jobs.deleted)
+	}
+	if len(chats.chat.Sent) != 1 {
+		t.Fatalf("want the give-up message sent, got %v", chats.chat.Sent)
 	}
 }
 
@@ -80,11 +92,15 @@ func TestDrain_Success_Deletes(t *testing.T) {
 		{ID: 9, UserID: 7, Kind: KindFreeText, Payload: payload, CreatedAt: time.Now()},
 	}}
 	svc := &testServices{}
+	chats := fakeChats{chat: &messenger.FakeChat{}}
 
-	drainTick(context.Background(), svc, jobs, nil, time.Now())
+	drainTick(context.Background(), svc, jobs, chats, time.Now())
 
 	if len(jobs.deleted) != 1 || jobs.deleted[0] != 9 {
 		t.Fatalf("want job 9 deleted, got %v", jobs.deleted)
+	}
+	if len(svc.texts) != 1 || svc.texts[0] != "hola" {
+		t.Fatalf("want the replayed text handled, got %v", svc.texts)
 	}
 }
 
@@ -104,8 +120,9 @@ func TestDrain_ReplayCarriesItsOwnTrace(t *testing.T) {
 		seenTraceID = trace.ID(ctx)
 		_ = err
 	}
+	chats := fakeChats{chat: &messenger.FakeChat{}}
 
-	drainTick(context.Background(), svc, jobs, nil, time.Now())
+	drainTick(context.Background(), svc, jobs, chats, time.Now())
 
 	if seenTraceID == "" {
 		t.Error("el replay corrió sin trace_id: llm_calls e intent_events quedan huérfanos")

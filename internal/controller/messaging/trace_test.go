@@ -4,8 +4,6 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/go-telegram/bot/models"
 )
 
 type fakeTraceRepo struct {
@@ -25,9 +23,8 @@ func TestWithTraceRecordsSpine(t *testing.T) {
 	tr := &fakeTraceRepo{}
 	c := &controller{traces: tr}
 	uid := uint64(7)
-	upd := &models.Update{CallbackQuery: &models.CallbackQuery{}}
 
-	c.withTrace(context.Background(), upd, func(ctx context.Context) (*uint64, error) {
+	c.traced(context.Background(), "callback", "", func(ctx context.Context) (*uint64, error) {
 		return &uid, nil
 	})
 

@@ -7,6 +7,7 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/subcategory"
 )
@@ -41,7 +42,7 @@ func newApplyController() (*controller, *fakeMovementRepoFull, *fakeSubcategoryR
 func TestFinishCategoryManage_WithTarget_ReassignsThenDeletes(t *testing.T) {
 	c, movs, subs := newApplyController()
 
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, applyData("3", "3", true))
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, applyData("3", "3", true))
 
 	if movs.reassignSubCalls != 1 {
 		t.Fatalf("reassign llamado %d veces, want 1", movs.reassignSubCalls)
@@ -68,7 +69,7 @@ func TestFinishCategoryManage_WithTarget_ReassignsThenDeletes(t *testing.T) {
 func TestFinishCategoryManage_NoTarget_DeletesWithoutReassign(t *testing.T) {
 	c, movs, subs := newApplyController()
 
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, applyData("0", "", true))
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, applyData("0", "", true))
 
 	if movs.reassignSubCalls != 0 {
 		t.Errorf("reassign llamado %d veces sin destino, want 0", movs.reassignSubCalls)
@@ -83,7 +84,7 @@ func TestFinishCategoryManage_Cancelled_WritesNothing(t *testing.T) {
 
 	data := applyData("3", "3", false)
 	conversation.SetFlag(data, conversation.KeyCancelled)
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, data)
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, data)
 
 	if movs.reassignSubCalls != 0 || subs.deleteCalls != 0 {
 		t.Errorf("cancelado escribió: reassign=%d delete=%d, want 0/0", movs.reassignSubCalls, subs.deleteCalls)
@@ -95,7 +96,7 @@ func TestFinishCategoryManage_Cancelled_WritesNothing(t *testing.T) {
 func TestFinishCategoryManage_NotConfirmed_WritesNothing(t *testing.T) {
 	c, movs, subs := newApplyController()
 
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, applyData("3", "3", false))
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, applyData("3", "3", false))
 
 	if movs.reassignSubCalls != 0 || subs.deleteCalls != 0 {
 		t.Errorf("sin confirmar escribió: reassign=%d delete=%d, want 0/0", movs.reassignSubCalls, subs.deleteCalls)
@@ -108,7 +109,7 @@ func TestFinishCategoryManage_ReassignFails_DoesNotDelete(t *testing.T) {
 	c, movs, subs := newApplyController()
 	movs.reassignSubErr = errFake
 
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, applyData("3", "3", true))
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, applyData("3", "3", true))
 
 	if subs.deleteCalls != 0 {
 		t.Errorf("borró la categoría pese a que falló la reasignación (delete=%d)", subs.deleteCalls)
@@ -121,7 +122,7 @@ func TestFinishCategoryManage_DeleteFindsNothing_DoesNotReportSuccess(t *testing
 	c, _, subs := newApplyController()
 	subs.deleteErr = subcategory.ErrSubcategoryNotFound
 
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, applyData("0", "", true))
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, applyData("0", "", true))
 
 	if subs.reloadCalls != 0 {
 		t.Errorf("recargó el cache (%d) pese a que no se borró nada", subs.reloadCalls)
@@ -133,7 +134,7 @@ func TestFinishCategoryManage_BadSourceID_WritesNothing(t *testing.T) {
 
 	data := applyData("3", "3", true)
 	data[conversation.KeySourceSubcategoryID] = "no-es-un-numero"
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, data)
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, data)
 
 	if movs.reassignSubCalls != 0 || subs.deleteCalls != 0 {
 		t.Errorf("con id inválido escribió: reassign=%d delete=%d, want 0/0", movs.reassignSubCalls, subs.deleteCalls)
@@ -145,7 +146,7 @@ func TestFinishCategoryManage_BadTargetID_WritesNothing(t *testing.T) {
 
 	data := applyData("3", "3", true)
 	data[conversation.KeyTargetSubcategoryID] = "tampoco"
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, data)
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, data)
 
 	if movs.reassignSubCalls != 0 || subs.deleteCalls != 0 {
 		t.Errorf("con destino inválido escribió: reassign=%d delete=%d, want 0/0", movs.reassignSubCalls, subs.deleteCalls)
@@ -223,7 +224,7 @@ func TestCategoryManageE2E_MergePath(t *testing.T) {
 	}
 
 	// el traspaso arranca el flujo 2 (esto es lo que hace handleFlowFinished)
-	c.finishCategoryManagePickFlow(context.Background(), nil, 100, res1.Data)
+	c.finishCategoryManagePickFlow(context.Background(), &messenger.FakeChat{}, res1.Data)
 
 	// el flujo 2 tiene que estar mostrando la sugerencia
 	res2, found, err := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionAcceptSuggestion})
@@ -239,7 +240,7 @@ func TestCategoryManageE2E_MergePath(t *testing.T) {
 		t.Fatalf("confirmar: finished=%v err=%v", res3.Finished, err)
 	}
 
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, res3.Data)
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, res3.Data)
 
 	if movs.reassignSubCalls != 1 || movs.reassignedFrom != 7 || movs.reassignedTo != 3 {
 		t.Errorf("reassign: calls=%d from=%d to=%d, want 1/7/3",
@@ -261,7 +262,7 @@ func TestCategoryManageE2E_EmptyDeletePath(t *testing.T) {
 	if err != nil || !res1.Finished {
 		t.Fatalf("elegir origen: %v", err)
 	}
-	c.finishCategoryManagePickFlow(context.Background(), nil, 100, res1.Data)
+	c.finishCategoryManagePickFlow(context.Background(), &messenger.FakeChat{}, res1.Data)
 
 	// sin movimientos no se le pregunta nada al LLM ni se ofrece destino
 	res2, found, err := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirm})
@@ -272,7 +273,7 @@ func TestCategoryManageE2E_EmptyDeletePath(t *testing.T) {
 		t.Fatal("confirmar debería terminar el flujo")
 	}
 
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, res2.Data)
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, res2.Data)
 
 	if movs.reassignSubCalls != 0 {
 		t.Errorf("reasignó %d veces sin movimientos, want 0", movs.reassignSubCalls)
@@ -291,7 +292,7 @@ func TestCategoryManageE2E_ManualPath_ConfirmShowsTargetName(t *testing.T) {
 
 	c.engine.Start(userID, flow.CategoryManagePickFlowName)
 	res1, _, _ := c.engine.Handle(userID, conversation.Input{CallbackData: "7"})
-	c.finishCategoryManagePickFlow(context.Background(), nil, 100, res1.Data)
+	c.finishCategoryManagePickFlow(context.Background(), &messenger.FakeChat{}, res1.Data)
 
 	c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionChooseOther})
 	c.engine.Handle(userID, conversation.Input{CallbackData: "Alimentos"})
@@ -305,7 +306,7 @@ func TestCategoryManageE2E_ManualPath_ConfirmShowsTargetName(t *testing.T) {
 	}
 
 	res3, _, _ := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirm})
-	c.finishCategoryManageTargetFlow(context.Background(), nil, 100, res3.Data)
+	c.finishCategoryManageTargetFlow(context.Background(), &messenger.FakeChat{}, res3.Data)
 
 	if movs.reassignedTo != 4 {
 		t.Errorf("reasignó a %d, want 4 (el elegido a mano, no el sugerido)", movs.reassignedTo)

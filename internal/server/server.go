@@ -22,6 +22,7 @@ import (
 	"lopiibot.com/internal/health"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/logging"
+	"lopiibot.com/internal/messenger/telegram"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/notifier"
@@ -85,6 +86,13 @@ func InitServer(conf *config.Config) error {
 	conversationRepo := conversation.NewRepository(conn)
 	actionsRepo := pendingaction.NewRepository(conn)
 
+	// tgTransport alcanza a un usuario a partir de su userID (el sweeper, el
+	// drenaje de 429, admin) y sirve el webhook una vez que existe el handler
+	// neutro (messagingController.Handle, más abajo). Se arma acá, apenas
+	// existe userRepo, para que el resto del arranque se lea de arriba a
+	// abajo sin un salto hacia atrás.
+	tgTransport := telegram.New(tgBot, userRepo)
+
 	llmOrchestrator := buildOrchestrator(conf, llmCallRecorder{insert: metricRepo.InsertLLMCall})
 
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
@@ -97,12 +105,13 @@ func InitServer(conf *config.Config) error {
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
 		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo, actionsRepo,
 	)
-	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgBot)
+	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgTransport)
 	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, invitationRepo, conf.Telegram.Token, conf.Telegram.Username)
 
 	healthController.RegisterRoutes(ginEngine)
 	adminController.RegisterRoutes(ginEngine)
-	messagingController.RegisterHandlers(tgBot)
+	tgTransport.RegisterCommand("/start", messagingController.HandleStart)
+	ginEngine.POST("/webhook/telegram", gin.WrapH(tgTransport.Serve(messagingController.Handle)))
 	miniappController.RegisterRoutes(ginEngine)
 
 	// Las dos goroutines de fondo: el sweeper (recordatorios, resumen semanal,
@@ -110,9 +119,9 @@ func InitServer(conf *config.Config) error {
 	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo, subcategoryCache)
 	quoteRepo := quote.NewRepository(conn)
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
-	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
+	sweeper := notifier.NewSweeper(tgTransport, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
-	go pendingjob.Run(context.Background(), messagingController, jobsRepo, tgBot, pendingjob.JobDrainInterval)
+	go pendingjob.Run(context.Background(), messagingController, jobsRepo, tgTransport, pendingjob.JobDrainInterval)
 
 	return ginEngine.Run(":" + conf.Server.Port)
 }

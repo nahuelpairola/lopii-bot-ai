@@ -88,7 +88,7 @@ func TestQueryEval(t *testing.T) {
 	}
 
 	// --- seed a throwaway user with a clean, known dataset ---
-	u := &user.User{TelegramID: fmt.Sprintf("qeval-%d", time.Now().UnixNano())}
+	u := &user.User{Username: fmt.Sprintf("qeval-%d", time.Now().UnixNano())}
 	if err := userRepo.Insert(u); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}

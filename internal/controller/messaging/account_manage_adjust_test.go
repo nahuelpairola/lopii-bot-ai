@@ -8,6 +8,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/subcategory"
 )
@@ -52,7 +53,7 @@ func onlyInserted(t *testing.T, movRepo *fakeMovementRepoFull) movement.Movement
 // (a) positive delta → Income +2000, correct subcategory/account/currency.
 func TestFinishAccountAdjust_PositiveDelta(t *testing.T) {
 	c, movRepo, metrics := newAdjustController("50000")
-	c.finishAccountAdjust(context.Background(), nil, 0, adjustData("52000"))
+	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("52000"))
 
 	m := onlyInserted(t, movRepo)
 	if m.Type != movement.Income || !m.Amount.Equal(decimal.NewFromInt(2000)) {
@@ -69,7 +70,7 @@ func TestFinishAccountAdjust_PositiveDelta(t *testing.T) {
 // (b) negative delta → Expense stored with negative sign.
 func TestFinishAccountAdjust_NegativeDelta(t *testing.T) {
 	c, movRepo, _ := newAdjustController("50000")
-	c.finishAccountAdjust(context.Background(), nil, 0, adjustData("48000"))
+	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("48000"))
 
 	m := onlyInserted(t, movRepo)
 	if m.Type != movement.Expense || !m.Amount.Equal(decimal.NewFromInt(-2000)) {
@@ -80,7 +81,7 @@ func TestFinishAccountAdjust_NegativeDelta(t *testing.T) {
 // (c) already at that total → no insert, still resolves.
 func TestFinishAccountAdjust_NoChange(t *testing.T) {
 	c, movRepo, metrics := newAdjustController("50000")
-	c.finishAccountAdjust(context.Background(), nil, 0, adjustData("50000"))
+	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("50000"))
 
 	if len(movRepo.inserted) != 0 {
 		t.Errorf("no change should insert nothing, got %d movements", len(movRepo.inserted))
@@ -93,7 +94,7 @@ func TestFinishAccountAdjust_NoChange(t *testing.T) {
 // (d) "dejar en cero": 50000 → 0 → Expense -50000.
 func TestFinishAccountAdjust_ToZero(t *testing.T) {
 	c, movRepo, _ := newAdjustController("50000")
-	c.finishAccountAdjust(context.Background(), nil, 0, adjustData("0"))
+	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("0"))
 
 	m := onlyInserted(t, movRepo)
 	if m.Type != movement.Expense || !m.Amount.Equal(decimal.NewFromInt(-50000)) {
@@ -104,7 +105,7 @@ func TestFinishAccountAdjust_ToZero(t *testing.T) {
 // (e) account with no movements: balance 0 → 30000 → Income +30000.
 func TestFinishAccountAdjust_NoMovements(t *testing.T) {
 	c, movRepo, _ := newAdjustController("0")
-	c.finishAccountAdjust(context.Background(), nil, 0, adjustData("30000"))
+	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("30000"))
 
 	m := onlyInserted(t, movRepo)
 	if m.Type != movement.Income || !m.Amount.Equal(decimal.NewFromInt(30000)) {
@@ -115,7 +116,7 @@ func TestFinishAccountAdjust_NoMovements(t *testing.T) {
 // (f) negative current balance (overdraft): -1000 → 500 → Income +1500.
 func TestFinishAccountAdjust_NegativeCurrentBalance(t *testing.T) {
 	c, movRepo, _ := newAdjustController("-1000")
-	c.finishAccountAdjust(context.Background(), nil, 0, adjustData("500"))
+	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("500"))
 
 	m := onlyInserted(t, movRepo)
 	if m.Type != movement.Income || !m.Amount.Equal(decimal.NewFromInt(1500)) {
@@ -126,7 +127,7 @@ func TestFinishAccountAdjust_NegativeCurrentBalance(t *testing.T) {
 // (g) decimal precision: 100.25 → 100.50 → Income +0.25 (exact, never float).
 func TestFinishAccountAdjust_DecimalPrecision(t *testing.T) {
 	c, movRepo, _ := newAdjustController("100.25")
-	c.finishAccountAdjust(context.Background(), nil, 0, adjustData("100.50"))
+	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("100.50"))
 
 	m := onlyInserted(t, movRepo)
 	want, _ := decimal.NewFromString("0.25")
@@ -147,7 +148,7 @@ func TestFinishAccountAdjust_CurrencyMismatchRejected(t *testing.T) {
 	data := adjustData("52000")
 	data["account_currency"] = "USD" // la Data dice otra cosa
 
-	c.finishAccountAdjust(context.Background(), nil, 0, data)
+	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, data)
 
 	if len(movRepo.inserted) != 0 {
 		t.Fatalf("no se debe escribir nada con la moneda equivocada, se escribió %+v", movRepo.inserted)

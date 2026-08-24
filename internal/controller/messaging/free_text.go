@@ -3,19 +3,18 @@ package messaging
 import (
 	"context"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/agent"
+	"lopiibot.com/internal/messenger"
 )
 
-// sendText is a small helper that guards every b.SendMessage call with a
-// nil check — b is nil in unit tests that exercise these entry points
-// directly (see free_text_test.go), matching the same guard pattern
-// already used throughout movement_update_flow.go/movement_delete_flow.go.
-func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
-	if b == nil {
-		return
-	}
-	b.SendMessage(ctx, &bot.SendMessageParams{ChatID: chatID, Text: text})
+// sendText manda texto plano por el chat ya resuelto — vía messenger.SendText,
+// nunca desenvuelto a un (bot, chatID) a mano. Task 8 fix round 1: antes de
+// esto pasaba por pairOrLog, que sólo reconocía el tipo concreto que armaba
+// el borde del webhook — un chat resuelto por el drenaje de 429 lo hacía
+// fallar en silencio. pairOrLog y ese tipo (edgeChat) se borraron en la
+// Task 6.
+func (c *controller) sendText(ctx context.Context, chat messenger.Chat, text string) {
+	_ = messenger.SendText(ctx, chat, text)
 }
 
 // handleFreeText es EL punto de entrada de cualquier mensaje sin flow abierto.
@@ -29,6 +28,6 @@ func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, tex
 // Los wizards NO se van: siguen siendo la UI del lado de la app. Lo que cambia
 // es cómo se llega — el loop parkea en ellos, en vez de un router que decide de
 // antemano.
-func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	return agent.StartLoop(ctx, c, b, chatID, userID, text)
+func (c *controller) handleFreeText(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
+	return agent.StartLoop(ctx, c, chat, userID, text)
 }

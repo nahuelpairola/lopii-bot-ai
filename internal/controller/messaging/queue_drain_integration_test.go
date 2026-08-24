@@ -16,13 +16,24 @@ import (
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
+
+// fakeChats es el chatResolver del drenaje para este test: como el
+// orchestrator, va fakeado a propósito — lo que se prueba acá es el
+// cableado (drainUser → replayJob → handleFreeText → StartLoop → INSERT),
+// no el transporte real. Un telegram.Transport de verdad con *bot.Bot nil
+// paniquea en el primer chat.Send; messenger.FakeChat no.
+type fakeChats struct{ chat *messenger.FakeChat }
+
+func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }
 
 // El drenaje de la cola de 429, de punta a punta contra el Postgres local:
 // pendingjob.Run → drainUser → replayJob → handleFreeText → StartLoop →
@@ -57,13 +68,18 @@ func queueDrainConn(t *testing.T) *database.Connection {
 	return conn
 }
 
-// queueDrainUser siembra un usuario descartable con TelegramID numérico:
-// drainUser lo parsea con strconv.ParseInt, así que no puede ser el "qeval-<n>"
-// que usa query_eval_test.go (ese test nunca llega a drainUser).
+// queueDrainUser siembra un usuario descartable con un channel_user_id
+// numérico: drainUser lo parsea con strconv.ParseInt, así que no puede ser el
+// "qeval-<n>" que usa query_eval_test.go (ese test nunca llega a drainUser).
 func queueDrainUser(t *testing.T, conn *database.Connection) (uid uint64, cleanup func()) {
-	u := &user.User{TelegramID: fmt.Sprintf("%d", time.Now().UnixNano())}
-	if err := user.NewRepository(conn).Insert(u); err != nil {
+	userRepo := user.NewRepository(conn)
+	telegramID := fmt.Sprintf("%d", time.Now().UnixNano())
+	u := &user.User{}
+	if err := userRepo.Insert(u); err != nil {
 		t.Fatalf("insert user: %v", err)
+	}
+	if err := userRepo.LinkChannel(u.ID, user.ChannelTelegram, telegramID); err != nil {
+		t.Fatalf("link channel: %v", err)
 	}
 	uid = u.ID
 	return uid, func() {
@@ -84,6 +100,9 @@ func queueDrainUser(t *testing.T, conn *database.Connection) (uid uint64, cleanu
 		// que no escribe ahí; se limpia igual por si otra corrida concurrente
 		// contra la misma base dejó una fila y el delete del usuario se traba.
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&metric.IntentEvent{})
+		// user_channels tiene FK a users: hay que borrarla antes que la fila de
+		// usuario o el DELETE final falla igual que las otras tablas de arriba.
+		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&user.UserChannel{})
 		conn.DB.Unscoped().Where("id = ?", uid).Delete(&user.User{})
 	}
 }
@@ -156,7 +175,7 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, jobsRepo, nil, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
 
 	// Sin Groq de por medio el drenaje es inmediato; el deadline corto está para
 	// que un cuelgue falle rápido en vez de comerse el timeout del paquete.
@@ -198,6 +217,171 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 	}
 }
 
+// El bug de la ronda 1 de review de la Task 8: SendPrompt/StartFlow/
+// FinishAnswerQuery/FinishManageSettings pasaban por pairOrLog, que sólo
+// reconocía un edgeChat — el tipo concreto que arma el borde del webhook con
+// newEdgeChat. Un chat resuelto por chatResolver.ChatFor (exactamente lo que
+// el drenaje usa) es OTRO tipo concreto, así que el type assertion fallaba
+// siempre, en silencio: replayJob devolvía nil (ni error ni 429), el job se
+// borraba, y el usuario no recibía nada — peor que antes del refactor, y en
+// contra del "nunca en silencio" de pendingjob/AGENTS.md.
+//
+// Este test reproduce exactamente ese camino: un replay cuyo turno NO puede
+// cerrar solo — necesita preguntarle algo al usuario — y afirma que la
+// pregunta LLEGÓ al chat. TestQueueDrain_ReplayInsertsTheMovement (arriba)
+// sólo cubre el camino feliz (CREATE que cierra sin preguntar nada) y por
+// construcción no podía haber atrapado este bug: nunca pasa por SendPrompt.
+//
+// El camino elegido es correct_movement con una corrección ambigua: dos
+// movimientos recientes sin relación textual con el mensaje, así que
+// resolveCandidates arma un picker (agent_executor.go:park, rama default) en
+// vez de resolver solo — eso es lo que fuerza el park CON Questions, que es
+// lo único que abre openAskUser en vez de resumeAgentAction (el otro sitio
+// afectado, StartFlow, ya lo cubre TestQueueDrain_ReplayInsertsTheMovement
+// indirectamente en el camino feliz).
+func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
+	conn := queueDrainConn(t)
+
+	accRepo := account.NewRepository(conn)
+	movRepo := movement.InitRepository(conn)
+	subRepo := subcategory.NewRepository(conn)
+	cache, err := subcategory.NewCache(subRepo)
+	if err != nil {
+		t.Fatalf("subcategory cache: %v", err)
+	}
+	jobsRepo := pendingjob.NewRepository(conn)
+	actionsRepo := pendingaction.NewRepository(conn)
+
+	uid, cleanup := queueDrainUser(t, conn)
+	t.Cleanup(cleanup)
+	// t.Cleanup es LIFO: registrado DESPUÉS de cleanup, así que corre ANTES —
+	// pending_actions tiene FK a users, y este escenario deja una fila viva a
+	// propósito (el picker sigue abierto, sin contestar).
+	t.Cleanup(func() {
+		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&pendingaction.PendingAction{})
+	})
+
+	banco := &account.Account{UserID: uid, Name: "Banco AskUserGap", Type: account.StandardType, Currency: currency.ARS, IsDefault: true}
+	if err := accRepo.Insert(banco); err != nil {
+		t.Fatalf("insert banco: %v", err)
+	}
+	bancoID := uint64(banco.ID)
+
+	saldoInicial, err := cache.FindByCategoryAndSubcategory(uid, "Sistema", "Saldo inicial")
+	if err != nil {
+		t.Fatalf("find Sistema|Saldo inicial: %v", err)
+	}
+	opening := movement.Movement{
+		UserID: uid, AccountID: &bancoID, SubcategoryID: uint64(saldoInicial.ID),
+		Date: time.Now(), Type: movement.Transfer, Amount: decimal.RequireFromString("10000"), Currency: currency.ARS,
+	}
+	if err := movRepo.InsertBatch([]movement.Movement{opening}); err != nil {
+		t.Fatalf("insert saldo de apertura: %v", err)
+	}
+
+	// Dos gastos recientes, sin relación textual con el mensaje de corrección
+	// de abajo — ninguno matchea, así que resolveCandidates cae en el
+	// fallback por recencia con AMBOS como candidatos, y park() abre el
+	// picker en vez de resolver uno solo.
+	comida, err := cache.FindByCategoryAndSubcategory(uid, "Alimentación", "Supermercado")
+	if err != nil {
+		t.Fatalf("find Alimentación|Supermercado: %v", err)
+	}
+	desc1, desc2 := "compra en el supermercado", "carga de nafta en la estación"
+	rows := []movement.Movement{
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: uint64(comida.ID), Date: time.Now(),
+			Type: movement.Expense, Amount: decimal.RequireFromString("-500"), Currency: currency.ARS, Description: &desc1},
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: uint64(comida.ID), Date: time.Now(),
+			Type: movement.Expense, Amount: decimal.RequireFromString("-300"), Currency: currency.ARS, Description: &desc2},
+	}
+	if err := movRepo.InsertBatch(rows); err != nil {
+		t.Fatalf("insert los dos gastos ambiguos: %v", err)
+	}
+	// resolveCandidates tiene un atajo (reference_resolution.go): si nada
+	// matchea textualmente pero el usuario "acaba de cargar algo"
+	// (CreatedAt dentro de flow.JustCreatedWindow, 10 min), devuelve UN solo
+	// candidato — el recién cargado — en vez de un picker. Envejecer los dos
+	// movimientos desactiva ese atajo a propósito, para forzar el picker que
+	// este test necesita.
+	old := time.Now().Add(-20 * time.Minute)
+	if err := conn.DB.Model(&movement.Movement{}).Where("id IN ?", []uint{rows[0].ID, rows[1].ID}).Update("created_at", old).Error; err != nil {
+		t.Fatalf("age the two movements: %v", err)
+	}
+
+	// ask_user tiene que estar registrado: es el flow que abre la pregunta del
+	// picker. movement_create no hace falta acá — este escenario no llega a
+	// record_movements.
+	engine := conversation.NewEngine(conversation.NewRepository(conn), FlowResumeLabel)
+	engine.Register(flow.NewAskUserFlow())
+
+	orch := &fakeFullOrchestrator{
+		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
+			args := `{"change":"corregir el monto","changes":[{"field":"amount","op":"set","value":"700"}]}`
+			return execute(orchestrator.ToolCorrectMovement, json.RawMessage(args))
+		},
+	}
+
+	chatHist := chathistory.InitRepository(conn, 24*time.Hour, 20)
+	c := &controller{
+		users: user.NewRepository(conn), accounts: accRepo, movements: movRepo,
+		subcategories: cache, engine: engine, orchestrator: orch, jobs: jobsRepo,
+		chatHistory: chatHist, actions: actionsRepo,
+	}
+
+	// El mensaje encolado no comparte ningún token con las dos descripciones
+	// de arriba — a propósito, para forzar el fallback por recencia.
+	payload, _ := json.Marshal(pendingjob.FreeTextPayload{Text: "che, corregime el monto a setecientos"})
+	job := &pendingjob.PendingJob{UserID: uid, Kind: pendingjob.KindFreeText, Payload: payload}
+	if err := jobsRepo.Insert(job); err != nil {
+		t.Fatalf("insert pending job: %v", err)
+	}
+
+	chat := &messenger.FakeChat{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: chat}, 50*time.Millisecond)
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		n, err := jobsRepo.CountByUser(uid)
+		if err != nil {
+			t.Fatalf("count pending jobs: %v", err)
+		}
+		if n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("el job quedó pendiente después de 10s (count=%d): el drenaje no lo tomó", n)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if !orch.runCalled {
+		t.Fatal("el replay no llegó al loop: se drenó el job sin ejecutar nada")
+	}
+
+	// LA aserción: el bug de la ronda 1 hacía que esto quedara vacío — el
+	// picker se armaba (parkAgentActions insertaba la pending_action) pero
+	// SendPrompt nunca llegaba a mandarlo, y el job se borraba igual.
+	if len(chat.Sent) == 0 {
+		t.Fatal("el usuario no recibió NADA: el gap-fill se perdió en silencio (el bug de la ronda 1)")
+	}
+	last := chat.Sent[len(chat.Sent)-1]
+	if len(last.Buttons) == 0 {
+		t.Fatalf("el último mensaje no trae el picker de candidatos: %+v", last)
+	}
+
+	// Y en la base: la acción quedó parkeada esperando la respuesta, no
+	// resuelta ni perdida.
+	pending, err := actionsRepo.NextForUser(uid)
+	if err != nil {
+		t.Fatalf("expected a pending action open, got err: %v", err)
+	}
+	if pending.Tool != orchestrator.ToolCorrectMovement {
+		t.Errorf("pending action tool = %q, want %q", pending.Tool, orchestrator.ToolCorrectMovement)
+	}
+}
+
 // Un job viejo se descarta SIN llamar al modelo: reintentarlo gastaría cupo por
 // un mensaje que el usuario ya dio por perdido. El orchestrator va nil a
 // propósito — si el drenaje lo tocara, el test panichea en vez de pasar.
@@ -222,7 +406,7 @@ func TestQueueDrain_GiveUp_DoesNotCallOrchestrator(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, jobsRepo, nil, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {

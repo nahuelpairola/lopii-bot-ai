@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/nudges"
 	"lopiibot.com/internal/reminder"
@@ -16,9 +16,10 @@ import (
 
 // Los métodos de este archivo implementan nudges.Services: lo que el
 // dispatcher de tips necesita del mundo, con el *controller* como
-// implementación. Puentes de una línea, como en agent_services.go. SendText y
-// SendPrompt ya existían (runner de flow / bridges del agent) y no se repiten
-// acá.
+// implementación. Puentes de una línea, como en agent_services.go.
+// *controller implementa la interfaz directamente desde la Task 7 — SendText,
+// SendPrompt y HandleQuery ya sólo piden messenger.Chat, así que no hace
+// falta un puente.
 var _ nudges.Services = (*controller)(nil)
 
 func (c *controller) EngineInProgress(userID uint64) (bool, error) {
@@ -31,6 +32,10 @@ func (c *controller) RemindersFindByUserID(userID uint64) (*reminder.Reminder, e
 
 func (c *controller) UsersFindByID(userID uint64) (*user.User, error) {
 	return c.users.FindByID(userID)
+}
+
+func (c *controller) UsersFindChannelID(userID uint64, channel string) (string, error) {
+	return c.users.FindChannelID(userID, channel)
 }
 
 func (c *controller) AccountsFindByUserID(userID uint64) ([]account.Account, error) {
@@ -85,6 +90,6 @@ func (c *controller) NudgesMarkTapped(userID uint64, key string) error {
 	return c.nudges.MarkTapped(userID, key)
 }
 
-func (c *controller) HandleQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
-	return c.handleQuery(ctx, b, chatID, userID, text)
+func (c *controller) HandleQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error) {
+	return c.handleQuery(ctx, chat, userID, text)
 }

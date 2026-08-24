@@ -15,11 +15,11 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -57,10 +57,10 @@ type agentServices interface {
 	ClassifyCategories(ctx context.Context, message string, rows []orchestrator.ClassifyRow, taxonomy []orchestrator.TaxonomyEntry) []orchestrator.Pair
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error)
 
-	// Outbounds a Telegram y a los flows.
-	SendText(ctx context.Context, b *bot.Bot, chatID int64, text string)
-	SendPrompt(ctx context.Context, b *bot.Bot, chatID int64, prompt conversation.Prompt)
-	StartFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error
+	// Outbounds al canal y a los flows.
+	SendText(ctx context.Context, chat messenger.Chat, text string)
+	SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt)
+	StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error
 	EngineStartWithData(userID uint64, flowName string, seed conversation.Data) (conversation.Prompt, error)
 	IsReplaying(ctx context.Context) bool
 
@@ -69,41 +69,41 @@ type agentServices interface {
 	ResolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error)
 
 	// El 429 y los loops vecinos.
-	HandleGroqError(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string, err error) (bool, error)
-	EnqueueUpdatePickIfRateLimited(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool
-	FinishAnswerQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error
-	FinishManageSettings(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text, area string) error
+	HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error)
+	EnqueueUpdatePickIfRateLimited(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool
+	FinishAnswerQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) error
+	FinishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error
 }
 
 // StartLoop resuelve un mensaje con el loop unificado. Es el único camino de un
 // texto libre: no hay router que filtre antes.
-func StartLoop(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	return startAgentLoop(ctx, svc, b, chatID, userID, text)
+func StartLoop(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, text string) error {
+	return startAgentLoop(ctx, svc, chat, userID, text)
 }
 
 // FinishAskUser corre cuando el usuario terminó de contestar el flujo de
 // preguntas de una acción parkeada (ask_user).
-func FinishAskUser(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, data conversation.Data) {
-	finishAskUserFlow(ctx, svc, b, chatID, data)
+func FinishAskUser(ctx context.Context, svc agentServices, chat messenger.Chat, data conversation.Data) {
+	finishAskUserFlow(ctx, svc, chat, data)
 }
 
 // FinishMovementUpdatePick corre cuando el usuario eligió un candidato de la
 // lista ambigua de una corrección.
-func FinishMovementUpdatePick(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, data conversation.Data) {
-	finishMovementUpdatePickFlow(ctx, svc, b, chatID, data)
+func FinishMovementUpdatePick(ctx context.Context, svc agentServices, chat messenger.Chat, data conversation.Data) {
+	finishMovementUpdatePickFlow(ctx, svc, chat, data)
 }
 
 // ProceedToUpdateConfirm resuelve el cambio del usuario contra el candidato ya
 // encontrado (Camino 2 de UPDATE). Lo usa el drenaje al replayar un update_pick
 // encolado por un 429.
-func ProceedToUpdateConfirm(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask ChangeAsk) error {
-	return proceedToUpdateConfirm(ctx, svc, b, chatID, userID, message, transactionID, oldIDs, beforeRows, ask)
+func ProceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask ChangeAsk) error {
+	return proceedToUpdateConfirm(ctx, svc, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
 }
 
 // DrainNextAction abre la próxima acción parkeada del usuario. Se llama al
 // terminar un flujo y al final de un turno del loop que no abrió ninguno.
-func DrainNextAction(ctx context.Context, svc agentServices, b *bot.Bot, chatID int64, userID uint64) error {
-	return drainNextAgentAction(ctx, svc, b, chatID, userID)
+func DrainNextAction(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64) error {
+	return drainNextAgentAction(ctx, svc, chat, userID)
 }
 
 // SettingsArea* son las áreas de manage_settings. Son el enum del schema: si

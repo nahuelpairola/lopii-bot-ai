@@ -107,7 +107,7 @@ func parked(userID uint64, tool string, position int) *PendingAction {
 
 func insertUser(t *testing.T, repo interface{ Insert(*user.User) error }) uint64 {
 	t.Helper()
-	u := &user.User{TelegramID: fmt.Sprintf("%d", time.Now().UnixNano())}
+	u := &user.User{Username: fmt.Sprintf("%d", time.Now().UnixNano())}
 	if err := repo.Insert(u); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}

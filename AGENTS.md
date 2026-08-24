@@ -133,7 +133,7 @@ mistake is a financial bug rather than a cosmetic one.
   (`FindDefaultByCurrency`) → gap-fill asks.
 
 Full model (guard invariants, insufficient-funds gate, grouped transactions, FCI redemption) →
-[docs/business-rules.md](docs/business-rules.md#the-accounting-model).
+[docs/business-rules.md](docs/business-rules.md#the-accounting-model-money-precision--read-this-before-touching-any-money-path).
 
 ## Where knowledge lives
 
@@ -162,12 +162,12 @@ calls Y, how does this flow" in one call, with verbatim source plus the call gra
 oriented. Once you know which file you are changing, **read that file** - `Read` also pulls in its
 package's `AGENTS.md`, which `codegraph_explore` does not. `Grep` still wins for plain text.
 
-Fourteen packages carry their own `AGENTS.md`. **If you are editing one, read its file first** -
+Fifteen packages carry their own `AGENTS.md`. **If you are editing one, read its file first** -
 the trap is not visible in the code. Four of them - `movement`, `conversation`, `agent`,
 `pendingjob` - are marked **always** below: they are the money path, where ignoring the file
 records money wrong with nothing to warn you, so `CLAUDE.md` imports them at launch and they are
-loaded before you start. The other ten load only when something reads a file in that subtree,
-which is not guaranteed - open them deliberately. (Each of those ten also has a one-line
+loaded before you start. The other eleven load only when something reads a file in that subtree,
+which is not guaranteed - open them deliberately. (Each of those eleven also has a one-line
 `CLAUDE.md` importing it, because Claude Code reads `CLAUDE.md` and not `AGENTS.md`. The content
 lives in the `AGENTS.md` and only there.)
 
@@ -187,6 +187,7 @@ lives in the `AGENTS.md` and only there.)
 | `quote` | on demand | `usd_quotes` has irregular gaps (read `<= D`, never `= D`); `monthly_cpi.value` is a % change, not a level |
 | `controller/messaging` | on demand | the bridge pattern; the per-user lock; what bypasses the engine |
 | `controller/miniapp` | on demand | **auth is which Gin group you register on, and nothing else** |
+| `messenger` | on demand | the only place that knows a channel exists; the core never branches on `Channel` |
 
 Every other package is a plain model + repository. Ask codegraph.
 

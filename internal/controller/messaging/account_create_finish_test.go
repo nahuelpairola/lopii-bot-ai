@@ -8,6 +8,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -28,7 +29,7 @@ func TestFinishAccountCreateFlow_Cancelled_NoDBWrite(t *testing.T) {
 	data := accountCreateTestData("Jubilación", "ARS", "0")
 	data["cancelled"] = "true"
 
-	c.finishAccountCreateFlow(context.Background(), nil, 0, data)
+	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, data)
 
 	if len(accRepo.inserted) != 0 {
 		t.Error("a cancelled flow should never insert an account")
@@ -49,7 +50,7 @@ func TestFinishAccountCreateFlow_Success_InsertsAccountAndOpeningMovement(t *tes
 		subcategories: &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Sistema|Saldo inicial": sub}},
 	}
 
-	c.finishAccountCreateFlow(context.Background(), nil, 0, accountCreateTestData("Jubilación", "ARS", "50000"))
+	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Jubilación", "ARS", "50000"))
 
 	if len(accRepo.inserted) != 1 {
 		t.Fatalf("expected 1 account inserted, got %d", len(accRepo.inserted))
@@ -79,7 +80,7 @@ func TestFinishAccountCreateFlow_DuplicateName_NoMovementInserted(t *testing.T) 
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{accounts: accRepo, movements: movRepo, subcategories: &fakeSubcategoryRepoFull{}}
 
-	c.finishAccountCreateFlow(context.Background(), nil, 0, accountCreateTestData("Wallet", "ARS", "0"))
+	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Wallet", "ARS", "0"))
 
 	if len(movRepo.inserted) != 0 {
 		t.Error("a duplicate-name failure should never insert a movement")
@@ -98,7 +99,7 @@ func TestFinishAccountCreateFlow_MovementInsertFails_Propagates(t *testing.T) {
 
 	// Should not panic even though b is nil (sendText guards it) and the
 	// movement insert fails after the account was already created.
-	c.finishAccountCreateFlow(context.Background(), nil, 0, accountCreateTestData("Jubilación", "ARS", "0"))
+	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Jubilación", "ARS", "0"))
 
 	if len(accRepo.inserted) != 1 {
 		t.Error("the account should still have been created before the movement insert failed")

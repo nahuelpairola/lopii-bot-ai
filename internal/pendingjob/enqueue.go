@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/go-telegram/bot"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -57,8 +57,8 @@ func bumpNextDrainAt(t time.Time) {
 //   - webhook + RateLimited → encola free_text + ackea → (true, nil)
 //   - replay  + RateLimited → propaga el error al drain, sin mensaje → (true, err)
 //   - cualquier no-429 → (false, nil): el caller manda su copy de error de siempre
-func HandleGroqError(ctx context.Context, s Services, repo Repository, b *bot.Bot, chatID int64, userID uint64, text string, err error) (bool, error) {
-	if EnqueueFreeText(ctx, s, repo, b, chatID, userID, text, err) {
+func HandleGroqError(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
+	if EnqueueFreeText(ctx, s, repo, chat, userID, text, err) {
 		return true, nil
 	}
 	var rl *orchestrator.RateLimitedError
@@ -70,7 +70,7 @@ func HandleGroqError(ctx context.Context, s Services, repo Repository, b *bot.Bo
 
 // EnqueueFreeText encola un free_text y ackea si err es un 429. No hace nada
 // (false) si no es 429 o si estamos en replay (el drain maneja el 429).
-func EnqueueFreeText(ctx context.Context, s Services, repo Repository, b *bot.Bot, chatID int64, userID uint64, text string, err error) bool {
+func EnqueueFreeText(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string, err error) bool {
 	var rl *orchestrator.RateLimitedError
 	if !errors.As(err, &rl) || IsReplaying(ctx) {
 		return false
@@ -80,18 +80,18 @@ func EnqueueFreeText(ctx context.Context, s Services, repo Repository, b *bot.Bo
 		// El enqueue falló: el mensaje del usuario se perdió de verdad → tiene que
 		// saberlo (msgCouldNotSave, no msgSomethingBroke).
 		slog.ErrorContext(ctx, "enqueue free_text failed", "user_id", userID, "err", ierr)
-		s.SendText(ctx, b, chatID, msgCouldNotSave("tu mensaje"))
+		s.SendText(ctx, chat, msgCouldNotSave("tu mensaje"))
 		return true
 	}
 	bumpNextDrainAt(time.Now().Add(rl.RetryAfter))
-	s.SendText(ctx, b, chatID, AckForWait(rl.RetryAfter))
+	s.SendText(ctx, chat, AckForWait(rl.RetryAfter))
 	return true
 }
 
 // EnqueueUpdatePick encola un update_pick (preserva el pick del
 // usuario). Solo lo llama finishMovementUpdatePickFlow (webhook-only), así que no
 // necesita el guard de replay.
-func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, b *bot.Bot, chatID int64, userID uint64, message, txID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
+func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, message, txID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
 	var rl *orchestrator.RateLimitedError
 	if !errors.As(err, &rl) {
 		return false
@@ -99,11 +99,11 @@ func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, b *bot.
 	payload, _ := json.Marshal(UpdatePickPayload{Message: message, TransactionID: txID, OldIDs: oldIDs, BeforeRows: beforeRows})
 	if ierr := repo.Insert(&PendingJob{UserID: userID, Kind: KindUpdatePick, Payload: payload}); ierr != nil {
 		slog.ErrorContext(ctx, "enqueue update_pick failed", "user_id", userID, "err", ierr)
-		s.SendText(ctx, b, chatID, msgCouldNotSave("el cambio"))
+		s.SendText(ctx, chat, msgCouldNotSave("el cambio"))
 		return true
 	}
 	bumpNextDrainAt(time.Now().Add(rl.RetryAfter))
-	s.SendText(ctx, b, chatID, AckForWait(rl.RetryAfter))
+	s.SendText(ctx, chat, AckForWait(rl.RetryAfter))
 	return true
 }
 
@@ -111,7 +111,7 @@ func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, b *bot.
 // también y ackea — aunque el cupo haya vuelto — para que el drain lo procese en
 // orden (FIFO). Evita que "no, 600" se procese antes de "gasté 500". Solo texto
 // libre, solo en el webhook (el drain no pasa por acá). Devuelve true si encoló.
-func EnqueueBehindPending(ctx context.Context, s Services, repo Repository, b *bot.Bot, chatID int64, userID uint64, text string) bool {
+func EnqueueBehindPending(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string) bool {
 	n, err := repo.CountByUser(userID)
 	if err != nil || n == 0 {
 		return false
@@ -121,6 +121,6 @@ func EnqueueBehindPending(ctx context.Context, s Services, repo Repository, b *b
 		slog.ErrorContext(ctx, "enqueue behind pending failed", "user_id", userID, "err", ierr)
 		return false // no pudimos encolar → dejá que el flujo normal intente
 	}
-	s.SendText(ctx, b, chatID, msgQueuedBehindPending)
+	s.SendText(ctx, chat, msgQueuedBehindPending)
 	return true
 }
