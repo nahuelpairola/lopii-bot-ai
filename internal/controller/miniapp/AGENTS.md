@@ -68,21 +68,42 @@ Consequences worth knowing before touching either:
   through `apply` silently empties it of exactly what it exists to show.
 - It is also the only place `PENDING_REVIEW` rows surface, rendered as "Sin clasificar".
   That string never reaches the screen raw.
-- The account leaf parses **its own `Period`** (`AllPresets`/`PresetMonth`). The accounts
-  index uses `TrendPresets`, which omits "Mes" on purpose; a statement is read by month.
+- The account leaf parses **its own `Period`** (`SinglePeriodScope`). The accounts index
+  uses `TrendScope`, which omits "Mes" on purpose; a statement is read by month. They are
+  different scopes, so the leaf no longer inherits the index's range — see the preset
+  section below.
 - **A leaf must call `p.WithDrill(suffix)` or its own period controls throw the user out.**
-  `periodQuery` encodes `p`/`m`/`c` and nothing else, so every header link — both arrows,
-  every preset chip, both currency chips — used to rebuild a bare index URL and the
-  `?account=`/`?category=`/`?subcategory=` param vanished. `WithDrill` appends the suffix to
-  those links only; `Query()` stays bare on purpose, because that is the link *back out*
-  (`BackQuery`, and the row `Href`s one level up). Two more things it will not do for you:
-  it is **not composable** — the third level builds `&category=X&subcategory=Y` in one
-  string, since a second call would repeat the first suffix inside `PrevQuery`/`NextQuery` —
-  and it is called only **after** the drill target is validated, so a link never echoes an
-  id that turned out not to belong to the user.
+  `periodQuery` encodes the preset scopes plus `m`/`c` and nothing else, so every header
+  link — both arrows, every preset chip, both currency chips — used to rebuild a bare index
+  URL and the `?account=`/`?category=`/`?subcategory=` param vanished. `WithDrill` appends
+  the suffix to those links only; `Query()` stays bare on purpose, because that is the link
+  *back out* (`BackQuery`, and the row `Href`s one level up). Two more things it will not do
+  for you: it is **not composable** — the third level builds `&category=X&subcategory=Y` in
+  one string, since a second call would repeat the first suffix inside
+  `PrevQuery`/`NextQuery` — and it is called only **after** the drill target is validated, so
+  a link never echoes an id that turned out not to belong to the user.
 - The account leaf also sets `Period.HideCurrency`. An account holds one currency, so the
   chip would render an ARS leaf against a USD period — worse than the bug above. The
   subcategory leaf keeps the chips: a category legitimately spans both.
+
+## The preset has TWO slots, and every link must carry both
+
+`p` is the preset of the single-period views (Resumen, Categorías, both leaves); `pt` is the
+preset of the trend views (Evolución, the accounts index). A `PresetScope`
+(`templates/period.go`) is the triple "which param + which presets + which default", and
+`periodFromQuery` resolves **every** scope on every request, not only the active one — so no
+unvalidated value ever travels.
+
+They are two because `periodFromQuery` never 400s: a preset the view does not offer falls
+silently to that view's default. With a single slot, Evolución's coercion `month → 6m` got
+written back into `#app-state`, the tab bar carried it out on the next tap, and Resumen —which
+*does* offer `6m`— accepted it as a user choice. The filter changed by itself and stayed
+changed, and the accounts index leaked the same way into the account leaf via `p.Query()`.
+
+**Every link carries every scope.** `periodQuery` writes all of `Period.Presets`; a link built
+by hand with only the active param erases the other view's memory on the next tab tap, and
+nothing fails — the value simply falls to a default that reads like a choice. `WithPreset`
+clones the map before writing: `Period` is a value, its map is not.
 
 ## Two smaller traps
 
