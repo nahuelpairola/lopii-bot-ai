@@ -164,7 +164,7 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, jobsRepo, nil, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c.PendingJobServices(), jobsRepo, nil, 50*time.Millisecond)
 
 	// Sin Groq de por medio el drenaje es inmediato; el deadline corto está para
 	// que un cuelgue falle rápido en vez de comerse el timeout del paquete.
@@ -230,7 +230,7 @@ func TestQueueDrain_GiveUp_DoesNotCallOrchestrator(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, jobsRepo, nil, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c.PendingJobServices(), jobsRepo, nil, 50*time.Millisecond)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {

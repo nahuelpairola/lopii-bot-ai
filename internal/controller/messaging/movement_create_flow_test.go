@@ -818,7 +818,7 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 		t.Fatalf("bot.New: %v", err)
 	}
 
-	flow.FinishMovementCreate(context.Background(), c, b, 1, data)
+	flow.FinishMovementCreate(context.Background(), c, newEdgeChat(b, 1), data)
 
 	if len(rt.texts) != 3 {
 		t.Fatalf("expected 3 messages (recibo + R1 + R2), got %d: %+v", len(rt.texts), rt.texts)

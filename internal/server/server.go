@@ -112,7 +112,7 @@ func InitServer(conf *config.Config) error {
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
 	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
-	go pendingjob.Run(context.Background(), messagingController, jobsRepo, tgBot, pendingjob.JobDrainInterval)
+	go pendingjob.Run(context.Background(), messagingController.PendingJobServices(), jobsRepo, tgBot, pendingjob.JobDrainInterval)
 
 	return ginEngine.Run(":" + conf.Server.Port)
 }

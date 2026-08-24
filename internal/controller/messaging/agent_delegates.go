@@ -24,7 +24,7 @@ func (c *controller) finishAnswerQuery(ctx context.Context, b *bot.Bot, chatID i
 	// Un 429 encola y ackea: el intent_event sigue pendiente porque la historia
 	// no terminó, la termina el drain. QUERY es el intent más seguro de
 	// replayar: es read-only, no puede registrar la misma plata dos veces.
-	if handled, oerr := pendingjob.HandleGroqError(ctx, c, c.jobs, b, chatID, userID, text, qErr); handled {
+	if handled, oerr := pendingjob.HandleGroqError(ctx, pendingjobBridge{c}, c.jobs, b, chatID, userID, text, qErr); handled {
 		return oerr
 	}
 	if qErr != nil {
@@ -38,5 +38,5 @@ func (c *controller) finishAnswerQuery(ctx context.Context, b *bot.Bot, chatID i
 // finishManageSettings entrega al cluster de wizards de configuración. El
 // despacho por área vive en settings.Dispatch (internal/settings).
 func (c *controller) finishManageSettings(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text, area string) error {
-	return settings.Dispatch(ctx, c, b, chatID, userID, text, area)
+	return settings.Dispatch(ctx, settingsBridge{c}, b, chatID, userID, text, area)
 }

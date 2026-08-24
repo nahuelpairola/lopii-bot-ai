@@ -8,6 +8,7 @@ import (
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/chathistory"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/query"
@@ -47,8 +48,8 @@ func (c *controller) QueryChatRecent(userID uint64) ([]chathistory.Turn, error) 
 func (c *controller) QueryChatAppend(userID uint64, question, answer string) error {
 	return c.chatHistory.Append(userID, question, answer)
 }
-func (c *controller) QuerySendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
-	c.sendText(ctx, b, chatID, text)
+func (c *controller) QuerySendText(ctx context.Context, chat messenger.Chat, text string) {
+	_ = messenger.SendText(ctx, chat, text)
 }
 func (c *controller) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return c.orchestrator.AnswerQuery(ctx, systemPrompt, userText, history, tools, execute)
@@ -57,5 +58,5 @@ func (c *controller) AnswerQuery(ctx context.Context, systemPrompt, userText str
 // handleQuery entrega la consulta al loop de QUERY. Conserva la firma y el
 // contrato de siempre (answered, err) — finishAnswerQuery y nudge dependen de ambos.
 func (c *controller) handleQuery(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) (bool, error) {
-	return query.Run(ctx, c, b, chatID, userID, text)
+	return query.Run(ctx, queryBridge{c}, b, chatID, userID, text)
 }

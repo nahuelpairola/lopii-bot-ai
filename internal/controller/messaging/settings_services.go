@@ -4,14 +4,17 @@ import (
 	"context"
 
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/settings"
 	"lopiibot.com/internal/subcategory"
 )
 
 // settingsServices implements settings.Services for *controller. El resto de los
 // métodos que la interfaz pide ya existen: los repos y el outbound los trae el
 // runner de flow (controller.go) y el loop del agente (agent_services.go).
-var _ settings.Services = (*controller)(nil)
+//
+// La aserción de satisfacción vive en chat_bridge.go (settingsBridge), no acá:
+// *controller ya no puede implementar settings.Services directamente — SendText/
+// SendPrompt/StartFlow/HandleGroqError tienen la firma nueva de messenger.Chat,
+// y settings todavía pide (bot, chatID) hasta que migre en la Task 7.
 
 func (c *controller) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	return c.subcategories.DistinctCategoriesForUser(userID)

@@ -20,6 +20,7 @@ import (
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/invitation"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/nudges"
 	"lopiibot.com/internal/orchestrator"
@@ -283,12 +284,12 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		// El tap del botón de un tip no pasa por el engine ni por el router.
 		// Va acá arriba para que un flow abierto no se coma el callback como si
 		// fuera una opción suya; la consulta es read-only y lo deja intacto.
-		if nudges.HandleCallback(ctx, c, b, chatID, u.ID, input.CallbackData) {
+		if nudges.HandleCallback(ctx, nudgesBridge{c}, b, chatID, u.ID, input.CallbackData) {
 			return &uid, nil
 		}
 		// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
 		// una opción de ningún flow, y un flow abierto no puede comérselo.
-		if flow.HandleNearDuplicateChoice(ctx, c, b, chatID, u.ID, input.CallbackData) {
+		if flow.HandleNearDuplicateChoice(ctx, c, newEdgeChat(b, chatID), u.ID, input.CallbackData) {
 			return &uid, nil
 		}
 
@@ -299,18 +300,18 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
-				if pendingjob.EnqueueBehindPending(ctx, c, c.jobs, b, chatID, u.ID, input.Text) {
+				if pendingjob.EnqueueBehindPending(ctx, pendingjobBridge{c}, c.jobs, b, chatID, u.ID, input.Text) {
 					return &uid, nil
 				}
 				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
-				nudges.Maybe(ctx, c, b, chatID, u.ID)
+				nudges.Maybe(ctx, nudgesBridge{c}, b, chatID, u.ID)
 				return &uid, err
 			}
 			return &uid, nil
 		}
 		if result.Finished {
 			c.handleFlowFinished(ctx, b, chatID, result)
-			nudges.Maybe(ctx, c, b, chatID, u.ID)
+			nudges.Maybe(ctx, nudgesBridge{c}, b, chatID, u.ID)
 			return &uid, nil
 		}
 		c.sendPrompt(ctx, b, chatID, result.Prompt)
@@ -332,24 +333,24 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	// destapan la cola: es el único momento en que se sabe que no hay nada
 	// abierto, y por eso el WIP=1 se sostiene solo.
 	if result.FlowName == flow.AskUserFlowName {
-		agent.FinishAskUser(ctx, c, b, chatID, result.Data)
+		agent.FinishAskUser(ctx, c, newEdgeChat(b, chatID), result.Data)
 		return
 	}
 	defer func() {
-		if err := agent.DrainNextAction(ctx, c, b, chatID, result.Data.UserID()); err != nil {
+		if err := agent.DrainNextAction(ctx, c, newEdgeChat(b, chatID), result.Data.UserID()); err != nil {
 			slog.ErrorContext(ctx, "drain parked actions failed", "err", err)
 		}
 	}()
 
 	switch result.FlowName {
 	case flow.MovementCreateFlowName:
-		flow.FinishMovementCreate(ctx, c, b, chatID, result.Data)
+		flow.FinishMovementCreate(ctx, c, newEdgeChat(b, chatID), result.Data)
 	case flow.MovementUpdatePickFlowName:
-		agent.FinishMovementUpdatePick(ctx, c, b, chatID, result.Data)
+		agent.FinishMovementUpdatePick(ctx, c, newEdgeChat(b, chatID), result.Data)
 	case flow.MovementUpdateConfirmFlowName:
 		c.finishMovementUpdateConfirmFlow(ctx, b, chatID, result.Data)
 	case flow.MovementDeleteFlowName:
-		flow.FinishMovementDelete(ctx, c, b, chatID, result.Data)
+		flow.FinishMovementDelete(ctx, c, newEdgeChat(b, chatID), result.Data)
 	case flow.AccountCreateFlowName:
 		c.finishAccountCreateFlow(ctx, b, chatID, result.Data)
 	case flow.AccountManageFlowName:
@@ -367,7 +368,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 	case flow.CategoryManageTargetFlowName:
 		c.finishCategoryManageTargetFlow(ctx, b, chatID, result.Data)
 	case flow.MovementNegativeConfirmFlowName:
-		flow.FinishMovementNegativeConfirm(ctx, c, b, chatID, result.Data)
+		flow.FinishMovementNegativeConfirm(ctx, c, newEdgeChat(b, chatID), result.Data)
 	case flow.ReminderSetupFlowName:
 		c.finishReminderSetup(ctx, b, chatID, result.Data)
 	default:
@@ -379,7 +380,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, b *bot.Bot, chatID 
 // (FinishMovementUpdateConfirm). Los tests del borde lo llaman por este nombre;
 // el puente se borra al cerrar la costura.
 func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishMovementUpdateConfirm(ctx, c, b, chatID, data)
+	flow.FinishMovementUpdateConfirm(ctx, c, newEdgeChat(b, chatID), data)
 }
 
 // buttonsPerRow caps how many inline-keyboard buttons Telegram renders
@@ -469,11 +470,13 @@ func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome s
 	c.resolveMetric(ctx, userID, outcome, movementIDs...)
 }
 
-func (c *controller) SendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
+func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text string) {
+	b, chatID, _ := asTelegramPair(chat)
 	c.sendText(ctx, b, chatID, text)
 }
 
-func (c *controller) StartFlow(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
+func (c *controller) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
+	b, chatID, _ := asTelegramPair(chat)
 	return c.startFlow(ctx, b, chatID, userID, flowName, seed, errCtx)
 }
 
@@ -512,8 +515,9 @@ func (c *controller) ReassignAccountMovements(fromID, toID uint64) error {
 	return c.movements.ReassignAccount(fromID, toID)
 }
 
-func (c *controller) StartAccountCreate(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	return settings.StartAccountCreate(ctx, c, b, chatID, userID, text)
+func (c *controller) StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
+	b, chatID, _ := asTelegramPair(chat)
+	return settings.StartAccountCreate(ctx, settingsBridge{c}, b, chatID, userID, text)
 }
 
 func (c *controller) SubcategoryIconForCategory(userID uint64, category string) string {

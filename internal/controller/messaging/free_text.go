@@ -30,5 +30,5 @@ func (c *controller) sendText(ctx context.Context, b *bot.Bot, chatID int64, tex
 // es cómo se llega — el loop parkea en ellos, en vez de un router que decide de
 // antemano.
 func (c *controller) handleFreeText(ctx context.Context, b *bot.Bot, chatID int64, userID uint64, text string) error {
-	return agent.StartLoop(ctx, c, b, chatID, userID, text)
+	return agent.StartLoop(ctx, c, newEdgeChat(b, chatID), userID, text)
 }

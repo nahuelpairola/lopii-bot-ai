@@ -11,5 +11,5 @@ import (
 // finishAccountCreateFlow delega en flow.FinishAccountCreate (account_finish.go).
 // Conserva el nombre de borde mientras los tests y handleFlowFinished lo usen.
 func (c *controller) finishAccountCreateFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishAccountCreate(ctx, c, b, chatID, data)
+	flow.FinishAccountCreate(ctx, c, newEdgeChat(b, chatID), data)
 }

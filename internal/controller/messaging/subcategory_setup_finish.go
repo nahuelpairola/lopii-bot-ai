@@ -12,7 +12,7 @@ import (
 // (category_finish.go). Conserva los nombres de borde mientras los tests y
 // handleFlowFinished los usen.
 func (c *controller) finishSubcategorySetupFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishSubcategorySetup(ctx, c, b, chatID, data)
+	flow.FinishSubcategorySetup(ctx, c, newEdgeChat(b, chatID), data)
 }
 
 func (c *controller) insertNewSubcategory(data conversation.Data) error {

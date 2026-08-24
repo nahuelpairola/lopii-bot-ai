@@ -12,17 +12,17 @@ import (
 // delegadores conservan los nombres de borde mientras los tests y
 // handleFlowFinished los usen.
 func (c *controller) finishAccountManageFlow(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishAccountManage(ctx, c, b, chatID, data)
+	flow.FinishAccountManage(ctx, c, newEdgeChat(b, chatID), data)
 }
 
 func (c *controller) finishAccountAdjust(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishAccountAdjust(ctx, c, b, chatID, data)
+	flow.FinishAccountAdjust(ctx, c, newEdgeChat(b, chatID), data)
 }
 
 func (c *controller) finishAccountDefault(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishAccountDefault(ctx, c, b, chatID, data)
+	flow.FinishAccountDefault(ctx, c, newEdgeChat(b, chatID), data)
 }
 
 func (c *controller) finishAccountMoveOffer(ctx context.Context, b *bot.Bot, chatID int64, data conversation.Data) {
-	flow.FinishAccountMoveOffer(ctx, c, b, chatID, data)
+	flow.FinishAccountMoveOffer(ctx, c, newEdgeChat(b, chatID), data)
 }

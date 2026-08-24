@@ -169,7 +169,7 @@ func TestQueryEval(t *testing.T) {
 	// FAIL aunque la intención fuera saltearlo.
 	ask := func(t *testing.T, q string) string {
 		prompt := query.SystemPrompt()
-		exec := query.NewExecutor(c, uid)
+		exec := query.NewExecutor(queryBridge{c}, uid)
 		if asked > 0 {
 			time.Sleep(12 * time.Second)
 		}

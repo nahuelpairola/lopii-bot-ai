@@ -8,7 +8,6 @@ import (
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/nudges"
 	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
@@ -16,10 +15,11 @@ import (
 
 // Los métodos de este archivo implementan nudges.Services: lo que el
 // dispatcher de tips necesita del mundo, con el *controller* como
-// implementación. Puentes de una línea, como en agent_services.go. SendText y
-// SendPrompt ya existían (runner de flow / bridges del agent) y no se repiten
-// acá.
-var _ nudges.Services = (*controller)(nil)
+// implementación. Puentes de una línea, como en agent_services.go.
+//
+// La aserción de satisfacción vive en chat_bridge.go (nudgesBridge), no acá:
+// SendText y SendPrompt tienen la firma nueva de messenger.Chat en
+// *controller, y nudges todavía pide (bot, chatID) hasta que migre (Task 7).
 
 func (c *controller) EngineInProgress(userID uint64) (bool, error) {
 	return c.engine.InProgress(userID)
