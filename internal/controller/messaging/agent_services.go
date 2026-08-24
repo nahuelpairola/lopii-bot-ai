@@ -128,19 +128,11 @@ func (c *controller) ResolveAndInsertMovements(data conversation.Data) ([]moveme
 }
 
 func (c *controller) HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
-	b, chatID, ok := pairOrLog(ctx, chat, "HandleGroqError")
-	if !ok {
-		return false, fmt.Errorf("handle groq error: chat sin (bot, chatID) recuperable")
-	}
-	return pendingjob.HandleGroqError(ctx, pendingjobBridge{c}, c.jobs, b, chatID, userID, text, err)
+	return pendingjob.HandleGroqError(ctx, c, c.jobs, chat, userID, text, err)
 }
 
 func (c *controller) EnqueueUpdatePickIfRateLimited(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
-	b, chatID, ok := pairOrLog(ctx, chat, "EnqueueUpdatePickIfRateLimited")
-	if !ok {
-		return false
-	}
-	return pendingjob.EnqueueUpdatePick(ctx, pendingjobBridge{c}, c.jobs, b, chatID, userID, message, transactionID, oldIDs, beforeRows, err)
+	return pendingjob.EnqueueUpdatePick(ctx, c, c.jobs, chat, userID, message, transactionID, oldIDs, beforeRows, err)
 }
 
 func (c *controller) FinishAnswerQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {

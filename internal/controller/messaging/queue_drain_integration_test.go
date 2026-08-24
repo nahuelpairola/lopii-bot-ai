@@ -16,6 +16,7 @@ import (
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/database"
 	"lopiibot.com/internal/flow"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -23,6 +24,15 @@ import (
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
+
+// fakeChats es el chatResolver del drenaje para este test: como el
+// orchestrator, va fakeado a propósito — lo que se prueba acá es el
+// cableado (drainUser → replayJob → handleFreeText → StartLoop → INSERT),
+// no el transporte real. Un telegram.Transport de verdad con *bot.Bot nil
+// paniquea en el primer chat.Send; messenger.FakeChat no.
+type fakeChats struct{ chat *messenger.FakeChat }
+
+func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }
 
 // El drenaje de la cola de 429, de punta a punta contra el Postgres local:
 // pendingjob.Run → drainUser → replayJob → handleFreeText → StartLoop →
@@ -164,7 +174,7 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c.PendingJobServices(), jobsRepo, nil, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
 
 	// Sin Groq de por medio el drenaje es inmediato; el deadline corto está para
 	// que un cuelgue falle rápido en vez de comerse el timeout del paquete.
@@ -230,7 +240,7 @@ func TestQueueDrain_GiveUp_DoesNotCallOrchestrator(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c.PendingJobServices(), jobsRepo, nil, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {

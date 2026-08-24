@@ -22,6 +22,7 @@ import (
 	"lopiibot.com/internal/health"
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/logging"
+	"lopiibot.com/internal/messenger/telegram"
 	"lopiibot.com/internal/metric"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/notifier"
@@ -105,14 +106,21 @@ func InitServer(conf *config.Config) error {
 	messagingController.RegisterHandlers(tgBot)
 	miniappController.RegisterRoutes(ginEngine)
 
+	// tgTransport alcanza a un usuario que no acaba de escribir (el sweeper, el
+	// drenaje de 429): resuelve un messenger.Chat a partir de un userID, en vez
+	// de una respuesta a un update entrante. Es el mismo adapter que RegisterHandlers
+	// usará para el borde del webhook cuando ese wiring migre (Task 6) — por eso
+	// vive acá y no adentro de un paquete consumer.
+	tgTransport := telegram.New(tgBot, userRepo)
+
 	// Las dos goroutines de fondo: el sweeper (recordatorios, resumen semanal,
 	// retención de trazas, cotizaciones) y el drenaje de la cola de 429.
 	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo, subcategoryCache)
 	quoteRepo := quote.NewRepository(conn)
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
-	sweeper := notifier.NewSweeper(tgBot, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
+	sweeper := notifier.NewSweeper(tgTransport, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
-	go pendingjob.Run(context.Background(), messagingController.PendingJobServices(), jobsRepo, tgBot, pendingjob.JobDrainInterval)
+	go pendingjob.Run(context.Background(), messagingController, jobsRepo, tgTransport, pendingjob.JobDrainInterval)
 
 	return ginEngine.Run(":" + conf.Server.Port)
 }

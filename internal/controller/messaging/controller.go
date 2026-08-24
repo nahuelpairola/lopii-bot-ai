@@ -300,7 +300,7 @@ func (c *controller) handleConversationInput(ctx context.Context, b *bot.Bot, up
 		}
 		if !found {
 			if input.Text != "" {
-				if pendingjob.EnqueueBehindPending(ctx, pendingjobBridge{c}, c.jobs, b, chatID, u.ID, input.Text) {
+				if pendingjob.EnqueueBehindPending(ctx, c, c.jobs, newEdgeChat(b, chatID), u.ID, input.Text) {
 					return &uid, nil
 				}
 				err := c.handleFreeText(ctx, b, chatID, u.ID, input.Text)
@@ -470,12 +470,17 @@ func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome s
 	c.resolveMetric(ctx, userID, outcome, movementIDs...)
 }
 
+// SendText implementa flow.runner/agentServices/nudges.Services/
+// settings.Services/pendingjob.Services. Va directo por messenger.SendText,
+// como QuerySendText (query_services.go) desde la Task 7 — no por pairOrLog:
+// un chat resuelto por chatResolver.ChatFor (el sweeper, el drenaje de 429)
+// nunca es un edgeChat, así que pairOrLog fallaría siempre para esos
+// llamadores. edgeChat.Send ya trae su propia guarda de bot nil, así que el
+// comportamiento para el borde del webhook no cambia.
 func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text string) {
-	b, chatID, ok := pairOrLog(ctx, chat, "SendText")
-	if !ok {
-		return
+	if err := messenger.SendText(ctx, chat, text); err != nil {
+		slog.ErrorContext(ctx, "controller: send text failed", "err", err)
 	}
-	c.sendText(ctx, b, chatID, text)
 }
 
 func (c *controller) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {

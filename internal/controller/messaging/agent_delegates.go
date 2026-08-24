@@ -24,7 +24,7 @@ func (c *controller) finishAnswerQuery(ctx context.Context, b *bot.Bot, chatID i
 	// Un 429 encola y ackea: el intent_event sigue pendiente porque la historia
 	// no terminó, la termina el drain. QUERY es el intent más seguro de
 	// replayar: es read-only, no puede registrar la misma plata dos veces.
-	if handled, oerr := pendingjob.HandleGroqError(ctx, pendingjobBridge{c}, c.jobs, b, chatID, userID, text, qErr); handled {
+	if handled, oerr := pendingjob.HandleGroqError(ctx, c, c.jobs, newEdgeChat(b, chatID), userID, text, qErr); handled {
 		return oerr
 	}
 	if qErr != nil {
