@@ -4,22 +4,25 @@ The `Sweeper`: one in-process `time.Ticker` goroutine driving every scheduled jo
 reminder, weekly summary, trace retention, USD quotes, CPI. **Use `codegraph_explore` for
 structure** — this file is only for what reading the code will not tell you.
 
-## Every outbound message goes through ONE `send`, and it is `ParseMode: HTML`
+## Every outbound message is `ParseMode: HTML`, set in the adapter now
 
-`NewSweeper` builds a single `send` closure (`sweeper.go`) with `ParseMode: models.ParseModeHTML`,
-and every job shares it. The weekly summary needs it — it uses `<b>` so the numbers can be scanned
-— but the mode is set on the closure, so **it applies to the daily reminder and to anything added
-later, whether that copy asked for HTML or not.**
+The sweeper reaches a user through `chatResolver.ChatFor` (`messenger.Chat`), and every send goes
+`messenger.SendText(ctx, chat, text)`. `ParseMode: models.ParseModeHTML` used to be set on a `send`
+closure built in `NewSweeper`; it now lives in `internal/messenger/telegram` (`chat.go`,
+`htmlParseMode`) and is global to every message that adapter sends — not something this package
+controls or can see. The weekly summary needs it — it uses `<b>` so the numbers can be scanned —
+but since the mode is global, **it applies to the daily reminder and to anything added later,
+whether that copy asked for HTML or not.**
 
 **A raw `<`, `>` or `&` in the text makes Telegram return 400 and the message is not delivered at
 all.** Not degraded, not sent unstyled — nothing arrives, and the failure only shows in the logs.
 An account named `Ahorro & Cía` is enough to silence a user's whole weekly summary.
 
 So: **any new emitter hanging off the sweeper must escape everything that came from the user
-before it reaches `send`.** The summary already does this at the four places user data enters
-(`summary.go` — account names, category labels, the top movement's description) via
-`html.EscapeString`. Escaping happens in the builder, not in `send`, because `send` cannot tell
-the deliberate `<b>` from a user's stray `<`.
+before it reaches `messenger.SendText`.** The summary already does this at the four places user
+data enters (`summary.go` — account names, category labels, the top movement's description) via
+`html.EscapeString`. Escaping happens in the builder, not in the adapter, because the adapter
+cannot tell the deliberate `<b>` from a user's stray `<`.
 
 The reminder copy is safe by inspection rather than escaping — it is static, with no user data in
 it — and `reminder/messages_test.go` guards that it stays that way. If a reminder ever

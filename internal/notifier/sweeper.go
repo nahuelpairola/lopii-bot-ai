@@ -3,11 +3,9 @@ package notifier
 import (
 	"context"
 	"log/slog"
-	"strconv"
 	"time"
 
-	"github.com/go-telegram/bot"
-	"github.com/go-telegram/bot/models"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/quote"
 	"lopiibot.com/internal/reminder"
@@ -37,7 +35,13 @@ type movementReader interface {
 
 type userReader interface {
 	FindByID(id uint64) (*user.User, error)
-	FindChannelID(userID uint64, channel string) (string, error)
+}
+
+// chatResolver alcanza a un usuario que no acaba de escribir — el sweeper
+// dispara desde un ticker, no desde un mensaje entrante. Interfaz local: acá
+// no se importa ningún tipo concreto de transporte (house rule).
+type chatResolver interface {
+	ChatFor(userID uint64) (messenger.Chat, error)
 }
 
 type retentionStore interface {
@@ -90,11 +94,11 @@ type Sweeper struct {
 	cpiRanOn         time.Time
 	lastQuoteAttempt time.Time
 	lastCPIAttempt   time.Time
-	send             func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error
+	chats            chatResolver
 	now              func() time.Time
 }
 
-func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader, q quoteStore, qa quoteClient) *Sweeper {
+func NewSweeper(chats chatResolver, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader, q quoteStore, qa quoteClient) *Sweeper {
 	return &Sweeper{
 		reminders: r,
 		movements: m,
@@ -103,18 +107,8 @@ func NewSweeper(b *bot.Bot, r reminderStore, m movementReader, u userReader, ret
 		summaries: sum,
 		quotes:    q,
 		quoteAPI:  qa,
-		send: func(ctx context.Context, chatID int64, text string, markup *models.InlineKeyboardMarkup) error {
-			// ParseMode HTML: el resumen semanal usa <b> para que se pueda
-			// escanear. Todo lo que viene del usuario se escapa en
-			// summary.Builder — sin eso Telegram devuelve 400 y no llega nada.
-			p := &bot.SendMessageParams{ChatID: chatID, Text: text, ParseMode: models.ParseModeHTML}
-			if markup != nil {
-				p.ReplyMarkup = markup
-			}
-			_, err := b.SendMessage(ctx, p)
-			return err
-		},
-		now: func() time.Time { return time.Now().In(artLoc) },
+		chats:     chats,
+		now:       func() time.Time { return time.Now().In(artLoc) },
 	}
 }
 
@@ -187,17 +181,12 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 			slog.ErrorContext(ctx, "notifier user lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
-		channelID, err := s.users.FindChannelID(u.ID, user.ChannelTelegram)
+		chat, err := s.chats.ChatFor(u.ID)
 		if err != nil {
-			slog.ErrorContext(ctx, "notifier channel lookup failed", "user_id", r.UserID, "err", err)
+			slog.ErrorContext(ctx, "notifier chat lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
-		chatID, err := strconv.ParseInt(channelID, 10, 64)
-		if err != nil {
-			slog.ErrorContext(ctx, "notifier bad telegram_id", "user_id", r.UserID, "err", err)
-			continue
-		}
-		if err := s.send(ctx, chatID, reminder.PickMessage(), nil); err != nil {
+		if err := messenger.SendText(ctx, chat, reminder.PickMessage()); err != nil {
 			slog.ErrorContext(ctx, "notifier send failed", "user_id", r.UserID, "err", err)
 			continue
 		}
@@ -242,17 +231,12 @@ func (s *Sweeper) sweepWeeklySummary(ctx context.Context, now time.Time) {
 			slog.ErrorContext(ctx, "notifier weekly user lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
-		channelID, err := s.users.FindChannelID(u.ID, user.ChannelTelegram)
+		chat, err := s.chats.ChatFor(u.ID)
 		if err != nil {
-			slog.ErrorContext(ctx, "notifier weekly channel lookup failed", "user_id", r.UserID, "err", err)
+			slog.ErrorContext(ctx, "notifier weekly chat lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
-		chatID, err := strconv.ParseInt(channelID, 10, 64)
-		if err != nil {
-			slog.ErrorContext(ctx, "notifier weekly bad telegram_id", "user_id", r.UserID, "err", err)
-			continue
-		}
-		if err := s.send(ctx, chatID, text, nil); err != nil {
+		if err := messenger.SendText(ctx, chat, text); err != nil {
 			slog.ErrorContext(ctx, "notifier weekly send failed", "user_id", r.UserID, "err", err)
 			continue
 		}
