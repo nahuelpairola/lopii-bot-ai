@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-telegram/bot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
+	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/reminder"
@@ -152,7 +152,7 @@ func (s *queryTestServices) QueryChatRecent(userID uint64) ([]chathistory.Turn, 
 	return nil, nil
 }
 func (s *queryTestServices) QueryChatAppend(userID uint64, question, answer string) error { return nil }
-func (s *queryTestServices) QuerySendText(ctx context.Context, b *bot.Bot, chatID int64, text string) {
+func (s *queryTestServices) QuerySendText(ctx context.Context, chat messenger.Chat, text string) {
 }
 func (s *queryTestServices) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return "", nil
