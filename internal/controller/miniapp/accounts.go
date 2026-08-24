@@ -23,12 +23,15 @@ const accountParam = "account"
 func (c *controller) handleAccounts(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
 	// El drill cuelga del mismo handler que el índice, como el de categorías.
-	// Se desvía ANTES de leer el período: la hoja usa presets distintos.
 	if raw := ctx.Query(accountParam); raw != "" {
 		c.handleAccountLeaf(ctx, userID, raw)
 		return
 	}
-	p := periodFromQuery(ctx, templates.TrendPresets, templates.Preset6M)
+	// Mismo ámbito que Resumen y Categorías: el saldo de las tarjetas es el de
+	// hoy y no depende del período, así que no hay razón para que esta pantalla
+	// tenga memoria propia. Lo único que el período mueve acá es el gráfico, y
+	// con una ventana de un mes se dibuja solo (ver accounts.templ).
+	p := periodFromQuery(ctx, templates.SinglePeriodScope)
 
 	accounts, err := c.accounts.FindByUserID(userID)
 	if err != nil {
@@ -137,10 +140,9 @@ const msgUnclassified = "Sin clasificar"
 // handleAccountLeaf sirve la hoja de UNA cuenta: los movimientos que explican su
 // saldo, transferencias y filas reservadas incluidas.
 func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw string) {
-	// Período propio, no el del índice: el índice usa TrendPresets, que a
-	// propósito no ofrece "Mes" (dejaría la tendencia con un solo punto), y un
-	// extracto de cuenta es justo lo que se lee por mes.
-	p := periodFromQuery(ctx, templates.AllPresets, templates.PresetMonth)
+	// Mismo ámbito que el índice: un extracto de cuenta se lee por mes, igual
+	// que la grilla de saldos de la que se llega acá.
+	p := periodFromQuery(ctx, templates.SinglePeriodScope)
 
 	id, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {

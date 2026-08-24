@@ -13,6 +13,12 @@ func art(y int, m time.Month) time.Time {
 	return time.Date(y, m, 1, 0, 0, 0, 0, constants.ArgentinaZone)
 }
 
+// presetsFor arma el mapa de ámbitos como lo entrega periodFromQuery: los dos
+// slots siempre presentes y siempre resueltos.
+func presetsFor(single, trend string) map[string]string {
+	return map[string]string{SinglePeriodScope.Param: single, TrendScope.Param: trend}
+}
+
 func TestCurrentMonth_UsesArgentineWallClock(t *testing.T) {
 	// 01:30 UTC del 1/8 = 22:30 ART del 31/7 → el mes corriente es julio.
 	got := CurrentMonth(time.Date(2026, 8, 1, 1, 30, 0, 0, time.UTC))
@@ -22,7 +28,7 @@ func TestCurrentMonth_UsesArgentineWallClock(t *testing.T) {
 }
 
 func TestNewPeriod_MonthWindow(t *testing.T) {
-	p := NewPeriod(RouteOverview, PresetMonth, art(2026, time.July), art(2026, time.July), currency.ARS, AllPresets)
+	p := NewPeriod(RouteOverview, SinglePeriodScope, presetsFor(PresetMonth, Preset6M), art(2026, time.July), art(2026, time.July), currency.ARS)
 
 	if p.Months != 1 {
 		t.Errorf("Months = %d, want 1", p.Months)
@@ -42,7 +48,7 @@ func TestNewPeriod_MonthWindow(t *testing.T) {
 }
 
 func TestNewPeriod_SixMonthWindowEndingAtAnchor(t *testing.T) {
-	p := NewPeriod(RouteEvolution, Preset6M, art(2026, time.July), art(2026, time.July), currency.ARS, TrendPresets)
+	p := NewPeriod(RouteEvolution, TrendScope, presetsFor(PresetMonth, Preset6M), art(2026, time.July), art(2026, time.July), currency.ARS)
 
 	if !p.From.Equal(art(2026, time.February)) {
 		t.Errorf("From = %s, want 2026-02 (6 meses terminando en julio)", p.From)
@@ -64,15 +70,15 @@ func TestNewPeriod_SixMonthWindowEndingAtAnchor(t *testing.T) {
 
 func TestNewPeriod_CursorStepsByWindowLength(t *testing.T) {
 	// Ancla en enero 2026, ventana de 3 meses, mes corriente julio 2026.
-	p := NewPeriod(RouteEvolution, Preset3M, art(2026, time.January), art(2026, time.July), currency.ARS, TrendPresets)
+	p := NewPeriod(RouteEvolution, TrendScope, presetsFor(PresetMonth, Preset3M), art(2026, time.January), art(2026, time.July), currency.ARS)
 
 	if p.Label != "Nov 2025 – ene 2026" {
 		t.Errorf("Label = %q, want %q", p.Label, "Nov 2025 – ene 2026")
 	}
-	if p.PrevQuery != "/app/evolution?c=ARS&m=2025-10&p=3m" {
+	if p.PrevQuery != "/app/evolution?c=ARS&m=2025-10&p=month&pt=3m" {
 		t.Errorf("PrevQuery = %q", p.PrevQuery)
 	}
-	if p.NextQuery != "/app/evolution?c=ARS&m=2026-04&p=3m" {
+	if p.NextQuery != "/app/evolution?c=ARS&m=2026-04&p=month&pt=3m" {
 		t.Errorf("NextQuery = %q", p.NextQuery)
 	}
 }
@@ -80,7 +86,7 @@ func TestNewPeriod_CursorStepsByWindowLength(t *testing.T) {
 func TestNewPeriod_NextClampedAtCurrentMonth(t *testing.T) {
 	// Ancla mayo, ventana 3m, mes corriente julio: el próximo salto sería
 	// agosto, que es futuro → sin NextQuery.
-	p := NewPeriod(RouteEvolution, Preset3M, art(2026, time.May), art(2026, time.July), currency.ARS, TrendPresets)
+	p := NewPeriod(RouteEvolution, TrendScope, presetsFor(PresetMonth, Preset3M), art(2026, time.May), art(2026, time.July), currency.ARS)
 	if p.NextQuery != "" {
 		t.Errorf("NextQuery = %q, want empty", p.NextQuery)
 	}
@@ -90,15 +96,15 @@ func TestPeriod_LinkBuildersAreAbsolute(t *testing.T) {
 	// Los links salen con la ruta adelante: una query suelta ("?p=3m") la
 	// resolvería htmx contra la URL actual, que en el drill lleva params
 	// ajenos.
-	p := NewPeriod(RouteAccounts, Preset6M, art(2026, time.July), art(2026, time.July), currency.ARS, TrendPresets)
+	p := NewPeriod(RouteAccounts, TrendScope, presetsFor(PresetMonth, Preset6M), art(2026, time.July), art(2026, time.July), currency.ARS)
 
-	if got := p.WithPreset(Preset3M); got != "/app/accounts?c=ARS&m=2026-07&p=3m" {
+	if got := p.WithPreset(Preset3M); got != "/app/accounts?c=ARS&m=2026-07&p=month&pt=3m" {
 		t.Errorf("WithPreset = %q", got)
 	}
-	if got := p.WithCurrency(currency.USD); got != "/app/accounts?c=USD&m=2026-07&p=6m" {
+	if got := p.WithCurrency(currency.USD); got != "/app/accounts?c=USD&m=2026-07&p=month&pt=6m" {
 		t.Errorf("WithCurrency = %q", got)
 	}
-	if got := p.Query(); got != "/app/accounts?c=ARS&m=2026-07&p=6m" {
+	if got := p.Query(); got != "/app/accounts?c=ARS&m=2026-07&p=month&pt=6m" {
 		t.Errorf("Query = %q", got)
 	}
 	if !p.IsPreset(Preset6M) || p.IsPreset(Preset3M) {
@@ -109,7 +115,7 @@ func TestPeriod_LinkBuildersAreAbsolute(t *testing.T) {
 func TestWithDrill_HeaderLinksKeepTheLeaf(t *testing.T) {
 	// Ancla en junio con julio corriente: así el período tiene flecha para los
 	// dos lados y se prueban las cuatro salidas de la cabecera.
-	p := NewPeriod(RouteAccounts, PresetMonth, art(2026, time.June), art(2026, time.July), currency.ARS, AllPresets).
+	p := NewPeriod(RouteAccounts, SinglePeriodScope, presetsFor(PresetMonth, Preset6M), art(2026, time.June), art(2026, time.July), currency.ARS).
 		WithDrill("&account=12")
 
 	links := map[string]string{
@@ -128,5 +134,36 @@ func TestWithDrill_HeaderLinksKeepTheLeaf(t *testing.T) {
 	// Cuentas" te dejaría en la misma hoja.
 	if strings.Contains(p.Query(), "account=") {
 		t.Errorf("Query() = %q, no debería llevar el drill", p.Query())
+	}
+}
+
+func TestWithPreset_TouchesOnlyItsOwnScope(t *testing.T) {
+	p := NewPeriod(RouteEvolution, TrendScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.July), art(2026, time.July), currency.ARS)
+
+	// Cambiar el rango en una vista de tendencia no puede tocar el slot de las
+	// vistas de un período: ese es el bug entero.
+	if got := p.WithPreset(Preset3M); got != "/app/evolution?c=ARS&m=2026-07&p=month&pt=3m" {
+		t.Errorf("WithPreset = %q", got)
+	}
+}
+
+func TestWithPreset_DoesNotMutateThePeriod(t *testing.T) {
+	// Period es un valor, pero Presets es un map: sin clonar, el chip que
+	// dibuja el link pisa el estado del render que lo contiene.
+	base := presetsFor(PresetMonth, Preset6M)
+	p := NewPeriod(RouteEvolution, TrendScope, base,
+		art(2026, time.July), art(2026, time.July), currency.ARS)
+
+	_ = p.WithPreset(Preset3M)
+
+	if got := p.Presets[TrendScope.Param]; got != Preset6M {
+		t.Errorf("WithPreset pisó el Period: Presets[pt] = %q, want 6m", got)
+	}
+	if got := base[TrendScope.Param]; got != Preset6M {
+		t.Errorf("WithPreset pisó el map del caller: base[pt] = %q, want 6m", got)
+	}
+	if got := p.Query(); got != "/app/evolution?c=ARS&m=2026-07&p=month&pt=6m" {
+		t.Errorf("Query después de WithPreset = %q", got)
 	}
 }

@@ -117,7 +117,10 @@ func TestHandleOverview_FormatsMoneyAndShowsPeriod(t *testing.T) {
 	// El label se computa contra el mes corriente para que el test no
 	// caduque al cambiar de mes.
 	current := templates.CurrentMonth(nowInART())
-	want := templates.NewPeriod(templates.RouteOverview, templates.Preset6M, current, current, currency.ARS, templates.AllPresets).Label
+	want := templates.NewPeriod(templates.RouteOverview, templates.SinglePeriodScope,
+		map[string]string{templates.SinglePeriodScope.Param: templates.Preset6M,
+			templates.TrendScope.Param: templates.Preset6M},
+		current, current, currency.ARS).Label
 	if !bodyContains(body, want) {
 		t.Fatalf("el período %q debe estar escrito en pantalla", want)
 	}
@@ -326,5 +329,30 @@ func TestBuildTrendChart(t *testing.T) {
 				t.Errorf("ingresos = %v, want %v", got.Datasets[1].Data, tt.wantIngresos)
 			}
 		})
+	}
+}
+
+// El caso reportado, mitad ida: Resumen es una vista de UN período y no ofrece
+// rangos de tendencia, pero tiene que devolver intacto el slot que usan
+// Evolución y el índice de Cuentas. Si no, cada paso por Resumen les borra la
+// memoria.
+func TestHandleOverview_AppStateKeepsTheTrendScope(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovements{rows: map[string][]movement.CategorySum{
+		"": {{Label: "", Total: decimal.NewFromInt(1234567)}},
+	}}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/overview?p=month&pt=3m"))
+
+	body := w.Body.String()
+	if !appStateHas(body, "p", "month") {
+		t.Error("el Resumen debe publicar su propio preset en #app-state")
+	}
+	if !appStateHas(body, "pt", "3m") {
+		t.Error("el Resumen borró el preset de las vistas de tendencia")
 	}
 }

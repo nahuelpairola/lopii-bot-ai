@@ -7,10 +7,14 @@ package templates
 // reflects them too.
 templ TabBar(active string) {
 	<nav class="tab-bar" hx-include="#app-state" hx-target="#content" hx-push-url="true" hx-indicator="#content">
+		// El orden agrupa por período: las tres primeras comparten la ventana
+		// ("p") y Evolución vive en la suya ("pt"), sin "Mes". Con Evolución en el
+		// medio, la fila de chips perdía y recuperaba "Mes" al cruzarla en las dos
+		// direcciones; al final, esa discontinuidad se cruza una sola vez.
 		@tabLink(RouteOverview, TabOverview, "Resumen", active)
 		@tabLink(RouteCategories, TabCategories, "Categorías", active)
-		@tabLink(RouteEvolution, TabEvolution, "Evolución", active)
 		@tabLink(RouteAccounts, TabAccounts, "Cuentas", active)
+		@tabLink(RouteEvolution, TabEvolution, "Evolución", active)
 		// Slot de la pestaña de admin. Va vacío y oculto porque acá todavía no
 		// se sabe quién mira: el Shell no está autenticado. El partial del
 		// Resumen lo reemplaza por la pestaña real con hx-swap-oob cuando el

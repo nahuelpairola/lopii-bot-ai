@@ -247,8 +247,13 @@ func TestTaxonomyNote(t *testing.T) {
 // hoja. Ancla en p=6m porque ese preset sale sólo de WithPreset: los links de
 // vuelta y los de las filas llevan el período actual. Desescapa el & primero,
 // que templ escapa dentro de los atributos.
+//
+// El "pt=6m" del medio no es decorativo: el drill viaja después de TODOS los
+// params del período (url.Values ordena las claves), así que si el link se
+// armara con un solo ámbito esta aserción no matchearía. La hoja es una vista
+// single-period, así que su chip escribe "p" y "pt" queda en su default.
 func leafKeepsDrill(body, drill string) bool {
-	return bodyContains(strings.ReplaceAll(body, "&amp;", "&"), "p=6m"+drill)
+	return bodyContains(strings.ReplaceAll(body, "&amp;", "&"), "p=6m&pt=6m"+drill)
 }
 
 func TestHandleAccountLeaf_PeriodChipsKeepTheAccount(t *testing.T) {
@@ -296,5 +301,46 @@ func TestHandleAccountLeaf_HidesTheCurrencyChips(t *testing.T) {
 	// ARS con el período en USD, que es peor que perder el drill.
 	if bodyContains(strings.ReplaceAll(w.Body.String(), "&amp;", "&"), "c=USD") {
 		t.Error("la hoja de una cuenta no debe ofrecer cambiar de moneda")
+	}
+}
+
+// El índice de Cuentas comparte el slot "p" con Resumen y Categorías: cambiar
+// el rango en Evolución (que vive en "pt") no puede arrastrarlo.
+func TestHandleAccounts_SharesThePeriodOfOverview(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{1: decimal.NewFromInt(50000)},
+		deltas: map[uint64][]movement.MonthlyDelta{
+			1: {{Month: "2026-06", Delta: decimal.NewFromInt(30000)}, {Month: "2026-07", Delta: decimal.NewFromInt(20000)}},
+		},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	// "Mes" en el slot de un período, "año" en el de tendencia: manda el
+	// primero, y el gráfico se va porque un mes no dibuja una tendencia.
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&pt=year"))
+	body := w.Body.String()
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, body)
+	}
+	if !appStateHas(body, "p", "month") {
+		t.Error("Cuentas debe leer el slot de un período, no el de tendencia")
+	}
+	if !bodyContains(body, "$50.000") {
+		t.Error("las tarjetas son saldo de hoy: no dependen del período")
+	}
+	if bodyContains(body, "cuentas-trend") {
+		t.Error("con ventana de un mes el gráfico es un punto suelto: no se dibuja")
+	}
+
+	// Con una ventana que sí es una tendencia, el gráfico vuelve.
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=6m"))
+	if !bodyContains(w.Body.String(), "cuentas-trend") {
+		t.Error("con 6M el gráfico de tendencia tiene que estar")
 	}
 }
