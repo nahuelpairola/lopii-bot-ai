@@ -26,7 +26,7 @@ const subcategoryParam = "subcategory"
 // there is no second route to keep in sync.
 func (c *controller) handleCategories(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
-	p := periodFromQuery(ctx, templates.AllPresets, templates.PresetMonth)
+	p := periodFromQuery(ctx, templates.SinglePeriodScope)
 	drill := ctx.Query(categoryParam)
 	sub := ctx.Query(subcategoryParam)
 

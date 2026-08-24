@@ -28,7 +28,7 @@ var (
 
 func (c *controller) handleEvolution(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
-	p := periodFromQuery(ctx, templates.TrendPresets, templates.Preset6M)
+	p := periodFromQuery(ctx, templates.TrendScope)
 	expand := ctx.Query(expandParam)
 
 	months := p.MonthKeys()

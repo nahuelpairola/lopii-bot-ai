@@ -2,7 +2,9 @@ package templates
 
 import (
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 	"unicode"
@@ -30,27 +32,63 @@ const (
 // presetMonths is each preset's window length in months.
 var presetMonths = map[string]int{PresetMonth: 1, Preset3M: 3, Preset6M: 6, PresetYear: 12}
 
-// AllPresets is what a single-period view offers. TrendPresets drops the
-// one-month option: it would leave the evolution with a single column and the
-// accounts trend with a single point.
+// A PresetScope is one independent preset memory: the query param it travels
+// in, the presets it offers and the one it falls back to. Two views in the same
+// scope share a preset; two views in different scopes never do.
+type PresetScope struct {
+	Param   string
+	Allowed []string
+	Default string
+}
+
 var (
-	AllPresets   = []string{PresetMonth, Preset3M, Preset6M, PresetYear}
-	TrendPresets = []string{Preset3M, Preset6M, PresetYear}
+	// SinglePeriodScope is the views that render ONE window: Resumen,
+	// Categorías and both leaves. TrendScope drops "Mes": it would leave the
+	// evolution with a single column and the accounts trend with a single point.
+	SinglePeriodScope = PresetScope{
+		Param:   "p",
+		Allowed: []string{PresetMonth, Preset3M, Preset6M, PresetYear},
+		Default: PresetMonth,
+	}
+	TrendScope = PresetScope{
+		Param:   "pt",
+		Allowed: []string{Preset3M, Preset6M, PresetYear},
+		Default: Preset6M,
+	}
+
+	// PresetScopes is every scope, and every link plus #app-state carry ALL of
+	// them. A link that dropped the scope its own view does not use would erase
+	// the other view's memory on the next tab tap — see miniapp/AGENTS.md.
+	PresetScopes = []PresetScope{SinglePeriodScope, TrendScope}
 )
+
+// Resolve maps a raw query value to a preset this scope offers. Nothing 400s:
+// the params travel between views whose scopes differ, so anything
+// unrecognized falls back to this scope's default.
+func (s PresetScope) Resolve(raw string) string {
+	if slices.Contains(s.Allowed, raw) {
+		return raw
+	}
+	return s.Default
+}
 
 var monthShortEs = [...]string{"ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"}
 
 // Period is the window every view renders against, plus the links its header
 // controls point at. Built by NewPeriod; the handlers only parse query params.
 type Period struct {
-	Route     string // the view this period belongs to, so links stay absolute
-	Preset    string
+	Route string      // the view this period belongs to, so links stay absolute
+	Scope PresetScope // which slot this view reads and writes
+	// Presets is param -> preset for EVERY scope, already resolved. It is what
+	// periodQuery writes and what #app-state renders, so the scope this view
+	// does not use survives the round trip untouched.
+	Presets   map[string]string
+	Preset    string    // == Presets[Scope.Param]: the one this view renders against
 	Anchor    time.Time // first instant of the anchor month, ART
 	From, To  time.Time
 	Months    int
 	Label     string
 	Currency  currency.Currency
-	Allowed   []string
 	PrevQuery string
 	NextQuery string // "" when the anchor is already the current month
 	// Drill is the already-encoded suffix of the leaf being viewed
@@ -70,15 +108,19 @@ func CurrentMonth(now time.Time) time.Time {
 	return time.Date(n.Year(), n.Month(), 1, 0, 0, 0, 0, constants.ArgentinaZone)
 }
 
-// NewPeriod builds the window of `preset` months ending at `anchor`
-// (inclusive). currentMonth is passed in rather than read from the clock so
-// the math is testable.
-func NewPeriod(route, preset string, anchor, currentMonth time.Time, cur currency.Currency, allowed []string) Period {
+// NewPeriod builds the window of `presets[scope.Param]` months ending at
+// `anchor` (inclusive). currentMonth is passed in rather than read from the
+// clock so the math is testable.
+func NewPeriod(route string, scope PresetScope, presets map[string]string,
+	anchor, currentMonth time.Time, cur currency.Currency) Period {
+	preset := presets[scope.Param]
 	months := presetMonths[preset]
 	from := anchor.AddDate(0, -(months - 1), 0)
 
 	p := Period{
 		Route:    route,
+		Scope:    scope,
+		Presets:  presets,
 		Preset:   preset,
 		Anchor:   anchor,
 		From:     from,
@@ -86,24 +128,23 @@ func NewPeriod(route, preset string, anchor, currentMonth time.Time, cur currenc
 		Months:   months,
 		Label:    periodLabel(from, anchor, months),
 		Currency: cur,
-		Allowed:  allowed,
 	}
 	// The cursor steps by the window length, so consecutive windows do not
 	// overlap. Stepping forward past the current month is not offered.
-	p.PrevQuery = periodQuery(route, preset, anchor.AddDate(0, -months, 0), cur)
+	p.PrevQuery = periodQuery(route, presets, anchor.AddDate(0, -months, 0), cur)
 	if next := anchor.AddDate(0, months, 0); !next.After(currentMonth) {
-		p.NextQuery = periodQuery(route, preset, next, cur)
+		p.NextQuery = periodQuery(route, presets, next, cur)
 	}
 	return p
 }
 
 // Query is the current state as a link, for callers that append their own
 // params on top of it.
-func (p Period) Query() string { return periodQuery(p.Route, p.Preset, p.Anchor, p.Currency) }
+func (p Period) Query() string { return periodQuery(p.Route, p.Presets, p.Anchor, p.Currency) }
 
 // WithDrill points the period controls at the leaf we are inside. Without it,
 // tapping a chip or an arrow in a leaf lands on the index: periodQuery only
-// knows about p/m/c, and the drill rides as its own param.
+// knows about the preset scopes plus m/c, and the drill rides as its own param.
 func (p Period) WithDrill(suffix string) Period {
 	p.Drill = suffix
 	if p.PrevQuery != "" {
@@ -116,11 +157,15 @@ func (p Period) WithDrill(suffix string) Period {
 }
 
 func (p Period) WithPreset(preset string) string {
-	return periodQuery(p.Route, preset, p.Anchor, p.Currency) + p.Drill
+	// Sobre una copia: Period es un valor pero su map no, y sin clonar un chip
+	// pisaría el estado del render que lo está dibujando.
+	next := maps.Clone(p.Presets)
+	next[p.Scope.Param] = preset
+	return periodQuery(p.Route, next, p.Anchor, p.Currency) + p.Drill
 }
 
 func (p Period) WithCurrency(cur currency.Currency) string {
-	return periodQuery(p.Route, p.Preset, p.Anchor, cur) + p.Drill
+	return periodQuery(p.Route, p.Presets, p.Anchor, cur) + p.Drill
 }
 
 func (p Period) IsPreset(preset string) bool { return p.Preset == preset }
@@ -201,9 +246,13 @@ func upperFirst(s string) string {
 	return string(r)
 }
 
-func periodQuery(route, preset string, anchor time.Time, cur currency.Currency) string {
+func periodQuery(route string, presets map[string]string, anchor time.Time, cur currency.Currency) string {
 	v := url.Values{}
-	v.Set("p", preset)
+	// Todos los ámbitos, no sólo el de esta vista: el que no usamos tiene que
+	// llegar entero a la vista que sí lo usa.
+	for param, preset := range presets {
+		v.Set(param, preset)
+	}
 	v.Set("m", anchor.Format(anchorLayout))
 	v.Set("c", cur.String())
 	return route + "?" + v.Encode()

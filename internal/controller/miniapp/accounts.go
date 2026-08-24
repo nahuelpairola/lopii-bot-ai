@@ -28,7 +28,7 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 		c.handleAccountLeaf(ctx, userID, raw)
 		return
 	}
-	p := periodFromQuery(ctx, templates.TrendPresets, templates.Preset6M)
+	p := periodFromQuery(ctx, templates.TrendScope)
 
 	accounts, err := c.accounts.FindByUserID(userID)
 	if err != nil {
@@ -140,7 +140,7 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 	// Período propio, no el del índice: el índice usa TrendPresets, que a
 	// propósito no ofrece "Mes" (dejaría la tendencia con un solo punto), y un
 	// extracto de cuenta es justo lo que se lee por mes.
-	p := periodFromQuery(ctx, templates.AllPresets, templates.PresetMonth)
+	p := periodFromQuery(ctx, templates.SinglePeriodScope)
 
 	id, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {

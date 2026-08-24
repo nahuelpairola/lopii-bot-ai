@@ -14,7 +14,7 @@ import (
 
 func (c *controller) handleOverview(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
-	p := periodFromQuery(ctx, templates.AllPresets, templates.PresetMonth)
+	p := periodFromQuery(ctx, templates.SinglePeriodScope)
 
 	expenseType := constants.Expense
 	incomeType := constants.Income

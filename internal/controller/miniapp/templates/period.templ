@@ -9,7 +9,9 @@ import "lopiibot.com/internal/currency"
 // its own hrefs.
 templ PeriodHeader(p Period) {
 	<div id="app-state" hidden>
-		<input type="hidden" name="p" value={ p.Preset }/>
+		for _, s := range PresetScopes {
+			<input type="hidden" name={ s.Param } value={ p.Presets[s.Param] }/>
+		}
 		<input type="hidden" name="m" value={ p.AnchorKey() }/>
 		<input type="hidden" name="c" value={ p.Currency.String() }/>
 	</div>
@@ -28,7 +30,7 @@ templ PeriodHeader(p Period) {
 			}
 		</div>
 		<div class="chips" role="group">
-			for _, preset := range p.Allowed {
+			for _, preset := range p.Scope.Allowed {
 				<a
 					role="button"
 					class="outline chip"
