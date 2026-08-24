@@ -42,9 +42,10 @@ type PresetScope struct {
 }
 
 var (
-	// SinglePeriodScope is the views that render ONE window: Resumen,
-	// Categorías and both leaves. TrendScope drops "Mes": it would leave the
-	// evolution with a single column and the accounts trend with a single point.
+	// SinglePeriodScope is every view whose window the user reads as "this
+	// period": Resumen, Categorías, Cuentas and both leaves. TrendScope is
+	// Evolución alone, and it drops "Mes" because a one-month window would
+	// leave that matrix with a single column.
 	SinglePeriodScope = PresetScope{
 		Param:   "p",
 		Allowed: []string{PresetMonth, Preset3M, Preset6M, PresetYear},

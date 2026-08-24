@@ -68,10 +68,9 @@ Consequences worth knowing before touching either:
   through `apply` silently empties it of exactly what it exists to show.
 - It is also the only place `PENDING_REVIEW` rows surface, rendered as "Sin clasificar".
   That string never reaches the screen raw.
-- The account leaf parses **its own `Period`** (`SinglePeriodScope`). The accounts index
-  uses `TrendScope`, which omits "Mes" on purpose; a statement is read by month. They are
-  different scopes, so the leaf no longer inherits the index's range — see the preset
-  section below.
+- The leaf and the index share the `SinglePeriodScope` slot, so walking into a leaf keeps
+  the range you were reading. The index used to sit in `TrendScope` (no "Mes") and the leaf
+  inherited whatever the index had — a statement is read by month, so it now does.
 - **A leaf must call `p.WithDrill(suffix)` or its own period controls throw the user out.**
   `periodQuery` encodes the preset scopes plus `m`/`c` and nothing else, so every header
   link — both arrows, every preset chip, both currency chips — used to rebuild a bare index
@@ -88,11 +87,12 @@ Consequences worth knowing before touching either:
 
 ## The preset has TWO slots, and every link must carry both
 
-`p` is the preset of the single-period views (Resumen, Categorías, both leaves); `pt` is the
-preset of the trend views (Evolución, the accounts index). A `PresetScope`
-(`templates/period.go`) is the triple "which param + which presets + which default", and
-`periodFromQuery` resolves **every** scope on every request, not only the active one — so no
-unvalidated value ever travels.
+`p` is the preset of every view whose window reads as "this period" — Resumen, Categorías,
+Cuentas and both leaves. `pt` is Evolución's, and **Evolución is its only member**: it is the
+one view that cannot render a one-month window, so it is the one view that needs a separate
+memory. A `PresetScope` (`templates/period.go`) is the triple "which param + which presets +
+which default", and `periodFromQuery` resolves **every** scope on every request, not only the
+active one — so no unvalidated value ever travels.
 
 They are two because `periodFromQuery` never 400s: a preset the view does not offer falls
 silently to that view's default. With a single slot, Evolución's coercion `month → 6m` got
@@ -104,6 +104,13 @@ changed, and the accounts index leaked the same way into the account leaf via `p
 by hand with only the active param erases the other view's memory on the next tab tap, and
 nothing fails — the value simply falls to a default that reads like a choice. `WithPreset`
 clones the map before writing: `Period` is a value, its map is not.
+
+**The accounts index pays for being in the single-period scope**, and `accounts.templ` is
+where. Its balance cards are today's balance (`SumAmountForAccount`) and ignore the period
+entirely; the period only sizes the trend chart, via `cumulativeBalances(deltas, p.Months)`.
+At `Months == 1` that chart is one floating dot per account, so the template renders it only
+`if data.Period.Months > 1`. A new period-driven element on that page has to decide the same
+thing for itself — nothing above the template enforces it.
 
 ## Two smaller traps
 
