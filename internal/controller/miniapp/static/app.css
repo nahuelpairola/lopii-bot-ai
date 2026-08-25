@@ -397,6 +397,17 @@ a, button, .tab-link {
    los días en pantalla, casi todos sin nada abajo. */
 .mov-group { margin: 0; }
 
+/* El total de Cuentas es la cifra que manda en esa pantalla, así que toma el
+   mismo tamaño que un KPI. No entra por la regla de .grid article .money
+   porque vive fuera del .grid a propósito: es el encabezado del grupo, no una
+   de sus tarjetas. */
+.accounts-total {
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 var(--pico-spacing);
+}
+
 /* --- Hoja de cuenta --- */
 
 /* La tarjeta de una cuenta es tocable: abre la lista de movimientos que

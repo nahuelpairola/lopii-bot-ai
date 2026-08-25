@@ -16,8 +16,12 @@ type AccountSnapshot struct {
 }
 
 type AccountsData struct {
-	Period     Period
-	Snapshots  []AccountSnapshot
+	Period    Period
+	Snapshots []AccountSnapshot
+	// Total es la suma de los saldos de Snapshots, ya formateada. La acumula el
+	// handler en el mismo loop que arma las tarjetas, así cierra con lo de abajo
+	// por construcción. Una moneda sola: accounts.go filtra antes de sumar.
+	Total      string
 	TrendChart TrendChartData
 	Empty      bool
 }
@@ -27,9 +31,11 @@ templ Accounts(data AccountsData) {
 	if data.Empty {
 		@EmptyState("Todavía no tenés cuentas en esta moneda.")
 	} else {
-		// The snapshot is today's balance, not the period's — say so, or it
-		// reads as "what I had at the end of the window".
-		<p class="muted">Saldo hoy</p>
+		// El total arriba y las filas abajo: la forma de un resumen de cuenta.
+		// "Saldo hoy" rotula el total, no las tarjetas — el saldo es el de hoy y
+		// no el del período, y decirlo una vez arriba alcanza.
+		@GroupTitle("Saldo hoy")
+		<p class="accounts-total money">{ data.Total }</p>
 		<div class="grid">
 			for _, a := range data.Snapshots {
 				<a class="account-card" href={ templ.SafeURL(a.Href) } hx-get={ a.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">
