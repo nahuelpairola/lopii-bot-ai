@@ -45,7 +45,13 @@ func (c *controller) renderAdmin(ctx *gin.Context) {
 		return
 	}
 
-	data := templates.AdminData{Rows: make([]templates.InvitationRow, 0, len(invs))}
+	// El período no se usa para nada de lo que Admin muestra: viaja para que
+	// @AppState emita los inputs que el tabbar levanta con hx-include. Sin él,
+	// salir de Admin por cualquier pestaña manda la navegación sin p/pt/m/c y
+	// periodFromQuery cae a los defaults en silencio.
+	p := periodFromQuery(ctx, templates.SinglePeriodScope)
+
+	data := templates.AdminData{Period: p, Rows: make([]templates.InvitationRow, 0, len(invs))}
 	for _, inv := range invs {
 		data.Rows = append(data.Rows, c.invitationRow(inv))
 	}
