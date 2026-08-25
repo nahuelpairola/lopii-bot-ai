@@ -1,0 +1,154 @@
+package miniapp
+
+import (
+	"regexp"
+	"strings"
+	"testing"
+)
+
+// readAppCSS devuelve app.css desde el FS embebido — los mismos bytes exactos
+// que se sirven en /app/static/app.css. Leerlo por staticFS y no por una ruta
+// relativa es lo que hace que el test no dependa del working directory.
+func readAppCSS(t *testing.T) string {
+	t.Helper()
+	b, err := staticFS.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatalf("no se pudo leer app.css del FS embebido: %v", err)
+	}
+	return string(b)
+}
+
+// picoTokensMappedToTelegram es el contrato de la capa de tema: qué token de
+// pico tiene que terminar leyendo qué variable de Telegram. Si alguien borra
+// una línea del remapeo, esto se pone en rojo y dice cuál.
+var picoTokensMappedToTelegram = map[string]string{
+	"--pico-background-color":                 "--tg-theme-secondary-bg-color",
+	"--pico-card-background-color":            "--tg-theme-section-bg-color",
+	"--pico-card-sectioning-background-color": "--tg-theme-section-bg-color",
+	"--pico-color":                            "--tg-theme-text-color",
+	"--pico-h1-color":                         "--tg-theme-text-color",
+	"--pico-h2-color":                         "--tg-theme-text-color",
+	"--pico-h3-color":                         "--tg-theme-text-color",
+	"--pico-muted-color":                      "--tg-theme-hint-color",
+	"--pico-muted-border-color":               "--tg-theme-section-separator-color",
+	"--pico-primary":                          "--tg-theme-accent-text-color",
+	"--pico-primary-hover":                    "--tg-theme-accent-text-color",
+	"--pico-primary-background":               "--tg-theme-button-color",
+	"--pico-primary-inverse":                  "--tg-theme-button-text-color",
+	"--pico-form-element-background-color":    "--tg-theme-section-bg-color",
+	"--pico-form-element-border-color":        "--tg-theme-section-separator-color",
+	"--pico-form-element-color":               "--tg-theme-text-color",
+	"--pico-form-element-placeholder-color":   "--tg-theme-hint-color",
+	"--pico-code-background-color":            "--tg-theme-section-bg-color",
+	"--pico-mark-color":                       "--tg-theme-text-color",
+}
+
+func TestAppCSS_MapsPicoTokensToTelegramTheme(t *testing.T) {
+	css := readAppCSS(t)
+
+	for picoToken, tgVar := range picoTokensMappedToTelegram {
+		// La declaración puede estar en cualquiera de los tres bloques de tema;
+		// lo que se exige es que exista al menos una que ate los dos nombres.
+		re := regexp.MustCompile(regexp.QuoteMeta(picoToken) + `\s*:[^;]*` + regexp.QuoteMeta(tgVar))
+		if !re.MatchString(css) {
+			t.Errorf("%s no está remapeado contra %s: sin eso ese token se queda en el azure de pico y no sigue el tema del usuario", picoToken, tgVar)
+		}
+	}
+}
+
+// Los tres contextos de tema de pico. El remapeo tiene que estar en los tres:
+// en uno solo, o gana pico por especificidad, o nuestros fallbacks de un tema
+// pisan la paleta del otro fuera de Telegram.
+func TestAppCSS_RemapsAllThreePicoThemeContexts(t *testing.T) {
+	css := readAppCSS(t)
+
+	contexts := []struct {
+		name    string
+		snippet string
+	}{
+		{"claro", ":root:not([data-theme=dark])"},
+		{"oscuro por sistema", "prefers-color-scheme: dark"},
+		{"oscuro explícito", "[data-theme=dark]"},
+	}
+	for _, c := range contexts {
+		if !strings.Contains(css, c.snippet) {
+			t.Errorf("falta el bloque de tema %q (%s): sin él ese tema se queda sin remapear y se rompe fuera de Telegram", c.name, c.snippet)
+		}
+	}
+}
+
+// telegramVarWithoutFallback matchea var(--tg-…) SIN coma, o sea sin fallback.
+var telegramVarWithoutFallback = regexp.MustCompile(`var\(\s*--tg-[a-z0-9-]+\s*\)`)
+
+// Este no maneja el ciclo TDD: nace en verde y se queda de guardia. Un
+// var(--tg-…) sin fallback rompe la app fuera de Telegram y en cualquier
+// cliente anterior a Bot API 7.0, y no falla ruidosamente: simplemente el
+// valor queda vacío y el elemento se pinta transparente o negro.
+func TestAppCSS_EveryTelegramVarHasFallback(t *testing.T) {
+	css := readAppCSS(t)
+
+	if found := telegramVarWithoutFallback.FindAllString(css, -1); len(found) > 0 {
+		t.Errorf("estas referencias a Telegram no tienen fallback y dejan la app rota fuera del cliente: %v", found)
+	}
+}
+
+// El par de estado no puede ser un hex fijo una vez que el fondo lo elige el
+// usuario: medido, el verde daba 3.35:1 en claro y el rojo 3.75:1 en oscuro,
+// que pasan AA sólo por contar como texto grande (28px). Mezclarlos contra
+// --pico-color —que es el texto del tema, y que Telegram ya garantizó legible
+// contra su fondo— los sube a 4.82 y 4.83, arriba del 4.5 de texto normal.
+func TestAppCSS_StatusColorsAreDerivedFromTheThemeText(t *testing.T) {
+	css := readAppCSS(t)
+
+	for _, tc := range []struct{ class, why string }{
+		{".neto-good", "el verde no tiene equivalente en Telegram, así que se deriva mezclando contra el texto del tema"},
+		{".neto-critical", "el rojo sale de --tg-theme-destructive-text-color y cae a la mezcla cuando el tema no lo trae"},
+	} {
+		i := strings.Index(css, tc.class)
+		if i < 0 {
+			t.Fatalf("desapareció la regla %s", tc.class)
+		}
+		rule := css[i:min(i+240, len(css))]
+		if !strings.Contains(rule, "color-mix(") {
+			t.Errorf("%s sigue con un color fijo: %s\nregla:\n%s", tc.class, tc.why, rule)
+		}
+		if !strings.Contains(rule, "var(--pico-color") {
+			t.Errorf("%s no se mezcla contra el texto del tema, así que no sigue al fondo del usuario\nregla:\n%s", tc.class, rule)
+		}
+	}
+}
+
+func TestAppCSS_CriticalPrefersTelegramDestructiveColor(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".neto-critical")
+	if i < 0 {
+		t.Fatal("desapareció la regla .neto-critical")
+	}
+	rule := css[i:min(i+240, len(css))]
+	if !strings.Contains(rule, "--tg-theme-destructive-text-color") {
+		t.Errorf("el rojo tiene que preferir el color destructivo del tema; el verde no tiene contraparte y por eso es asimétrico\nregla:\n%s", rule)
+	}
+}
+
+// El sombreado de Evolución era Data Blue a alpha fijo sobre un fondo que
+// ahora elige el usuario. Sigue siendo de dos pasos y sigue topeado —el techo
+// existe porque una rampa vieja llegaba a 1.0 y el texto oscuro encima no
+// pasaba contraste—, pero el tono ahora sale del acento del tema.
+func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
+	css := readAppCSS(t)
+
+	for _, class := range []string{".cell-mild", ".cell-high"} {
+		i := strings.Index(css, class)
+		if i < 0 {
+			t.Fatalf("desapareció la regla %s", class)
+		}
+		rule := css[i:min(i+200, len(css))]
+		if strings.Contains(rule, "rgba(42, 120, 214") {
+			t.Errorf("%s sigue clavada en Data Blue: sobre un tema personalizado puede quedar ilegible\nregla:\n%s", class, rule)
+		}
+		if !strings.Contains(rule, "var(--pico-primary") {
+			t.Errorf("%s no sigue al acento del tema\nregla:\n%s", class, rule)
+		}
+	}
+}

@@ -9,9 +9,13 @@ type TrendChartData struct {
 }
 
 type TrendDataset struct {
-	Label           string    `json:"label"`
-	Data            []float64 `json:"data"`
-	BackgroundColor string    `json:"backgroundColor"`
+	Label string    `json:"label"`
+	Data  []float64 `json:"data"`
+	// Role es "expense" | "income" para las series de Resumen; app.js lo
+	// resuelve a un color. Las series por cuenta (Cuentas) siguen mandando
+	// BackgroundColor con su hex de slot: ahí el color ES la identidad.
+	Role            string `json:"role,omitempty"`
+	BackgroundColor string `json:"backgroundColor,omitempty"`
 }
 
 // OverviewData is what Overview renders.

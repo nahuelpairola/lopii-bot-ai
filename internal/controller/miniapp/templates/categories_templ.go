@@ -12,7 +12,7 @@ import templruntime "github.com/a-h/templ/runtime"
 type BarChartData struct {
 	Labels []string  `json:"labels"`
 	Values []float64 `json:"values"`
-	Color  string    `json:"color"`
+	Role   string    `json:"role"`
 }
 
 type CategoryRow struct {

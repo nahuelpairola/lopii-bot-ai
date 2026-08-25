@@ -7,7 +7,17 @@ import "lopiibot.com/internal/currency"
 // navigation keeps the period the user picked without any JS — the tab bar
 // lives in the shell and is rendered once, so it cannot carry fresh state in
 // its own hrefs.
-templ PeriodHeader(p Period) {
+// AppState son los inputs ocultos que el tabbar levanta con hx-include
+// (tabbar.templ): así una navegación por pestaña conserva el período elegido
+// sin una línea de JS, porque el tabbar vive en el shell y se renderiza una
+// sola vez, sin poder llevar estado fresco en sus propios hrefs.
+//
+// Vive separado de PeriodHeader porque hay una vista —Admin— que necesita
+// LLEVAR el estado sin MOSTRAR los controles: no tiene contenido que dependa
+// del período, así que unas flechas y unos chips ahí serían un control que no
+// hace nada. Una vista que emita los inputs a mano se desincroniza el día que
+// se agregue un scope; por eso esto es un componente y no una copia.
+templ AppState(p Period) {
 	<div id="app-state" hidden>
 		for _, s := range PresetScopes {
 			<input type="hidden" name={ s.Param } value={ p.Presets[s.Param] }/>
@@ -15,6 +25,10 @@ templ PeriodHeader(p Period) {
 		<input type="hidden" name="m" value={ p.AnchorKey() }/>
 		<input type="hidden" name="c" value={ p.Currency.String() }/>
 	</div>
+}
+
+templ PeriodHeader(p Period) {
+	@AppState(p)
 	<header class="period-header">
 		<div class="period-cursor">
 			if p.PrevQuery != "" {

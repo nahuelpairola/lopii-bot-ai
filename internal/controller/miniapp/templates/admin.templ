@@ -15,10 +15,15 @@ type InvitationRow struct {
 }
 
 type AdminData struct {
-	Rows []InvitationRow
+	// Period no se muestra acá: Admin no tiene nada que filtrar. Viaja para que
+	// @AppState pueda emitir los inputs que el tabbar levanta al salir. Sin
+	// esto, salir de Admin por cualquier pestaña resetea el período elegido.
+	Period Period
+	Rows   []InvitationRow
 }
 
 templ Admin(data AdminData) {
+	@AppState(data.Period)
 	<h2>Invitaciones</h2>
 	<button
 		hx-post={ RouteAdminInvitations }

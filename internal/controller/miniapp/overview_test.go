@@ -1,8 +1,10 @@
 package miniapp
 
 import (
+	"context"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -354,5 +356,38 @@ func TestHandleOverview_AppStateKeepsTheTrendScope(t *testing.T) {
 	}
 	if !appStateHas(body, "pt", "3m") {
 		t.Error("el Resumen borró el preset de las vistas de tendencia")
+	}
+}
+
+// El dato que viaja al gráfico ya no lleva color: lleva un rol, y app.js lo
+// resuelve leyendo el acento del tema. Es lo que paga la deuda de los dos
+// azules que DESIGN.md dejó anotada — un hex acá es un azul que no sigue al
+// usuario. Los colores de cuenta (AccountSlotColors) son la excepción y no
+// entran en esta vista.
+func TestOverview_TrendDataCarriesRolesNotColors(t *testing.T) {
+	data := templates.OverviewData{
+		TrendChart: templates.TrendChartData{
+			Labels: []string{"jun", "jul"},
+			Datasets: []templates.TrendDataset{
+				{Label: "Gastos", Data: []float64{1, 2}, Role: templates.RoleExpense},
+				{Label: "Ingresos", Data: []float64{3, 4}, Role: templates.RoleIncome},
+			},
+		},
+	}
+
+	var sb strings.Builder
+	if err := templates.Overview(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if strings.Contains(html, "#2a78d6") || strings.Contains(html, "#1baf7a") {
+		t.Errorf("el data island todavía manda un hex clavado; tiene que mandar el rol:\n%s", html)
+	}
+	if !strings.Contains(html, templates.RoleExpense) {
+		t.Errorf("falta el rol %q en el data island:\n%s", templates.RoleExpense, html)
+	}
+	if !strings.Contains(html, templates.RoleIncome) {
+		t.Errorf("falta el rol %q en el data island:\n%s", templates.RoleIncome, html)
 	}
 }
