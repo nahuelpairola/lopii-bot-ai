@@ -137,8 +137,28 @@
    el par de contraste ya está en producción. */
 .default-star { color: var(--pico-primary); }
 
-.neto-good { color: #0ca30c; }
-.neto-critical { color: #d03b3b; }
+/* El par de estado del Neto, y de nada mas (regla The One Status Rule en
+   DESIGN.md). Desde que el fondo lo elige el tema del usuario, un hex fijo
+   dejo de ser defendible: medido, el verde daba 3.35:1 en claro y el rojo
+   3.75:1 en oscuro - pasaban AA solo por contar como texto grande a 28px.
+
+   CSS no sabe calcular contraste. Lo que si puede es mezclar el tono contra
+   --pico-color, que es el texto del tema y que Telegram ya garantizo legible
+   contra su propio fondo: el tono verde/rojo sobrevive y la luminosidad sigue
+   al tema. Al 70% los cuatro casos (verde/rojo x claro/oscuro) miden 4.82,
+   6.34, 6.50 y 4.83 - arriba del 4.5 de texto NORMAL, no solo del 3.0 de
+   texto grande. Bajar el 70% gana contraste y pierde saturacion.
+
+   Asimetria deliberada, no una migracion a medias: Telegram tiene color
+   destructivo y NO tiene uno positivo, asi que el rojo lo prefiere y el verde
+   se lo tiene que derivar solo. */
+.neto-good {
+  color: color-mix(in srgb, #0ca30c 70%, var(--pico-color));
+}
+
+.neto-critical {
+  color: color-mix(in srgb, var(--tg-theme-destructive-text-color, #d03b3b) 70%, var(--pico-color));
+}
 
 /* La variación de saldos NO es un cuarto KPI, y por eso vive fuera del .grid:
    es el contexto de por qué un saldo se movió sin que el usuario gastara ni

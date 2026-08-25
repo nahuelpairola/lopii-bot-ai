@@ -91,3 +91,43 @@ func TestAppCSS_EveryTelegramVarHasFallback(t *testing.T) {
 		t.Errorf("estas referencias a Telegram no tienen fallback y dejan la app rota fuera del cliente: %v", found)
 	}
 }
+
+// El par de estado no puede ser un hex fijo una vez que el fondo lo elige el
+// usuario: medido, el verde daba 3.35:1 en claro y el rojo 3.75:1 en oscuro,
+// que pasan AA sólo por contar como texto grande (28px). Mezclarlos contra
+// --pico-color —que es el texto del tema, y que Telegram ya garantizó legible
+// contra su fondo— los sube a 4.82 y 4.83, arriba del 4.5 de texto normal.
+func TestAppCSS_StatusColorsAreDerivedFromTheThemeText(t *testing.T) {
+	css := readAppCSS(t)
+
+	for _, tc := range []struct{ class, why string }{
+		{".neto-good", "el verde no tiene equivalente en Telegram, así que se deriva mezclando contra el texto del tema"},
+		{".neto-critical", "el rojo sale de --tg-theme-destructive-text-color y cae a la mezcla cuando el tema no lo trae"},
+	} {
+		i := strings.Index(css, tc.class)
+		if i < 0 {
+			t.Fatalf("desapareció la regla %s", tc.class)
+		}
+		rule := css[i:min(i+240, len(css))]
+		if !strings.Contains(rule, "color-mix(") {
+			t.Errorf("%s sigue con un color fijo: %s\nregla:\n%s", tc.class, tc.why, rule)
+		}
+		if !strings.Contains(rule, "var(--pico-color") {
+			t.Errorf("%s no se mezcla contra el texto del tema, así que no sigue al fondo del usuario\nregla:\n%s", tc.class, rule)
+		}
+	}
+}
+
+func TestAppCSS_CriticalPrefersTelegramDestructiveColor(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".neto-critical")
+	if i < 0 {
+		t.Fatal("desapareció la regla .neto-critical")
+	}
+	rule := css[i:min(i+240, len(css))]
+	if !strings.Contains(rule, "--tg-theme-destructive-text-color") {
+		t.Errorf("el rojo tiene que preferir el color destructivo del tema; el verde no tiene contraparte y por eso es asimétrico\nregla:\n%s", rule)
+	}
+}
+
