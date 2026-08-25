@@ -34,6 +34,10 @@ typography:
     fontWeight: 600
     lineHeight: 1.2
     fontFeature: "tabular-nums"
+  heading:
+    fontFamily: "system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+    fontSize: "1.75rem"
+    lineHeight: 1.15
   body:
     fontFamily: "system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
     fontSize: "1rem"
@@ -63,6 +67,7 @@ spacing:
   row: "0.5rem"
   base: "0.75rem"
   touch: "44px"
+  chip-height: "32px"
 components:
   kpi-card:
     backgroundColor: "{colors.card-paper}"
@@ -75,13 +80,15 @@ components:
     textColor: "{colors.margin-grey}"
     typography: "{typography.label}"
     rounded: "{rounded.pill}"
-    padding: "0.25rem 0.6rem"
+    padding: "0 0.6rem"
+    height: "{spacing.chip-height}"
   chip-active:
     backgroundColor: "{colors.theme-button}"
     textColor: "{colors.theme-button-text}"
     typography: "{typography.label}"
     rounded: "{rounded.pill}"
-    padding: "0.25rem 0.6rem"
+    padding: "0 0.6rem"
+    height: "{spacing.chip-height}"
   tab-link:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.margin-grey}"
@@ -117,6 +124,9 @@ components:
   tappable:
     minWidth: "{spacing.touch}"
     minHeight: "{spacing.touch}"
+  row-link:
+    textColor: "inherit"
+    height: "{spacing.touch}"
   accounts-total:
     textColor: "{colors.statement-ink}"
     typography: "{typography.kpi}"
@@ -146,12 +156,20 @@ because hue belongs to the user. It lives in density, in the tabular figure, and
 in the discipline that every number reconciles.
 
 The material is deliberately thin. Pico CSS 2.1.1 provides the base, `app.css`
-adds roughly 430 lines of scoped corrections, and every one of them exists
-because something specific broke on a 360px Telegram webview — a sticky column
-losing its border, a chip whose selected state measured 1.32:1, a tab bar
-sitting under the iOS home indicator. The system is a stack of small, argued
-repairs, not a theme. New work continues that discipline: reach for the Pico
-token before writing a value, and when you override, say why in the CSS.
+adds a set of scoped corrections, and every one of them exists because
+something specific broke on a 360px Telegram webview — a sticky column losing
+its border, a chip whose selected state measured 1.32:1, a tab bar sitting
+under the iOS home indicator, an inline `<a>` inside a table cell that a
+44px rule could not reach. The system is a stack of small, argued repairs, not
+a theme. New work continues that discipline: reach for the Pico token before
+writing a value, and when you override, say why in the CSS.
+
+There is no admin surface in this app. An invitation-management screen lived
+here through 2026-08-25 and was removed outright at the user's request — route,
+templates, middleware and tab slot all gone, not merely hidden. Nothing below
+describes it; the OOB-into-a-reserved-slot technique it used is recorded once,
+in `internal/controller/miniapp/AGENTS.md`, as a pattern to reuse if a future
+view needs to depend on the viewer — not as a screen this file still owns.
 
 **Key Characteristics:**
 
@@ -162,7 +180,11 @@ token before writing a value, and when you override, say why in the CSS.
   decorative shadow.
 - Tabular numerals everywhere money appears, so columns of figures stay
   comparable.
-- 44px minimum on everything tappable — tabs, period arrows, account cards.
+- 44px minimum on everything tappable — tabs, period arrows, account cards,
+  back links, table row-links — reached by whichever of two mechanisms fits
+  the element (a padded box, or an invisible overlay over a compact one).
+- One heading level in the whole app (`#content h1`), used by every drill
+  screen and deliberately absent from Resumen.
 - No web fonts, no build step, no CDN: every dependency is vendored and pinned
   under `static/`.
 - Color is reinforcement, never the only channel: the active tab carries a 2px
@@ -287,14 +309,22 @@ down a column and a list of amounts can be scanned rather than read.
 
 ### Hierarchy
 
+- **Heading** (1.75rem, 1.15, Pico's default heading weight): `#content h1`,
+  the one heading level the app uses. Opens `AccountLeaf`, `SubcategoryDrill`,
+  `SubcategoryLeaf` and `Evolución`. 1.75rem is a deliberate zero-pixel-delta
+  fix, not a size increase — it is the exact size the old `<h2>` (and, on
+  Evolución, a bare `<caption>`) already rendered at; Pico's own `h1` is 2rem,
+  which would have raised the ceiling by a change that is structural, not one
+  of emphasis.
 - **KPI** (600, 1.75rem, 1.2): the money inside a card — Gastos / Ingresos /
   Neto and each account balance. 1.75rem is a ceiling, not a taste: the longest
   realistic balance (`$1.234.567,00`, 14 characters) fits a 360px card at this
   size and not at 2rem.
 - **Body** (400, 1rem): movement titles, prose, empty-state messages.
-- **Table** (400, 0.85rem): the Evolución grid only. At body size, six months
-  plus the category column measure 372px and overflow the 335px usable on a
-  360px phone.
+- **Table** (400, 0.85rem): the Evolución grid and the Categorías table. At
+  body size, Evolución's six months plus its category column measure 372px and
+  overflow the 335px usable on a 360px phone; Categorías compacts for the same
+  reason Pico's own td/th padding gives it.
 - **Label** (400, 0.8rem, Margin Grey): the caption above a KPI, the
   `date · Category › Subcategory` line under a movement title, chip text, chart
   legends. Hierarchy here is carried by size *and* weight, not size alone.
@@ -306,6 +336,14 @@ down a column and a list of amounts can be scanned rather than read.
   heading step and nothing else may borrow it.
 
 ### Named Rules
+
+**The One Heading Rule.** There is exactly one heading level in the app:
+`#content h1`, styled at 1.75rem/1.15. Every drill screen (account leaf,
+subcategory drill, subcategory leaf, Evolución) opens with it. **Resumen has
+no heading, and that is kept, argued behavior, not a gap** — the tab already
+says where you are, and the period header earns that space by saying *when*
+you are instead. Do not add an `<h2>` or a second heading weight anywhere; a
+screen that needs a title uses `<h1>`, a screen that doesn't stays as it is.
 
 **The Tabular Rule.** Anything that is money wears `.money`. No exceptions,
 including inside table cells and inline balance lines.
@@ -338,19 +376,44 @@ the webview.
 Above the content, every view opens with the period header: a cursor row
 (‹ label ›) over a chip row — period presets, a spacer, then the currency chips.
 Rhythm inside components: `0.5rem` vertical for a movement row,
-`0.35rem 0.4rem` for an Evolución cell, `0.25rem 0.6rem` for a chip.
+`0.35rem 0.4rem` for an Evolución or Categorías cell, `0` vertical / `0.6rem`
+horizontal for a chip.
 
 ### Named Rules
 
-**The 44px Rule.** Anything tappable is at least 44×44: tab links, period
-arrows, account cards, chips. `.tappable` (`app.css`) is the one shared rule
-for this — `min-width`/`min-height: 44px` plus a centering flex — and is
-applied in markup to the account card; `.tab-link`, the period cursor arrows
-and `.chip` still carry their own hand-written copies of the same floor
-rather than the class, which is how the chip row — the single most-tapped
-control in the app — had been missed for as long as the rule lived only by
-hand. A card that opens a drill still declares its own floor even when its
-content would be shorter.
+**The 44px Rule.** Anything tappable is at least 44×44 — but not every
+element gets there the same way, and which mechanism applies depends on what
+the element is:
+
+- A block-level target (the account card, the three "← Volver" back links) is
+  `.tappable`: `min-width`/`min-height: 44px`, `display: inline-flex`,
+  `align-items: center`. It does **not** center its label — `justify-content:
+  center` was dropped, because every current consumer reads from the start of
+  its own cell or row, and centering them looked like a bug. An element that
+  genuinely wants centering (the chip) writes that itself.
+- An inline target sitting inside a table cell (a Categorías category-row link,
+  an Evolución row link) cannot use `.tappable` at all: an inline `<a>` ignores
+  `min-height` outright, which is why these rows used to measure ~32–36px with
+  the 44px rule already written and simply unreachable. `.row-link` fixes this
+  by being a 44px-tall flex row (`display: flex; align-items: center;
+  min-height: 44px; color: inherit;`) rather than a min-height override.
+- The chip is neither: `a[role="button"].chip` is a fixed 32px pill —
+  Telegram's own segmented-control height — with `line-height: 1` and
+  `display: inline-flex; align-items: center; justify-content: center`. Giving
+  it `min-height: 44px` directly made it the heaviest element on the busiest
+  row and still left the label mis-centered, because `min-height` on an
+  `inline-block` (which is what Pico's own `a[role=button]` rule forces) does
+  not resize the way a flex box does. The 44px tap target is a separate
+  `::after` overlay (`position: absolute; inset: -6px 0`) that grows the hit
+  area only vertically, without enlarging the pill or stealing a neighboring
+  chip's touch. The selector itself has to be `a[role="button"].chip`, not
+  `.chip` alone — Pico's own `a[role=button]{display:inline-block}` rule
+  outranks a bare class on specificity, and losing that fight is what silently
+  breaks the flex centering.
+- `.tab-link` and the period cursor arrows still carry their own hand-written
+  copies of the 44px floor rather than any shared class — historically how the
+  chip row, the single most-tapped control in the app, was the one missed for
+  as long as the rule lived only by hand.
 
 **The Rows-Not-Tables Rule.** A list of movements is a stack of
 `<section class="mov-group">` day groups — each headed by a `GroupTitle`
@@ -361,15 +424,20 @@ truncates while the amount stays pinned right. The date lives once, on the
 group's `GroupTitle`, and not on each row — `GroupRowsByDay`
 (`templates/movement_row.go`) splits the list into consecutive same-date runs
 before render, so the row's meta line is free to hold only what actually
-varies between rows. Evolución is the one real table, and it pays for it with
-a horizontal scroller and a sticky first column.
+varies between rows. Evolución and Categorías are the two real tables in the
+app; only Evolución pays for it with a horizontal scroller and a sticky first
+column — Categorías' three columns fit a 360px phone at table-size text
+without either.
 
 **The Carried-State Rule.** Every view emits `AppState` — a hidden `#app-state`
 block of inputs the tab bar reads with `hx-include`. A view that renders without
 it silently resets the user's period on the way out, because `periodFromQuery`
-never 400s: it falls to defaults, and the filter appears to change by itself. A
-view may carry the state without showing the controls (Admin does exactly that,
-having nothing to filter), but it may not skip it.
+never 400s: it falls to defaults, and the filter appears to change by itself.
+`PeriodHeader` is today the rule's only consumer and it always shows the
+controls it carries state for — the historical case of a view carrying state
+without showing it (the removed Admin screen, which had nothing to filter) is
+gone, but the rule is written for the next one: a future controls-less view
+must still emit `AppState`, not skip it because there is nothing to show.
 
 ## Elevation & Depth
 
@@ -414,24 +482,32 @@ darkening applied over whatever the theme painted, not a color of its own.
 
 ### Buttons
 
-The app has essentially no conventional button — every action is a link or a
-chip, because every action is navigation: htmx swaps `#content` and the URL is
-pushed. The one exception is Admin's "Generar invitación", which posts. New work
-should keep that shape: a `<button>` here implies a form submit the app does not
-have.
+The app has essentially no conventional button — every action is a link,
+because every action is navigation: htmx swaps `#content` and the URL is
+pushed. There is no exception left in the app: the one that used to exist (a
+`<button>` that posted, on the now-removed admin screen) is gone with it. New
+work should keep the current shape by default; a `<button>` implies a form
+submit the app does not otherwise have, and should earn its place rather than
+be added by habit.
 
 ### Chips
 
-- **Style:** fully rounded (1rem), `0.25rem 0.6rem` padding, 0.8rem text, laid
-  out in a `.chips` flex row with a `.chips-sep` spacer between the period
-  presets and the currency pair.
+- **Style:** a fixed 32px pill (Telegram's own segmented-control height),
+  `line-height: 1`, `0.8rem` text, `0 0.6rem` padding, laid out in a `.chips`
+  flex row with a `.chips-sep` spacer between the period presets and the
+  currency pair. The 44px tap target does not grow the pill — see The 44px
+  Rule's `::after` overlay technique.
 - **Unselected:** Margin Grey text on a Hairline border, transparent fill.
 - **Selected:** Theme Button fill and border, Theme Button Text label,
   `aria-current="page"`.
-- **Implementation note:** the selected rule sets plain `background-color` and
-  `color` rather than Pico custom properties. Pico's real declaration lives in
-  its base button rule at specificity (0,1,0); these selectors are (0,2,0) and
-  win without `!important` and without depending on stylesheet order.
+- **Implementation notes:** the selector is `a[role="button"].chip`, not
+  `.chip` alone — Pico's `a[role=button]{display:inline-block}` rule outranks
+  a bare class on specificity, and without the qualifier the pill silently
+  loses its flex centering. The selected rule itself sets plain
+  `background-color` and `color` rather than Pico custom properties, because
+  Pico's real declaration lives in its base button rule at specificity
+  (0,1,0) and these selectors are (0,2,0) — they win without `!important` and
+  without depending on stylesheet order.
 
 ### Cards / Containers
 
@@ -449,10 +525,11 @@ have.
   same 1.75rem/600 KPI treatment by a direct rule rather than by being inside
   a card. It reads as the screen's own header figure, not as a card that
   escaped the grid.
-- **Account card:** an `<a>` wrapping a KPI card — `display: block`,
-  `min-height: 44px`, `color: inherit`, no underline. The name carries at most
-  one ★ default marker per screen, in the theme accent with an `aria-label`.
-  While pressed, the inner `<article>` drops to `opacity: 0.7`.
+- **Account card:** an `<a class="account-card tappable">` wrapping a KPI card
+  — `display: block`, `color: inherit`, no underline, its 44×44 floor from
+  `.tappable` in markup (see The 44px Rule). The name carries at most one ★
+  default marker per screen, in the theme accent with an `aria-label`. While
+  pressed, the inner `<article>` drops to `opacity: 0.7`.
 
 ### Inputs / Fields
 
@@ -465,6 +542,7 @@ or two letters match half the list and the highlight becomes noise.
 
 - **Style:** a fixed bottom tab bar, `justify-content: space-around`, 1px
   Hairline top border, opaque Paper background, `z-index: 2`, safe-area padding.
+  Four tabs: Resumen, Categorías, Cuentas, Evolución.
 - **Default:** Margin Grey label. Pico colors every `<a>` with the primary, so
   this override is what keeps four tabs from all reading as active.
 - **Active:** Theme Accent, weight 600, plus a 2px full-width bar positioned at
@@ -472,7 +550,10 @@ or two letters match half the list and the highlight becomes noise.
   `text-decoration: none` is restated because Pico underlines `[aria-current]`.
 - **Native back button:** Telegram's own `BackButton` shows on every deep screen
   — any URL carrying `category`, `expand` or `account` — and calls
-  `history.back()`, which htmx restores because it pushed the URL.
+  `history.back()`, which htmx restores because it pushed the URL. The three
+  "← Volver" links in-page (account leaf, subcategory drill, subcategory leaf)
+  are `.tappable`, left-aligned, and exist alongside the native button rather
+  than instead of it.
 - **Loading:** `#content` drops to `opacity: 0.55` over 0.1s while an htmx
   request is in flight. That is the whole loading vocabulary.
 
@@ -527,15 +608,35 @@ or two letters match half the list and the highlight becomes noise.
 - **Color:** never a status color, same as before the shape changed. See The
   One Status Rule.
 
+### Category Table
+
+- **Character:** three columns (name, total, share) that fit a 360px phone
+  outright — no scroller, no sticky column, unlike Evolución.
+- **Shape:** `.cat-table`, `0.85rem` text, `0.35rem 0.4rem` cell padding — the
+  same compaction Evolución already carried, applied here for the same
+  reason: Pico's own `td`/`th` padding overflows a phone once a table has
+  real content in every cell.
+- **Row link:** each category/subcategory name is a `.row-link` when it drills
+  further (the top-level view links to subcategories; the drill itself does
+  not link further and renders the name as plain text). `.row-link` exists
+  because `.tappable`'s `min-height` does nothing on an inline `<a>` inside a
+  table cell — see The 44px Rule.
+
 ### Evolución Table
 
 - **Character:** the one dense surface, and it earns the density.
+- **Heading placement:** `<h1>Gasto por categoría{ScaleNote}</h1>` sits
+  **outside** `.evolution-scroll`, above the scroller — the title used to
+  scroll away sideways with the table when it lived inside it. It does not
+  repeat the period label; that already lives in the period header above.
 - **Shape:** `border-collapse: separate` (a collapsed border belongs to the
   table, so a sticky cell would scroll away from its own border), `width: auto`,
   0.85rem text, right-aligned cells, `0.35rem 0.4rem` padding, inside a
   horizontal `overflow-x: auto` scroller.
 - **Sticky column:** row headers stick left at `z-index: 1` with a Paper
   background and an `inset -1px 0` Hairline shadow standing in for the border.
+- **Row link:** a category row that expands to subcategories is a `.row-link`
+  — same reasoning as the Category Table above.
 - **Heat:** two steps of one hue against the row's own average —
   `color-mix(in srgb, var(--pico-primary) 22% | 45%, transparent)`. The mix caps
   at 45%; the earlier ramp reached full opacity and dark text on a saturated
@@ -546,8 +647,20 @@ or two letters match half the list and the highlight becomes noise.
 ### Charts
 
 - **Library:** Chart.js, vendored, drawn onto `<canvas data-chart-type>` paired
-  with a `templ.JSONScript` data island. Three types only: `bar-grouped`
-  (Resumen), horizontal `bar-single` (Categorías), `line-multi` (Cuentas).
+  with a `templ.JSONScript` data island. Three types: `bar-grouped` (Resumen),
+  horizontal `bar-single` (Categorías index and its subcategory drill),
+  `line-multi` (Cuentas) — four canvases across the app.
+- **Sizing:** every `<canvas data-chart-type>` is wrapped in a `.chart-box`
+  div (`position: relative; height: 220px`), because Chart.js's
+  `responsive: true` overwrites the canvas's own width/height attributes on
+  resize — aspect control has to come from a sized parent, and without it no
+  chart in the app had a stable height. All four chart configs set
+  `maintainAspectRatio: false` to let that box govern them. The two
+  horizontal bar charts (Categorías index and its subcategory drill) get a
+  dynamically computed box height in `app.js`
+  (`Math.max(220, labels.length * 28 + 48)` px), because a fixed 220px box
+  squeezes every bar down to a sliver once there are more than a handful of
+  categories — each bar *is* a category there, at 28px plus room for the axis.
 - **Color by role, not by hex.** Go sends a *role* (`RoleExpense` /
   `RoleIncome`), never a color; `app.js`'s `colorForRole` resolves it at draw
   time, reading `--pico-primary` from computed style. Expense follows the theme
@@ -560,8 +673,8 @@ or two letters match half the list and the highlight becomes noise.
   repaints both the chrome and the series.
 - **Lines:** `borderColor` is set from each dataset's resolved color and `fill`
   stays false; several filled account areas overlapping is mud.
-- **Labels:** `autoSkip` is forced off on the horizontal bar chart. Each bar *is*
-  a category there, so no label is optional.
+- **Labels:** `autoSkip` is forced off on the horizontal bar charts. Each bar
+  *is* a category there, so no label is optional.
 - **Motion:** animation is disabled outright under
   `prefers-reduced-motion: reduce`, in the chart options.
 
@@ -601,7 +714,12 @@ failed, which contradicts `PRODUCT.md`'s "Never silent" principle.
   no failure — just a transparent or black element nobody sees.
 - **Do** mirror any new theme mapping across all three of Pico's theme contexts.
 - **Do** put `.money` on every monetary figure, wherever it renders.
-- **Do** give anything tappable a 44×44 minimum and a deliberate pressed state.
+- **Do** give anything tappable a 44×44 minimum — via `.tappable` for a
+  block-level element, `.row-link` for an inline `<a>` inside a table cell, or
+  an `::after` overlay for a compact control like the chip — and a deliberate
+  pressed state.
+- **Do** use `#content h1` for a drill screen's title, and nothing else as a
+  heading. Resumen stays headingless; do not add one to "fix" that.
 - **Do** carry every meaning in a second channel besides color — a glyph, a
   label, or geometry like the active tab's 2px bar.
 - **Do** emit `@AppState(p)` from every view, even one with no period controls.
@@ -630,5 +748,10 @@ failed, which contradicts `PRODUCT.md`'s "Never silent" principle.
   scroller off Evolución.
 - **Don't** use the `hidden` attribute to hide a `.mov-row`; `display: flex`
   beats it.
+- **Don't** give `.tappable` a `justify-content: center`; its current
+  consumers all read left-aligned from the start of their row or cell. An
+  element that wants centering states that itself, the way the chip does.
+- **Don't** use `min-height` to make an inline `<a>` inside a table cell
+  tappable — it does nothing there. Use `.row-link`.
 - **Don't** go below 0.75rem for text, or above 1.75rem for a figure inside a
-  card.
+  card or a heading.
