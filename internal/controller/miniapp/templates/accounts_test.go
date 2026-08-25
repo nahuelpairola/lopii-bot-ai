@@ -158,3 +158,56 @@ func TestAccountLeaf_EmptyStillShowsBalances(t *testing.T) {
 		t.Errorf("un mes sin movimientos igual tiene saldo, y es la respuesta a la pregunta que trajo al usuario acá:\n%s", html)
 	}
 }
+
+// La fecha sale de las 50 filas y sube a un encabezado por dia. Lo que queda
+// en la meta es solo "Categoria › Subcategoria", que es lo que distingue una
+// fila de otra dentro del mismo dia.
+func TestAccountLeaf_GroupsMovementsByDay(t *testing.T) {
+	data := AccountLeafData{
+		AccountName: "Efectivo",
+		Rows: []MovementRow{
+			{Title: "Super", Date: "12 ago", Note: "Comida › Super", Amount: "$-24.500"},
+			{Title: "Nafta", Date: "12 ago", Note: "Auto › Combustible", Amount: "$-18.000"},
+			{Title: "Sueldo", Date: "11 ago", Note: "Ingresos › Sueldo", Amount: "$900.000"},
+		},
+	}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if got := strings.Count(html, `class="group-title"`); got != 2 {
+		t.Errorf("encabezados de dia = %d, want 2 (12 ago y 11 ago):\n%s", got, html)
+	}
+	if got := strings.Count(html, "12 ago"); got != 1 {
+		t.Errorf("\"12 ago\" aparece %d veces, want 1: la fecha sube al encabezado y deja de repetirse por fila:\n%s", got, html)
+	}
+	if !strings.Contains(html, "Comida › Super") {
+		t.Errorf("la meta perdio la categoria, que es lo unico que le queda:\n%s", html)
+	}
+}
+
+// Cada grupo es su propio contenedor. Sin eso el buscador no tiene que
+// esconder cuando ninguna fila de ese dia matchea, y el encabezado queda
+// flotando solo.
+func TestAccountLeaf_EachDayIsItsOwnGroupElement(t *testing.T) {
+	data := AccountLeafData{
+		AccountName: "Efectivo",
+		Rows: []MovementRow{
+			{Title: "Super", Date: "12 ago", Amount: "$-24.500"},
+			{Title: "Sueldo", Date: "11 ago", Amount: "$900.000"},
+		},
+	}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if got := strings.Count(html, `class="mov-group"`); got != 2 {
+		t.Errorf("contenedores de grupo = %d, want 2: el buscador esconde el grupo entero, no solo las filas:\n%s", got, html)
+	}
+}

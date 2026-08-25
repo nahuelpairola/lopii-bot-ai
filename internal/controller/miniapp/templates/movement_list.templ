@@ -6,24 +6,32 @@ package templates
 //
 // Filas y no <table>: cuatro datos por movimiento en un webview angosto obligan
 // a scrollear en horizontal si esto fuera una tabla.
+//
+// Agrupada por día: la fecha subió al encabezado y salió de las 50 filas, así
+// la meta de cada fila queda con lo único que distingue una de otra dentro del
+// mismo día. Cada grupo es su propio <section> porque el buscador de la hoja
+// esconde el grupo ENTERO cuando ninguna de sus filas matchea — si no, el
+// encabezado del día queda flotando sin nada abajo.
 templ movementList(rows []MovementRow) {
-	<ul class="mov-list">
-		for _, row := range rows {
-			<li class="mov-row">
-				if row.Icon != "" {
-					<span class="mov-icon" aria-hidden="true">{ row.Icon }</span>
-				}
-				<span class="mov-text">
-					<span class="mov-title">{ row.Title }</span>
-					<span class="mov-meta">
-						{ row.Date }
-						if row.Note != "" {
-							{ " · " + row.Note }
+	for _, group := range GroupRowsByDay(rows) {
+		<section class="mov-group">
+			@GroupTitle(group.Date)
+			<ul class="mov-list">
+				for _, row := range group.Rows {
+					<li class="mov-row">
+						if row.Icon != "" {
+							<span class="mov-icon" aria-hidden="true">{ row.Icon }</span>
 						}
-					</span>
-				</span>
-				<span class="money mov-amount">{ row.Amount }</span>
-			</li>
-		}
-	</ul>
+						<span class="mov-text">
+							<span class="mov-title">{ row.Title }</span>
+							if row.Note != "" {
+								<span class="mov-meta">{ row.Note }</span>
+							}
+						</span>
+						<span class="money mov-amount">{ row.Amount }</span>
+					</li>
+				}
+			</ul>
+		</section>
+	}
 }

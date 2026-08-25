@@ -380,6 +380,23 @@ a, button, .tab-link {
 
 .evolution-legend { font-size: 0.8rem; }
 
+/* --- Listas agrupadas ---------------------------------------------------- */
+
+/* El encabezado de un grupo: el día de una lista de movimientos, el rótulo de
+   un total. Es cartelería, no contenido — mismo tamaño y color que la etiqueta
+   de un KPI, para que la lista se lea de un scroll y el ojo caiga en las filas
+   y no en las fechas. */
+.group-title {
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+  margin: var(--pico-spacing) 0 0.25rem;
+}
+
+/* El grupo es el contenedor que el buscador esconde entero cuando ninguna de
+   sus filas matchea (app.js). Sin él, filtrar deja los encabezados de todos
+   los días en pantalla, casi todos sin nada abajo. */
+.mov-group { margin: 0; }
+
 /* --- Hoja de cuenta --- */
 
 /* La tarjeta de una cuenta es tocable: abre la lista de movimientos que

@@ -291,6 +291,19 @@ document.addEventListener('input', (evt) => {
     // matchearía fechas, montos y cualquier descripción con un número.
     row.querySelectorAll('.mov-title, .mov-meta').forEach((el) => markMatches(el, hit ? q : ''));
   });
+  // Desde que la lista se agrupa por día, esconder filas sueltas no alcanza: un
+  // día sin ninguna fila visible dejaba su encabezado flotando solo. El grupo se
+  // esconde entero cuando ya no le queda nada que encabezar.
+  //
+  // La fecha, además, salió del texto que se busca: vive en el encabezado, no en
+  // .mov-text. Buscar "12 ago" ya no matchea, y está bien — la fecha ahora se
+  // ve, así que se escanea en vez de buscarse, y resaltar texto de un
+  // encabezado que el usuario no tipeó sería peor.
+  document.querySelectorAll('.mov-group').forEach((group) => {
+    const anyVisible = [...group.querySelectorAll('.mov-row')]
+      .some((row) => row.style.display !== 'none');
+    group.style.display = anyVisible ? '' : 'none';
+  });
   const empty = document.getElementById(MOV_FILTER_EMPTY_ID);
   if (empty) empty.hidden = shown > 0;
 });
