@@ -49,3 +49,30 @@ func RowTitle(description *string, subcategory string) string {
 	}
 	return RowFallbackTitle
 }
+
+// MovementDayGroup es un día de la lista: el encabezado y las filas que caen
+// abajo. La fecha sale a este nivel para que no se repita en las 50 filas.
+type MovementDayGroup struct {
+	Date string
+	Rows []MovementRow
+}
+
+// GroupRowsByDay parte la lista en corridas CONSECUTIVAS de la misma fecha.
+//
+// Por corridas y no por un map, y no es un detalle: MovementRow.Date ya viene
+// formateada por RowDate y NO lleva año, así que "12 ago" de 2026 y "12 ago"
+// de 2025 son el mismo string — un map los metería en el mismo grupo, y el
+// período "Año" llega a abarcar los dos. Recorrer la lista también conserva el
+// orden que trae el repositorio, que es lo que hace que la hoja cierre contra
+// el saldo leyéndola de arriba a abajo.
+func GroupRowsByDay(rows []MovementRow) []MovementDayGroup {
+	var groups []MovementDayGroup
+	for _, row := range rows {
+		if n := len(groups); n > 0 && groups[n-1].Date == row.Date {
+			groups[n-1].Rows = append(groups[n-1].Rows, row)
+			continue
+		}
+		groups = append(groups, MovementDayGroup{Date: row.Date, Rows: []MovementRow{row}})
+	}
+	return groups
+}
