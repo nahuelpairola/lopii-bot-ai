@@ -1,3 +1,103 @@
+/* === Capa de tema: manda Telegram =========================================
+   Telegram expone ~16 variables de tema al webview y hasta acá leíamos UNA
+   sola (colorScheme, para prender el data-theme de pico). Este bloque remapea
+   los tokens de color de pico contra las de Telegram, así la app usa el tema
+   QUE EL USUARIO ELIGIÓ en su cliente en vez de imponerle el azure de pico.
+
+   TRES BLOQUES, NO UNO. Pico define su paleta en tres contextos:
+     1. :root:not([data-theme=dark])            → claro
+     2. @media (prefers-color-scheme: dark) …   → oscuro por sistema
+     3. [data-theme=dark]                       → oscuro explícito (lo pone app.js)
+   Un solo :root pierde contra el 1 por especificidad. Un solo bloque con
+   especificidad alta gana en los tres, pero entonces sus fallbacks —que son de
+   UN tema— pisan la paleta oscura de pico cuando las variables de Telegram no
+   están. El modo oscuro en un navegador común se vuelve claro, sin que nada
+   falle: sólo se ve mal, y justo donde nadie mira. Por eso se espejan los tres
+   selectores, cada uno con los fallbacks de SU tema.
+
+   Adentro de Telegram los tres resuelven al mismo valor, porque Telegram ya
+   eligió el correcto para el tema del usuario.
+
+   TODA referencia lleva fallback. Fuera de Telegram, o en un cliente anterior a
+   Bot API 7.0 (section-bg-color, accent-text-color y section-separator-color son
+   7.0+), la app se ve exactamente como antes.
+   Lo hace cumplir TestAppCSS_EveryTelegramVarHasFallback.
+
+   El reparto página/sección es el de Telegram: la PÁGINA va en
+   secondary-bg-color y las tarjetas se apoyan encima en section-bg-color.
+
+   --pico-table-border-color NO está acá: pico ya lo define como
+   var(--pico-muted-border-color), así que sigue al separador solo. */
+
+:root:not([data-theme=dark]),
+[data-theme=light] {
+  --pico-background-color: var(--tg-theme-secondary-bg-color, #fff);
+  --pico-card-background-color: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #fff));
+  --pico-card-sectioning-background-color: var(--tg-theme-section-bg-color, rgb(251, 251.5, 252.25));
+  --pico-color: var(--tg-theme-text-color, #373c44);
+  --pico-h1-color: var(--tg-theme-text-color, #2d3138);
+  --pico-h2-color: var(--tg-theme-text-color, #373c44);
+  --pico-h3-color: var(--tg-theme-text-color, #424751);
+  --pico-muted-color: var(--tg-theme-hint-color, #646b79);
+  --pico-muted-border-color: var(--tg-theme-section-separator-color, var(--tg-theme-hint-color, rgb(231, 234, 239.5)));
+  --pico-primary: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #0172ad));
+  --pico-primary-hover: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #015887));
+  --pico-primary-background: var(--tg-theme-button-color, #0172ad);
+  --pico-primary-inverse: var(--tg-theme-button-text-color, #fff);
+  --pico-form-element-background-color: var(--tg-theme-section-bg-color, rgb(251, 251.5, 252.25));
+  --pico-form-element-border-color: var(--tg-theme-section-separator-color, #cfd5e2);
+  --pico-form-element-color: var(--tg-theme-text-color, #23262c);
+  --pico-form-element-placeholder-color: var(--tg-theme-hint-color, #8891a4);
+  --pico-code-background-color: var(--tg-theme-section-bg-color, rgb(243, 244.5, 246.75));
+  --pico-mark-color: var(--tg-theme-text-color, #0f1114);
+}
+
+@media only screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --pico-background-color: var(--tg-theme-secondary-bg-color, rgb(19, 22.5, 30.5));
+    --pico-card-background-color: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #181c25));
+    --pico-card-sectioning-background-color: var(--tg-theme-section-bg-color, rgb(26, 30.5, 40.25));
+    --pico-color: var(--tg-theme-text-color, #c2c7d0);
+    --pico-h1-color: var(--tg-theme-text-color, #f0f1f3);
+    --pico-h2-color: var(--tg-theme-text-color, #e0e3e7);
+    --pico-h3-color: var(--tg-theme-text-color, #c2c7d0);
+    --pico-muted-color: var(--tg-theme-hint-color, #7b8495);
+    --pico-muted-border-color: var(--tg-theme-section-separator-color, var(--tg-theme-hint-color, #202632));
+    --pico-primary: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #01aaff));
+    --pico-primary-hover: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #79c0ff));
+    --pico-primary-background: var(--tg-theme-button-color, #0172ad);
+    --pico-primary-inverse: var(--tg-theme-button-text-color, #fff);
+    --pico-form-element-background-color: var(--tg-theme-section-bg-color, rgb(28, 33, 43.5));
+    --pico-form-element-border-color: var(--tg-theme-section-separator-color, #2a3140);
+    --pico-form-element-color: var(--tg-theme-text-color, #e0e3e7);
+    --pico-form-element-placeholder-color: var(--tg-theme-hint-color, #8891a4);
+    --pico-code-background-color: var(--tg-theme-section-bg-color, rgb(26, 30.5, 40.25));
+    --pico-mark-color: var(--tg-theme-text-color, #fff);
+  }
+}
+
+[data-theme=dark] {
+  --pico-background-color: var(--tg-theme-secondary-bg-color, rgb(19, 22.5, 30.5));
+  --pico-card-background-color: var(--tg-theme-section-bg-color, var(--tg-theme-bg-color, #181c25));
+  --pico-card-sectioning-background-color: var(--tg-theme-section-bg-color, rgb(26, 30.5, 40.25));
+  --pico-color: var(--tg-theme-text-color, #c2c7d0);
+  --pico-h1-color: var(--tg-theme-text-color, #f0f1f3);
+  --pico-h2-color: var(--tg-theme-text-color, #e0e3e7);
+  --pico-h3-color: var(--tg-theme-text-color, #c2c7d0);
+  --pico-muted-color: var(--tg-theme-hint-color, #7b8495);
+  --pico-muted-border-color: var(--tg-theme-section-separator-color, var(--tg-theme-hint-color, #202632));
+  --pico-primary: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #01aaff));
+  --pico-primary-hover: var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #79c0ff));
+  --pico-primary-background: var(--tg-theme-button-color, #0172ad);
+  --pico-primary-inverse: var(--tg-theme-button-text-color, #fff);
+  --pico-form-element-background-color: var(--tg-theme-section-bg-color, rgb(28, 33, 43.5));
+  --pico-form-element-border-color: var(--tg-theme-section-separator-color, #2a3140);
+  --pico-form-element-color: var(--tg-theme-text-color, #e0e3e7);
+  --pico-form-element-placeholder-color: var(--tg-theme-hint-color, #8891a4);
+  --pico-code-background-color: var(--tg-theme-section-bg-color, rgb(26, 30.5, 40.25));
+  --pico-mark-color: var(--tg-theme-text-color, #fff);
+}
+
 :root {
   --pico-spacing: 0.75rem; /* denser than pico's marketing-page default */
 }
