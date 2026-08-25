@@ -293,18 +293,36 @@ a, button, .tab-link {
 
 /* The active state is painted by the rule below, not by pico — this block only
    carries the sizing that keeps the row on a phone. */
-.chip {
-  padding: 0.25rem 0.6rem;
+/* a[role="button"].chip y no .chip a secas: pico trae
+   `a[role=button]{display:inline-block}` con especificidad (0,2,0), que le gana
+   a una clase sola. Con inline-block, align-items y justify-content no hacen
+   NADA y la etiqueta queda pegada arriba de la caja — se ve exactamente como un
+   centrado roto, y no hay error en ningun lado. */
+a[role="button"].chip {
+  padding: 0 0.6rem;
   font-size: 0.8rem;
   margin: 0;
   --pico-border-radius: 1rem;
-  /* Los chips medían ~29px: 0.25rem de padding sobre texto de 0.8rem. Crecen a
-     44px sin cambiar de aspecto —el padding horizontal manda el ancho, así que
-     la píldora se ve igual— y centran, porque un min-height suelto sobre un
-     botón inline de pico deja la etiqueta pegada arriba de la caja. */
-  min-height: 44px;
+  /* Un chip es un segmented control, no un botón suelto: 32px es lo que mide
+     el de Telegram. Un min-height de 44px acá hizo dos daños — convirtió la
+     fila de chips en lo más pesado de la pantalla, y estiró la caja dejando la
+     etiqueta arriba. Alto explícito con line-height 1 y centrado en los dos
+     ejes: la caja no depende de lo que aporte pico. El piso táctil lo pone
+     ::after, que no ocupa layout. */
+  height: 32px;
+  line-height: 1;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* El área tocable llega a 44px sin agrandar la píldora: 6 + 32 + 6. Crece sólo
+   en vertical, así que dos chips vecinos nunca se roban el toque. */
+a[role="button"].chip::after {
+  content: "";
+  position: absolute;
+  inset: -6px 0;
 }
 
 /* pico encodes selection as a one-step hue shift (--pico-primary →

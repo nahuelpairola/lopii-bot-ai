@@ -171,22 +171,43 @@ func TestAppCSS_HasASingleTapTargetRule(t *testing.T) {
 	}
 }
 
-// El chip tiene que quedar tocable Y con el texto centrado: un min-height
-// suelto sobre un boton inline de pico deja la etiqueta pegada arriba de una
-// caja de 44px.
-func TestAppCSS_ChipsAreTappable(t *testing.T) {
+// Un chip es un segmented control, no un boton suelto. Medirlo 44px hizo dos
+// danios a la vez: la fila de chips paso a ser lo mas pesado de la pantalla, y
+// el min-height estiro la caja dejando la etiqueta arriba en vez de centrada.
+// La pildora se queda compacta y el piso tactil sale de un ::after que no ocupa
+// layout: 6 + 32 + 6 = 44.
+func TestAppCSS_ChipsStayCompactButTappable(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, ".chip {")
+	i := strings.Index(css, `a[role="button"].chip {`)
 	if i < 0 {
-		t.Fatal("desaparecio la regla .chip")
+		t.Fatal("desaparecio la regla del chip, o volvio a ser un selector de clase sola: pico trae a[role=button]{display:inline-block} con (0,2,0) y le gana")
 	}
 	rule := css[i:min(i+700, len(css))]
-	if !strings.Contains(rule, "min-height: 44px") {
-		t.Errorf("el chip sigue en ~29px, y es el control mas tocado de la app:\n%s", rule)
+
+	if strings.Contains(rule, "min-height: 44px") {
+		t.Errorf("la pildora volvio a medir 44px, y un segmented control no se mide asi:\n%s", rule)
 	}
-	if !strings.Contains(rule, "align-items: center") {
-		t.Errorf("el chip crece pero no centra: la etiqueta queda arriba de la caja:\n%s", rule)
+	if !strings.Contains(rule, "height: 32px") {
+		t.Errorf("el chip perdio su alto explicito, y vuelve a depender de lo que aporte pico:\n%s", rule)
+	}
+	// Los dos ejes: sin justify-content la etiqueta se va a la izquierda apenas
+	// el chip crece de ancho, que es lo que hace [role=group] con flex: 1 1 auto.
+	for _, want := range []string{"align-items: center", "justify-content: center"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("el chip no declara %q y la etiqueta queda descentrada:\n%s", want, rule)
+		}
+	}
+
+	j := strings.Index(css, `a[role="button"].chip::after`)
+	if j < 0 {
+		t.Fatal("no existe el ::after del chip: la pildora es compacta pero el area tocable se quedo en 32px")
+	}
+	hit := css[j:min(j+300, len(css))]
+	for _, want := range []string{"position: absolute", "inset: -6px 0"} {
+		if !strings.Contains(hit, want) {
+			t.Errorf("el area tocable del chip no declara %q (6 + 32 + 6 = 44):\n%s", want, hit)
+		}
 	}
 }
 
