@@ -34,6 +34,8 @@ templ Categories(data CategoriesData) {
 	if data.Empty {
 		@EmptyState("Sin gastos en este período.")
 	} else {
+		@GroupTitle("Total")
+		<p class="accounts-total money">{ data.Total }</p>
 		<div class="chart-box">
 			<canvas id="categorias-bars" data-chart-type="bar-single" data-chart-data-id="categorias-bars-data"></canvas>
 		</div>
@@ -49,6 +51,8 @@ templ SubcategoryDrill(data CategoriesData) {
 	if data.Empty {
 		@EmptyState("Sin gastos en esta categoría.")
 	} else {
+		@GroupTitle("Total")
+		<p class="accounts-total money">{ data.Total }</p>
 		<div class="chart-box">
 			<canvas id="subcat-bars" data-chart-type="bar-single" data-chart-data-id="subcat-bars-data"></canvas>
 		</div>
@@ -112,8 +116,5 @@ templ categoryTable(data CategoriesData, header string) {
 				</tr>
 			}
 		</tbody>
-		<tfoot>
-			<tr><th scope="row">Total</th><td class="money">{ data.Total }</td><td></td></tr>
-		</tfoot>
 	</table>
 }

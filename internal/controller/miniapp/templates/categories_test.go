@@ -140,3 +140,31 @@ func TestCategories_ChartSitsInABox(t *testing.T) {
 		t.Errorf("el envoltorio tiene que CONTENER al canvas, no venir despues:\n%s", html)
 	}
 }
+
+// El total vivía solo en el <tfoot>, abajo de las diez filas: en una pantalla
+// con muchas categorías hay que scrollear para verlo, y es el numero que
+// responde "cuanto gaste este mes", la razon por la que alguien entra a esta
+// vista. Sube arriba, como el total de Cuentas.
+func TestCategories_TotalSitsAboveTheTable(t *testing.T) {
+	data := CategoriesData{
+		Rows: []CategoryRow{
+			{Category: "Alimentación", Total: "$60.000", Share: "75%"},
+			{Category: "Transporte", Total: "$20.000", Share: "25%"},
+		},
+		Chart: BarChartData{Labels: []string{"Alimentación", "Transporte"}, Values: []float64{60000, 20000}},
+		Total: "$80.000",
+	}
+
+	var sb strings.Builder
+	if err := Categories(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if strings.Index(html, "$80.000") > strings.Index(html, "<table") {
+		t.Errorf("el total sigue abajo de la tabla:\n%s", html)
+	}
+	if got := strings.Count(html, "$80.000"); got != 1 {
+		t.Errorf("el total aparece %d veces, want 1 — no se duplica arriba y en el pie:\n%s", got, html)
+	}
+}
