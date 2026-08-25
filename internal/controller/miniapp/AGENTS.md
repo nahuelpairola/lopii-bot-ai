@@ -26,19 +26,26 @@ no flag to check, so it 403s everyone. Both have to be there.
 ## The TabBar cannot see the user
 
 `TabBar` is rendered by the `Shell`, which is the *unauthenticated* response — so a tab that
-should only exist for some users cannot be decided there. The admin tab is therefore not
-rendered in the tabbar at all: `TabBar` reserves an empty `<span id={ AdminTabSlotID } hidden>`,
-and the Resumen partial — the first authenticated response — carries an `hx-swap-oob` anchor
-with that same id, which htmx moves into the slot. A non-admin's Resumen simply omits it and the
-slot stays empty.
+should only exist for some users cannot be decided there.
 
-**htmx discards an OOB element whose id is absent from the DOM, with no error anywhere.** Rename
-the slot on one side only and the tab silently never appears. That is why the id is a const
-(`AdminTabSlotID`) and why `overview_test.go` asserts both halves.
+**The app used to work around this and no longer does.** Until 2026-08-25 the admin tab reached
+the tabbar by an `hx-swap-oob` anchor carried in the Resumen partial (the first authenticated
+response) into an empty `<span>` the `TabBar` reserved. The user asked for the admin button to be
+removed, so the anchor, the slot and the `AdminTabSlotID` const are all gone.
 
-The tab also arrives *only* with Resumen. That is fine because the Telegram menu button always
-opens `EntryPath` (`/app/overview`), so every app open renders it — but a view that needs its own
-always-present chrome cannot get it this way.
+**`/app/admin` still exists and is still gated by `requireAdmin`.** What went away is the only
+way to reach it from the UI — and a webview has no address bar, so the view is effectively
+unreachable today. Deleting the routes and the view is a separate decision that has not been
+made; do not treat the handler as dead code on your own.
+
+If a future tab has to depend on the viewer, the OOB-into-a-reserved-slot trick is the pattern
+that worked, with one trap worth carrying forward: **htmx discards an OOB element whose id is
+absent from the DOM, with no error anywhere.** Rename one side only and the tab silently never
+appears, which is why the id was a const and why both halves were asserted in tests.
+
+A tab delivered this way also arrives *only* with the partial that carries it. That was fine for
+Resumen because the Telegram menu button always opens `EntryPath` (`/app/overview`), so every app
+open renders it — but a view that needs its own always-present chrome cannot get it this way.
 
 ## The movement leaves end each drill, and only one of them may show everything
 

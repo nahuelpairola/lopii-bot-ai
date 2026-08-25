@@ -147,7 +147,7 @@ b.RegisterHandler(bot.HandlerTypeMessageText, "/new-invite", bot.MatchTypePrefix
 adminRoutes := authed.Group("", requireAdmin())
 adminRoutes.GET("/"+templates.AdminPath, c.handleAdmin)
 ```
-`/app/admin` (the invitations view) is the worked example. Getting the user *to* it is the other half: a webview has no address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know who is looking. The tab therefore ships from the first authenticated partial (Resumen) as an `hx-swap-oob` element that lands in the empty `AdminTabSlotID` slot the `TabBar` reserves — see `internal/controller/miniapp/AGENTS.md`.
+`/app/admin` (the invitations view) is the worked example of the *gating*. Getting the user *to* such a view is the other half, and it is currently **unsolved by design**: a webview has no address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know who is looking. Admin used to solve it with an `hx-swap-oob` element shipped from the first authenticated partial into a slot the `TabBar` reserved; that was removed on 2026-08-25 when the user asked for the admin button to go, so `/app/admin` is gated and reachable by URL only. If you need a viewer-dependent tab, `internal/controller/miniapp/AGENTS.md` § "The TabBar cannot see the user" carries the pattern and its one silent trap.
 
 3. **Do not copy `middleware.RequireAdmin`.** It authenticates nothing — it sets `user_id = 1` and calls `Next()`. Its one caller (`POST /admin/users/:telegramID/reset`) is technical debt, not a pattern (`AGENTS.md` § Technical debt).
 

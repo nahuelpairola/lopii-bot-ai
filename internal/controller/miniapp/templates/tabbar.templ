@@ -15,12 +15,6 @@ templ TabBar(active string) {
 		@tabLink(RouteCategories, TabCategories, "Categorías", active)
 		@tabLink(RouteAccounts, TabAccounts, "Cuentas", active)
 		@tabLink(RouteEvolution, TabEvolution, "Evolución", active)
-		// Slot de la pestaña de admin. Va vacío y oculto porque acá todavía no
-		// se sabe quién mira: el Shell no está autenticado. El partial del
-		// Resumen lo reemplaza por la pestaña real con hx-swap-oob cuando el
-		// que pide es admin. `hidden` lo saca del flex, así que para un usuario
-		// común las cuatro pestañas quedan repartidas como si no existiera.
-		<span id={ AdminTabSlotID } hidden></span>
 	</nav>
 }
 

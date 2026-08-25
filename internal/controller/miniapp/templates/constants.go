@@ -30,13 +30,6 @@ const (
 	AdminPath            = "admin"
 	AdminInvitationsPath = AdminPath + "/invitations"
 
-	// AdminTabSlotID is the empty placeholder TabBar renders and the id the
-	// Resumen partial's hx-swap-oob element replaces. The TabBar is rendered by
-	// the unauthenticated Shell, so it cannot know whether the viewer is an
-	// admin; the authenticated partial is the first thing that can. htmx drops
-	// an OOB element whose id is absent from the DOM, silently — so the slot and
-	// the swap have to keep this exact id.
-	AdminTabSlotID = "tab-admin"
 
 	RouteAdmin            = AppPrefix + "/" + AdminPath
 	RouteAdminInvitations = AppPrefix + "/" + AdminInvitationsPath
