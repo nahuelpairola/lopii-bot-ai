@@ -63,9 +63,16 @@ function initCharts(root) {
             backgroundColor: d.backgroundColor || colorForRole(d.role),
           })),
         },
-        options: { responsive: true, animation, plugins: { legend: { display: true } } },
+        options: { responsive: true, maintainAspectRatio: false, animation, plugins: { legend: { display: true } } },
       }));
     } else if (chartType === 'bar-single') {
+      // Cada barra ES una categoría y autoSkip está apagado, así que ninguna
+      // etiqueta se descarta: si la caja no crece con las filas, veinte
+      // categorías salen como veinte pelitos. 28px por barra más el eje.
+      const box = canvas.parentElement;
+      if (box && box.classList.contains('chart-box')) {
+        box.style.height = Math.max(220, data.labels.length * 28 + 48) + 'px';
+      }
       chartRegistry.set(canvasId, new Chart(canvas, {
         type: 'bar',
         data: { labels: data.labels, datasets: [{ data: data.values, backgroundColor: colorForRole(data.role) }] },
@@ -76,6 +83,7 @@ function initCharts(root) {
         options: {
           indexAxis: 'y',
           responsive: true,
+          maintainAspectRatio: false,
           animation,
           plugins: { legend: { display: false } },
           scales: { y: { ticks: { autoSkip: false } } },
@@ -96,7 +104,7 @@ function initCharts(root) {
             return { ...d, backgroundColor: color, borderColor: color };
           }),
         },
-        options: { responsive: true, animation, plugins: { legend: { display: true } } },
+        options: { responsive: true, maintainAspectRatio: false, animation, plugins: { legend: { display: true } } },
       }));
     }
   });
@@ -290,6 +298,19 @@ document.addEventListener('input', (evt) => {
     // El monto queda afuera de la búsqueda y del resaltado a propósito: "500"
     // matchearía fechas, montos y cualquier descripción con un número.
     row.querySelectorAll('.mov-title, .mov-meta').forEach((el) => markMatches(el, hit ? q : ''));
+  });
+  // Desde que la lista se agrupa por día, esconder filas sueltas no alcanza: un
+  // día sin ninguna fila visible dejaba su encabezado flotando solo. El grupo se
+  // esconde entero cuando ya no le queda nada que encabezar.
+  //
+  // La fecha, además, salió del texto que se busca: vive en el encabezado, no en
+  // .mov-text. Buscar "12 ago" ya no matchea, y está bien — la fecha ahora se
+  // ve, así que se escanea en vez de buscarse, y resaltar texto de un
+  // encabezado que el usuario no tipeó sería peor.
+  document.querySelectorAll('.mov-group').forEach((group) => {
+    const anyVisible = [...group.querySelectorAll('.mov-row')]
+      .some((row) => row.style.display !== 'none');
+    group.style.display = anyVisible ? '' : 'none';
   });
   const empty = document.getElementById(MOV_FILTER_EMPTY_ID);
   if (empty) empty.hidden = shown > 0;

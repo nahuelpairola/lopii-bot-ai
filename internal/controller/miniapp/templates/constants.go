@@ -15,31 +15,13 @@ const (
 	TabOverview   = "overview"
 	TabCategories = "categories"
 	TabAccounts   = "accounts"
-	TabEvolution     = "evolution"
+	TabEvolution  = "evolution"
 
 	// Route* are the full link targets (AppPrefix + "/" + tab key).
 	RouteOverview   = AppPrefix + "/" + TabOverview
 	RouteCategories = AppPrefix + "/" + TabCategories
 	RouteAccounts   = AppPrefix + "/" + TabAccounts
-	RouteEvolution     = AppPrefix + "/" + TabEvolution
-
-	// AdminPath is the admin view's segment under AppPrefix. It doubles as the
-	// tab key app.js matches against the path (markActiveTab), same as the
-	// Tab* consts above — the admin tab reaches the tabbar by an OOB swap
-	// rather than by being rendered in it, but once there it is an ordinary tab.
-	AdminPath            = "admin"
-	AdminInvitationsPath = AdminPath + "/invitations"
-
-	// AdminTabSlotID is the empty placeholder TabBar renders and the id the
-	// Resumen partial's hx-swap-oob element replaces. The TabBar is rendered by
-	// the unauthenticated Shell, so it cannot know whether the viewer is an
-	// admin; the authenticated partial is the first thing that can. htmx drops
-	// an OOB element whose id is absent from the DOM, silently — so the slot and
-	// the swap have to keep this exact id.
-	AdminTabSlotID = "tab-admin"
-
-	RouteAdmin            = AppPrefix + "/" + AdminPath
-	RouteAdminInvitations = AppPrefix + "/" + AdminInvitationsPath
+	RouteEvolution  = AppPrefix + "/" + TabEvolution
 
 	// Neto* are the KPI status keys shared with overview.go (status color).
 	NetoGood     = "good"

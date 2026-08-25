@@ -51,12 +51,19 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 	seenMonths := map[string]bool{}
 	var runningByAccount [][]monthBalance
 
+	// El total sale del mismo loop que ya suma cada cuenta: ni una consulta más,
+	// y cuadra con las filas por construcción porque es literalmente esos
+	// números sumados. Sin riesgo de cambio: accounts ya viene filtrado a una
+	// sola moneda más arriba, así que acá nunca se suman pesos con dólares.
+	total := decimal.Zero
+
 	for _, a := range accounts {
 		bal, err := c.movements.SumAmountForAccount(uint64(a.ID))
 		if err != nil {
 			ctx.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
+		total = total.Add(bal)
 		data.Snapshots = append(data.Snapshots, templates.AccountSnapshot{
 			Name:      a.Name,
 			Balance:   templates.FormatMoney(bal, a.Currency),
@@ -87,6 +94,7 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 		})
 	}
 
+	data.Total = templates.FormatMoney(total, p.Currency)
 	data.TrendChart = templates.TrendChartData{Labels: allMonths, Datasets: datasets}
 
 	ctx.Status(http.StatusOK)

@@ -106,7 +106,7 @@ func InitServer(conf *config.Config) error {
 		llmOrchestrator, metricRepo, chatHistoryRepo, reminderRepo, metricRepo, nudgeRepo, jobsRepo, actionsRepo,
 	)
 	adminController := adminctrl.NewController(userRepo, accountRepo, movementRepo, conversationEngine, tgTransport)
-	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, invitationRepo, conf.Telegram.Token, conf.Telegram.Username)
+	miniappController := miniappctrl.NewController(movementRepo, accountRepo, subcategoryCache, userRepo, conf.Telegram.Token, conf.Telegram.Username)
 
 	healthController.RegisterRoutes(ginEngine)
 	adminController.RegisterRoutes(ginEngine)

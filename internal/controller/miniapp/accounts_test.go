@@ -63,7 +63,7 @@ func TestHandleAccounts_NeverMixesCurrencies(t *testing.T) {
 			2: {{Month: "2026-07", Delta: decimal.NewFromInt(500)}},
 		},
 	}
-	c := NewController(movements, stubAccountsTwoCurrencies{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsTwoCurrencies{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -87,7 +87,7 @@ func TestHandleAccounts_RendersBalances(t *testing.T) {
 			1: {{Month: "2026-06", Delta: decimal.NewFromInt(30000)}, {Month: "2026-07", Delta: decimal.NewFromInt(20000)}},
 		},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -121,7 +121,7 @@ func TestHandleAccountLeaf_ReconcilesBalance(t *testing.T) {
 			Description: &desc,
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -153,7 +153,7 @@ func TestHandleAccountLeaf_RejectsAnotherUsersAccount(t *testing.T) {
 		deltas:   map[uint64][]movement.MonthlyDelta{},
 	}
 	// stubAccountsWithData sólo devuelve la cuenta 1.
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -177,7 +177,7 @@ func TestHandleAccountLeaf_LabelsUnclassified(t *testing.T) {
 			Subcategory: &subcategory.Subcategory{Category: constants.PendingReview, Subcategory: "algo"},
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -205,7 +205,7 @@ func TestHandleAccountLeaf_SurvivesNilSubcategory(t *testing.T) {
 			// Sin Description y sin Subcategory: los dos son punteros.
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -267,7 +267,7 @@ func TestHandleAccountLeaf_PeriodChipsKeepTheAccount(t *testing.T) {
 			Type: movement.Expense, Amount: decimal.NewFromInt(-1000), Currency: currency.ARS,
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -290,7 +290,7 @@ func TestHandleAccountLeaf_HidesTheCurrencyChips(t *testing.T) {
 			Type: movement.Expense, Amount: decimal.NewFromInt(-1000), Currency: currency.ARS,
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -314,7 +314,7 @@ func TestHandleAccounts_SharesThePeriodOfOverview(t *testing.T) {
 			1: {{Month: "2026-06", Delta: decimal.NewFromInt(30000)}, {Month: "2026-07", Delta: decimal.NewFromInt(20000)}},
 		},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -342,5 +342,46 @@ func TestHandleAccounts_SharesThePeriodOfOverview(t *testing.T) {
 	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=6m"))
 	if !bodyContains(w.Body.String(), "cuentas-trend") {
 		t.Error("con 6M el gráfico de tendencia tiene que estar")
+	}
+}
+
+// Dos cuentas en la MISMA moneda: es lo unico que hace visible un total
+// distinto de un saldo suelto. stubAccountsWithData devuelve una sola, y
+// stubAccountsTwoCurrencies devuelve dos que el handler filtra a una.
+type stubAccountsTwoARS struct{}
+
+func (stubAccountsTwoARS) FindByUserID(userID uint64) ([]account.Account, error) {
+	efectivo := account.Account{Name: "Efectivo", Currency: currency.ARS}
+	efectivo.ID = 1
+	banco := account.Account{Name: "Banco", Currency: currency.ARS}
+	banco.ID = 2
+	return []account.Account{efectivo, banco}, nil
+}
+
+// El total es la suma de las tarjetas que estan abajo, no una consulta nueva:
+// se acumula en el loop que ya suma cada cuenta. Por eso cierra por
+// construccion — y por eso el test lo verifica contra la suma de los saldos
+// que la misma pantalla muestra.
+func TestHandleAccounts_TotalsTheBalancesItShows(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{
+			1: decimal.NewFromInt(50000),
+			2: decimal.NewFromInt(25500),
+		},
+	}
+	c := NewController(movements, stubAccountsTwoARS{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts"))
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if !bodyContains(body, "$75.500") {
+		t.Errorf("falta el total $75.500 (50.000 + 25.500), que es lo que hace que la pantalla cierre:\n%s", body)
 	}
 }

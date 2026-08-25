@@ -142,12 +142,17 @@ A "scheduled notification" is any proactive system→user Telegram push not trig
 b.RegisterHandler(bot.HandlerTypeMessageText, "/new-invite", bot.MatchTypePrefix, handleNewInvite)
 ```
 
-2. For an admin surface with real auth, add it to the Mini App rather than as a bare HTTP endpoint. Register the route on the `authed` group with `requireAdmin()` (`internal/controller/miniapp/controller.go`), which gates on the `is_admin` flag `authInitData` stamps from the users row:
-```go
-adminRoutes := authed.Group("", requireAdmin())
-adminRoutes.GET("/"+templates.AdminPath, c.handleAdmin)
-```
-`/app/admin` (the invitations view) is the worked example. Getting the user *to* it is the other half: a webview has no address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know who is looking. The tab therefore ships from the first authenticated partial (Resumen) as an `hx-swap-oob` element that lands in the empty `AdminTabSlotID` slot the `TabBar` reserves — see `internal/controller/miniapp/AGENTS.md`.
+2. **There is no admin surface in the Mini App to add this to.** One existed at `/app/admin`
+(an invitations view, gated by a `requireAdmin()` middleware layered on `authed`) until
+2026-08-25, when the user asked for it removed — not just the tab, the whole route, handler,
+templates and middleware. If you need a real-auth admin surface again, it goes back on the Mini
+App's `authed` group behind a middleware that reads the `is_admin` flag `authInitData` stamps
+from the users row — do not resurrect it as a bare, unauthenticated HTTP endpoint. Getting the
+user *to* such a view is a separate problem the removed code solved once: a webview has no
+address bar, and the `TabBar` lives in the `Shell`, which renders before auth and so cannot know
+who is looking. `internal/controller/miniapp/AGENTS.md` § "There used to be an admin surface
+here" carries what the pattern was and its one silent trap (an OOB element with a mismatched id
+disappears with no error).
 
 3. **Do not copy `middleware.RequireAdmin`.** It authenticates nothing — it sets `user_id = 1` and calls `Next()`. Its one caller (`POST /admin/users/:telegramID/reset`) is technical debt, not a pattern (`AGENTS.md` § Technical debt).
 

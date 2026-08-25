@@ -18,27 +18,27 @@ which makes "this one is public too" a precedented mistake.
 
 No type, no naming rule and no test catches this. Adding a view means adding it to `authed`.
 
-The admin views add a **second** gate on top: `authed.Group("", requireAdmin())`, reading the
-`is_admin` flag `authInitData` stamped from the users row. Second, not alternative — an admin
-route registered outside `authed` loses initData validation entirely and `requireAdmin` finds
-no flag to check, so it 403s everyone. Both have to be there.
+## There used to be an admin surface here, and there is not one now
 
-## The TabBar cannot see the user
+Until 2026-08-25 this package carried `/app/admin` (an invitation-management view), gated by a
+second `requireAdmin()` middleware layered on `authed`, reached from the tab bar by an
+`hx-swap-oob` anchor the Resumen partial shipped into an empty `<span>` slot the `TabBar`
+reserved (`TabBar` renders in the unauthenticated `Shell`, so it cannot itself know who is
+viewing). The user asked for it removed entirely, and it is: `admin.go`, its templates, the
+`requireAdmin` middleware, the `AdminPath`/`RouteAdmin` consts and the OOB slot are all gone —
+not merely unreachable. `invitation.Repository` still exists and is still wired into
+`messagingctrl` for `/start` code redemption in chat; only the Mini App surface for *managing*
+invitations went away.
 
-`TabBar` is rendered by the `Shell`, which is the *unauthenticated* response — so a tab that
-should only exist for some users cannot be decided there. The admin tab is therefore not
-rendered in the tabbar at all: `TabBar` reserves an empty `<span id={ AdminTabSlotID } hidden>`,
-and the Resumen partial — the first authenticated response — carries an `hx-swap-oob` anchor
-with that same id, which htmx moves into the slot. A non-admin's Resumen simply omits it and the
-slot stays empty.
+**If a future view needs to depend on the viewer, the OOB-into-a-reserved-slot trick is the
+pattern that worked**, with one trap worth carrying forward: **htmx discards an OOB element
+whose id is absent from the DOM, with no error anywhere.** Rename one side only and the tab
+silently never appears — keep the id as a const and assert both halves in tests, the way this
+package used to.
 
-**htmx discards an OOB element whose id is absent from the DOM, with no error anywhere.** Rename
-the slot on one side only and the tab silently never appears. That is why the id is a const
-(`AdminTabSlotID`) and why `overview_test.go` asserts both halves.
-
-The tab also arrives *only* with Resumen. That is fine because the Telegram menu button always
-opens `EntryPath` (`/app/overview`), so every app open renders it — but a view that needs its own
-always-present chrome cannot get it this way.
+A tab delivered this way also arrives *only* with the partial that carries it. That was fine for
+Resumen because the Telegram menu button always opens `EntryPath` (`/app/overview`), so every app
+open renders it — but a view that needs its own always-present chrome cannot get it this way.
 
 ## The movement leaves end each drill, and only one of them may show everything
 

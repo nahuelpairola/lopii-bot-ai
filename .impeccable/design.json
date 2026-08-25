@@ -1,0 +1,660 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-25T00:00:00Z",
+  "title": "Design System: Lopii Mini App",
+  "extensions": {
+    "colorMeta": {
+      "theme-accent": {
+        "role": "primary",
+        "displayName": "Theme Accent",
+        "canonical": "var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #0172ad))",
+        "tonalRamp": [
+          "#012c43",
+          "#014363",
+          "#015887",
+          "#0172ad",
+          "#2a90c9",
+          "#5aaedb",
+          "#96cdea",
+          "#d4eaf7"
+        ],
+        "note": "Resolved by the user's Telegram client; the hex is only the outside-Telegram fallback."
+      },
+      "theme-accent-dark": {
+        "role": "primary",
+        "displayName": "Theme Accent (dark fallback)",
+        "canonical": "var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #01aaff))",
+        "tonalRamp": [
+          "#002034",
+          "#003a5e",
+          "#00558b",
+          "#0177bd",
+          "#01aaff",
+          "#4dc3ff",
+          "#93daff",
+          "#d6f0ff"
+        ]
+      },
+      "theme-button": {
+        "role": "primary",
+        "displayName": "Theme Button",
+        "canonical": "var(--tg-theme-button-color, #0172ad)",
+        "tonalRamp": [
+          "#012c43",
+          "#014363",
+          "#015887",
+          "#0172ad",
+          "#2a90c9",
+          "#5aaedb",
+          "#96cdea",
+          "#d4eaf7"
+        ],
+        "note": "Fill of a selected chip. Selection is a fill, never a hue shift."
+      },
+      "theme-button-text": {
+        "role": "primary",
+        "displayName": "Theme Button Text",
+        "canonical": "var(--tg-theme-button-text-color, #ffffff)",
+        "tonalRamp": [
+          "#26292e",
+          "#3d4147",
+          "#565b63",
+          "#7b8087",
+          "#a3a8ae",
+          "#c8ccd1",
+          "#e6e8eb",
+          "#ffffff"
+        ]
+      },
+      "statement-ink": {
+        "role": "neutral",
+        "displayName": "Statement Ink",
+        "canonical": "var(--tg-theme-text-color, #373c44)",
+        "tonalRamp": [
+          "#0f1114",
+          "#1d2025",
+          "#2d3138",
+          "#373c44",
+          "#5b626e",
+          "#89919c",
+          "#b8bec8",
+          "#e7eaef"
+        ],
+        "note": "Body text and every figure not carrying status."
+      },
+      "statement-ink-dark": {
+        "role": "neutral",
+        "displayName": "Statement Ink (dark fallback)",
+        "canonical": "var(--tg-theme-text-color, #c2c7d0)",
+        "tonalRamp": [
+          "#14171c",
+          "#22262d",
+          "#343941",
+          "#4a505a",
+          "#6d7481",
+          "#949ba7",
+          "#c2c7d0",
+          "#eef0f3"
+        ]
+      },
+      "margin-grey": {
+        "role": "neutral",
+        "displayName": "Margin Grey",
+        "canonical": "var(--tg-theme-hint-color, #646b79)",
+        "tonalRamp": [
+          "#16181c",
+          "#25282e",
+          "#383c44",
+          "#4c515b",
+          "#646b79",
+          "#8b919c",
+          "#b4b9c1",
+          "#e2e4e8"
+        ],
+        "note": "Where most of the interface lives: captions, meta lines, disabled arrows."
+      },
+      "margin-grey-dark": {
+        "role": "neutral",
+        "displayName": "Margin Grey (dark fallback)",
+        "canonical": "var(--tg-theme-hint-color, #7b8495)",
+        "tonalRamp": [
+          "#181b20",
+          "#272b33",
+          "#383d47",
+          "#4b515d",
+          "#616875",
+          "#7b8495",
+          "#a8aeba",
+          "#dcdfe5"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "var(--tg-theme-section-separator-color, var(--tg-theme-hint-color, rgb(231, 234, 239.5)))",
+        "tonalRamp": [
+          "#1c1f25",
+          "#2c3038",
+          "#3e434d",
+          "#565c68",
+          "#767c88",
+          "#a0a6b0",
+          "#c9ced6",
+          "#e7eaef"
+        ],
+        "note": "Every 1px rule in the system. Falls back through the hint color because section-separator-color is Bot API 7.6+."
+      },
+      "hairline-dark": {
+        "role": "neutral",
+        "displayName": "Hairline (dark fallback)",
+        "canonical": "var(--tg-theme-section-separator-color, var(--tg-theme-hint-color, #202632))",
+        "tonalRamp": [
+          "#0c0e13",
+          "#14181f",
+          "#202632",
+          "#2e3542",
+          "#414a5b",
+          "#5c6678",
+          "#868d9a",
+          "#b6bcc7"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "var(--tg-theme-secondary-bg-color, #ffffff)",
+        "tonalRamp": [
+          "#2b2e33",
+          "#43474d",
+          "#5d6168",
+          "#7d8188",
+          "#a5a9af",
+          "#cbced2",
+          "#eceef0",
+          "#ffffff"
+        ],
+        "note": "The page and the tab bar. Opaque: content scrolls beneath the bar."
+      },
+      "paper-dark": {
+        "role": "neutral",
+        "displayName": "Paper (dark fallback)",
+        "canonical": "var(--tg-theme-secondary-bg-color, rgb(19, 22.5, 30.5))",
+        "tonalRamp": [
+          "#0a0c10",
+          "#13171f",
+          "#1d222c",
+          "#29303c",
+          "#3a4250",
+          "#525b6b",
+          "#7b8390",
+          "#adb3bd"
+        ]
+      },
+      "card-paper": {
+        "role": "neutral",
+        "displayName": "Card Paper",
+        "canonical": "var(--tg-theme-section-bg-color, rgb(251, 251.5, 252.25))",
+        "tonalRamp": [
+          "#2c2e30",
+          "#454749",
+          "#5f6164",
+          "#808285",
+          "#a7a9ab",
+          "#cccdcf",
+          "#ececed",
+          "#fbfbfc"
+        ],
+        "note": "Cards rest on top of the page: Telegram's own page/section split."
+      },
+      "card-paper-dark": {
+        "role": "neutral",
+        "displayName": "Card Paper (dark fallback)",
+        "canonical": "var(--tg-theme-section-bg-color, rgb(26, 30.5, 40.25))",
+        "tonalRamp": [
+          "#0d0f14",
+          "#161a22",
+          "#1a1e28",
+          "#272d3a",
+          "#39404f",
+          "#525a6b",
+          "#7c8492",
+          "#aeb4be"
+        ]
+      },
+      "positive-green": {
+        "role": "secondary",
+        "displayName": "Positive Green",
+        "canonical": "color-mix(in srgb, #0ca30c 70%, var(--pico-color))",
+        "tonalRamp": [
+          "#032f03",
+          "#054b05",
+          "#076807",
+          "#0a850a",
+          "#0ca30c",
+          "#3cc23c",
+          "#7ad97a",
+          "#c2f0c2"
+        ],
+        "note": "Derived, not fixed. Mixed toward the theme's text color: 4.82:1 light, 6.34:1 dark. Only ever the Neto."
+      },
+      "negative-red": {
+        "role": "secondary",
+        "displayName": "Negative Red",
+        "canonical": "color-mix(in srgb, var(--tg-theme-destructive-text-color, #d03b3b) 70%, var(--pico-color))",
+        "tonalRamp": [
+          "#3a1010",
+          "#5c1a1a",
+          "#7e2323",
+          "#a52d2d",
+          "#d03b3b",
+          "#e07070",
+          "#eda3a3",
+          "#f8d5d5"
+        ],
+        "note": "Prefers Telegram's destructive color, then mixes. 6.50:1 light, 4.83:1 dark. Only ever the Neto."
+      },
+      "ledger-green": {
+        "role": "secondary",
+        "displayName": "Ledger Green",
+        "canonical": "#1baf7a",
+        "tonalRamp": [
+          "#052419",
+          "#093c2a",
+          "#0e553b",
+          "#14764f",
+          "#1baf7a",
+          "#3fcd9a",
+          "#7de0bd",
+          "#c4f1e1"
+        ],
+        "note": "The income series. Fixed because Telegram exposes a destructive color and no positive one."
+      },
+      "slot-1": {
+        "role": "tertiary",
+        "displayName": "Account Slot 1",
+        "canonical": "#2a78d6",
+        "tonalRamp": [
+          "#0a1c33",
+          "#102d52",
+          "#164073",
+          "#1e5aa1",
+          "#2a78d6",
+          "#5f9be3",
+          "#9bc1ee",
+          "#d7e6f9"
+        ],
+        "note": "Categorical identity: the card and the trend line must match."
+      },
+      "slot-2": {
+        "role": "tertiary",
+        "displayName": "Account Slot 2",
+        "canonical": "#1baf7a",
+        "tonalRamp": [
+          "#052419",
+          "#093c2a",
+          "#0e553b",
+          "#14764f",
+          "#1baf7a",
+          "#3fcd9a",
+          "#7de0bd",
+          "#c4f1e1"
+        ]
+      },
+      "slot-3": {
+        "role": "tertiary",
+        "displayName": "Account Slot 3",
+        "canonical": "#eda100",
+        "tonalRamp": [
+          "#3a2800",
+          "#5c3f00",
+          "#7e5600",
+          "#b07800",
+          "#eda100",
+          "#f5bc42",
+          "#fad489",
+          "#fdeecb"
+        ]
+      },
+      "slot-4": {
+        "role": "tertiary",
+        "displayName": "Account Slot 4",
+        "canonical": "#008300",
+        "tonalRamp": [
+          "#001f00",
+          "#003400",
+          "#004a00",
+          "#006600",
+          "#008300",
+          "#2ba52b",
+          "#6ec96e",
+          "#bfe9bf"
+        ]
+      },
+      "slot-5": {
+        "role": "tertiary",
+        "displayName": "Account Slot 5",
+        "canonical": "#4a3aa7",
+        "tonalRamp": [
+          "#121029",
+          "#1e1a45",
+          "#2b2463",
+          "#3a2f85",
+          "#4a3aa7",
+          "#7263c4",
+          "#a49ada",
+          "#d8d3f0"
+        ]
+      },
+      "slot-6": {
+        "role": "tertiary",
+        "displayName": "Account Slot 6",
+        "canonical": "#e34948",
+        "tonalRamp": [
+          "#3d1010",
+          "#601a1a",
+          "#842424",
+          "#b13232",
+          "#e34948",
+          "#ec7a79",
+          "#f4a9a9",
+          "#fbdada"
+        ]
+      },
+      "slot-7": {
+        "role": "tertiary",
+        "displayName": "Account Slot 7",
+        "canonical": "#e87ba4",
+        "tonalRamp": [
+          "#3d1524",
+          "#61213a",
+          "#852e51",
+          "#b03e6d",
+          "#e87ba4",
+          "#f0a0bf",
+          "#f6c3d6",
+          "#fbe4ec"
+        ]
+      },
+      "slot-8": {
+        "role": "tertiary",
+        "displayName": "Account Slot 8",
+        "canonical": "#eb6834",
+        "tonalRamp": [
+          "#3d180a",
+          "#611f0f",
+          "#852b15",
+          "#b03a1c",
+          "#eb6834",
+          "#f28f66",
+          "#f7b79a",
+          "#fcdfd0"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "heading": {
+        "displayName": "Heading",
+        "purpose": "The one heading level, #content h1. Opens AccountLeaf, SubcategoryDrill, SubcategoryLeaf and Evolucion; Resumen has none, deliberately. Size/line-height matches what the old h2 (and Evolucion's old <caption>) already rendered at - a zero-pixel-delta semantic fix, not a size increase."
+      },
+      "kpi": {
+        "displayName": "KPI",
+        "purpose": "Money inside a card. 1.75rem is a ceiling: $1.234.567,00 fits a 360px card at this size and not at 2rem."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Movement titles, prose, empty-state messages."
+      },
+      "table": {
+        "displayName": "Table",
+        "purpose": "The Evolucion grid and the Categorias table. At body size Evolucion's six months plus the category column measure 372px and overflow a 360px phone; Categorias compacts for the same reason (Pico's own td/th padding)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "KPI captions, movement meta lines, chip text, chart legends. Always Margin Grey."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "The Variacion note and the Evolucion legend. The floor - nothing goes smaller."
+      },
+      "cursor": {
+        "displayName": "Cursor",
+        "purpose": "The period header's chevrons only. Glyphs, not text: the size is what makes one character readable inside its own 44x44 tap target."
+      }
+    },
+    "shadows": [
+      {
+        "name": "sticky-column-edge",
+        "value": "inset -1px 0 var(--pico-table-border-color)",
+        "purpose": "Structural, not atmospheric: stands in for the border a collapsed table takes away from a sticky scrolling cell. The only shadow in the system."
+      }
+    ],
+    "motion": [
+      {
+        "name": "content-loading",
+        "value": "opacity 0.1s",
+        "purpose": "#content drops to 0.55 opacity while an htmx request is in flight. The entire loading vocabulary."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce)",
+        "purpose": "Chart animation is disabled outright rather than shortened."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "360px",
+        "purpose": "The design target. Not a breakpoint the CSS branches on - the width every measurement was checked against."
+      },
+      {
+        "name": "pico-grid-collapse",
+        "value": "768px",
+        "purpose": "Pico's .grid becomes one column below this. The app is never wider, so cards are always full-width."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "KPI Card",
+      "kind": "card",
+      "refersTo": "kpi-card",
+      "description": "A caption over a large tabular figure. The Neto variant is the only element in the app that carries a status color.",
+      "html": "<article class=\"ds-kpi\"><p class=\"ds-kpi-label\">Neto</p><p class=\"ds-kpi-figure ds-neto-good\">$124.500,00</p></article>",
+      "css": ".ds-kpi { background: var(--pico-card-background-color, #fff); border-radius: 0.25rem; padding: 0.75rem; } .ds-kpi-label { font-size: 0.8rem; color: var(--pico-muted-color, #646b79); margin: 0 0 0.15rem; } .ds-kpi-figure { font-size: 1.75rem; font-weight: 600; line-height: 1.2; margin: 0; font-variant-numeric: tabular-nums; color: var(--pico-color, #373c44); } .ds-neto-good { color: color-mix(in srgb, #0ca30c 70%, var(--pico-color, #373c44)); }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Period and currency selection, a fixed 32px pill (Telegram's own segmented-control height) rather than a 44px box. Selected is a fill, not a hue shift - Pico's one-step shift measures 1.32:1 in dark. The 44px tap target is a separate absolutely-positioned overlay, not the pill's own box.",
+      "html": "<div class=\"ds-chips\"><a class=\"ds-chip\" href=\"#\">Mes</a><a class=\"ds-chip\" href=\"#\" aria-current=\"page\">6m</a></div>",
+      "css": ".ds-chips { display: flex; align-items: center; gap: 0.25rem; } .ds-chip { position: relative; height: 32px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; padding: 0 0.6rem; font-size: 0.8rem; border-radius: 1rem; border: 1px solid var(--pico-muted-border-color, #e7eaef); color: var(--pico-muted-color, #646b79); text-decoration: none; background: transparent; } .ds-chip::after { content: ''; position: absolute; inset: -6px 0; } .ds-chip[aria-current] { background-color: var(--tg-theme-button-color, #0172ad); border-color: var(--tg-theme-button-color, #0172ad); color: var(--tg-theme-button-text-color, #fff); } .ds-chip:hover { border-color: var(--pico-primary, #0172ad); } .ds-chip:focus-visible { outline: 2px solid var(--pico-primary, #0172ad); outline-offset: 2px; }"
+    },
+    {
+      "name": "Tab Bar",
+      "kind": "nav",
+      "refersTo": "tab-link",
+      "description": "Fixed bottom navigation, four tabs (Resumen, Categorias, Cuentas, Evolucion). The active tab carries a 2px bar as well as color, because muted grey against the accent is only 1.47:1.",
+      "html": "<nav class=\"ds-tabbar\"><a class=\"ds-tab\" href=\"#\">Resumen</a><a class=\"ds-tab\" href=\"#\" aria-current=\"page\">Cuentas</a><a class=\"ds-tab\" href=\"#\">Evolucion</a></nav>",
+      "css": ".ds-tabbar { display: flex; justify-content: space-around; border-top: 1px solid var(--pico-muted-border-color, #e7eaef); background: var(--pico-background-color, #fff); padding: 0.5rem 0; } .ds-tab { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; text-decoration: none; color: var(--pico-muted-color, #646b79); position: relative; font-size: 0.9rem; } .ds-tab[aria-current] { color: var(--pico-primary, #0172ad); font-weight: 600; text-decoration: none; } .ds-tab[aria-current]::before { content: \"\"; position: absolute; top: -0.5rem; left: 0; right: 0; height: 2px; background: var(--pico-primary, #0172ad); }"
+    },
+    {
+      "name": "Movement Row",
+      "kind": "custom",
+      "refersTo": "movement-row",
+      "description": "Grouped by day: each section.mov-group is headed by a GroupTitle carrying the date, and its rows no longer repeat it. Three zones per row, one line each, the amount immovable. Rows rather than a table because four fields in a narrow webview would force horizontal scrolling.",
+      "html": "<section class=\"ds-mov-group\"><p class=\"ds-group-title\">12 ago</p><ul class=\"ds-mov-list\"><li class=\"ds-mov-row\"><span class=\"ds-mov-icon\" aria-hidden=\"true\">🍝</span><span class=\"ds-mov-text\"><span class=\"ds-mov-title\">Supermercado Coto</span><span class=\"ds-mov-meta\">Comida › Super</span></span><span class=\"ds-mov-amount\">$24.500,00</span></li></ul></section>",
+      "css": ".ds-group-title { font-size: 0.8rem; color: var(--pico-muted-color, #646b79); margin: var(--pico-spacing, 0.75rem) 0 0.25rem; } .ds-mov-group { margin: 0; } .ds-mov-list { list-style: none; padding: 0; margin: 0; } .ds-mov-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0; border-bottom: 1px solid var(--pico-muted-border-color, #e7eaef); } .ds-mov-icon { flex: none; } .ds-mov-text { display: flex; flex-direction: column; min-width: 0; flex: 1; } .ds-mov-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pico-color, #373c44); } .ds-mov-meta { font-size: 0.8rem; color: var(--pico-muted-color, #646b79); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-mov-amount { flex: none; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--pico-color, #373c44); }"
+    },
+    {
+      "name": "Account Card",
+      "kind": "card",
+      "refersTo": "account-card",
+      "description": "A tappable KPI card that opens the movements explaining its balance. Its 44x44 floor comes from .tappable in markup. The star marks the currency's default account and carries an aria-label.",
+      "html": "<a class=\"ds-account-card\" href=\"#\"><article class=\"ds-kpi\"><p class=\"ds-kpi-label\">Mercado Pago <span class=\"ds-star\" aria-label=\"cuenta por defecto\">★</span></p><p class=\"ds-kpi-figure\">$312.480,55</p></article></a>",
+      "css": ".ds-account-card { display: block; min-width: 44px; min-height: 44px; text-decoration: none; color: inherit; -webkit-tap-highlight-color: rgba(0,0,0,0.05); } .ds-account-card:active article { opacity: 0.7; } .ds-star { color: var(--pico-primary, #0172ad); }"
+    },
+    {
+      "name": "Variacion Callout",
+      "kind": "custom",
+      "refersTo": "variacion-callout",
+      "description": "Context, deliberately not a fourth KPI and deliberately not a card: it explains a balance that moved with no transaction behind it, styled as Telegram's own section footer. Never carries a status color.",
+      "html": "<div class=\"ds-variacion\"><span>Variación de saldos</span><span class=\"ds-variacion-figure\">+$8.200,00</span><small>Ajustes y rendimientos, no plata gastada ni cobrada.</small></div>",
+      "css": ".ds-variacion { display: grid; grid-template-columns: 1fr auto; gap: 0 0.5rem; align-items: baseline; padding: 0.5rem 0 0; color: var(--pico-muted-color, #646b79); font-size: 0.8rem; } .ds-variacion-figure { font-weight: 600; font-variant-numeric: tabular-nums; } .ds-variacion small { grid-column: 1 / -1; color: var(--pico-muted-color, #646b79); font-size: 0.75rem; }"
+    },
+    {
+      "name": "Evolucion Heat Cell",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "The one dense surface. Two shading steps of the theme accent against the row's own average; the mix caps at 45% so text on a cell stays legible. Its h1 title now sits outside the horizontal scroller.",
+      "html": "<h1>Gasto por categoría</h1><div class=\"ds-evolution-scroll\"><table class=\"ds-evolution\"><tr><th scope=\"row\">Comida</th><td>$40.100</td><td class=\"ds-cell-mild\">$62.800</td><td class=\"ds-cell-high\">$98.400</td></tr></table></div>",
+      "css": ".ds-evolution { border-collapse: separate; border-spacing: 0; width: auto; font-size: 0.85rem; color: var(--pico-color, #373c44); } .ds-evolution th, .ds-evolution td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--pico-muted-border-color, #e7eaef); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; } .ds-evolution th[scope=\"row\"] { text-align: left; font-weight: 600; background: var(--pico-background-color, #fff); box-shadow: inset -1px 0 var(--pico-muted-border-color, #e7eaef); } .ds-cell-mild { background-color: color-mix(in srgb, var(--pico-primary, #0172ad) 22%, transparent); } .ds-cell-high { background-color: color-mix(in srgb, var(--pico-primary, #0172ad) 45%, transparent); }"
+    },
+    {
+      "name": "Category Table",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Categorias' three-column table (name, total, share). Same 0.85rem/0.35rem-0.4rem compaction as Evolucion and for the same reason, but no scroller or sticky column - three columns fit a 360px phone outright.",
+      "html": "<table class=\"ds-cat-table\"><tr><td><a class=\"ds-row-link\" href=\"#\">🍝 Comida</a></td><td>$62.800</td><td>24%</td></tr></table>",
+      "css": ".ds-cat-table { font-size: 0.85rem; width: 100%; } .ds-cat-table th, .ds-cat-table td { padding: 0.35rem 0.4rem; }"
+    },
+    {
+      "name": "Failure State",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "One of three wordings, each with its own way out. Silence is not an option: without a message the loading opacity reverts and the tap reads as ignored rather than failed.",
+      "html": "<article class=\"ds-failure\"><p>Sin conexión. Probá de nuevo cuando vuelva.</p></article>",
+      "css": ".ds-failure { background: var(--pico-card-background-color, #fff); border-radius: 0.25rem; padding: 0.75rem; color: var(--pico-color, #373c44); } .ds-failure p { margin: 0; }"
+    },
+    {
+      "name": "Tappable Target",
+      "kind": "custom",
+      "refersTo": "tappable",
+      "description": "The shared 44x44 tap-target rule for block-level elements: min-width/min-height 44px, inline-flex, align-items center — and, as of Phase 3, no justify-content center. Applied in markup to the account card and the three '← Volver' back links, all of which read left-aligned from the start of their own row or cell; an element that wants centering (the chip) states that itself. .tab-link and the period cursor arrows still carry their own hand-written copy of the 44px floor rather than this class.",
+      "html": "<a class=\"ds-account-card ds-tappable\" href=\"#\">Mercado Pago</a>",
+      "css": ".ds-tappable { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; }"
+    },
+    {
+      "name": "Row Link",
+      "kind": "custom",
+      "refersTo": "row-link",
+      "description": "The 44px-tall row-link rule for an <a> sitting inside a table cell, used by Categorias' category-row links and Evolucion's expandable-category row links. min-height does nothing on an inline <a>, which is why these rows measured ~32-36px with the 44px floor already written elsewhere and simply unreachable; .row-link fixes it by being a flex row instead of a min-height override.",
+      "html": "<td><a class=\"ds-row-link\" href=\"#\">🍝 Comida</a></td>",
+      "css": ".ds-row-link { display: flex; align-items: center; min-height: 44px; text-decoration: none; color: inherit; }"
+    },
+    {
+      "name": "Accounts Total",
+      "kind": "custom",
+      "refersTo": "accounts-total",
+      "description": "Cuentas' running total, above the account cards and outside the .grid. Takes the KPI figure treatment (1.75rem/600) directly, since the scoped .grid article .money rule cannot reach it and this is the number that governs the whole screen.",
+      "html": "<p class=\"ds-accounts-total ds-money\">$1.204.880,55</p>",
+      "css": ".ds-accounts-total { font-size: 1.75rem; font-weight: 600; line-height: 1.2; margin: 0 0 var(--pico-spacing, 0.75rem); font-variant-numeric: tabular-nums; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Account Statement",
+    "overview": "The Mini App is a statement that closes. Every screen exists so the number at the top can be explained by the rows underneath it, and the user can walk from a total down to the individual movement that produced it without ever losing the window they were reading. Trust is the deliverable: a figure that does not reconcile is worse than no figure at all.\n\nThe app does not own its palette. Telegram does. Every color token is a var(--tg-theme-*) reference with a fallback, so the surface is painted in whatever theme the user chose in their client - including a custom one this system has never seen. That inverts the usual relationship: brand does not live in hue here, because hue belongs to the user. It lives in density, in the tabular figure, and in the discipline that every number reconciles.\n\nThe material is deliberately thin. Pico CSS 2.1.1 provides the base, app.css adds a set of scoped corrections, and every one of them exists because something specific broke on a 360px Telegram webview. The system is a stack of small, argued repairs, not a theme.\n\nThere is no admin surface in this app. An invitation-management screen lived here through 2026-08-25 and was removed outright - route, templates, middleware and tab slot all gone, not merely hidden.",
+    "keyCharacteristics": [
+      "Telegram-themed: 19 Pico color tokens are remapped onto --tg-theme-*, each with a fallback, so the app follows the user's client and still works outside it.",
+      "Flat and tonal: depth is a 1px hairline border and a card background, never a decorative shadow.",
+      "Tabular numerals everywhere money appears, so columns of figures stay comparable.",
+      "44px minimum on everything tappable - tabs, period arrows, account cards, back links, table row-links - reached by whichever of two mechanisms fits the element.",
+      "One heading level in the whole app (#content h1), used by every drill screen and deliberately absent from Resumen.",
+      "No web fonts, no build step, no CDN: every dependency is vendored and pinned under static/.",
+      "Color is reinforcement, never the only channel: the active tab carries a 2px bar, the default account carries a star with an aria-label."
+    ],
+    "rules": [
+      {
+        "name": "The Theme-Follows-The-User Rule",
+        "section": "colors",
+        "body": "A color literal in app.css is a bug unless one of the three documented exceptions covers it (account slots, the income series, the tap-highlight). Every var(--tg-...) carries a fallback - a missing one does not fail loudly, it paints the element transparent or black, and only outside Telegram, where nobody is looking. TestAppCSS_EveryTelegramVarHasFallback enforces this."
+      },
+      {
+        "name": "The Three Contexts Rule",
+        "section": "colors",
+        "body": "Pico defines its palette in three theme contexts. The remap must appear in all three, each with that theme's own fallbacks. One plain :root block loses on specificity; one high-specificity block wins everywhere and then its single-theme fallbacks override Pico's dark palette outside Telegram, silently turning dark mode light."
+      },
+      {
+        "name": "The Mixed Status Rule",
+        "section": "colors",
+        "body": "The Neto pair is derived, never fixed: color-mix(in srgb, <hue> 70%, var(--pico-color)). Measured, the fixed values gave 3.35:1 and 3.75:1, passing AA only as large text; mixed at 70% the four cases measure 4.82, 6.34, 6.50 and 4.83. The pair is asymmetric on purpose: red prefers Telegram's destructive color, green has no counterpart to prefer."
+      },
+      {
+        "name": "The One Status Rule",
+        "section": "colors",
+        "body": "Positive Green and Negative Red appear on exactly one element per screen: the Neto figure. Variacion de saldos is deliberately uncolored - a positive variation can be a CEDEAR that rose or a load that was missing, and tinting it green would assert something the system does not know."
+      },
+      {
+        "name": "The Categorical Exception Rule",
+        "section": "colors",
+        "body": "Account slot colors stay fixed hexes while everything else follows the theme. There, color is identity - the card and the trend line must match - and deriving eight mutually distinguishable hues from an arbitrary user theme is not a solvable problem."
+      },
+      {
+        "name": "The Reinforcement Rule",
+        "section": "colors",
+        "body": "No meaning is carried by color alone. The active tab gets a 2px geometric bar; the default account gets a star glyph with an aria-label; the Evolucion heat cells cap their mix at 45% so text on them stays legible."
+      },
+      {
+        "name": "The One Heading Rule",
+        "section": "typography",
+        "body": "There is exactly one heading level in the app: #content h1, styled at 1.75rem/1.15 - a zero-pixel-delta fix matching what the old h2 (and Evolucion's old caption) already rendered at. Every drill screen opens with it. Resumen has no heading, and that is kept, argued behavior, not a gap."
+      },
+      {
+        "name": "The Tabular Rule",
+        "section": "typography",
+        "body": "Anything that is money wears .money. No exceptions, including inside table cells and inline balance lines."
+      },
+      {
+        "name": "The Truncation Rule",
+        "section": "typography",
+        "body": "A movement's title and its meta line each truncate to one line with an ellipsis. A long merchant name may never push the amount off the right edge - the amount is the reason the row exists."
+      },
+      {
+        "name": "The 44px Rule",
+        "section": "layout",
+        "body": "Anything tappable is at least 44x44, reached by whichever of three mechanisms fits: .tappable (min-width/min-height 44px, no centering) for a block-level element like the account card or a back link; .row-link (a 44px-tall flex row) for an inline <a> inside a table cell, where min-height does nothing; or a ::after overlay (inset: -6px 0) for a compact control like the 32px chip pill, which must not grow to 44px itself. .tab-link and the period cursor arrows still carry their own hand-written copy of the floor."
+      },
+      {
+        "name": "The Rows-Not-Tables Rule",
+        "section": "layout",
+        "body": "A list of movements is a stack of section.mov-group day groups -- each headed by a GroupTitle and holding a ul.mov-list of that day's rows -- not a table. GroupRowsByDay splits the list into consecutive same-date runs; the date lives once on the group header and rows carry only what varies within a day. Evolucion and Categorias are the two real tables in the app; only Evolucion pays for it with a horizontal scroller and a sticky first column."
+      },
+      {
+        "name": "The Carried-State Rule",
+        "section": "layout",
+        "body": "Every view emits AppState - a hidden #app-state block of inputs the tab bar reads with hx-include. A view that renders without it silently resets the user's period on the way out, because periodFromQuery never 400s. PeriodHeader is today the rule's only consumer and always shows its controls; the historical case of a controls-less consumer (the removed Admin screen) is gone, but the rule stands for the next one."
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "section": "elevation",
+        "body": "Surfaces are flat at rest, and a shadow must earn its place by solving a real layering problem the way the sticky column's inset does. Whether a genuinely floating layer may use an ambient shadow is undecided - the app has no such layer yet."
+      }
+    ],
+    "dos": [
+      "Do reach for a Pico custom property before writing a literal color. They are already mapped to the user's Telegram theme, so both themes and every custom one work for free.",
+      "Do give every var(--tg-...) a fallback, always. Outside Telegram there is no failure - just a transparent or black element nobody sees.",
+      "Do mirror any new theme mapping across all three of Pico's theme contexts.",
+      "Do put .money on every monetary figure, wherever it renders.",
+      "Do give anything tappable a 44x44 minimum - via .tappable for a block-level element, .row-link for an inline <a> inside a table cell, or an ::after overlay for a compact control like the chip - and a deliberate pressed state.",
+      "Do use #content h1 for a drill screen's title, and nothing else as a heading. Resumen stays headingless; do not add one to fix that.",
+      "Do carry every meaning in a second channel besides color - a glyph, a label, or geometry like the active tab's 2px bar.",
+      "Do emit @AppState(p) from every view, even one with no period controls.",
+      "Do write the reason in the CSS when you override Pico. Every existing override says what broke; a silent one gets cleaned up by the next person.",
+      "Do derive a footer total from an aggregate over all rows, never from the rows on screen - the list is capped at 50."
+    ],
+    "donts": [
+      "Don't write a fixed color for anything but the three documented exceptions: account slots, the income series, and the tap-highlight rgba.",
+      "Don't send a color from Go to a chart. Send a role and resolve it in app.js; that is what keeps chart data following the theme.",
+      "Don't derive account slot colors from the theme. Color is identity there, and eight distinguishable hues cannot be pulled out of an arbitrary theme.",
+      "Don't add a web font. system-ui is the stack; a webview on a bad connection cannot wait for a download to render text that is mostly numbers.",
+      "Don't load anything from a CDN or add a build step. Vendor and pin it under static/, the way htmx 2.0.4, Pico 2.1.1 and Chart.js are.",
+      "Don't add a decorative box-shadow, gradient, or backdrop blur. Depth is a 1px border and a background.",
+      "Don't color the Variacion figure - or any figure other than Neto - with a status hue.",
+      "Don't turn a movement list into a <table>, or take the horizontal scroller off Evolucion.",
+      "Don't use the hidden attribute to hide a .mov-row; display: flex beats it.",
+      "Don't give .tappable a justify-content: center; its current consumers all read left-aligned. An element that wants centering states that itself, the way the chip does.",
+      "Don't use min-height to make an inline <a> inside a table cell tappable - it does nothing there. Use .row-link.",
+      "Don't go below 0.75rem for text, or above 1.75rem for a figure inside a card or a heading."
+    ]
+  }
+}

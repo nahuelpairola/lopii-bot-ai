@@ -34,7 +34,11 @@ templ Categories(data CategoriesData) {
 	if data.Empty {
 		@EmptyState("Sin gastos en este período.")
 	} else {
-		<canvas id="categorias-bars" data-chart-type="bar-single" data-chart-data-id="categorias-bars-data"></canvas>
+		@GroupTitle("Total")
+		<p class="accounts-total money">{ data.Total }</p>
+		<div class="chart-box">
+			<canvas id="categorias-bars" data-chart-type="bar-single" data-chart-data-id="categorias-bars-data"></canvas>
+		</div>
 		@templ.JSONScript("categorias-bars-data", data.Chart)
 		@categoryTable(data, "Categoría")
 	}
@@ -42,12 +46,16 @@ templ Categories(data CategoriesData) {
 
 templ SubcategoryDrill(data CategoriesData) {
 	@PeriodHeader(data.Period)
-	<h2>{ data.Drill }</h2>
-	<a href={ data.Period.Query() } hx-get={ data.Period.Query() } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Categorías</a>
+	<a class="tappable" href={ data.Period.Query() } hx-get={ data.Period.Query() } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Categorías</a>
+	<h1>{ data.Drill }</h1>
 	if data.Empty {
 		@EmptyState("Sin gastos en esta categoría.")
 	} else {
-		<canvas id="subcat-bars" data-chart-type="bar-single" data-chart-data-id="subcat-bars-data"></canvas>
+		@GroupTitle("Total")
+		<p class="accounts-total money">{ data.Total }</p>
+		<div class="chart-box">
+			<canvas id="subcat-bars" data-chart-type="bar-single" data-chart-data-id="subcat-bars-data"></canvas>
+		</div>
 		@templ.JSONScript("subcat-bars-data", data.Chart)
 		@categoryTable(data, "Subcategoría")
 	}
@@ -70,8 +78,8 @@ type SubcategoryLeafData struct {
 
 templ SubcategoryLeaf(data SubcategoryLeafData) {
 	@PeriodHeader(data.Period)
-	<h2>{ data.Subcategory }</h2>
-	<a href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a { data.Category }</a>
+	<a class="tappable" href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a { data.Category }</a>
+	<h1>{ data.Subcategory }</h1>
 	if data.Empty {
 		@EmptyState("Sin gastos en esta subcategoría.")
 	} else {
@@ -89,7 +97,7 @@ templ SubcategoryLeaf(data SubcategoryLeafData) {
 // categoryTable is shared by both views: the drill is the same table with a
 // different header and no links.
 templ categoryTable(data CategoriesData, header string) {
-	<table>
+	<table class="cat-table">
 		<thead>
 			<tr><th scope="col">{ header }</th><th scope="col">Total</th><th scope="col">%</th></tr>
 		</thead>
@@ -98,7 +106,7 @@ templ categoryTable(data CategoriesData, header string) {
 				<tr>
 					<td>
 						if row.Href != "" {
-							<a href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Category }</a>
+							<a class="row-link" href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Category }</a>
 						} else {
 							{ row.Icon } { row.Category }
 						}
@@ -108,8 +116,5 @@ templ categoryTable(data CategoriesData, header string) {
 				</tr>
 			}
 		</tbody>
-		<tfoot>
-			<tr><th scope="row">Total</th><td class="money">{ data.Total }</td><td></td></tr>
-		</tfoot>
 	</table>
 }

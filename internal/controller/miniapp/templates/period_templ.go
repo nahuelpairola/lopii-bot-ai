@@ -20,11 +20,13 @@ import "lopiibot.com/internal/currency"
 // sin una línea de JS, porque el tabbar vive en el shell y se renderiza una
 // sola vez, sin poder llevar estado fresco en sus propios hrefs.
 //
-// Vive separado de PeriodHeader porque hay una vista —Admin— que necesita
-// LLEVAR el estado sin MOSTRAR los controles: no tiene contenido que dependa
-// del período, así que unas flechas y unos chips ahí serían un control que no
-// hace nada. Una vista que emita los inputs a mano se desincroniza el día que
-// se agregue un scope; por eso esto es un componente y no una copia.
+// Vive separado de PeriodHeader para que una vista sin controles visibles
+// pueda LLEVAR el estado sin MOSTRARLO — el caso histórico fue Admin (ya
+// removida), pero cualquier vista futura sin contenido dependiente del
+// período la necesita: unas flechas y unos chips ahí serían un control que no
+// hace nada. Una vista que emitiera los inputs a mano se desincronizaría el
+// día que se agregue un scope; por eso esto es un componente y no una copia.
+// PeriodHeader es hoy su único consumidor.
 func AppState(p Period) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -58,7 +60,7 @@ func AppState(p Period) templ.Component {
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(s.Param)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 23, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 25, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 			if templ_7745c5c3_Err != nil {
@@ -71,7 +73,7 @@ func AppState(p Period) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.Presets[s.Param])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 23, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 25, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -89,7 +91,7 @@ func AppState(p Period) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.AnchorKey())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 25, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 27, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -102,7 +104,7 @@ func AppState(p Period) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.Currency.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 26, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 28, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -153,7 +155,7 @@ func PeriodHeader(p Period) templ.Component {
 			var templ_7745c5c3_Var7 templ.SafeURL
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(p.PrevQuery)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 35, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 37, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -166,7 +168,7 @@ func PeriodHeader(p Period) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.PrevQuery)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 35, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 37, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
@@ -189,7 +191,7 @@ func PeriodHeader(p Period) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(p.Label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 39, Col: 20}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 41, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -207,7 +209,7 @@ func PeriodHeader(p Period) templ.Component {
 			var templ_7745c5c3_Var10 templ.SafeURL
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(p.NextQuery)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 41, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 43, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -220,7 +222,7 @@ func PeriodHeader(p Period) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.NextQuery)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 41, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 43, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 			if templ_7745c5c3_Err != nil {
@@ -248,7 +250,7 @@ func PeriodHeader(p Period) templ.Component {
 			var templ_7745c5c3_Var12 templ.SafeURL
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(p.WithPreset(preset))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 51, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 53, Col: 32}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -261,7 +263,7 @@ func PeriodHeader(p Period) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.WithPreset(preset))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 52, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 54, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 			if templ_7745c5c3_Err != nil {
@@ -284,7 +286,7 @@ func PeriodHeader(p Period) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(PresetLabel(preset))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 59, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 61, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -308,7 +310,7 @@ func PeriodHeader(p Period) templ.Component {
 				var templ_7745c5c3_Var15 templ.SafeURL
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs(p.WithCurrency(cur))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 67, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 69, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 				if templ_7745c5c3_Err != nil {
@@ -321,7 +323,7 @@ func PeriodHeader(p Period) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(p.WithCurrency(cur))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 68, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 70, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 				if templ_7745c5c3_Err != nil {
@@ -344,7 +346,7 @@ func PeriodHeader(p Period) templ.Component {
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(cur.String())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 75, Col: 20}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/period.templ`, Line: 77, Col: 20}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {

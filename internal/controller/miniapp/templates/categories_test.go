@@ -73,3 +73,98 @@ func TestSubcategoryLeaf_Empty(t *testing.T) {
 		t.Errorf("falta el estado vacío:\n%s", sb.String())
 	}
 }
+
+// Las dos pantallas profundas de Categorias tenian el Volver ABAJO del titulo.
+// Suben, y toman .tappable como el de la hoja de cuenta.
+func TestCategoriesDeepViews_BackLinkSitsAboveTheTitle(t *testing.T) {
+	cases := []struct {
+		name   string
+		render func() (string, error)
+	}{
+		{"drill", func() (string, error) {
+			var sb strings.Builder
+			err := SubcategoryDrill(CategoriesData{Drill: "Alimentación"}).Render(context.Background(), &sb)
+			return sb.String(), err
+		}},
+		{"hoja", func() (string, error) {
+			var sb strings.Builder
+			err := SubcategoryLeaf(SubcategoryLeafData{
+				Category: "Alimentación", Subcategory: "Supermercado", BackQuery: "/app/categories?p=month",
+			}).Render(context.Background(), &sb)
+			return sb.String(), err
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			html, err := c.render()
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if got := strings.Count(html, "<h1>"); got != 1 {
+				t.Errorf("h1 = %d, want 1:\n%s", got, html)
+			}
+			if strings.Contains(html, "<h2>") {
+				t.Errorf("quedo un h2:\n%s", html)
+			}
+			if strings.Index(html, "Volver") > strings.Index(html, "<h1>") {
+				t.Errorf("el Volver quedo abajo del titulo:\n%s", html)
+			}
+			if !strings.Contains(html, "tappable") {
+				t.Errorf("el Volver no toma .tappable:\n%s", html)
+			}
+		})
+	}
+}
+
+// El grafico de Categorias es de barras HORIZONTALES: cada barra es una
+// categoria, y con el alto fijo de Chart.js veinte categorias son veinte
+// pelitos. Necesita el envoltorio para que app.js le pueda dar un alto que
+// crece con las filas.
+func TestCategories_ChartSitsInABox(t *testing.T) {
+	data := CategoriesData{
+		Rows:  []CategoryRow{{Category: "Alimentación", Total: "$1"}},
+		Chart: BarChartData{Labels: []string{"Alimentación"}, Values: []float64{1}},
+		Total: "$1",
+	}
+
+	var sb strings.Builder
+	if err := Categories(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if !strings.Contains(html, `class="chart-box"`) {
+		t.Errorf("el canvas no esta adentro de .chart-box:\n%s", html)
+	}
+	if strings.Index(html, `class="chart-box"`) > strings.Index(html, "<canvas") {
+		t.Errorf("el envoltorio tiene que CONTENER al canvas, no venir despues:\n%s", html)
+	}
+}
+
+// El total vivía solo en el <tfoot>, abajo de las diez filas: en una pantalla
+// con muchas categorías hay que scrollear para verlo, y es el numero que
+// responde "cuanto gaste este mes", la razon por la que alguien entra a esta
+// vista. Sube arriba, como el total de Cuentas.
+func TestCategories_TotalSitsAboveTheTable(t *testing.T) {
+	data := CategoriesData{
+		Rows: []CategoryRow{
+			{Category: "Alimentación", Total: "$60.000", Share: "75%"},
+			{Category: "Transporte", Total: "$20.000", Share: "25%"},
+		},
+		Chart: BarChartData{Labels: []string{"Alimentación", "Transporte"}, Values: []float64{60000, 20000}},
+		Total: "$80.000",
+	}
+
+	var sb strings.Builder
+	if err := Categories(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if strings.Index(html, "$80.000") > strings.Index(html, "<table") {
+		t.Errorf("el total sigue abajo de la tabla:\n%s", html)
+	}
+	if got := strings.Count(html, "$80.000"); got != 1 {
+		t.Errorf("el total aparece %d veces, want 1 — no se duplica arriba y en el pie:\n%s", got, html)
+	}
+}

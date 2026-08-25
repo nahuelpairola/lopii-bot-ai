@@ -152,3 +152,176 @@ func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
 		}
 	}
 }
+
+// La regla de 44px estaba escrita a mano en cuatro lugares y los chips de
+// periodo —el control mas tocado de la app— se la perdian: 0.25rem de padding
+// sobre texto de 0.8rem da unos 29px. .tappable la deja en un solo lugar.
+func TestAppCSS_HasASingleTapTargetRule(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".tappable")
+	if i < 0 {
+		t.Fatal("no existe .tappable: la regla de 44px sigue repetida en cada selector")
+	}
+	rule := css[i:min(i+300, len(css))]
+	for _, want := range []string{"min-height: 44px", "min-width: 44px"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".tappable no declara %q:\n%s", want, rule)
+		}
+	}
+}
+
+// Un chip es un segmented control, no un boton suelto. Medirlo 44px hizo dos
+// danios a la vez: la fila de chips paso a ser lo mas pesado de la pantalla, y
+// el min-height estiro la caja dejando la etiqueta arriba en vez de centrada.
+// La pildora se queda compacta y el piso tactil sale de un ::after que no ocupa
+// layout: 6 + 32 + 6 = 44.
+func TestAppCSS_ChipsStayCompactButTappable(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, `a[role="button"].chip {`)
+	if i < 0 {
+		t.Fatal("desaparecio la regla del chip, o volvio a ser un selector de clase sola: pico trae a[role=button]{display:inline-block} con (0,2,0) y le gana")
+	}
+	rule := css[i:min(i+700, len(css))]
+
+	if strings.Contains(rule, "min-height: 44px") {
+		t.Errorf("la pildora volvio a medir 44px, y un segmented control no se mide asi:\n%s", rule)
+	}
+	if !strings.Contains(rule, "height: 32px") {
+		t.Errorf("el chip perdio su alto explicito, y vuelve a depender de lo que aporte pico:\n%s", rule)
+	}
+	// Los dos ejes: sin justify-content la etiqueta se va a la izquierda apenas
+	// el chip crece de ancho, que es lo que hace [role=group] con flex: 1 1 auto.
+	for _, want := range []string{"align-items: center", "justify-content: center"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("el chip no declara %q y la etiqueta queda descentrada:\n%s", want, rule)
+		}
+	}
+
+	j := strings.Index(css, `a[role="button"].chip::after`)
+	if j < 0 {
+		t.Fatal("no existe el ::after del chip: la pildora es compacta pero el area tocable se quedo en 32px")
+	}
+	hit := css[j:min(j+300, len(css))]
+	for _, want := range []string{"position: absolute", "inset: -6px 0"} {
+		if !strings.Contains(hit, want) {
+			t.Errorf("el area tocable del chip no declara %q (6 + 32 + 6 = 44):\n%s", want, hit)
+		}
+	}
+}
+
+// La variacion pasa a leerse como el pie de una seccion, que es lo que Telegram
+// usa para exactamente este papel: texto en hint abajo del grupo, sin borde y
+// sin relleno. El borde de 3px que tenia es lo que el detector de Impeccable
+// marca como el tell mas reconocible de UI generada.
+//
+// Lo que NO cambia: sigue sin color de estado. Una variacion positiva no es
+// "bien" como lo es un neto positivo, y The One Status Rule no se toca.
+func TestAppCSS_VariacionIsASectionFooterNotASideTab(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".variacion {")
+	if i < 0 {
+		t.Fatal("desaparecio la regla .variacion")
+	}
+	rule := css[i:min(i+400, len(css))]
+
+	if strings.Contains(rule, "border-left") {
+		t.Errorf("la variacion sigue con el borde lateral de 3px:\n%s", rule)
+	}
+	for _, banned := range []string{"neto-good", "neto-critical"} {
+		if strings.Contains(rule, banned) {
+			t.Errorf("la variacion tomo un color de estado (%s), y no puede: The One Status Rule\n%s", banned, rule)
+		}
+	}
+}
+
+// .tappable da el PISO tactil y nada mas. Centrar era correcto para su unico
+// consumidor de la fase 2 (una tarjeta) y es incorrecto para todos los que
+// entran ahora: un link de fila de Categorias, uno de Evolucion y un "Volver"
+// se leen desde el principio de su celda. Centrarlos parece un error.
+func TestAppCSS_TappableDoesNotCenterItsLabel(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".tappable {")
+	if i < 0 {
+		t.Fatal("desaparecio la regla .tappable")
+	}
+	rule := css[i:min(i+300, len(css))]
+
+	if strings.Contains(rule, "justify-content") {
+		t.Errorf(".tappable sigue centrando, y los links de fila que lo toman se leen desde la izquierda:\n%s", rule)
+	}
+	for _, want := range []string{"min-height: 44px", "align-items: center"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".tappable perdio %q, que es lo que la hace servir para algo:\n%s", want, rule)
+		}
+	}
+}
+
+// Un link adentro de una celda tiene que OCUPAR la celda: con display inline el
+// min-height no hace nada y el area tocable sigue siendo la altura del texto.
+// Es el motivo por el que estos tres median 24, 32 y 36px con la regla de 44px
+// ya escrita en el archivo.
+func TestAppCSS_RowLinksFillTheirCell(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".row-link {")
+	if i < 0 {
+		t.Fatal("no existe .row-link: un link de fila con display inline ignora min-height")
+	}
+	rule := css[i:min(i+300, len(css))]
+	for _, want := range []string{"display: flex", "min-height: 44px", "align-items: center"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".row-link no declara %q:\n%s", want, rule)
+		}
+	}
+}
+
+// Ningun canvas tenia alto ni relacion de aspecto: Chart.js cae a 2:1 sobre el
+// ancho que le toque. .chart-box es el padre posicionado con alto que Chart.js
+// pide para poder soltar el aspecto (responsive:true pisa width/height del
+// propio canvas en cada resize, asi que ponerlos ahi no sirve).
+func TestAppCSS_ChartsHaveABox(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".chart-box {")
+	if i < 0 {
+		t.Fatal("no existe .chart-box: sin un padre con alto, Chart.js dibuja todo 2:1")
+	}
+	rule := css[i:min(i+300, len(css))]
+	for _, want := range []string{"position: relative", "height:"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".chart-box no declara %q:\n%s", want, rule)
+		}
+	}
+}
+
+// La regla estaba escrita para una clase que ningun canvas lleva, asi que no
+// matcheaba nada. El comportamiento igual era correcto —initCharts apaga la
+// animacion por su cuenta bajo prefers-reduced-motion— asi que esto es codigo
+// muerto que aparenta una garantia, no una garantia rota.
+func TestAppCSS_HasNoDeadChartCanvasRule(t *testing.T) {
+	if strings.Contains(readAppCSS(t), ".chart-canvas") {
+		t.Error("volvio .chart-canvas, que no matchea ningun elemento de la app")
+	}
+}
+
+// Evolucion se compacto a 0.85rem con 0.35rem de padding porque el td/th de
+// pico desborda un telefono. Categorias tiene la MISMA forma de tres columnas
+// y no habia recibido nada de eso: era una tabla pelada de pico a 360px.
+func TestAppCSS_CategoryTableIsCompacted(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".cat-table")
+	if i < 0 {
+		t.Fatal("no existe .cat-table: la tabla de Categorias sigue con el padding de pico")
+	}
+	rule := css[i:min(i+400, len(css))]
+	for _, want := range []string{"0.85rem", "padding:"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".cat-table no declara %q:\n%s", want, rule)
+		}
+	}
+}
