@@ -123,7 +123,7 @@ func (c *controller) buildCategoriesData(userID uint64, p templates.Period, grou
 		f, _ := r.Total.Float64()
 		values[i] = f
 	}
-	out.Chart = templates.BarChartData{Labels: labels, Values: values, Color: templates.ColorBar}
+	out.Chart = templates.BarChartData{Labels: labels, Values: values, Role: templates.RoleExpense}
 	return out, nil
 }
 

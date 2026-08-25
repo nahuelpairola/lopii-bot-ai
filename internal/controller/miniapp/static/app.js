@@ -22,6 +22,22 @@ function destroyChart(canvasId) {
   }
 }
 
+// Los gráficos ya no reciben color desde Go: reciben un rol. Chart.js no lee
+// variables CSS, así que el color se resuelve acá, del mismo computed style
+// del que applyChartTheme saca los ticks y la grilla. Eso es lo que hace que
+// el gasto siga al acento del tema del usuario.
+//
+// El ingreso se queda en su verde: Telegram tiene color destructivo y no tiene
+// uno positivo, la misma asimetría que el par del Neto en app.css.
+const ROLE_INCOME_COLOR = '#1baf7a';
+
+function colorForRole(role) {
+  if (role === 'income') return ROLE_INCOME_COLOR;
+  const accent = getComputedStyle(document.documentElement)
+    .getPropertyValue('--pico-primary').trim();
+  return accent || '#2a78d6';
+}
+
 // initCharts finds every <canvas data-chart-type data-chart-data-id> in the
 // current DOM, destroys any prior instance for that canvas, and draws a
 // fresh Chart.js chart from its paired JSON data island.
@@ -42,14 +58,17 @@ function initCharts(root) {
         type: 'bar',
         data: {
           labels: data.labels,
-          datasets: data.datasets,
+          datasets: data.datasets.map((d) => ({
+            ...d,
+            backgroundColor: d.backgroundColor || colorForRole(d.role),
+          })),
         },
         options: { responsive: true, animation, plugins: { legend: { display: true } } },
       }));
     } else if (chartType === 'bar-single') {
       chartRegistry.set(canvasId, new Chart(canvas, {
         type: 'bar',
-        data: { labels: data.labels, datasets: [{ data: data.values, backgroundColor: data.color }] },
+        data: { labels: data.labels, datasets: [{ data: data.values, backgroundColor: colorForRole(data.role) }] },
         // autoSkip viene prendido por default y sobre el eje de categorías
         // saltea etiquetas cuando las ve apretadas: en un gráfico horizontal
         // eso deja una barra sí y una no sin nombre. Acá cada barra ES una
@@ -72,7 +91,10 @@ function initCharts(root) {
           // Chart.js (rgba(0,0,0,0.1)) y el color del slot sólo se ve en la
           // leyenda. Sin fill a propósito: varias cuentas con relleno
           // superpuesto es barro.
-          datasets: data.datasets.map((d) => ({ ...d, borderColor: d.backgroundColor })),
+          datasets: data.datasets.map((d) => {
+            const color = d.backgroundColor || colorForRole(d.role);
+            return { ...d, backgroundColor: color, borderColor: color };
+          }),
         },
         options: { responsive: true, animation, plugins: { legend: { display: true } } },
       }));

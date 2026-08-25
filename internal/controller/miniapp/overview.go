@@ -147,8 +147,8 @@ func buildTrendChart(expenses, incomes []movement.CategorySum, display func(stri
 	return templates.TrendChartData{
 		Labels: labels,
 		Datasets: []templates.TrendDataset{
-			{Label: "Gastos", Data: valuesForLabels(expenses, keys), BackgroundColor: templates.ColorExpense},
-			{Label: "Ingresos", Data: valuesForLabels(incomes, keys), BackgroundColor: templates.ColorIncome},
+			{Label: "Gastos", Data: valuesForLabels(expenses, keys), Role: templates.RoleExpense},
+			{Label: "Ingresos", Data: valuesForLabels(incomes, keys), Role: templates.RoleIncome},
 		},
 	}
 }

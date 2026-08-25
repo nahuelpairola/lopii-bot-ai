@@ -46,12 +46,23 @@ const (
 	NetoCritical = "critical"
 )
 
-// Chart palette (dataviz skill — categorical slots + status hues). Hex for
-// Chart.js datasets.
+// Role* nombran QUÉ es cada serie de un gráfico; el color lo resuelve app.js
+// leyendo el acento del tema de Telegram.
+//
+// Antes acá había hexes (#2a78d6, #1baf7a) y eso era la deuda que DESIGN.md
+// llamó The Two Blues Rule: Chart.js no lee variables CSS, así que el color de
+// los datos era un azul clavado que no seguía al usuario mientras el resto de
+// la UI sí. Se paga no mandando color desde Go.
+//
+// Asimetría, igual que con el Neto: el gasto sigue al acento del tema, el
+// ingreso se queda en su verde porque Telegram no tiene un color positivo.
+//
+// AccountSlotColors NO entra acá y sigue en hexes: es identidad categórica
+// —el color sigue a la cuenta, así su tarjeta y su línea coinciden— y sacar
+// ocho tonos distinguibles de un tema arbitrario no tiene solución.
 const (
-	ColorExpense = "#2a78d6" // primary (also categorical slot 0)
-	ColorIncome  = "#1baf7a"
-	ColorBar     = "#2a78d6"
+	RoleExpense = "expense"
+	RoleIncome  = "income"
 )
 
 // Cell* are the evolution shading steps, as CSS classes rather than an inline
