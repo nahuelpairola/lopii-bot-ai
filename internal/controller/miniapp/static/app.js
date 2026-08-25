@@ -127,14 +127,30 @@ function markActiveTab() {
   });
 }
 
-// initData expires after 24h. A swap that comes back 401 has to say so, not
-// leave a half-broken partial on screen.
+// initData vence a las 24h: un 401 tiene su propio texto porque tiene su propia
+// salida (volver a abrir desde el chat). Todo lo demás —500, timeout, la mala
+// conexión que PRODUCT.md nombra como parte de la escena de uso— antes no decía
+// NADA: la opacidad volvía sola y el tap se leía como ignorado, no como fallado.
 document.addEventListener('htmx:responseError', (evt) => {
-  if (evt.detail.xhr.status !== 401) return;
+  const content = document.getElementById('content');
+  if (!content) return;
+  if (evt.detail.xhr.status === 401) {
+    content.innerHTML =
+      '<article><p>Sesión vencida. Volvé a abrir la app desde el botón del chat.</p></article>';
+    return;
+  }
+  content.innerHTML =
+    '<article><p>No se pudo cargar. Probá de nuevo en un momento.</p></article>';
+});
+
+// Una conexión caída no dispara responseError: la request no llega a tener
+// respuesta. Sin este handler ese caso —el más probable en el celular— es el
+// único que sigue mudo.
+document.addEventListener('htmx:sendError', () => {
   const content = document.getElementById('content');
   if (content) {
     content.innerHTML =
-      '<article><p>Sesión vencida. Volvé a abrir la app desde el botón del chat.</p></article>';
+      '<article><p>Sin conexión. Probá de nuevo cuando vuelva.</p></article>';
   }
 });
 
@@ -144,6 +160,25 @@ function applyTelegramTheme() {
     const scheme = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.colorScheme;
     if (scheme) document.documentElement.setAttribute('data-theme', scheme);
   } catch (e) { /* not inside Telegram */ }
+}
+
+// Telegram dibuja su propia barra arriba del webview y otra abajo. Sin esto la
+// app es un rectángulo de otro color adentro de esa chrome, que es lo que más
+// la delata como "una web adentro de Telegram" en vez de parte del cliente.
+//
+// setHeaderColor es Bot API 6.1+; setBottomBarColor es 7.10+, bastante más
+// nuevo que el piso que podemos asumir, así que va con guarda de feature.
+// Los dos aceptan #RRGGBB, y los sacamos del computed style para que sean
+// exactamente los mismos valores que ya está usando el CSS.
+function applyTelegramChrome() {
+  try {
+    const wa = window.Telegram && window.Telegram.WebApp;
+    if (!wa) return;
+    const cs = getComputedStyle(document.documentElement);
+    const page = cs.getPropertyValue('--pico-background-color').trim();
+    if (page && wa.setHeaderColor) wa.setHeaderColor(page);
+    if (page && wa.setBottomBarColor) wa.setBottomBarColor(page);
+  } catch (e) { /* fuera de Telegram, o cliente viejo sin estas APIs */ }
 }
 
 // Chart.js no sabe nada de temas: los ticks y la leyenda salen en #666 fijo y
@@ -162,7 +197,10 @@ function syncBackButton() {
     const bb = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.BackButton;
     if (!bb) return;
     const params = new URLSearchParams(location.search);
-    if (params.has('category') || params.has('expand')) {
+    // 'account' faltaba: la hoja de cuenta era la única pantalla profunda sin
+    // botón Atrás nativo, y es justo la vista que reconcilia el saldo — la única
+    // donde se ve una transferencia o una compra en USD.
+    if (params.has('category') || params.has('expand') || params.has('account')) {
       bb.show();
     } else {
       bb.hide();
@@ -173,6 +211,7 @@ function syncBackButton() {
 document.addEventListener('DOMContentLoaded', () => {
   applyTelegramTheme();
   applyChartTheme();
+  applyTelegramChrome();
   try {
     if (window.Telegram && window.Telegram.WebApp) {
       window.Telegram.WebApp.ready();
@@ -181,6 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
       window.Telegram.WebApp.onEvent('themeChanged', () => {
         applyTelegramTheme();
         applyChartTheme();
+        applyTelegramChrome();
         initCharts(document);
       });
     }
