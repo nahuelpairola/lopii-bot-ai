@@ -93,7 +93,7 @@ templ SubcategoryLeaf(data SubcategoryLeafData) {
 // categoryTable is shared by both views: the drill is the same table with a
 // different header and no links.
 templ categoryTable(data CategoriesData, header string) {
-	<table>
+	<table class="cat-table">
 		<thead>
 			<tr><th scope="col">{ header }</th><th scope="col">Total</th><th scope="col">%</th></tr>
 		</thead>

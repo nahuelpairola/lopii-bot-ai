@@ -349,6 +349,21 @@ a[role="button"].chip::after {
 /* htmx puts .htmx-request on the element named by hx-indicator */
 #content.htmx-request { opacity: 0.55; transition: opacity 0.1s; }
 
+/* Misma compactación que .evolution y por el mismo motivo: el td/th propio de
+   pico desborda un teléfono. Categorías tiene la misma forma de tres columnas y
+   se había quedado como una tabla pelada de pico a 360px.
+   Sin scroller ni columna pegajosa: tres columnas entran, no hay nada que
+   desborde horizontalmente. */
+.cat-table {
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.cat-table th, .cat-table td {
+  /* No está en :where(), de ahí el calificador — igual que en .evolution. */
+  padding: 0.35rem 0.4rem;
+}
+
 .evolution-scroll { overflow-x: auto; overscroll-behavior: contain; }
 
 /* pico sets border-collapse:collapse on every table. With collapsed borders

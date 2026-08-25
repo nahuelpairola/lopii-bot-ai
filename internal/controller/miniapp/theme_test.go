@@ -307,3 +307,21 @@ func TestAppCSS_HasNoDeadChartCanvasRule(t *testing.T) {
 		t.Error("volvio .chart-canvas, que no matchea ningun elemento de la app")
 	}
 }
+
+// Evolucion se compacto a 0.85rem con 0.35rem de padding porque el td/th de
+// pico desborda un telefono. Categorias tiene la MISMA forma de tres columnas
+// y no habia recibido nada de eso: era una tabla pelada de pico a 360px.
+func TestAppCSS_CategoryTableIsCompacted(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".cat-table")
+	if i < 0 {
+		t.Fatal("no existe .cat-table: la tabla de Categorias sigue con el padding de pico")
+	}
+	rule := css[i:min(i+400, len(css))]
+	for _, want := range []string{"0.85rem", "padding:"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".cat-table no declara %q:\n%s", want, rule)
+		}
+	}
+}
