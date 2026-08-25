@@ -63,7 +63,7 @@ func TestHandleAccounts_NeverMixesCurrencies(t *testing.T) {
 			2: {{Month: "2026-07", Delta: decimal.NewFromInt(500)}},
 		},
 	}
-	c := NewController(movements, stubAccountsTwoCurrencies{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsTwoCurrencies{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -87,7 +87,7 @@ func TestHandleAccounts_RendersBalances(t *testing.T) {
 			1: {{Month: "2026-06", Delta: decimal.NewFromInt(30000)}, {Month: "2026-07", Delta: decimal.NewFromInt(20000)}},
 		},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -121,7 +121,7 @@ func TestHandleAccountLeaf_ReconcilesBalance(t *testing.T) {
 			Description: &desc,
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -153,7 +153,7 @@ func TestHandleAccountLeaf_RejectsAnotherUsersAccount(t *testing.T) {
 		deltas:   map[uint64][]movement.MonthlyDelta{},
 	}
 	// stubAccountsWithData sólo devuelve la cuenta 1.
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -177,7 +177,7 @@ func TestHandleAccountLeaf_LabelsUnclassified(t *testing.T) {
 			Subcategory: &subcategory.Subcategory{Category: constants.PendingReview, Subcategory: "algo"},
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -205,7 +205,7 @@ func TestHandleAccountLeaf_SurvivesNilSubcategory(t *testing.T) {
 			// Sin Description y sin Subcategory: los dos son punteros.
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -267,7 +267,7 @@ func TestHandleAccountLeaf_PeriodChipsKeepTheAccount(t *testing.T) {
 			Type: movement.Expense, Amount: decimal.NewFromInt(-1000), Currency: currency.ARS,
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -290,7 +290,7 @@ func TestHandleAccountLeaf_HidesTheCurrencyChips(t *testing.T) {
 			Type: movement.Expense, Amount: decimal.NewFromInt(-1000), Currency: currency.ARS,
 		}},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -314,7 +314,7 @@ func TestHandleAccounts_SharesThePeriodOfOverview(t *testing.T) {
 			1: {{Month: "2026-06", Delta: decimal.NewFromInt(30000)}, {Month: "2026-07", Delta: decimal.NewFromInt(20000)}},
 		},
 	}
-	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -370,7 +370,7 @@ func TestHandleAccounts_TotalsTheBalancesItShows(t *testing.T) {
 			2: decimal.NewFromInt(25500),
 		},
 	}
-	c := NewController(movements, stubAccountsTwoARS{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccountsTwoARS{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 

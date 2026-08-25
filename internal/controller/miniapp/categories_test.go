@@ -25,7 +25,7 @@ func TestHandleCategories_RendersIcons(t *testing.T) {
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"category": {{Label: "Alimentación", Total: decimal.NewFromInt(5000)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -63,7 +63,7 @@ func TestHandleCategories_AsksWithoutReservedCategories(t *testing.T) {
 		}},
 		queries: &queries,
 	}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -93,7 +93,7 @@ func TestHandleCategoryDrill_CategoryWithSlash(t *testing.T) {
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"subcategory": {{Label: "Cuota préstamo", Total: decimal.NewFromInt(8000)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -116,7 +116,7 @@ func TestHandleCategories_ShowsShareOfTotal(t *testing.T) {
 			{Label: "Transporte", Total: decimal.NewFromInt(250)},
 		},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -172,7 +172,7 @@ func TestHandleSubcategoryLeaf_ListsMovementsOfThatSubcategory(t *testing.T) {
 		}},
 		lastQuery: &got,
 	}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 
@@ -206,7 +206,7 @@ func TestHandleCategories_PeriodChipsKeepTheDrill(t *testing.T) {
 		"category":    {{Label: "Alimentación", Total: decimal.NewFromInt(5000)}},
 		"subcategory": {{Label: "Supermercado", Total: decimal.NewFromInt(5000)}},
 	}}
-	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, &stubInvitations{}, testBotToken, testBotUsername)
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
 

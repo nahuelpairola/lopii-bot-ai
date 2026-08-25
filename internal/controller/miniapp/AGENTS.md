@@ -18,30 +18,23 @@ which makes "this one is public too" a precedented mistake.
 
 No type, no naming rule and no test catches this. Adding a view means adding it to `authed`.
 
-The admin views add a **second** gate on top: `authed.Group("", requireAdmin())`, reading the
-`is_admin` flag `authInitData` stamped from the users row. Second, not alternative — an admin
-route registered outside `authed` loses initData validation entirely and `requireAdmin` finds
-no flag to check, so it 403s everyone. Both have to be there.
+## There used to be an admin surface here, and there is not one now
 
-## The TabBar cannot see the user
+Until 2026-08-25 this package carried `/app/admin` (an invitation-management view), gated by a
+second `requireAdmin()` middleware layered on `authed`, reached from the tab bar by an
+`hx-swap-oob` anchor the Resumen partial shipped into an empty `<span>` slot the `TabBar`
+reserved (`TabBar` renders in the unauthenticated `Shell`, so it cannot itself know who is
+viewing). The user asked for it removed entirely, and it is: `admin.go`, its templates, the
+`requireAdmin` middleware, the `AdminPath`/`RouteAdmin` consts and the OOB slot are all gone —
+not merely unreachable. `invitation.Repository` still exists and is still wired into
+`messagingctrl` for `/start` code redemption in chat; only the Mini App surface for *managing*
+invitations went away.
 
-`TabBar` is rendered by the `Shell`, which is the *unauthenticated* response — so a tab that
-should only exist for some users cannot be decided there.
-
-**The app used to work around this and no longer does.** Until 2026-08-25 the admin tab reached
-the tabbar by an `hx-swap-oob` anchor carried in the Resumen partial (the first authenticated
-response) into an empty `<span>` the `TabBar` reserved. The user asked for the admin button to be
-removed, so the anchor, the slot and the `AdminTabSlotID` const are all gone.
-
-**`/app/admin` still exists and is still gated by `requireAdmin`.** What went away is the only
-way to reach it from the UI — and a webview has no address bar, so the view is effectively
-unreachable today. Deleting the routes and the view is a separate decision that has not been
-made; do not treat the handler as dead code on your own.
-
-If a future tab has to depend on the viewer, the OOB-into-a-reserved-slot trick is the pattern
-that worked, with one trap worth carrying forward: **htmx discards an OOB element whose id is
-absent from the DOM, with no error anywhere.** Rename one side only and the tab silently never
-appears, which is why the id was a const and why both halves were asserted in tests.
+**If a future view needs to depend on the viewer, the OOB-into-a-reserved-slot trick is the
+pattern that worked**, with one trap worth carrying forward: **htmx discards an OOB element
+whose id is absent from the DOM, with no error anywhere.** Rename one side only and the tab
+silently never appears — keep the id as a const and assert both halves in tests, the way this
+package used to.
 
 A tab delivered this way also arrives *only* with the partial that carries it. That was fine for
 Resumen because the Telegram menu button always opens `EntryPath` (`/app/overview`), so every app
