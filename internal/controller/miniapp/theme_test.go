@@ -236,3 +236,45 @@ func TestAppCSS_VariacionIsASectionFooterNotASideTab(t *testing.T) {
 		}
 	}
 }
+
+// .tappable da el PISO tactil y nada mas. Centrar era correcto para su unico
+// consumidor de la fase 2 (una tarjeta) y es incorrecto para todos los que
+// entran ahora: un link de fila de Categorias, uno de Evolucion y un "Volver"
+// se leen desde el principio de su celda. Centrarlos parece un error.
+func TestAppCSS_TappableDoesNotCenterItsLabel(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".tappable {")
+	if i < 0 {
+		t.Fatal("desaparecio la regla .tappable")
+	}
+	rule := css[i:min(i+300, len(css))]
+
+	if strings.Contains(rule, "justify-content") {
+		t.Errorf(".tappable sigue centrando, y los links de fila que lo toman se leen desde la izquierda:\n%s", rule)
+	}
+	for _, want := range []string{"min-height: 44px", "align-items: center"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".tappable perdio %q, que es lo que la hace servir para algo:\n%s", want, rule)
+		}
+	}
+}
+
+// Un link adentro de una celda tiene que OCUPAR la celda: con display inline el
+// min-height no hace nada y el area tocable sigue siendo la altura del texto.
+// Es el motivo por el que estos tres median 24, 32 y 36px con la regla de 44px
+// ya escrita en el archivo.
+func TestAppCSS_RowLinksFillTheirCell(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".row-link {")
+	if i < 0 {
+		t.Fatal("no existe .row-link: un link de fila con display inline ignora min-height")
+	}
+	rule := css[i:min(i+300, len(css))]
+	for _, want := range []string{"display: flex", "min-height: 44px", "align-items: center"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".row-link no declara %q:\n%s", want, rule)
+		}
+	}
+}

@@ -53,7 +53,7 @@ templ Evolution(data EvolutionData) {
 						>
 							<th scope="row">
 								if row.Href != "" {
-									<a href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Label }</a>
+									<a class="row-link" href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Label }</a>
 								} else {
 									{ row.Icon } { row.Label }
 								}

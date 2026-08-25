@@ -98,7 +98,7 @@ templ categoryTable(data CategoriesData, header string) {
 				<tr>
 					<td>
 						if row.Href != "" {
-							<a href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Category }</a>
+							<a class="row-link" href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Category }</a>
 						} else {
 							{ row.Icon } { row.Category }
 						}

@@ -415,12 +415,36 @@ a[role="button"].chip::after {
    flechas del período y .account-card, y los chips —el control más tocado de la
    app— se lo perdían. Un elemento tocable nuevo toma esta clase; no vuelve a
    escribir los 44px. */
+/* El piso táctil, en un solo lugar. Estaba escrito a mano en .tab-link, las dos
+   flechas del período y .account-card, y los chips —el control más tocado de la
+   app— se lo perdían. Un elemento tocable nuevo toma esta clase; no vuelve a
+   escribir los 44px.
+
+   NO centra: sus consumidores de fila (un link de Categorías, uno de Evolución,
+   un "Volver") se leen desde el principio de la celda, y centrarlos parece un
+   error. El que necesita centrado lo pide en su propia regla, como el chip. */
 .tappable {
   min-width: 44px;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+}
+
+/* Un link adentro de una celda de tabla es inline por default, y sobre un
+   elemento inline el min-height no hace NADA: el área tocable queda en la
+   altura del texto. Es por esto que las filas de Categorías medían ~36px y las
+   de Evolución ~32px con la regla de 44px ya escrita en este archivo — la
+   regla estaba, el elemento no la podía tomar.
+
+   color: inherit porque pico pinta TODO <a> con --pico-primary: una tabla donde
+   cada fila es un link sale entera azul. Es el mismo problema que .tab-link ya
+   resuelve dos reglas más arriba. */
+.row-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  text-decoration: none;
+  color: inherit;
 }
 
 /* El encabezado de un grupo: el día de una lista de movimientos, el rótulo de
