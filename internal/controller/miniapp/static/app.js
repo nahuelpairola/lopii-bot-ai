@@ -63,9 +63,16 @@ function initCharts(root) {
             backgroundColor: d.backgroundColor || colorForRole(d.role),
           })),
         },
-        options: { responsive: true, animation, plugins: { legend: { display: true } } },
+        options: { responsive: true, maintainAspectRatio: false, animation, plugins: { legend: { display: true } } },
       }));
     } else if (chartType === 'bar-single') {
+      // Cada barra ES una categoría y autoSkip está apagado, así que ninguna
+      // etiqueta se descarta: si la caja no crece con las filas, veinte
+      // categorías salen como veinte pelitos. 28px por barra más el eje.
+      const box = canvas.parentElement;
+      if (box && box.classList.contains('chart-box')) {
+        box.style.height = Math.max(220, data.labels.length * 28 + 48) + 'px';
+      }
       chartRegistry.set(canvasId, new Chart(canvas, {
         type: 'bar',
         data: { labels: data.labels, datasets: [{ data: data.values, backgroundColor: colorForRole(data.role) }] },
@@ -76,6 +83,7 @@ function initCharts(root) {
         options: {
           indexAxis: 'y',
           responsive: true,
+          maintainAspectRatio: false,
           animation,
           plugins: { legend: { display: false } },
           scales: { y: { ticks: { autoSkip: false } } },
@@ -96,7 +104,7 @@ function initCharts(root) {
             return { ...d, backgroundColor: color, borderColor: color };
           }),
         },
-        options: { responsive: true, animation, plugins: { legend: { display: true } } },
+        options: { responsive: true, maintainAspectRatio: false, animation, plugins: { legend: { display: true } } },
       }));
     }
   });

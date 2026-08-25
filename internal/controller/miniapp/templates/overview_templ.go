@@ -155,7 +155,7 @@ func Overview(data OverviewData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<canvas id=\"resumen-trend\" data-chart-type=\"bar-grouped\" data-chart-data-id=\"resumen-trend-data\"></canvas>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"chart-box\"><canvas id=\"resumen-trend\" data-chart-type=\"bar-grouped\" data-chart-data-id=\"resumen-trend-data\"></canvas></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

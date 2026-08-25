@@ -71,7 +71,9 @@ templ Overview(data OverviewData) {
 	if data.Empty {
 		@EmptyState("Sin movimientos en este período.")
 	} else {
-		<canvas id="resumen-trend" data-chart-type="bar-grouped" data-chart-data-id="resumen-trend-data"></canvas>
+		<div class="chart-box">
+			<canvas id="resumen-trend" data-chart-type="bar-grouped" data-chart-data-id="resumen-trend-data"></canvas>
+		</div>
 		@templ.JSONScript("resumen-trend-data", data.TrendChart)
 	}
 }

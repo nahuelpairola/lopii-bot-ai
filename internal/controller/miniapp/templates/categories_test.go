@@ -115,3 +115,28 @@ func TestCategoriesDeepViews_BackLinkSitsAboveTheTitle(t *testing.T) {
 		})
 	}
 }
+
+// El grafico de Categorias es de barras HORIZONTALES: cada barra es una
+// categoria, y con el alto fijo de Chart.js veinte categorias son veinte
+// pelitos. Necesita el envoltorio para que app.js le pueda dar un alto que
+// crece con las filas.
+func TestCategories_ChartSitsInABox(t *testing.T) {
+	data := CategoriesData{
+		Rows:  []CategoryRow{{Category: "Alimentación", Total: "$1"}},
+		Chart: BarChartData{Labels: []string{"Alimentación"}, Values: []float64{1}},
+		Total: "$1",
+	}
+
+	var sb strings.Builder
+	if err := Categories(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if !strings.Contains(html, `class="chart-box"`) {
+		t.Errorf("el canvas no esta adentro de .chart-box:\n%s", html)
+	}
+	if strings.Index(html, `class="chart-box"`) > strings.Index(html, "<canvas") {
+		t.Errorf("el envoltorio tiene que CONTENER al canvas, no venir despues:\n%s", html)
+	}
+}

@@ -55,7 +55,9 @@ templ Accounts(data AccountsData) {
 		// tendencia: con "Mes" elegido la pantalla se queda en las tarjetas, que
 		// son saldo de hoy y no dependen del período.
 		if data.Period.Months > 1 {
-			<canvas id="cuentas-trend" data-chart-type="line-multi" data-chart-data-id="cuentas-trend-data"></canvas>
+			<div class="chart-box">
+				<canvas id="cuentas-trend" data-chart-type="line-multi" data-chart-data-id="cuentas-trend-data"></canvas>
+			</div>
 			@templ.JSONScript("cuentas-trend-data", data.TrendChart)
 		}
 	}

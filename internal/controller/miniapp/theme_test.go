@@ -278,3 +278,32 @@ func TestAppCSS_RowLinksFillTheirCell(t *testing.T) {
 		}
 	}
 }
+
+// Ningun canvas tenia alto ni relacion de aspecto: Chart.js cae a 2:1 sobre el
+// ancho que le toque. .chart-box es el padre posicionado con alto que Chart.js
+// pide para poder soltar el aspecto (responsive:true pisa width/height del
+// propio canvas en cada resize, asi que ponerlos ahi no sirve).
+func TestAppCSS_ChartsHaveABox(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".chart-box {")
+	if i < 0 {
+		t.Fatal("no existe .chart-box: sin un padre con alto, Chart.js dibuja todo 2:1")
+	}
+	rule := css[i:min(i+300, len(css))]
+	for _, want := range []string{"position: relative", "height:"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".chart-box no declara %q:\n%s", want, rule)
+		}
+	}
+}
+
+// La regla estaba escrita para una clase que ningun canvas lleva, asi que no
+// matcheaba nada. El comportamiento igual era correcto —initCharts apaga la
+// animacion por su cuenta bajo prefers-reduced-motion— asi que esto es codigo
+// muerto que aparenta una garantia, no una garantia rota.
+func TestAppCSS_HasNoDeadChartCanvasRule(t *testing.T) {
+	if strings.Contains(readAppCSS(t), ".chart-canvas") {
+		t.Error("volvio .chart-canvas, que no matchea ningun elemento de la app")
+	}
+}

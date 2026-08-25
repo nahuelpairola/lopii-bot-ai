@@ -256,10 +256,6 @@ a, button, .tab-link {
   overscroll-behavior: contain;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .chart-canvas { animation: none !important; }
-}
-
 .muted { color: var(--pico-muted-color); }
 
 .period-header {
@@ -470,6 +466,20 @@ a[role="button"].chip::after {
 #content h1 {
   font-size: 1.75rem;
   line-height: 1.15;
+  margin-bottom: var(--pico-spacing);
+}
+
+/* Chart.js con responsive:true pisa el width/height del canvas en cada resize,
+   así que el tamaño se controla desde un padre posicionado con alto — es la
+   forma que la librería documenta. Sin esto ningún gráfico de la app tenía alto
+   ni relación de aspecto y Chart.js caía a 2:1 sobre el ancho que le tocara.
+
+   Los de barras horizontales (Categorías y su drill) reciben además un alto
+   calculado en app.js: ahí cada barra ES una categoría, y un alto fijo afina
+   las barras hasta volverlas ilegibles cuanto más categorías hay. */
+.chart-box {
+  position: relative;
+  height: 220px;
   margin-bottom: var(--pico-spacing);
 }
 
