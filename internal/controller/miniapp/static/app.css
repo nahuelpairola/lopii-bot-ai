@@ -169,24 +169,28 @@
    Sin color de estado (nada de neto-good/critical): una variación positiva no
    es "bien" como lo es un neto positivo — puede ser tanto un CEDEAR que subió
    como una carga que faltaba. Teñirla de verde afirmaría algo que el sistema
-   no sabe. */
+   no sabe.
+
+   El tratamiento es el pie de sección de Telegram: texto en hint abajo del
+   grupo, sin borde y sin relleno. Antes era una card con un borde izquierdo de
+   3px, que es exactamente lo que el detector marca como el tell más
+   reconocible de UI generada — y el papel que cumple (una aclaración debajo de
+   un grupo) ya tiene una forma nativa. Sin color de estado, igual que antes. */
 .variacion {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 0 0.5rem;
   align-items: baseline;
   margin: 0 0 var(--pico-spacing);
-  padding: 0.6rem 0.75rem;
-  border-left: 3px solid var(--pico-muted-border-color);
-  background: var(--pico-card-sectioning-background-color);
-  border-radius: 0.25rem;
+  padding: 0.5rem 0 0;
+  color: var(--pico-muted-color);
+  font-size: 0.8rem;
 }
 
 .variacion .money { font-weight: 600; }
 
 .variacion small {
   grid-column: 1 / -1;
-  color: var(--pico-muted-color);
   font-size: 0.75rem;
 }
 

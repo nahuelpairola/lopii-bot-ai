@@ -189,3 +189,29 @@ func TestAppCSS_ChipsAreTappable(t *testing.T) {
 		t.Errorf("el chip crece pero no centra: la etiqueta queda arriba de la caja:\n%s", rule)
 	}
 }
+
+// La variacion pasa a leerse como el pie de una seccion, que es lo que Telegram
+// usa para exactamente este papel: texto en hint abajo del grupo, sin borde y
+// sin relleno. El borde de 3px que tenia es lo que el detector de Impeccable
+// marca como el tell mas reconocible de UI generada.
+//
+// Lo que NO cambia: sigue sin color de estado. Una variacion positiva no es
+// "bien" como lo es un neto positivo, y The One Status Rule no se toca.
+func TestAppCSS_VariacionIsASectionFooterNotASideTab(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".variacion {")
+	if i < 0 {
+		t.Fatal("desaparecio la regla .variacion")
+	}
+	rule := css[i:min(i+400, len(css))]
+
+	if strings.Contains(rule, "border-left") {
+		t.Errorf("la variacion sigue con el borde lateral de 3px:\n%s", rule)
+	}
+	for _, banned := range []string{"neto-good", "neto-critical"} {
+		if strings.Contains(rule, banned) {
+			t.Errorf("la variacion tomo un color de estado (%s), y no puede: The One Status Rule\n%s", banned, rule)
+		}
+	}
+}
