@@ -38,7 +38,7 @@ templ Accounts(data AccountsData) {
 		<p class="accounts-total money">{ data.Total }</p>
 		<div class="grid">
 			for _, a := range data.Snapshots {
-				<a class="account-card" href={ templ.SafeURL(a.Href) } hx-get={ a.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">
+				<a class="account-card tappable" href={ templ.SafeURL(a.Href) } hx-get={ a.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">
 					<article>
 						<p>
 							{ a.Name }

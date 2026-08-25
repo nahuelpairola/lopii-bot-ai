@@ -152,3 +152,40 @@ func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
 		}
 	}
 }
+
+// La regla de 44px estaba escrita a mano en cuatro lugares y los chips de
+// periodo —el control mas tocado de la app— se la perdian: 0.25rem de padding
+// sobre texto de 0.8rem da unos 29px. .tappable la deja en un solo lugar.
+func TestAppCSS_HasASingleTapTargetRule(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".tappable")
+	if i < 0 {
+		t.Fatal("no existe .tappable: la regla de 44px sigue repetida en cada selector")
+	}
+	rule := css[i:min(i+300, len(css))]
+	for _, want := range []string{"min-height: 44px", "min-width: 44px"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".tappable no declara %q:\n%s", want, rule)
+		}
+	}
+}
+
+// El chip tiene que quedar tocable Y con el texto centrado: un min-height
+// suelto sobre un boton inline de pico deja la etiqueta pegada arriba de una
+// caja de 44px.
+func TestAppCSS_ChipsAreTappable(t *testing.T) {
+	css := readAppCSS(t)
+
+	i := strings.Index(css, ".chip {")
+	if i < 0 {
+		t.Fatal("desaparecio la regla .chip")
+	}
+	rule := css[i:min(i+700, len(css))]
+	if !strings.Contains(rule, "min-height: 44px") {
+		t.Errorf("el chip sigue en ~29px, y es el control mas tocado de la app:\n%s", rule)
+	}
+	if !strings.Contains(rule, "align-items: center") {
+		t.Errorf("el chip crece pero no centra: la etiqueta queda arriba de la caja:\n%s", rule)
+	}
+}

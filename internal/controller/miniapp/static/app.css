@@ -294,6 +294,13 @@ a, button, .tab-link {
   font-size: 0.8rem;
   margin: 0;
   --pico-border-radius: 1rem;
+  /* Los chips medían ~29px: 0.25rem de padding sobre texto de 0.8rem. Crecen a
+     44px sin cambiar de aspecto —el padding horizontal manda el ancho, así que
+     la píldora se ve igual— y centran, porque un min-height suelto sobre un
+     botón inline de pico deja la etiqueta pegada arriba de la caja. */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* pico encodes selection as a one-step hue shift (--pico-primary →
@@ -382,6 +389,18 @@ a, button, .tab-link {
 
 /* --- Listas agrupadas ---------------------------------------------------- */
 
+/* El piso táctil, en un solo lugar. Estaba escrito a mano en .tab-link, las dos
+   flechas del período y .account-card, y los chips —el control más tocado de la
+   app— se lo perdían. Un elemento tocable nuevo toma esta clase; no vuelve a
+   escribir los 44px. */
+.tappable {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* El encabezado de un grupo: el día de una lista de movimientos, el rótulo de
    un total. Es cartelería, no contenido — mismo tamaño y color que la etiqueta
    de un KPI, para que la lista se lea de un scroll y el ojo caiga en las filas
@@ -411,11 +430,9 @@ a, button, .tab-link {
 /* --- Hoja de cuenta --- */
 
 /* La tarjeta de una cuenta es tocable: abre la lista de movimientos que
-   explican su saldo. 44px es el mínimo táctil, el mismo que ya usan .tab-link
-   y las flechas del período. */
+   explican su saldo. El piso de 44px lo pone .tappable, en el markup. */
 .account-card {
   display: block;
-  min-height: 44px;
   text-decoration: none;
   color: inherit;
 }
