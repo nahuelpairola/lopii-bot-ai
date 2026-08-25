@@ -27,9 +27,9 @@ templ Evolution(data EvolutionData) {
 	if data.Empty {
 		@EmptyState("Sin gastos en este período.")
 	} else {
+		<h1>Gasto por categoría{ ScaleNote(data.Period.Currency) }</h1>
 		<div class="evolution-scroll">
 			<table class="evolution">
-				<caption>Gasto por categoría · { data.Period.Label }{ ScaleNote(data.Period.Currency) }</caption>
 				<thead>
 					<tr>
 						<th scope="col">Categoría</th>

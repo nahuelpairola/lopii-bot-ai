@@ -462,6 +462,17 @@ a[role="button"].chip::after {
    los días en pantalla, casi todos sin nada abajo. */
 .mov-group { margin: 0; }
 
+/* h1 al tamaño que tenía el h2. pico pone h1 en 2rem y h2 en 1.75rem, y 1.75rem
+   es el techo de la rampa (el mismo de una cifra KPI): dejar que el título
+   saltara a 2rem subiría ese techo por un cambio que es de estructura y no de
+   énfasis. El h1 existe porque no había NINGUNO en la app —cuatro vistas
+   titulaban con h2 y Evolución con un <caption>—, no para verse más grande. */
+#content h1 {
+  font-size: 1.75rem;
+  line-height: 1.15;
+  margin-bottom: var(--pico-spacing);
+}
+
 /* El total de Cuentas es la cifra que manda en esa pantalla, así que toma el
    mismo tamaño que un KPI. No entra por la regla de .grid article .money
    porque vive fuera del .grid a propósito: es el encabezado del grupo, no una

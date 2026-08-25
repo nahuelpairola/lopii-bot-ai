@@ -211,3 +211,30 @@ func TestAccountLeaf_EachDayIsItsOwnGroupElement(t *testing.T) {
 		t.Errorf("contenedores de grupo = %d, want 2: el buscador esconde el grupo entero, no solo las filas:\n%s", got, html)
 	}
 }
+
+// Una vista titulada abre con UN h1. No habia ningun h1 en la app: cuatro
+// vistas titulaban con h2 y Evolucion con un <caption>. El tamanio no cambia
+// —el h1 se estila al 1.75rem que tenia el h2, que es el techo de la rampa—
+// asi que esto es estructura, no enfasis.
+func TestAccountLeaf_OpensWithASingleH1(t *testing.T) {
+	data := AccountLeafData{AccountName: "Galicia", BackQuery: "/app/accounts?p=6m"}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if got := strings.Count(html, "<h1>"); got != 1 {
+		t.Errorf("h1 = %d, want 1:\n%s", got, html)
+	}
+	if strings.Contains(html, "<h2>") {
+		t.Errorf("quedo un h2: la vista titula con h1 ahora:\n%s", html)
+	}
+	if strings.Index(html, "Volver") > strings.Index(html, "<h1>") {
+		t.Errorf("el Volver quedo abajo del titulo:\n%s", html)
+	}
+	if !strings.Contains(html, "tappable") {
+		t.Errorf("el Volver no toma .tappable, y median ~24px, el peor objetivo tactil de la app:\n%s", html)
+	}
+}

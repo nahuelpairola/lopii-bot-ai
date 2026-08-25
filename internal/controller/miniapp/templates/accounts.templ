@@ -95,8 +95,8 @@ type AccountLeafData struct {
 
 templ AccountLeaf(data AccountLeafData) {
 	@PeriodHeader(data.Period)
-	<a href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Cuentas</a>
-	<h2>{ data.AccountName }</h2>
+	<a class="tappable" href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Cuentas</a>
+	<h1>{ data.AccountName }</h1>
 	<p class="balance-line">
 		<span>{ data.OpeningLabel }</span>
 		<span class="money">{ data.Opening }</span>

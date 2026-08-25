@@ -73,3 +73,45 @@ func TestSubcategoryLeaf_Empty(t *testing.T) {
 		t.Errorf("falta el estado vacío:\n%s", sb.String())
 	}
 }
+
+// Las dos pantallas profundas de Categorias tenian el Volver ABAJO del titulo.
+// Suben, y toman .tappable como el de la hoja de cuenta.
+func TestCategoriesDeepViews_BackLinkSitsAboveTheTitle(t *testing.T) {
+	cases := []struct {
+		name   string
+		render func() (string, error)
+	}{
+		{"drill", func() (string, error) {
+			var sb strings.Builder
+			err := SubcategoryDrill(CategoriesData{Drill: "Alimentación"}).Render(context.Background(), &sb)
+			return sb.String(), err
+		}},
+		{"hoja", func() (string, error) {
+			var sb strings.Builder
+			err := SubcategoryLeaf(SubcategoryLeafData{
+				Category: "Alimentación", Subcategory: "Supermercado", BackQuery: "/app/categories?p=month",
+			}).Render(context.Background(), &sb)
+			return sb.String(), err
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			html, err := c.render()
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if got := strings.Count(html, "<h1>"); got != 1 {
+				t.Errorf("h1 = %d, want 1:\n%s", got, html)
+			}
+			if strings.Contains(html, "<h2>") {
+				t.Errorf("quedo un h2:\n%s", html)
+			}
+			if strings.Index(html, "Volver") > strings.Index(html, "<h1>") {
+				t.Errorf("el Volver quedo abajo del titulo:\n%s", html)
+			}
+			if !strings.Contains(html, "tappable") {
+				t.Errorf("el Volver no toma .tappable:\n%s", html)
+			}
+		})
+	}
+}

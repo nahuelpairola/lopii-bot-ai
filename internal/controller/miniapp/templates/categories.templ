@@ -42,8 +42,8 @@ templ Categories(data CategoriesData) {
 
 templ SubcategoryDrill(data CategoriesData) {
 	@PeriodHeader(data.Period)
-	<h2>{ data.Drill }</h2>
-	<a href={ data.Period.Query() } hx-get={ data.Period.Query() } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Categorías</a>
+	<a class="tappable" href={ data.Period.Query() } hx-get={ data.Period.Query() } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a Categorías</a>
+	<h1>{ data.Drill }</h1>
 	if data.Empty {
 		@EmptyState("Sin gastos en esta categoría.")
 	} else {
@@ -70,8 +70,8 @@ type SubcategoryLeafData struct {
 
 templ SubcategoryLeaf(data SubcategoryLeafData) {
 	@PeriodHeader(data.Period)
-	<h2>{ data.Subcategory }</h2>
-	<a href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a { data.Category }</a>
+	<a class="tappable" href={ templ.SafeURL(data.BackQuery) } hx-get={ data.BackQuery } hx-target="#content" hx-push-url="true" hx-indicator="#content">&larr; Volver a { data.Category }</a>
+	<h1>{ data.Subcategory }</h1>
 	if data.Empty {
 		@EmptyState("Sin gastos en esta subcategoría.")
 	} else {
