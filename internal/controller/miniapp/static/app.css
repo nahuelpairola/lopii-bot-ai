@@ -368,8 +368,18 @@ a, button, .tab-link {
 /* Two steps, one hue, against the row's own average. Alpha caps at 0.45 —
    the old ramp went to 1.0 and dark text on a saturated cell failed
    contrast. */
-.cell-mild { background-color: rgba(42, 120, 214, 0.22); }
-.cell-high { background-color: rgba(42, 120, 214, 0.45); }
+/* Dos pasos, un tono, contra el promedio de la propia fila. El techo de 0.45
+   se queda: la rampa vieja llegaba a 1.0 y el texto oscuro sobre una celda
+   saturada no pasaba contraste. Lo que cambia es de donde sale el tono -antes
+   Data Blue clavado, ahora el acento del tema- porque sobre el fondo de un
+   tema personalizado un azul fijo puede quedar ilegible. */
+.cell-mild {
+  background-color: color-mix(in srgb, var(--pico-primary) 22%, transparent);
+}
+
+.cell-high {
+  background-color: color-mix(in srgb, var(--pico-primary) 45%, transparent);
+}
 
 .evolution-legend { font-size: 0.8rem; }
 

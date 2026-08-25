@@ -131,3 +131,24 @@ func TestAppCSS_CriticalPrefersTelegramDestructiveColor(t *testing.T) {
 	}
 }
 
+// El sombreado de Evolución era Data Blue a alpha fijo sobre un fondo que
+// ahora elige el usuario. Sigue siendo de dos pasos y sigue topeado —el techo
+// existe porque una rampa vieja llegaba a 1.0 y el texto oscuro encima no
+// pasaba contraste—, pero el tono ahora sale del acento del tema.
+func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
+	css := readAppCSS(t)
+
+	for _, class := range []string{".cell-mild", ".cell-high"} {
+		i := strings.Index(css, class)
+		if i < 0 {
+			t.Fatalf("desapareció la regla %s", class)
+		}
+		rule := css[i:min(i+200, len(css))]
+		if strings.Contains(rule, "rgba(42, 120, 214") {
+			t.Errorf("%s sigue clavada en Data Blue: sobre un tema personalizado puede quedar ilegible\nregla:\n%s", class, rule)
+		}
+		if !strings.Contains(rule, "var(--pico-primary") {
+			t.Errorf("%s no sigue al acento del tema\nregla:\n%s", class, rule)
+		}
+	}
+}
