@@ -286,39 +286,6 @@ func TestBuild_OnlyVariationSkipsTheZeroCashflowLines(t *testing.T) {
 	}
 }
 
-// A — los días que no anotó. El resumen dice "gastaste $X" como si fuera toda
-// la semana; si faltan días, eso es una verdad a medias.
-func TestBuild_TellsHowManyDaysWereLogged(t *testing.T) {
-	base := map[string][]movement.CategorySum{"ARS|expense|" + wk: sums(row("", "1000"))}
-	day := func(n int) movement.DayCount {
-		return movement.DayCount{Date: time.Date(2026, 7, n, 0, 0, 0, 0, time.UTC), Count: 1}
-	}
-
-	// 5 de 7: faltan jueves (9) y viernes (10), y se nombran.
-	fm := fakeMovements{sums: base, counts: []movement.DayCount{day(6), day(7), day(8), day(11), day(12)}}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
-	if !strings.Contains(text, "<i>Anotaste 5 de 7 días (te faltaron jueves y viernes)</i>") {
-		t.Errorf("falta el detalle de días; got:\n%s", text)
-	}
-
-	// La semana completa se festeja, no se recita.
-	full := []movement.DayCount{day(6), day(7), day(8), day(9), day(10), day(11), day(12)}
-	text, _ = NewBuilder(fakeMovements{sums: base, counts: full}, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
-	if !strings.Contains(text, "Anotaste los 7 días") {
-		t.Errorf("falta el festejo de semana completa; got:\n%s", text)
-	}
-
-	// Con muchos días faltando, nombrarlos es una lista, no una frase.
-	fm = fakeMovements{sums: base, counts: []movement.DayCount{day(6), day(7)}}
-	text, _ = NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
-	if !strings.Contains(text, "Anotaste 2 de 7 días") {
-		t.Errorf("falta el conteo; got:\n%s", text)
-	}
-	if strings.Contains(text, "te faltaron") {
-		t.Errorf("con 5 días faltando no se enumeran; got:\n%s", text)
-	}
-}
-
 // La comparación con la semana previa va en plata, no en porcentaje.
 func TestBuild_ComparesWithPreviousWeekInMoney(t *testing.T) {
 	fm := fakeMovements{
@@ -597,19 +564,6 @@ func TestBuild_OpeningLineReactsToTheWeek(t *testing.T) {
 	}
 }
 
-// Con la mitad de la semana sin anotar, el cierre lo dice: los números de
-// arriba salen de esos días y de ningún otro.
-func TestBuild_ClosingSaysTheNumbersAreParcial(t *testing.T) {
-	fm := fakeMovements{
-		sums:   map[string][]movement.CategorySum{"ARS|expense|" + wk: sums(row("", "1000"))},
-		counts: []movement.DayCount{{Date: to, Count: 3}},
-	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
-	if !strings.Contains(text, "<i>Anotaste 1 de 7 días · lo de arriba sale de ahí nomás 👀</i>") {
-		t.Errorf("falta el cierre parcial; got:\n%s", text)
-	}
-}
-
 // La nota va en blockquote: es el pie, no un renglón más del resumen.
 func TestBuild_NoteIsAQuote(t *testing.T) {
 	fm := fakeMovements{
@@ -622,5 +576,27 @@ func TestBuild_NoteIsAQuote(t *testing.T) {
 	}
 	if strings.Contains(text, "\n—\n") {
 		t.Errorf("el separador a mano sobra con el quote; got:\n%s", text)
+	}
+}
+
+// La nota de ajustar saldo solo tiene sentido si el resumen listó cuentas;
+// sin cuentas no hay nada de qué "diferencia" hablar.
+func TestBuild_BalanceNoteOnlyWithAccounts(t *testing.T) {
+	fm := fakeMovements{
+		sums:   map[string][]movement.CategorySum{"ARS|expense|" + wk: sums(row("", "1000"))},
+		counts: []movement.DayCount{{Date: to, Count: 3}},
+		bals:   map[uint64]decimal.Decimal{0: dec("2500")},
+	}
+	fa := fakeAccounts{
+		list: map[uint64][]account.Account{1: {{Name: "Efectivo", Currency: currency.ARS}}},
+	}
+	text, _ := NewBuilder(fm, fa, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	if !strings.Contains(text, "<blockquote>💰 ¿<b>Diferencia de saldo</b>") {
+		t.Errorf("falta la nota de ajuste de saldo con cuentas; got:\n%s", text)
+	}
+
+	textNoAccts, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	if strings.Contains(textNoAccts, "Diferencia de saldo") {
+		t.Errorf("la nota de ajuste de saldo no debería aparecer sin cuentas; got:\n%s", textNoAccts)
 	}
 }

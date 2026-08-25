@@ -107,8 +107,10 @@ func (b *Builder) Build(userID uint64, from, to, prevFrom, prevTo time.Time) (st
 		return "", err
 	}
 	sb.WriteString(accts)
+	if accts != "" {
+		sb.WriteString(msgBalanceNote)
+	}
 
-	sb.WriteString(daysBlock(counts, from, to))
 	sb.WriteString(msgNote)
 	return sb.String(), nil
 }
@@ -458,38 +460,6 @@ func (b *Builder) total(q movement.MovementQuery) (decimal.Decimal, error) {
 		return decimal.Zero, nil
 	}
 	return rows[0].Total, nil
-}
-
-// daysBlock says how much of the week the numbers above actually cover. Sin
-// esto el resumen afirma "gastaste $X" como si fuera la semana entera, cuando
-// bien puede ser el 70% de ella.
-func daysBlock(counts []movement.DayCount, from, to time.Time) string {
-	seen := make(map[string]bool, len(counts))
-	for _, c := range counts {
-		seen[c.Date.Format("2006-01-02")] = true
-	}
-	total, logged := 0, 0
-	var missing []string
-	for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
-		total++
-		if seen[d.Format("2006-01-02")] {
-			logged++
-			continue
-		}
-		missing = append(missing, movement.WeekdayEs(d))
-	}
-	if len(missing) == 0 {
-		return fmt.Sprintf("\n<i>Anotaste los %d días 💪</i>\n", total)
-	}
-	// Nombrar los días sólo mientras sea una frase. Con tres o más es una lista
-	// y ya no se lee, se saltea.
-	if len(missing) <= 2 {
-		return fmt.Sprintf("\n<i>Anotaste %d de %d días (te faltaron %s)</i>\n",
-			logged, total, strings.Join(missing, " y "))
-	}
-	// Con media semana sin anotar el cierre dice de dónde salen los números:
-	// misma honestidad que el conteo, dicha en voz alta.
-	return fmt.Sprintf("\n<i>Anotaste %d de %d días · lo de arriba sale de ahí nomás 👀</i>\n", logged, total)
 }
 
 // accountsBlock lists the ARS balances one per line and folds the rest into a

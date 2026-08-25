@@ -15,5 +15,11 @@ const (
 	msgNote = "\n<blockquote>📩 Va cada lunes (no es tu recordatorio diario). Para cortarlo, " +
 		"escribime «no quiero más el resumen semanal».</blockquote>"
 
+	// msgBalanceNote invita a corregir el saldo de una cuenta a partir de los
+	// montos que el usuario acaba de leer arriba (accountsBlock) — intereses o
+	// una FCI que cambió de valor son la causa típica de la diferencia.
+	msgBalanceNote = "\n<blockquote>💰 ¿<b>Diferencia de saldo</b> en alguna cuenta? Escribime " +
+		"«ajustá el saldo de [cuenta] a $X» y lo correjimos 😁</blockquote>"
+
 	msgEmptyWeek = "📊 Esta semana no registraste movimientos. ¿Arrancamos? 💪" + msgNote
 )
