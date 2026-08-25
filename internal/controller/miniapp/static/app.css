@@ -365,9 +365,6 @@ a, button, .tab-link {
 .evolution-sub th[scope="row"] { padding-left: 1.25rem; font-weight: 400; }
 .evolution-sub td, .evolution-sub th { color: var(--pico-muted-color); }
 
-/* Two steps, one hue, against the row's own average. Alpha caps at 0.45 —
-   the old ramp went to 1.0 and dark text on a saturated cell failed
-   contrast. */
 /* Dos pasos, un tono, contra el promedio de la propia fila. El techo de 0.45
    se queda: la rampa vieja llegaba a 1.0 y el texto oscuro sobre una celda
    saturada no pasaba contraste. Lo que cambia es de donde sale el tono -antes
