@@ -66,7 +66,7 @@ type quoteClient interface {
 }
 
 // retentionDays es cuánto se conservan las tablas operativas (llm_calls,
-// request_traces) antes de purgarse. Va en Go, no pg_cron.
+// request_traces, intent_events) antes de purgarse. Va en Go, no pg_cron.
 const retentionDays = 90
 
 // Sweeper drives all scheduled system->user notifications. Today it hosts one

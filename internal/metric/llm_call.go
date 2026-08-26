@@ -21,12 +21,17 @@ func (r *repository) InsertRequestTrace(traceID string, userID *uint64, updateTy
 }
 
 // DeleteOlderThan purga filas operativas viejas (retención). Barato: predicado
-// sobre índice created_at. intent_events NO se toca (negocio, retención propia).
+// sobre índice created_at. Misma ventana para las tres — intent_events se
+// sumó a la purga junto con llm_calls/request_traces (antes se conservaba
+// para siempre).
 func (r *repository) DeleteOlderThan(cutoff time.Time) error {
 	if err := r.db.DB.Where("created_at < ?", cutoff).Delete(&LLMCall{}).Error; err != nil {
 		return err
 	}
-	return r.db.DB.Where("created_at < ?", cutoff).Delete(&RequestTrace{}).Error
+	if err := r.db.DB.Where("created_at < ?", cutoff).Delete(&RequestTrace{}).Error; err != nil {
+		return err
+	}
+	return r.db.DB.Where("created_at < ?", cutoff).Delete(&IntentEvent{}).Error
 }
 
 // LLMCall es una fila de llm_calls: una llamada HTTP a Groq (grano send()).
