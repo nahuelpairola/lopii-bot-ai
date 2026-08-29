@@ -10,14 +10,14 @@ import templruntime "github.com/a-h/templ/runtime"
 
 type EvolutionCell struct {
 	Value     string
-	Intensity string // "" | CellMild | CellHigh
+	Intensity string
 }
 
 type EvolutionRow struct {
 	Label string
 	Icon  string
 	Href  string
-	Sub   bool // a subcategory row of the expanded category
+	Sub   bool
 	Cells []EvolutionCell
 }
 

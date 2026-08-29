@@ -20,7 +20,7 @@ type stubMovementsWithAccounts struct {
 	stubMovements
 	balances map[uint64]decimal.Decimal
 	deltas   map[uint64][]movement.MonthlyDelta
-	// movements es lo que devuelve ListForAccount: las filas de la hoja.
+
 	movements []movement.Movement
 }
 
@@ -109,12 +109,10 @@ func TestHandleAccountLeaf_ReconcilesBalance(t *testing.T) {
 	movements := stubMovementsWithAccounts{
 		balances: map[uint64]decimal.Decimal{1: decimal.NewFromInt(50000)},
 		deltas: map[uint64][]movement.MonthlyDelta{
-			// Lo de julio es el saldo con el que abre agosto.
+
 			1: {{Month: "2026-07", Delta: decimal.NewFromInt(80000)}, {Month: "2026-08", Delta: decimal.NewFromInt(-30000)}},
 		},
-		// A propósito la lista NO suma lo mismo que el delta del mes (-30.000):
-		// simula el corte del tope. Si el cierre se calculara sumando las filas
-		// visibles daría $70.000, y este test lo caza.
+
 		movements: []movement.Movement{{
 			AccountID: &accountID, Date: time.Date(2026, 8, 10, 0, 0, 0, 0, time.UTC),
 			Type: movement.Transfer, Amount: decimal.NewFromInt(-10000), Currency: currency.ARS,
@@ -152,7 +150,7 @@ func TestHandleAccountLeaf_RejectsAnotherUsersAccount(t *testing.T) {
 		balances: map[uint64]decimal.Decimal{},
 		deltas:   map[uint64][]movement.MonthlyDelta{},
 	}
-	// stubAccountsWithData sólo devuelve la cuenta 1.
+
 	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
 	router := gin.New()
 	c.RegisterRoutes(router)
@@ -202,7 +200,6 @@ func TestHandleAccountLeaf_SurvivesNilSubcategory(t *testing.T) {
 		movements: []movement.Movement{{
 			AccountID: &accountID, Date: time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
 			Type: movement.Expense, Amount: decimal.NewFromInt(-1500), Currency: currency.ARS,
-			// Sin Description y sin Subcategory: los dos son punteros.
 		}},
 	}
 	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
@@ -243,15 +240,6 @@ func TestTaxonomyNote(t *testing.T) {
 	}
 }
 
-// leafKeepsDrill busca un link de la cabecera que cambie el rango Y conserve la
-// hoja. Ancla en p=6m porque ese preset sale sólo de WithPreset: los links de
-// vuelta y los de las filas llevan el período actual. Desescapa el & primero,
-// que templ escapa dentro de los atributos.
-//
-// El "pt=6m" del medio no es decorativo: el drill viaja después de TODOS los
-// params del período (url.Values ordena las claves), así que si el link se
-// armara con un solo ámbito esta aserción no matchearía. La hoja es una vista
-// single-period, así que su chip escribe "p" y "pt" queda en su default.
 func leafKeepsDrill(body, drill string) bool {
 	return bodyContains(strings.ReplaceAll(body, "&amp;", "&"), "p=6m&pt=6m"+drill)
 }
@@ -297,15 +285,11 @@ func TestHandleAccountLeaf_HidesTheCurrencyChips(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?account=1&p=month&m=2026-07"))
 
-	// Una cuenta tiene UNA moneda: el chip USD dejaría la hoja de una cuenta en
-	// ARS con el período en USD, que es peor que perder el drill.
 	if bodyContains(strings.ReplaceAll(w.Body.String(), "&amp;", "&"), "c=USD") {
 		t.Error("la hoja de una cuenta no debe ofrecer cambiar de moneda")
 	}
 }
 
-// El índice de Cuentas comparte el slot "p" con Resumen y Categorías: cambiar
-// el rango en Evolución (que vive en "pt") no puede arrastrarlo.
 func TestHandleAccounts_SharesThePeriodOfOverview(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovementsWithAccounts{
@@ -318,8 +302,6 @@ func TestHandleAccounts_SharesThePeriodOfOverview(t *testing.T) {
 	router := gin.New()
 	c.RegisterRoutes(router)
 
-	// "Mes" en el slot de un período, "año" en el de tendencia: manda el
-	// primero, y el gráfico se va porque un mes no dibuja una tendencia.
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&pt=year"))
 	body := w.Body.String()
@@ -337,7 +319,6 @@ func TestHandleAccounts_SharesThePeriodOfOverview(t *testing.T) {
 		t.Error("con ventana de un mes el gráfico es un punto suelto: no se dibuja")
 	}
 
-	// Con una ventana que sí es una tendencia, el gráfico vuelve.
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=6m"))
 	if !bodyContains(w.Body.String(), "cuentas-trend") {
@@ -345,9 +326,6 @@ func TestHandleAccounts_SharesThePeriodOfOverview(t *testing.T) {
 	}
 }
 
-// Dos cuentas en la MISMA moneda: es lo unico que hace visible un total
-// distinto de un saldo suelto. stubAccountsWithData devuelve una sola, y
-// stubAccountsTwoCurrencies devuelve dos que el handler filtra a una.
 type stubAccountsTwoARS struct{}
 
 func (stubAccountsTwoARS) FindByUserID(userID uint64) ([]account.Account, error) {
@@ -358,10 +336,6 @@ func (stubAccountsTwoARS) FindByUserID(userID uint64) ([]account.Account, error)
 	return []account.Account{efectivo, banco}, nil
 }
 
-// El total es la suma de las tarjetas que estan abajo, no una consulta nueva:
-// se acumula en el loop que ya suma cada cuenta. Por eso cierra por
-// construccion — y por eso el test lo verifica contra la suma de los saldos
-// que la misma pantalla muestra.
 func TestHandleAccounts_TotalsTheBalancesItShows(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovementsWithAccounts{

@@ -12,8 +12,7 @@ func TestRowDate(t *testing.T) {
 		want string
 	}{
 		{"día normal", time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC), "12 ago"},
-		// El caso que importa: la fecha de un movimiento es civil, guardada como
-		// medianoche UTC. Convertirla a ART la correría al 31 de julio.
+
 		{"primero de mes no se cae al mes anterior", time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC), "1 ago"},
 		{"enero", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC), "5 ene"},
 		{"diciembre", time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC), "31 dic"},
@@ -74,10 +73,6 @@ func TestGroupRowsByDay(t *testing.T) {
 		}
 	})
 
-	// El caso que obliga a agrupar por corridas y no por un map: la fecha ya
-	// viene formateada y NO lleva año, así que "12 ago" de 2026 y "12 ago" de
-	// 2025 son el mismo string. Un map los fusionaría en un grupo, mezclando
-	// dos días con un año de distancia; el período "Año" llega a abarcar los dos.
 	t.Run("dos dias iguales no adyacentes no se fusionan", func(t *testing.T) {
 		rows := []MovementRow{
 			{Title: "de este año", Date: "12 ago"},

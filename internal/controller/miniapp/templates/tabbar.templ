@@ -1,16 +1,7 @@
 package templates
 
-// TabBar is rendered once, in the shell, and never swapped — so its links
-// cannot carry the current period in their hrefs. hx-include="#app-state"
-// pulls it from the hidden inputs every partial renders (see PeriodHeader),
-// and htmx serializes them into the GET query the normal way, so hx-push-url
-// reflects them too.
 templ TabBar(active string) {
 	<nav class="tab-bar" hx-include="#app-state" hx-target="#content" hx-push-url="true" hx-indicator="#content">
-		// El orden agrupa por período: las tres primeras comparten la ventana
-		// ("p") y Evolución vive en la suya ("pt"), sin "Mes". Con Evolución en el
-		// medio, la fila de chips perdía y recuperaba "Mes" al cruzarla en las dos
-		// direcciones; al final, esa discontinuidad se cruza una sola vez.
 		@tabLink(RouteOverview, TabOverview, "Resumen", active)
 		@tabLink(RouteCategories, TabCategories, "Categorías", active)
 		@tabLink(RouteAccounts, TabAccounts, "Cuentas", active)
@@ -18,9 +9,6 @@ templ TabBar(active string) {
 	</nav>
 }
 
-// tabLink marks the active tab with aria-current rather than <strong>: pico
-// styles [aria-current] already, and app.js can re-mark it after an htmx swap
-// (the tab bar itself never re-renders).
 templ tabLink(route, tab, label, active string) {
 	<a
 		class="tab-link"

@@ -1,34 +1,3 @@
-/* === Capa de tema: manda Telegram =========================================
-   Telegram expone ~16 variables de tema al webview y hasta acá leíamos UNA
-   sola (colorScheme, para prender el data-theme de pico). Este bloque remapea
-   los tokens de color de pico contra las de Telegram, así la app usa el tema
-   QUE EL USUARIO ELIGIÓ en su cliente en vez de imponerle el azure de pico.
-
-   TRES BLOQUES, NO UNO. Pico define su paleta en tres contextos:
-     1. :root:not([data-theme=dark])            → claro
-     2. @media (prefers-color-scheme: dark) …   → oscuro por sistema
-     3. [data-theme=dark]                       → oscuro explícito (lo pone app.js)
-   Un solo :root pierde contra el 1 por especificidad. Un solo bloque con
-   especificidad alta gana en los tres, pero entonces sus fallbacks —que son de
-   UN tema— pisan la paleta oscura de pico cuando las variables de Telegram no
-   están. El modo oscuro en un navegador común se vuelve claro, sin que nada
-   falle: sólo se ve mal, y justo donde nadie mira. Por eso se espejan los tres
-   selectores, cada uno con los fallbacks de SU tema.
-
-   Adentro de Telegram los tres resuelven al mismo valor, porque Telegram ya
-   eligió el correcto para el tema del usuario.
-
-   TODA referencia lleva fallback. Fuera de Telegram, o en un cliente anterior a
-   Bot API 7.0 (section-bg-color, accent-text-color y section-separator-color son
-   7.0+), la app se ve exactamente como antes.
-   Lo hace cumplir TestAppCSS_EveryTelegramVarHasFallback.
-
-   El reparto página/sección es el de Telegram: la PÁGINA va en
-   secondary-bg-color y las tarjetas se apoyan encima en section-bg-color.
-
-   --pico-table-border-color NO está acá: pico ya lo define como
-   var(--pico-muted-border-color), así que sigue al separador solo. */
-
 :root:not([data-theme=dark]),
 [data-theme=light] {
   --pico-background-color: var(--tg-theme-secondary-bg-color, #fff);
@@ -99,23 +68,13 @@
 }
 
 :root {
-  --pico-spacing: 0.75rem; /* denser than pico's marketing-page default */
+  --pico-spacing: 0.75rem;
 }
 
 .money {
   font-variant-numeric: tabular-nums;
 }
 
-/* En una card el número ES el contenido y la etiqueta es cartelería, pero pico
-   los renderiza a los dos en tamaño de body, así que hoy compiten.
-   Scopeado a .grid article, no a article a secas: EmptyState y el cartel de
-   sesión vencida que inyecta app.js también son <article><p>, y ahí achicar el
-   texto arruina justo el mensaje que hay que leer. .money además vive en las
-   celdas de categorías y evolución, donde 28px revienta la tabla.
-   1.75rem es el techo: el saldo más largo realista ($1.234.567,00, 14
-   caracteres) entra en el ancho de card de un teléfono de 360px, 2rem no. El
-   .grid de pico es una sola columna abajo de 768px, así que las cards son
-   full-width y nunca hay tres números apretados en fila. */
 .grid article .money {
   font-size: 1.75rem;
   font-weight: 600;
@@ -123,35 +82,14 @@
   margin: 0;
 }
 
-/* 0.8rem = 12.8px, arriba del piso de 12px para texto, y en muted para que la
-   jerarquía la carguen el tamaño Y el peso visual, no sólo el tamaño. */
 .grid article > p:first-child {
   font-size: 0.8rem;
   color: var(--pico-muted-color);
   margin-bottom: 0.15rem;
 }
 
-/* La estrella marca la cuenta por defecto de esa moneda. El color es refuerzo,
-   no el canal: el significado lo cargan el glifo y su aria-label. Es el mismo
-   token que la tab activa ya usa como color de texto sobre este fondo, así que
-   el par de contraste ya está en producción. */
 .default-star { color: var(--pico-primary); }
 
-/* El par de estado del Neto, y de nada mas (regla The One Status Rule en
-   DESIGN.md). Desde que el fondo lo elige el tema del usuario, un hex fijo
-   dejo de ser defendible: medido, el verde daba 3.35:1 en claro y el rojo
-   3.75:1 en oscuro - pasaban AA solo por contar como texto grande a 28px.
-
-   CSS no sabe calcular contraste. Lo que si puede es mezclar el tono contra
-   --pico-color, que es el texto del tema y que Telegram ya garantizo legible
-   contra su propio fondo: el tono verde/rojo sobrevive y la luminosidad sigue
-   al tema. Al 70% los cuatro casos (verde/rojo x claro/oscuro) miden 4.82,
-   6.34, 6.50 y 4.83 - arriba del 4.5 de texto NORMAL, no solo del 3.0 de
-   texto grande. Bajar el 70% gana contraste y pierde saturacion.
-
-   Asimetria deliberada, no una migracion a medias: Telegram tiene color
-   destructivo y NO tiene uno positivo, asi que el rojo lo prefiere y el verde
-   se lo tiene que derivar solo. */
 .neto-good {
   color: color-mix(in srgb, #0ca30c 70%, var(--pico-color));
 }
@@ -160,22 +98,6 @@
   color: color-mix(in srgb, var(--tg-theme-destructive-text-color, #d03b3b) 70%, var(--pico-color));
 }
 
-/* La variación de saldos NO es un cuarto KPI, y por eso vive fuera del .grid:
-   es el contexto de por qué un saldo se movió sin que el usuario gastara ni
-   cobrara. Metida en una card al lado de Neto competiría con él y volvería a
-   leerse como plata ganada — justo el malentendido que esta fila existe para
-   deshacer. Su .money queda en tamaño de cuerpo a propósito: la regla grande
-   está scopeada a .grid article .money y acá no aplica.
-   Sin color de estado (nada de neto-good/critical): una variación positiva no
-   es "bien" como lo es un neto positivo — puede ser tanto un CEDEAR que subió
-   como una carga que faltaba. Teñirla de verde afirmaría algo que el sistema
-   no sabe.
-
-   El tratamiento es el pie de sección de Telegram: texto en hint abajo del
-   grupo, sin borde y sin relleno. Antes era una card con un borde izquierdo de
-   3px, que es exactamente lo que el detector marca como el tell más
-   reconocible de UI generada — y el papel que cumple (una aclaración debajo de
-   un grupo) ya tiene una forma nativa. Sin color de estado, igual que antes. */
 .variacion {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -194,14 +116,10 @@
   font-size: 0.75rem;
 }
 
-/* tap-highlight: intentional, not the mobile-Chrome default flash */
 a, button, .tab-link {
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0.05);
 }
 
-/* Telegram draws its own UI at the bottom of the webview, and iOS adds a home
-   indicator. Both are reported as CSS vars; without them the tab bar sits
-   underneath. The 0px fallback covers older clients that don't define them. */
 .tab-bar {
   position: fixed;
   bottom: 0;
@@ -211,9 +129,7 @@ a, button, .tab-link {
   justify-content: space-around;
   border-top: 1px solid var(--pico-muted-border-color);
   background: var(--pico-background-color);
-  /* La primera columna de la tabla de evolución es sticky con z-index:1, y sin
-     esto le gana a la barra: las filas se dibujan ENCIMA de las tabs al
-     scrollear. Cualquier valor > 1 alcanza. */
+
   z-index: 2;
   padding: 0.5rem 0 calc(0.5rem + var(--tg-safe-area-inset-bottom, 0px));
 }
@@ -225,21 +141,17 @@ a, button, .tab-link {
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  /* pico colours EVERY <a> with --pico-primary, so without this all four tabs
-     are the same blue and the active one has nothing to stand out against. */
+
   color: var(--pico-muted-color);
-  position: relative; /* anchors the ::before bar below */
+  position: relative;
 }
 
 .tab-link[aria-current] {
   color: var(--pico-primary);
   font-weight: 600;
-  text-decoration: none; /* pico underlines [aria-current] on <a> */
+  text-decoration: none;
 }
 
-/* A 2px bar sitting on .tab-bar's border-top: top: -0.5rem is exactly its
-   padding-top. A geometric channel, independent of luminance — muted grey
-   against primary blue is only 1.47:1. */
 .tab-link[aria-current]::before {
   content: "";
   position: absolute;
@@ -251,7 +163,6 @@ a, button, .tab-link {
 }
 
 .content-area {
-  /* clears the fixed tab bar, plus whatever Telegram/iOS reserve below it */
   padding-bottom: calc(4rem + var(--tg-safe-area-inset-bottom, 0px));
 }
 
@@ -286,24 +197,12 @@ a, button, .tab-link {
 
 .chips { display: flex; align-items: center; gap: 0.25rem; }
 
-/* The active state is painted by the rule below, not by pico — this block only
-   carries the sizing that keeps the row on a phone. */
-/* a[role="button"].chip y no .chip a secas: pico trae
-   `a[role=button]{display:inline-block}` con especificidad (0,2,0), que le gana
-   a una clase sola. Con inline-block, align-items y justify-content no hacen
-   NADA y la etiqueta queda pegada arriba de la caja — se ve exactamente como un
-   centrado roto, y no hay error en ningun lado. */
 a[role="button"].chip {
   padding: 0 0.6rem;
   font-size: 0.8rem;
   margin: 0;
   --pico-border-radius: 1rem;
-  /* Un chip es un segmented control, no un botón suelto: 32px es lo que mide
-     el de Telegram. Un min-height de 44px acá hizo dos daños — convirtió la
-     fila de chips en lo más pesado de la pantalla, y estiró la caja dejando la
-     etiqueta arriba. Alto explícito con line-height 1 y centrado en los dos
-     ejes: la caja no depende de lo que aporte pico. El piso táctil lo pone
-     ::after, que no ocupa layout. */
+
   height: 32px;
   line-height: 1;
   display: inline-flex;
@@ -312,26 +211,12 @@ a[role="button"].chip {
   position: relative;
 }
 
-/* El área tocable llega a 44px sin agrandar la píldora: 6 + 32 + 6. Crece sólo
-   en vertical, así que dos chips vecinos nunca se roban el toque. */
 a[role="button"].chip::after {
   content: "";
   position: absolute;
   inset: -6px 0;
 }
 
-/* pico encodes selection as a one-step hue shift (--pico-primary →
-   --pico-primary-hover): 1.32:1 in dark, below the 3:1 WCAG asks for to read a
-   state. Selection becomes a fill instead, and the inactive chip drops to
-   muted so the row carries one accent, not five.
-
-   These set plain properties rather than pico's custom props on purpose: the
-   real declaration (background-color: var(--pico-background-color)) lives in
-   pico's base button rule at ~(0,1,0), and these selectors are (0,2,0). They
-   win without !important and without relying on stylesheet order.
-
-   templ only ever emits aria-current="page" or nothing, never "false" — so
-   bare [aria-current] is enough. */
 .chip:not([aria-current]) {
   color: var(--pico-muted-color);
   border-color: var(--pico-muted-border-color);
@@ -345,28 +230,17 @@ a[role="button"].chip::after {
 
 .chips-sep { flex: 1; }
 
-/* htmx puts .htmx-request on the element named by hx-indicator */
 #content.htmx-request { opacity: 0.55; transition: opacity 0.1s; }
 
-/* Misma compactación que .evolution y por el mismo motivo: el td/th propio de
-   pico desborda un teléfono. Categorías tiene la misma forma de tres columnas y
-   se había quedado como una tabla pelada de pico a 360px.
-   Sin scroller ni columna pegajosa: tres columnas entran, no hay nada que
-   desborde horizontalmente. */
 .cat-table {
   font-size: 0.85rem;
   width: 100%;
 }
 
-/* No está en :where(), de ahí el calificador — igual que en .evolution. */
 .cat-table thead th {
   padding: 0.35rem 0.4rem;
 }
 
-/* El alto sale de la CELDA, no del link: en layout de tabla `height` actúa
-   como mínimo y el .row-link de adentro lo llena. Cobrarlo en los dos lados
-   —44px de piso táctil MÁS 0.35rem arriba y abajo— daba filas de 55px contra
-   texto de 13.6px. */
 .cat-table tbody td {
   height: 44px;
   padding: 0 0.4rem;
@@ -374,24 +248,14 @@ a[role="button"].chip::after {
 
 .evolution-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
 
-/* pico sets border-collapse:collapse on every table. With collapsed borders
-   the borders belong to the table, not the cell, so a sticky cell scrolls
-   away from its own border. separate + box-shadow is the fix. pico's rule
-   lives in :where(), so this needs no extra specificity. */
 .evolution {
   border-collapse: separate;
   border-spacing: 0;
   width: auto;
-  /* A tamaño de cuerpo, 6 meses + la columna de categoría miden 372px y no
-     entran en los 335px útiles de un teléfono de 360px: la tabla quedaba
-     cortada al medio de la última columna. A 0.85rem el caso típico entra
-     entero. Los montos largos y el período "Año" siguen desbordando: para eso
-     está .evolution-scroll. */
+
   font-size: 0.85rem;
 }
 
-/* pico's own td,th padding makes 7 columns overflow a phone even with
-   compact numbers. That rule is NOT in :where(), hence the qualifier. */
 .evolution th, .evolution td {
   border-bottom: var(--pico-border-width) solid var(--pico-table-border-color);
   white-space: nowrap;
@@ -402,9 +266,6 @@ a[role="button"].chip::after {
   padding: 0.35rem 0.4rem;
 }
 
-/* Mismo motivo que .cat-table tbody td. Acá además unifica las DOS alturas que
-   tenía la tabla: sólo las filas de categoría llevan .row-link, así que una de
-   subcategoría medía ~32px al lado de un padre de 55px. */
 .evolution tbody th, .evolution tbody td {
   height: 44px;
   padding: 0 0.4rem;
@@ -424,11 +285,6 @@ a[role="button"].chip::after {
 .evolution-sub th[scope="row"] { padding-left: 1.25rem; font-weight: 400; }
 .evolution-sub td, .evolution-sub th { color: var(--pico-muted-color); }
 
-/* Dos pasos, un tono, contra el promedio de la propia fila. El techo de 0.45
-   se queda: la rampa vieja llegaba a 1.0 y el texto oscuro sobre una celda
-   saturada no pasaba contraste. Lo que cambia es de donde sale el tono -antes
-   Data Blue clavado, ahora el acento del tema- porque sobre el fondo de un
-   tema personalizado un azul fijo puede quedar ilegible. */
 .cell-mild {
   background-color: color-mix(in srgb, var(--pico-primary) 22%, transparent);
 }
@@ -439,9 +295,6 @@ a[role="button"].chip::after {
 
 .evolution-legend { font-size: 0.8rem; }
 
-/* La muestra toma su relleno de .cell-mild/.cell-high, las mismas clases que
-   pinta la tabla: la leyenda no puede desincronizarse del sombreado que
-   explica. Acá va sólo la caja. */
 .legend-swatch {
   display: inline-block;
   width: 0.8rem;
@@ -450,20 +303,6 @@ a[role="button"].chip::after {
   vertical-align: -1px;
 }
 
-/* --- Listas agrupadas ---------------------------------------------------- */
-
-/* El piso táctil, en un solo lugar. Estaba escrito a mano en .tab-link, las dos
-   flechas del período y .account-card, y los chips —el control más tocado de la
-   app— se lo perdían. Un elemento tocable nuevo toma esta clase; no vuelve a
-   escribir los 44px. */
-/* El piso táctil, en un solo lugar. Estaba escrito a mano en .tab-link, las dos
-   flechas del período y .account-card, y los chips —el control más tocado de la
-   app— se lo perdían. Un elemento tocable nuevo toma esta clase; no vuelve a
-   escribir los 44px.
-
-   NO centra: sus consumidores de fila (un link de Categorías, uno de Evolución,
-   un "Volver") se leen desde el principio de la celda, y centrarlos parece un
-   error. El que necesita centrado lo pide en su propia regla, como el chip. */
 .tappable {
   min-width: 44px;
   min-height: 44px;
@@ -471,15 +310,6 @@ a[role="button"].chip::after {
   align-items: center;
 }
 
-/* Un link adentro de una celda de tabla es inline por default, y sobre un
-   elemento inline el min-height no hace NADA: el área tocable queda en la
-   altura del texto. Es por esto que las filas de Categorías medían ~36px y las
-   de Evolución ~32px con la regla de 44px ya escrita en este archivo — la
-   regla estaba, el elemento no la podía tomar.
-
-   color: inherit porque pico pinta TODO <a> con --pico-primary: una tabla donde
-   cada fila es un link sale entera azul. Es el mismo problema que .tab-link ya
-   resuelve dos reglas más arriba. */
 .row-link {
   display: flex;
   align-items: center;
@@ -488,51 +318,26 @@ a[role="button"].chip::after {
   color: inherit;
 }
 
-/* El encabezado de un grupo: el día de una lista de movimientos, el rótulo de
-   un total. Es cartelería, no contenido — mismo tamaño y color que la etiqueta
-   de un KPI, para que la lista se lea de un scroll y el ojo caiga en las filas
-   y no en las fechas. */
 .group-title {
   font-size: 0.8rem;
   color: var(--pico-muted-color);
   margin: var(--pico-spacing) 0 0.25rem;
 }
 
-/* El grupo es el contenedor que el buscador esconde entero cuando ninguna de
-   sus filas matchea (app.js). Sin él, filtrar deja los encabezados de todos
-   los días en pantalla, casi todos sin nada abajo. */
 .mov-group { margin: 0; }
 
-/* h1 al tamaño que tenía el h2. pico pone h1 en 2rem y h2 en 1.75rem, y 1.75rem
-   es el techo de la rampa (el mismo de una cifra KPI): dejar que el título
-   saltara a 2rem subiría ese techo por un cambio que es de estructura y no de
-   énfasis. El h1 existe porque no había NINGUNO en la app —cuatro vistas
-   titulaban con h2 y Evolución con un <caption>—, no para verse más grande. */
 #content h1 {
   font-size: 1.25rem;
   line-height: 1.15;
   margin-bottom: var(--pico-spacing);
 }
 
-/* Chart.js con responsive:true pisa el width/height del canvas en cada resize,
-   así que el tamaño se controla desde un padre posicionado con alto — es la
-   forma que la librería documenta. Sin esto ningún gráfico de la app tenía alto
-   ni relación de aspecto y Chart.js caía a 2:1 sobre el ancho que le tocara.
-
-   Los de barras horizontales (Categorías y su drill) reciben además un alto
-   calculado en app.js: ahí cada barra ES una categoría, y un alto fijo afina
-   las barras hasta volverlas ilegibles cuanto más categorías hay. */
 .chart-box {
   position: relative;
   height: 220px;
   margin-bottom: var(--pico-spacing);
 }
 
-/* El total de una página: el rótulo y la cifra en un renglón. Modificador de
-   .balance-line, no una forma nueva — declara SÓLO el tamaño de la cifra, y la
-   forma (space-between, baseline, peso 600) sale de .balance-line, que las dos
-   hojas de movimientos ya usaban. Dimensionar el <p> agrandaría también el
-   rótulo con el que ahora comparte línea. */
 .page-total {
   margin: 0 0 var(--pico-spacing);
 }
@@ -542,10 +347,6 @@ a[role="button"].chip::after {
   line-height: 1.2;
 }
 
-/* --- Hoja de cuenta --- */
-
-/* La tarjeta de una cuenta es tocable: abre la lista de movimientos que
-   explican su saldo. El piso de 44px lo pone .tappable, en el markup. */
 .account-card {
   display: block;
   text-decoration: none;
@@ -553,8 +354,6 @@ a[role="button"].chip::after {
 }
 .account-card:active article { opacity: 0.7; }
 
-/* Filas, no <table>: cuatro datos por movimiento en un webview angosto obligan
-   a scrollear en horizontal si esto fuera una tabla. */
 .mov-list { list-style: none; padding: 0; margin: 0; }
 .mov-row {
   display: flex;
@@ -565,11 +364,9 @@ a[role="button"].chip::after {
 }
 .mov-icon { flex: none; }
 .mov-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-/* El título trunca en una línea: un comercio de nombre largo no puede empujar
-   el monto fuera de la pantalla. */
+
 .mov-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* El meta lleva fecha + "Categoría › Subcategoría", que puede ser largo: trunca
-   igual que el título para no empujar el monto fuera de la pantalla. */
+
 .mov-meta {
   font-size: 0.8rem;
   color: var(--pico-muted-color);
@@ -579,7 +376,6 @@ a[role="button"].chip::after {
 }
 .mov-amount { flex: none; white-space: nowrap; }
 
-/* Apertura y cierre: el par que hace que la lista cierre contra el saldo. */
 .balance-line {
   display: flex;
   justify-content: space-between;

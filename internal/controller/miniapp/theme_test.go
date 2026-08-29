@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// readAppCSS devuelve app.css desde el FS embebido — los mismos bytes exactos
-// que se sirven en /app/static/app.css. Leerlo por staticFS y no por una ruta
-// relativa es lo que hace que el test no dependa del working directory.
 func readAppCSS(t *testing.T) string {
 	t.Helper()
 	b, err := staticFS.ReadFile("static/app.css")
@@ -19,11 +16,6 @@ func readAppCSS(t *testing.T) string {
 	return string(b)
 }
 
-// ruleAt devuelve UN bloque de declaraciones, cortado en su propia llave de
-// cierre. Reemplaza a las ventanas de ancho fijo, que leian las reglas que
-// vinieran despues y hacian que una asercion negativa dejara de proteger nada.
-// Asume que ningun bloque tiene una "}" adentro de un comentario, que hoy se
-// cumple y despues del purgado de comentarios se cumple trivialmente.
 func ruleAt(t *testing.T, css, selector string) string {
 	t.Helper()
 	i := strings.Index(css, selector)
@@ -37,9 +29,6 @@ func ruleAt(t *testing.T, css, selector string) string {
 	return css[i : i+j+1]
 }
 
-// Una ventana de ancho fijo lee las reglas que vengan despues: 700 caracteres
-// desde el selector del chip terminan tres reglas mas abajo. Un test que lee
-// tres reglas y opina sobre una no protege lo que su nombre dice.
 func TestRuleAt_CutsAtTheRulesOwnClosingBrace(t *testing.T) {
 	css := ".a { color: red; } .b { color: blue; }"
 
@@ -51,9 +40,6 @@ func TestRuleAt_CutsAtTheRulesOwnClosingBrace(t *testing.T) {
 	}
 }
 
-// picoTokensMappedToTelegram es el contrato de la capa de tema: qué token de
-// pico tiene que terminar leyendo qué variable de Telegram. Si alguien borra
-// una línea del remapeo, esto se pone en rojo y dice cuál.
 var picoTokensMappedToTelegram = map[string]string{
 	"--pico-background-color":                 "--tg-theme-secondary-bg-color",
 	"--pico-card-background-color":            "--tg-theme-section-bg-color",
@@ -80,8 +66,6 @@ func TestAppCSS_MapsPicoTokensToTelegramTheme(t *testing.T) {
 	css := readAppCSS(t)
 
 	for picoToken, tgVar := range picoTokensMappedToTelegram {
-		// La declaración puede estar en cualquiera de los tres bloques de tema;
-		// lo que se exige es que exista al menos una que ate los dos nombres.
 		re := regexp.MustCompile(regexp.QuoteMeta(picoToken) + `\s*:[^;]*` + regexp.QuoteMeta(tgVar))
 		if !re.MatchString(css) {
 			t.Errorf("%s no está remapeado contra %s: sin eso ese token se queda en el azure de pico y no sigue el tema del usuario", picoToken, tgVar)
@@ -89,9 +73,6 @@ func TestAppCSS_MapsPicoTokensToTelegramTheme(t *testing.T) {
 	}
 }
 
-// Los tres contextos de tema de pico. El remapeo tiene que estar en los tres:
-// en uno solo, o gana pico por especificidad, o nuestros fallbacks de un tema
-// pisan la paleta del otro fuera de Telegram.
 func TestAppCSS_RemapsAllThreePicoThemeContexts(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -110,13 +91,8 @@ func TestAppCSS_RemapsAllThreePicoThemeContexts(t *testing.T) {
 	}
 }
 
-// telegramVarWithoutFallback matchea var(--tg-…) SIN coma, o sea sin fallback.
 var telegramVarWithoutFallback = regexp.MustCompile(`var\(\s*--tg-[a-z0-9-]+\s*\)`)
 
-// Este no maneja el ciclo TDD: nace en verde y se queda de guardia. Un
-// var(--tg-…) sin fallback rompe la app fuera de Telegram y en cualquier
-// cliente anterior a Bot API 7.0, y no falla ruidosamente: simplemente el
-// valor queda vacío y el elemento se pinta transparente o negro.
 func TestAppCSS_EveryTelegramVarHasFallback(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -125,11 +101,6 @@ func TestAppCSS_EveryTelegramVarHasFallback(t *testing.T) {
 	}
 }
 
-// El par de estado no puede ser un hex fijo una vez que el fondo lo elige el
-// usuario: medido, el verde daba 3.35:1 en claro y el rojo 3.75:1 en oscuro,
-// que pasan AA sólo por contar como texto grande (28px). Mezclarlos contra
-// --pico-color —que es el texto del tema, y que Telegram ya garantizó legible
-// contra su fondo— los sube a 4.82 y 4.83, arriba del 4.5 de texto normal.
 func TestAppCSS_StatusColorsAreDerivedFromTheThemeText(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -156,10 +127,6 @@ func TestAppCSS_CriticalPrefersTelegramDestructiveColor(t *testing.T) {
 	}
 }
 
-// El sombreado de Evolución era Data Blue a alpha fijo sobre un fondo que
-// ahora elige el usuario. Sigue siendo de dos pasos y sigue topeado —el techo
-// existe porque una rampa vieja llegaba a 1.0 y el texto oscuro encima no
-// pasaba contraste—, pero el tono ahora sale del acento del tema.
 func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -174,9 +141,6 @@ func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
 	}
 }
 
-// La regla de 44px estaba escrita a mano en cuatro lugares y los chips de
-// periodo —el control mas tocado de la app— se la perdian: 0.25rem de padding
-// sobre texto de 0.8rem da unos 29px. .tappable la deja en un solo lugar.
 func TestAppCSS_HasASingleTapTargetRule(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -188,11 +152,6 @@ func TestAppCSS_HasASingleTapTargetRule(t *testing.T) {
 	}
 }
 
-// Un chip es un segmented control, no un boton suelto. Medirlo 44px hizo dos
-// danios a la vez: la fila de chips paso a ser lo mas pesado de la pantalla, y
-// el min-height estiro la caja dejando la etiqueta arriba en vez de centrada.
-// La pildora se queda compacta y el piso tactil sale de un ::after que no ocupa
-// layout: 6 + 32 + 6 = 44.
 func TestAppCSS_ChipsStayCompactButTappable(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -204,8 +163,6 @@ func TestAppCSS_ChipsStayCompactButTappable(t *testing.T) {
 	if !strings.Contains(rule, "height: 32px") {
 		t.Errorf("el chip perdio su alto explicito, y vuelve a depender de lo que aporte pico:\n%s", rule)
 	}
-	// Los dos ejes: sin justify-content la etiqueta se va a la izquierda apenas
-	// el chip crece de ancho, que es lo que hace [role=group] con flex: 1 1 auto.
 	for _, want := range []string{"align-items: center", "justify-content: center"} {
 		if !strings.Contains(rule, want) {
 			t.Errorf("el chip no declara %q y la etiqueta queda descentrada:\n%s", want, rule)
@@ -220,13 +177,6 @@ func TestAppCSS_ChipsStayCompactButTappable(t *testing.T) {
 	}
 }
 
-// La variacion pasa a leerse como el pie de una seccion, que es lo que Telegram
-// usa para exactamente este papel: texto en hint abajo del grupo, sin borde y
-// sin relleno. El borde de 3px que tenia es lo que el detector de Impeccable
-// marca como el tell mas reconocible de UI generada.
-//
-// Lo que NO cambia: sigue sin color de estado. Una variacion positiva no es
-// "bien" como lo es un neto positivo, y The One Status Rule no se toca.
 func TestAppCSS_VariacionIsASectionFooterNotASideTab(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -242,10 +192,6 @@ func TestAppCSS_VariacionIsASectionFooterNotASideTab(t *testing.T) {
 	}
 }
 
-// .tappable da el PISO tactil y nada mas. Centrar era correcto para su unico
-// consumidor de la fase 2 (una tarjeta) y es incorrecto para todos los que
-// entran ahora: un link de fila de Categorias, uno de Evolucion y un "Volver"
-// se leen desde el principio de su celda. Centrarlos parece un error.
 func TestAppCSS_TappableDoesNotCenterItsLabel(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -261,10 +207,6 @@ func TestAppCSS_TappableDoesNotCenterItsLabel(t *testing.T) {
 	}
 }
 
-// Un link adentro de una celda tiene que OCUPAR la celda: con display inline el
-// min-height no hace nada y el area tocable sigue siendo la altura del texto.
-// Es el motivo por el que estos tres median 24, 32 y 36px con la regla de 44px
-// ya escrita en el archivo.
 func TestAppCSS_RowLinksFillTheirCell(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -276,10 +218,6 @@ func TestAppCSS_RowLinksFillTheirCell(t *testing.T) {
 	}
 }
 
-// Ningun canvas tenia alto ni relacion de aspecto: Chart.js cae a 2:1 sobre el
-// ancho que le toque. .chart-box es el padre posicionado con alto que Chart.js
-// pide para poder soltar el aspecto (responsive:true pisa width/height del
-// propio canvas en cada resize, asi que ponerlos ahi no sirve).
 func TestAppCSS_ChartsHaveABox(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -291,19 +229,12 @@ func TestAppCSS_ChartsHaveABox(t *testing.T) {
 	}
 }
 
-// La regla estaba escrita para una clase que ningun canvas lleva, asi que no
-// matcheaba nada. El comportamiento igual era correcto —initCharts apaga la
-// animacion por su cuenta bajo prefers-reduced-motion— asi que esto es codigo
-// muerto que aparenta una garantia, no una garantia rota.
 func TestAppCSS_HasNoDeadChartCanvasRule(t *testing.T) {
 	if strings.Contains(readAppCSS(t), ".chart-canvas") {
 		t.Error("volvio .chart-canvas, que no matchea ningun elemento de la app")
 	}
 }
 
-// Evolucion se compacto a 0.85rem con 0.35rem de padding porque el td/th de
-// pico desborda un telefono. Categorias tiene la MISMA forma de tres columnas
-// y no habia recibido nada de eso: era una tabla pelada de pico a 360px.
 func TestAppCSS_CategoryTableIsCompacted(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -315,10 +246,6 @@ func TestAppCSS_CategoryTableIsCompacted(t *testing.T) {
 	}
 }
 
-// overscroll-behavior SIN eje setea los dos. Y como overflow-x: auto asciende
-// el otro eje de visible a auto, este div es un contenedor de scroll vertical
-// que no tiene nada que scrollear: se come el gesto en vez de encadenarlo a la
-// pagina. La tabla ocupa el viewport, asi que no queda donde tocar.
 func TestAppCSS_HorizontalScrollerDoesNotTrapVerticalScroll(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -330,14 +257,11 @@ func TestAppCSS_HorizontalScrollerDoesNotTrapVerticalScroll(t *testing.T) {
 		t.Errorf("se perdio la contencion horizontal, que si es intencional:\n%s", rule)
 	}
 
-	// .content-area no tiene overflow, asi que no es un contenedor de scroll y
-	// esta declaracion no hace nada: se lee como si sostuviera algo.
 	if strings.Contains(ruleAt(t, css, ".content-area {"), "overscroll-behavior") {
 		t.Error(".content-area volvio a declarar overscroll-behavior, que ahi no hace nada")
 	}
 }
 
-// fontSizeRem saca el font-size en rem de un bloque de declaraciones.
 func fontSizeRem(t *testing.T, rule string) float64 {
 	t.Helper()
 	m := regexp.MustCompile(`font-size:\s*([0-9.]+)rem`).FindStringSubmatch(rule)
@@ -351,10 +275,6 @@ func fontSizeRem(t *testing.T, rule string) float64 {
 	return v
 }
 
-// Una sola regla enunciable: lo mas grande de la pantalla es SIEMPRE un numero.
-// Tenia tres ganadores en 1.75rem —el titulo, la cifra KPI y el total— asi que
-// no ganaba ninguno, y eso es a la vez el "titulo demasiado grande" de Evolucion
-// y la mitad del encabezado inflado de Categorias.
 func TestAppCSS_TitlesAreSmallerThanMoney(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -373,10 +293,6 @@ func TestAppCSS_TitlesAreSmallerThanMoney(t *testing.T) {
 	}
 }
 
-// El piso tactil de .row-link vivia ADENTRO de una celda que ya cobraba
-// 0.35rem arriba y abajo: 44 + 11.2 = 55px contra texto de 13.6px. Y Evolucion
-// tenia DOS alturas, porque las filas de subcategoria no llevan link y median
-// ~32px al lado de un padre de 55px. El alto pasa a salir de la celda.
 func TestAppCSS_DataRowsHaveOneHeight(t *testing.T) {
 	css := readAppCSS(t)
 
@@ -390,9 +306,6 @@ func TestAppCSS_DataRowsHaveOneHeight(t *testing.T) {
 		}
 	}
 
-	// El encabezado NO toma 44px: no es tocable y estirarlo empuja la tabla
-	// fuera de la pantalla. .evolution-totals vive adentro del thead, asi que
-	// esta misma regla lo cubre.
 	for _, sel := range []string{".cat-table thead th {", ".evolution thead th {"} {
 		if rule := ruleAt(t, css, sel); !strings.Contains(rule, "padding: 0.35rem 0.4rem") {
 			t.Errorf("%s perdio su padding compacto:\n%s", sel, rule)

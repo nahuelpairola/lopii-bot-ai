@@ -8,18 +8,6 @@ package templates
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// movementList es la lista de movimientos que comparten las dos hojas: la de
-// una cuenta y la de una subcategoría. Se extrajo al aparecer el segundo
-// consumidor, no antes.
-//
-// Filas y no <table>: cuatro datos por movimiento en un webview angosto obligan
-// a scrollear en horizontal si esto fuera una tabla.
-//
-// Agrupada por día: la fecha subió al encabezado y salió de las 50 filas, así
-// la meta de cada fila queda con lo único que distingue una de otra dentro del
-// mismo día. Cada grupo es su propio <section> porque el buscador de la hoja
-// esconde el grupo ENTERO cuando ninguna de sus filas matchea — si no, el
-// encabezado del día queda flotando sin nada abajo.
 func movementList(rows []MovementRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -67,7 +55,7 @@ func movementList(rows []MovementRow) templ.Component {
 					var templ_7745c5c3_Var2 string
 					templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(row.Icon)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/movement_list.templ`, Line: 23, Col: 59}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/movement_list.templ`, Line: 11, Col: 59}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 					if templ_7745c5c3_Err != nil {
@@ -85,7 +73,7 @@ func movementList(rows []MovementRow) templ.Component {
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(row.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/movement_list.templ`, Line: 26, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/movement_list.templ`, Line: 14, Col: 42}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -103,7 +91,7 @@ func movementList(rows []MovementRow) templ.Component {
 					var templ_7745c5c3_Var4 string
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(row.Note)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/movement_list.templ`, Line: 28, Col: 41}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/movement_list.templ`, Line: 16, Col: 41}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 					if templ_7745c5c3_Err != nil {
@@ -121,7 +109,7 @@ func movementList(rows []MovementRow) templ.Component {
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(row.Amount)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/movement_list.templ`, Line: 31, Col: 49}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/movement_list.templ`, Line: 19, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {

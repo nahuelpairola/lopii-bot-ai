@@ -8,10 +8,6 @@ import (
 	"lopiibot.com/internal/currency"
 )
 
-// La leyenda explica lo que estas por leer, no lo que ya leiste: estaba DEBAJO
-// de la tabla entera, asi que habia que scrollear pasando el sombreado para
-// enterarse de que era. Y nombra los DOS pasos: cellIntensity grada contra el
-// promedio de la propia fila con dos umbrales, no con uno.
 func TestEvolution_ExplainsBothShadingsAboveTheTable(t *testing.T) {
 	data := EvolutionData{
 		Period: Period{Currency: currency.ARS},
@@ -50,9 +46,6 @@ func TestEvolution_ExplainsBothShadingsAboveTheTable(t *testing.T) {
 	}
 }
 
-// USD no se escala, asi que la leyenda no puede emitir el segmento ni el
-// separador que lo precede: con el separador adentro de la etiqueta —como
-// estaba— quedaba un "·" colgado.
 func TestEvolution_DropsTheScaleSegmentForUSD(t *testing.T) {
 	data := EvolutionData{
 		Period: Period{Currency: currency.USD},

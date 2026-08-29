@@ -8,17 +8,6 @@ package templates
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// Shell is the unauthenticated HTML skeleton served on a full-page
-// navigation. It cannot embed user data: Telegram delivers initData only to
-// client JS (launch-URL hash), so nothing is authenticated server-side yet.
-// Instead #content self-loads loadPath via htmx once telegram-web-app.js has
-// populated window.Telegram.WebApp.initData — that request carries the
-// X-Telegram-Init-Data header (see app.js) and IS authenticated.
-//
-// htmx is vendored and pinned to 2.0.4. It used to load from unpkg as
-// "htmx.org@2" — a floating major, so a release could change behaviour
-// without us touching anything, and the whole app died if the CDN was
-// unreachable from the webview.
 func Shell(active string, loadPath string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -47,7 +36,7 @@ func Shell(active string, loadPath string) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(AppName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/shell.templ`, Line: 20, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/shell.templ`, Line: 9, Col: 19}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -60,7 +49,7 @@ func Shell(active string, loadPath string) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(loadPath)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/shell.templ`, Line: 29, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/shell.templ`, Line: 18, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {

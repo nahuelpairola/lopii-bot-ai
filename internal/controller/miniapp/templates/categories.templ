@@ -1,6 +1,5 @@
 package templates
 
-// BarChartData is the JSON shape read by app.js's "bar-single" chart type.
 type BarChartData struct {
 	Labels []string  `json:"labels"`
 	Values []float64 `json:"values"`
@@ -10,16 +9,11 @@ type BarChartData struct {
 type CategoryRow struct {
 	Category string
 	Icon     string
-	// Href es el nivel de abajo: la categoría lleva a sus subcategorías, y la
-	// subcategoría a los movimientos que la componen. Queda "" sólo si el
-	// handler no lo pobló.
 	Href  string
 	Total string
 	Share string
 }
 
-// CategoriesData renders both the top-level Categorías view and the
-// subcategory drill (same shape, different query).
 type CategoriesData struct {
 	Period Period
 	Rows   []CategoryRow
@@ -65,10 +59,6 @@ templ SubcategoryDrill(data CategoriesData) {
 	}
 }
 
-// SubcategoryLeafData es la hoja de una subcategoría: los movimientos que
-// forman su total. Total es el de SumForUser sobre TODAS las filas, no la suma
-// de las listadas — es el mismo número de la fila que trajo al usuario acá, y
-// con el tope de filas los dos podrían no coincidir.
 type SubcategoryLeafData struct {
 	Period      Period
 	Category    string
@@ -98,8 +88,6 @@ templ SubcategoryLeaf(data SubcategoryLeafData) {
 	}
 }
 
-// categoryTable is shared by both views: the drill is the same table with a
-// different header and no links.
 templ categoryTable(data CategoriesData, header string) {
 	<table class="cat-table">
 		<thead>

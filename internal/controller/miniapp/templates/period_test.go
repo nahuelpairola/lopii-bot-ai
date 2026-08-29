@@ -13,14 +13,12 @@ func art(y int, m time.Month) time.Time {
 	return time.Date(y, m, 1, 0, 0, 0, 0, constants.ArgentinaZone)
 }
 
-// presetsFor arma el mapa de ámbitos como lo entrega periodFromQuery: los dos
-// slots siempre presentes y siempre resueltos.
 func presetsFor(single, trend string) map[string]string {
 	return map[string]string{SinglePeriodScope.Param: single, TrendScope.Param: trend}
 }
 
 func TestCurrentMonth_UsesArgentineWallClock(t *testing.T) {
-	// 01:30 UTC del 1/8 = 22:30 ART del 31/7 → el mes corriente es julio.
+
 	got := CurrentMonth(time.Date(2026, 8, 1, 1, 30, 0, 0, time.UTC))
 	if !got.Equal(art(2026, time.July)) {
 		t.Fatalf("got %s, want 2026-07 ART", got.Format("2006-01 MST"))
@@ -69,7 +67,7 @@ func TestNewPeriod_SixMonthWindowEndingAtAnchor(t *testing.T) {
 }
 
 func TestNewPeriod_CursorStepsByWindowLength(t *testing.T) {
-	// Ancla en enero 2026, ventana de 3 meses, mes corriente julio 2026.
+
 	p := NewPeriod(RouteEvolution, TrendScope, presetsFor(PresetMonth, Preset3M), art(2026, time.January), art(2026, time.July), currency.ARS)
 
 	if p.Label != "Nov 2025 – ene 2026" {
@@ -84,8 +82,7 @@ func TestNewPeriod_CursorStepsByWindowLength(t *testing.T) {
 }
 
 func TestNewPeriod_NextClampedAtCurrentMonth(t *testing.T) {
-	// Ancla mayo, ventana 3m, mes corriente julio: el próximo salto sería
-	// agosto, que es futuro → sin NextQuery.
+
 	p := NewPeriod(RouteEvolution, TrendScope, presetsFor(PresetMonth, Preset3M), art(2026, time.May), art(2026, time.July), currency.ARS)
 	if p.NextQuery != "" {
 		t.Errorf("NextQuery = %q, want empty", p.NextQuery)
@@ -93,9 +90,7 @@ func TestNewPeriod_NextClampedAtCurrentMonth(t *testing.T) {
 }
 
 func TestPeriod_LinkBuildersAreAbsolute(t *testing.T) {
-	// Los links salen con la ruta adelante: una query suelta ("?p=3m") la
-	// resolvería htmx contra la URL actual, que en el drill lleva params
-	// ajenos.
+
 	p := NewPeriod(RouteAccounts, TrendScope, presetsFor(PresetMonth, Preset6M), art(2026, time.July), art(2026, time.July), currency.ARS)
 
 	if got := p.WithPreset(Preset3M); got != "/app/accounts?c=ARS&m=2026-07&p=month&pt=3m" {
@@ -113,8 +108,7 @@ func TestPeriod_LinkBuildersAreAbsolute(t *testing.T) {
 }
 
 func TestWithDrill_HeaderLinksKeepTheLeaf(t *testing.T) {
-	// Ancla en junio con julio corriente: así el período tiene flecha para los
-	// dos lados y se prueban las cuatro salidas de la cabecera.
+
 	p := NewPeriod(RouteAccounts, SinglePeriodScope, presetsFor(PresetMonth, Preset6M), art(2026, time.June), art(2026, time.July), currency.ARS).
 		WithDrill("&account=12")
 
@@ -130,8 +124,6 @@ func TestWithDrill_HeaderLinksKeepTheLeaf(t *testing.T) {
 		}
 	}
 
-	// Query() es el link de VUELTA al índice: si arrastrara el drill, "Volver a
-	// Cuentas" te dejaría en la misma hoja.
 	if strings.Contains(p.Query(), "account=") {
 		t.Errorf("Query() = %q, no debería llevar el drill", p.Query())
 	}
@@ -141,16 +133,13 @@ func TestWithPreset_TouchesOnlyItsOwnScope(t *testing.T) {
 	p := NewPeriod(RouteEvolution, TrendScope, presetsFor(PresetMonth, Preset6M),
 		art(2026, time.July), art(2026, time.July), currency.ARS)
 
-	// Cambiar el rango en una vista de tendencia no puede tocar el slot de las
-	// vistas de un período: ese es el bug entero.
 	if got := p.WithPreset(Preset3M); got != "/app/evolution?c=ARS&m=2026-07&p=month&pt=3m" {
 		t.Errorf("WithPreset = %q", got)
 	}
 }
 
 func TestWithPreset_DoesNotMutateThePeriod(t *testing.T) {
-	// Period es un valor, pero Presets es un map: sin clonar, el chip que
-	// dibuja el link pisa el estado del render que lo contiene.
+
 	base := presetsFor(PresetMonth, Preset6M)
 	p := NewPeriod(RouteEvolution, TrendScope, base,
 		art(2026, time.July), art(2026, time.July), currency.ARS)

@@ -2,25 +2,14 @@ package templates
 
 type AccountSnapshot struct {
 	Name string
-	// Balance already carries its currency symbol (FormatMoney), so the view
-	// never has to re-state which world these numbers live in.
 	Balance string
-	// IsDefault marks the account new movements land in when the user names
-	// none. Default is per currency and the view is already filtered to one,
-	// so at most one card wears the star.
 	IsDefault bool
-	// Href es la hoja de esta cuenta: la lista de movimientos que explican el
-	// saldo de arriba. La arma el handler, que es el que tiene el Period; el
-	// template no debería saber construir una query string.
 	Href string
 }
 
 type AccountsData struct {
 	Period    Period
 	Snapshots []AccountSnapshot
-	// Total es la suma de los saldos de Snapshots, ya formateada. La acumula el
-	// handler en el mismo loop que arma las tarjetas, así cierra con lo de abajo
-	// por construcción. Una moneda sola: accounts.go filtra antes de sumar.
 	Total      string
 	TrendChart TrendChartData
 	Empty      bool
@@ -31,9 +20,6 @@ templ Accounts(data AccountsData) {
 	if data.Empty {
 		@EmptyState("Todavía no tenés cuentas en esta moneda.")
 	} else {
-		// El total arriba y las filas abajo: la forma de un resumen de cuenta.
-		// "Saldo hoy" rotula el total, no las tarjetas — el saldo es el de hoy y
-		// no el del período, y decirlo una vez arriba alcanza.
 		<p class="balance-line page-total">
 			<span>Saldo hoy</span>
 			<span class="money">{ data.Total }</span>
@@ -53,9 +39,6 @@ templ Accounts(data AccountsData) {
 				</a>
 			}
 		</div>
-		// Una ventana de un mes deja un punto suelto por cuenta, que no es una
-		// tendencia: con "Mes" elegido la pantalla se queda en las tarjetas, que
-		// son saldo de hoy y no dependen del período.
 		if data.Period.Months > 1 {
 			<div class="chart-box">
 				<canvas id="cuentas-trend" data-chart-type="line-multi" data-chart-data-id="cuentas-trend-data"></canvas>
@@ -65,25 +48,15 @@ templ Accounts(data AccountsData) {
 	}
 }
 
-// MsgLeafCapped avisa que la lista quedó cortada. Sin este cartel el saldo de
-// cierre no cuadra con lo que el usuario ve, y parece un error de la app.
 const MsgLeafCapped = "Mostrando los 50 más recientes del período."
 
-// MsgFilterNoMatch reemplaza a la lista cuando el filtro no deja ninguna fila:
-// sin él la pantalla queda en blanco y parece que se rompió.
 const MsgFilterNoMatch = "Nada coincide con esa búsqueda."
 
-// Ids del buscador de la hoja. app.js los tiene escritos igual —es la frontera
-// entre Go y el cliente, no hay forma de compartir la constante—, así que
-// cambiar uno de estos lados obliga a cambiar el otro.
 const (
 	MovFilterID      = "mov-filter"
 	MovFilterEmptyID = "mov-filter-empty"
 )
 
-// AccountLeafData es la hoja de una cuenta: los movimientos que explican su
-// saldo. Opening y Closing NO se derivan de Rows —el tope de filas rompería la
-// cuenta—; salen del acumulado completo, que arma el handler.
 type AccountLeafData struct {
 	Period       Period
 	AccountName  string
@@ -108,9 +81,6 @@ templ AccountLeaf(data AccountLeafData) {
 	if data.Empty {
 		@EmptyState("Sin movimientos en esta cuenta en el período.")
 	} else {
-		// El buscador filtra lo que YA está en pantalla: el período elegido y el
-		// tope de filas, nada más. Por eso vive acá adentro y no sobre una lista
-		// vacía, donde sólo sería ruido.
 		<input id={ MovFilterID } type="search" placeholder="Buscar en esta cuenta" aria-label="Buscar movimientos" autocomplete="off"/>
 		@movementList(data.Rows)
 		<p id={ MovFilterEmptyID } class="muted" hidden>{ MsgFilterNoMatch }</p>

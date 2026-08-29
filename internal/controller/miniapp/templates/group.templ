@@ -1,9 +1,5 @@
 package templates
 
-// GroupTitle es el encabezado de un grupo: el día de una lista de movimientos,
-// el rótulo de un total. Existe como componente y no como markup suelto porque
-// hay dos consumidores y el estilo tiene que salir de un solo lugar — el día
-// que el encabezado cambie, cambia acá y no en cada vista.
 templ GroupTitle(text string) {
 	<p class="group-title">{ text }</p>
 }

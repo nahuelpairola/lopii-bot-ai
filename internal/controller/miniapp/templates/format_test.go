@@ -57,10 +57,6 @@ func TestFormatCompact(t *testing.T) {
 	}
 }
 
-// La etiqueta viaja SIN separador: se movio del <h1> a la leyenda, donde el
-// template compone la puntuacion y omite el segmento entero cuando esta vacio.
-// Con el separador adentro, ARS abria con un "·" colgado y USD —que no se
-// escala— aportaba un segmento vacio.
 func TestScaleLabel(t *testing.T) {
 	if got := ScaleLabel(currency.ARS); got != "en miles de $" {
 		t.Errorf("ScaleLabel(ARS) = %q, want %q", got, "en miles de $")

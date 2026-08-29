@@ -37,9 +37,6 @@ func TestHandleCategories_RendersIcons(t *testing.T) {
 	}
 }
 
-// recordingMovements captures the queries a handler sends. The reserved-category
-// filter used to be a post-filter right here in the view; it lives in
-// movement.SumForUser now, so what this layer still owns is ASKING correctly.
 type recordingMovements struct {
 	stubMovements
 	queries *[]movement.MovementQuery
@@ -50,10 +47,6 @@ func (s recordingMovements) SumForUser(q movement.MovementQuery, groupBy string)
 	return s.stubMovements.SumForUser(q, groupBy)
 }
 
-// Que las reservadas no se rindan como gasto es ahora una garantía del SQL
-// (ver movement/repository_reserved_integration_test.go). Lo que queda acá es
-// la mitad que un mock sí puede probar: la vista pide con el default y no
-// invierte el filtro, que la dejaría mostrando SOLO plomería.
 func TestHandleCategories_AsksWithoutReservedCategories(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	var queries []movement.MovementQuery
@@ -88,8 +81,7 @@ func TestHandleCategories_AsksWithoutReservedCategories(t *testing.T) {
 
 func TestHandleCategoryDrill_CategoryWithSlash(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	// "Deudas / préstamos" es una categoría real de la taxonomía. Con el drill
-	// en el path, la barra rompía el routing y daba 404.
+
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"subcategory": {{Label: "Cuota préstamo", Total: decimal.NewFromInt(8000)}},
 	}}
@@ -143,11 +135,10 @@ func bodyContains(body, substr string) bool {
 	})()
 }
 
-// stubMovementsWithRows devuelve filas concretas para la hoja de subcategoría.
 type stubMovementsWithRows struct {
 	stubMovements
 	movements []movement.Movement
-	// lastQuery guarda con qué se pidió la lista, para verificar el filtro.
+
 	lastQuery *movement.MovementQuery
 }
 
@@ -162,7 +153,7 @@ func TestHandleSubcategoryLeaf_ListsMovementsOfThatSubcategory(t *testing.T) {
 	var got movement.MovementQuery
 	movements := stubMovementsWithRows{
 		stubMovements: stubMovements{rows: map[string][]movement.CategorySum{
-			// El total del pie sale de un SumForUser sin agrupar.
+
 			"": {{Label: "", Total: decimal.NewFromInt(80000)}},
 		}},
 		movements: []movement.Movement{{
@@ -210,8 +201,6 @@ func TestHandleCategories_PeriodChipsKeepTheDrill(t *testing.T) {
 	router := gin.New()
 	c.RegisterRoutes(router)
 
-	// Los dos niveles del drill: la lista de subcategorías de una categoría, y
-	// la hoja de movimientos de una subcategoría.
 	cases := []struct{ url, want string }{
 		{"/app/categories?category=Alimentaci%C3%B3n&p=month&m=2026-07", "&category=Alimentaci%C3%B3n"},
 		{"/app/categories?category=Alimentaci%C3%B3n&subcategory=Supermercado&p=month&m=2026-07", "&category=Alimentaci%C3%B3n&subcategory=Supermercado"},

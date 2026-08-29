@@ -18,7 +18,7 @@ import (
 )
 
 type stubMovements struct {
-	rows map[string][]movement.CategorySum // keyed by groupBy, for simplicity in this test
+	rows map[string][]movement.CategorySum
 }
 
 func (s stubMovements) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
@@ -72,9 +72,7 @@ func TestHandleOverview_RendersOK(t *testing.T) {
 
 func TestHandleOverview_MonthWindowUsesDailyGrouping(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	// Con ventana de un mes el trend agrupa por día, y lleva las dos series
-	// igual que las ventanas más largas: un mes sin la columna de ingresos no
-	// deja comparar contra lo que entró.
+
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"":    {{Label: "", Total: decimal.NewFromInt(1000)}},
 		"day": {{Label: "2026-07-03", Total: decimal.NewFromInt(400)}},
@@ -90,8 +88,7 @@ func TestHandleOverview_MonthWindowUsesDailyGrouping(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 	body := w.Body.String()
-	// La clave del bucket es diaria, pero al eje llega sólo el número de día:
-	// el header del período ya dice de qué mes se está hablando.
+
 	if !bodyContains(body, `"labels":["3"]`) {
 		t.Fatalf("con ventana de mes el eje va por día y sin la fecha completa; body=%s", body)
 	}
@@ -116,8 +113,7 @@ func TestHandleOverview_FormatsMoneyAndShowsPeriod(t *testing.T) {
 	if !bodyContains(body, "$1.234.567") {
 		t.Fatal("los montos deben salir en formato AR")
 	}
-	// El label se computa contra el mes corriente para que el test no
-	// caduque al cambiar de mes.
+
 	current := templates.CurrentMonth(nowInART())
 	want := templates.NewPeriod(templates.RouteOverview, templates.SinglePeriodScope,
 		map[string]string{templates.SinglePeriodScope.Param: templates.Preset6M,
@@ -137,8 +133,6 @@ func TestHandleOverview_FullPageNav_ServesShellUnauthenticated(t *testing.T) {
 	router := gin.New()
 	c.RegisterRoutes(router)
 
-	// No HX-Request, no initData — a plain browser navigation. Must NOT 401;
-	// it serves the shell, which then self-loads the authed content.
 	req := httptest.NewRequest("GET", "/app/overview", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -157,7 +151,6 @@ func TestHandleOverview_HTMXWithoutInitData_401(t *testing.T) {
 	router := gin.New()
 	c.RegisterRoutes(router)
 
-	// htmx request but no initData header — the attacker/out-of-Telegram case.
 	req := httptest.NewRequest("GET", "/app/overview", nil)
 	req.Header.Set("HX-Request", "true")
 	w := httptest.NewRecorder()
@@ -168,9 +161,6 @@ func TestHandleOverview_HTMXWithoutInitData_401(t *testing.T) {
 	}
 }
 
-// El caso que motivó todo esto: ajustar el saldo de una cuenta de CEDEARs
-// porque el valor en pesos fluctuó. Eso NO es un ingreso — mañana el CEDEAR
-// baja y sale. Tiene que verse, pero en su propia línea y fuera del neto.
 func TestHandleOverview_ShowsBalanceVariationSeparately(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
@@ -189,13 +179,12 @@ func TestHandleOverview_ShowsBalanceVariationSeparately(t *testing.T) {
 	if !bodyContains(body, "Variaci") {
 		t.Fatal("un período con ajustes debe mostrar la fila de variación de saldos")
 	}
-	// Con signo explícito: es un delta, no un saldo.
+
 	if !bodyContains(body, "+$84.200") {
 		t.Fatalf("la variación debe rendirse con signo; body=%s", body)
 	}
 }
 
-// Un ajuste negativo (el CEDEAR bajó) tampoco es un gasto: mismo lugar, otro signo.
 func TestHandleOverview_NegativeVariationIsNotAnExpense(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
@@ -215,7 +204,6 @@ func TestHandleOverview_NegativeVariationIsNotAnExpense(t *testing.T) {
 	}
 }
 
-// Sin ajustes no hay fila: un mes normal no gasta lugar diciendo "no pasó nada".
 func TestHandleOverview_NoVariationRowWhenNoAdjustments(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
@@ -234,9 +222,6 @@ func TestHandleOverview_NoVariationRowWhenNoAdjustments(t *testing.T) {
 	}
 }
 
-// Un período cuyo único evento fue un ajuste NO está vacío: el saldo se movió.
-// Sin esto la vista se contradecía — mostraba la variación y abajo "Sin
-// movimientos en este período".
 func TestHandleOverview_VariationAloneIsNotAnEmptyPeriod(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
@@ -269,10 +254,6 @@ func sums(pairs ...any) []movement.CategorySum {
 	return out
 }
 
-// SumForUser devuelve los buckets ordenados por total DESC. Sobre un eje de
-// tiempo eso es ruido, así que buildTrendChart reconstruye la cronología — y
-// las dos series tienen que caer en la misma columna, incluso en los buckets
-// donde sólo una de ellas tiene fila.
 func TestBuildTrendChart(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -334,10 +315,6 @@ func TestBuildTrendChart(t *testing.T) {
 	}
 }
 
-// El caso reportado, mitad ida: Resumen es una vista de UN período y no ofrece
-// rangos de tendencia, pero tiene que devolver intacto el slot que usan
-// Evolución y el índice de Cuentas. Si no, cada paso por Resumen les borra la
-// memoria.
 func TestHandleOverview_AppStateKeepsTheTrendScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
@@ -359,11 +336,6 @@ func TestHandleOverview_AppStateKeepsTheTrendScope(t *testing.T) {
 	}
 }
 
-// El dato que viaja al gráfico ya no lleva color: lleva un rol, y app.js lo
-// resuelve leyendo el acento del tema. Es lo que paga la deuda de los dos
-// azules que DESIGN.md dejó anotada — un hex acá es un azul que no sigue al
-// usuario. Los colores de cuenta (AccountSlotColors) son la excepción y no
-// entran en esta vista.
 func TestOverview_TrendDataCarriesRolesNotColors(t *testing.T) {
 	data := templates.OverviewData{
 		TrendChart: templates.TrendChartData{

@@ -13,8 +13,8 @@ import (
 
 type stubMovementsEvolution struct {
 	stubMovementsWithAccounts
-	byMonth map[string][]movement.CategorySum // keyed by "YYYY-MM" of q.From
-	subs    map[string][]movement.CategorySum // keyed by category
+	byMonth map[string][]movement.CategorySum
+	subs    map[string][]movement.CategorySum
 }
 
 func (s stubMovementsEvolution) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
@@ -30,8 +30,7 @@ func (s stubMovementsEvolution) SumForUser(q movement.MovementQuery, groupBy str
 func d(v int64) decimal.Decimal { return decimal.NewFromInt(v) }
 
 func TestBuildEvolutionRows_SortsByPeriodTotalDesc(t *testing.T) {
-	// El bug: iterar un map de Go randomiza el orden, así que dos cargas de la
-	// misma data mostraban las filas distinto.
+
 	rows := buildEvolutionRows(
 		[]string{"Transporte", "Vivienda", "Ocio"},
 		map[string][]decimal.Decimal{
@@ -53,11 +52,11 @@ func TestBuildEvolutionRows_ShadesAgainstRowAverage(t *testing.T) {
 	rows := buildEvolutionRows(
 		[]string{"Ocio", "Vivienda", "Salud"},
 		map[string][]decimal.Decimal{
-			// promedio 125 → 200 es +60% (alto)
+
 			"Ocio": {d(100), d(100), d(100), d(200)},
-			// plano: nada se destaca aunque los números sean grandes
+
 			"Vivienda": {d(400), d(400), d(400), d(400)},
-			// promedio sobre meses CON movimiento (=30), no sobre 4
+
 			"Salud": {d(0), d(30), d(0), d(30)},
 		},
 		currency.ARS,
@@ -89,7 +88,7 @@ func TestBuildEvolutionRows_ShadesAgainstRowAverage(t *testing.T) {
 }
 
 func TestBuildEvolutionRows_SingleMonthWithDataIsNeverShaded(t *testing.T) {
-	// Sin al menos dos meses con movimiento no hay "normal" contra qué comparar.
+
 	rows := buildEvolutionRows([]string{"Viajes"}, map[string][]decimal.Decimal{
 		"Viajes": {d(0), d(0), d(900000)},
 	}, currency.ARS)
@@ -148,10 +147,6 @@ func TestHandleEvolution_ExpandShowsSubcategories(t *testing.T) {
 	}
 }
 
-// El caso reportado, mitad vuelta: Evolución no ofrece "Mes", así que lo
-// coacciona a 6M para renderizar. Esa coerción NO puede escribirse de vuelta
-// en el slot de las vistas de un período — Resumen sí ofrece 6M y lo aceptaría
-// como si lo hubiera elegido el usuario.
 func TestHandleEvolution_AppStateKeepsTheSinglePeriodScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	current := templates.CurrentMonth(nowInART()).Format("2006-01")
