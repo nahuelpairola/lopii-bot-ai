@@ -528,17 +528,11 @@ a[role="button"].chip::after {
   margin-bottom: var(--pico-spacing);
 }
 
-/* El total de Cuentas es la cifra que manda en esa pantalla, así que toma el
-   mismo tamaño que un KPI. No entra por la regla de .grid article .money
-   porque vive fuera del .grid a propósito: es el encabezado del grupo, no una
-   de sus tarjetas. */
-.accounts-total {
-  font-size: 1.75rem;
-  font-weight: 600;
-  line-height: 1.2;
-  margin: 0 0 var(--pico-spacing);
-}
-
+/* El total de una página: el rótulo y la cifra en un renglón. Modificador de
+   .balance-line, no una forma nueva — declara SÓLO el tamaño de la cifra, y la
+   forma (space-between, baseline, peso 600) sale de .balance-line, que las dos
+   hojas de movimientos ya usaban. Dimensionar el <p> agrandaría también el
+   rótulo con el que ahora comparte línea. */
 .page-total {
   margin: 0 0 var(--pico-spacing);
 }

@@ -34,8 +34,10 @@ templ Accounts(data AccountsData) {
 		// El total arriba y las filas abajo: la forma de un resumen de cuenta.
 		// "Saldo hoy" rotula el total, no las tarjetas — el saldo es el de hoy y
 		// no el del período, y decirlo una vez arriba alcanza.
-		@GroupTitle("Saldo hoy")
-		<p class="accounts-total money">{ data.Total }</p>
+		<p class="balance-line page-total">
+			<span>Saldo hoy</span>
+			<span class="money">{ data.Total }</span>
+		</p>
 		<div class="grid">
 			for _, a := range data.Snapshots {
 				<a class="account-card tappable" href={ templ.SafeURL(a.Href) } hx-get={ a.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">

@@ -168,3 +168,42 @@ func TestCategories_TotalSitsAboveTheTable(t *testing.T) {
 		t.Errorf("el total aparece %d veces, want 1 — no se duplica arriba y en el pie:\n%s", got, html)
 	}
 }
+
+// Entrar a una categoria daba CUATRO bloques apilados debajo de los controles
+// de periodo: volver, titulo, el rotulo "Total", y el total en fuente grande en
+// su propio renglon. El rotulo y la cifra se juntan en una linea.
+func TestCategoriesDrill_HeaderIsOneTotalLine(t *testing.T) {
+	data := CategoriesData{
+		Drill: "Alimentación",
+		Rows:  []CategoryRow{{Category: "Supermercado", Total: "$412.300", Share: "100%"}},
+		Total: "$412.300",
+	}
+
+	var sb strings.Builder
+	if err := SubcategoryDrill(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	back := strings.Index(html, "Volver")
+	h1 := strings.Index(html, "<h1>")
+	total := strings.Index(html, "page-total")
+	if total < 0 {
+		t.Fatalf("el total no toma .page-total, asi que sigue siendo un bloque aparte:\n%s", html)
+	}
+	if !(back < h1 && h1 < total) {
+		t.Errorf("el orden tiene que ser Volver → h1 → total (got %d, %d, %d):\n%s", back, h1, total, html)
+	}
+	if strings.Contains(html[h1:total], `class="group-title"`) {
+		t.Errorf("el rotulo Total sigue en su propio renglon arriba de la cifra:\n%s", html)
+	}
+	if !strings.Contains(html, `class="balance-line page-total"`) {
+		t.Errorf("el total no toma la forma que ya usan las dos hojas de movimientos:\n%s", html)
+	}
+	// .money es font-variant-numeric: tabular-nums. Viajaba en el <p> como
+	// class="accounts-total money"; si no baja al span, el numero mas grande de
+	// la pantalla pierde los numerales tabulares.
+	if !strings.Contains(html, `<span class="money">$412.300</span>`) {
+		t.Errorf("la cifra perdio .money, y con eso los numerales tabulares:\n%s", html)
+	}
+}
