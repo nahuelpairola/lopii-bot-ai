@@ -253,7 +253,6 @@ a, button, .tab-link {
 .content-area {
   /* clears the fixed tab bar, plus whatever Telegram/iOS reserve below it */
   padding-bottom: calc(4rem + var(--tg-safe-area-inset-bottom, 0px));
-  overscroll-behavior: contain;
 }
 
 .muted { color: var(--pico-muted-color); }
@@ -364,7 +363,7 @@ a[role="button"].chip::after {
   padding: 0.35rem 0.4rem;
 }
 
-.evolution-scroll { overflow-x: auto; overscroll-behavior: contain; }
+.evolution-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
 
 /* pico sets border-collapse:collapse on every table. With collapsed borders
    the borders belong to the table, not the cell, so a sticky cell scrolls

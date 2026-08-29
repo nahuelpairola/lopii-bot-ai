@@ -313,3 +313,25 @@ func TestAppCSS_CategoryTableIsCompacted(t *testing.T) {
 		t.Errorf("las celdas de .cat-table no declaran padding, y vuelven al de pico:\n%s", rule)
 	}
 }
+
+// overscroll-behavior SIN eje setea los dos. Y como overflow-x: auto asciende
+// el otro eje de visible a auto, este div es un contenedor de scroll vertical
+// que no tiene nada que scrollear: se come el gesto en vez de encadenarlo a la
+// pagina. La tabla ocupa el viewport, asi que no queda donde tocar.
+func TestAppCSS_HorizontalScrollerDoesNotTrapVerticalScroll(t *testing.T) {
+	css := readAppCSS(t)
+
+	rule := ruleAt(t, css, ".evolution-scroll {")
+	if strings.Contains(rule, "overscroll-behavior:") {
+		t.Errorf("el scroller sigue conteniendo los DOS ejes y atrapa el scroll vertical de la pagina:\n%s", rule)
+	}
+	if !strings.Contains(rule, "overscroll-behavior-x: contain") {
+		t.Errorf("se perdio la contencion horizontal, que si es intencional:\n%s", rule)
+	}
+
+	// .content-area no tiene overflow, asi que no es un contenedor de scroll y
+	// esta declaracion no hace nada: se lee como si sostuviera algo.
+	if strings.Contains(ruleAt(t, css, ".content-area {"), "overscroll-behavior") {
+		t.Error(".content-area volvio a declarar overscroll-behavior, que ahi no hace nada")
+	}
+}
