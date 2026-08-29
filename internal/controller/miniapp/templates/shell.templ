@@ -1,16 +1,5 @@
 package templates
 
-// Shell is the unauthenticated HTML skeleton served on a full-page
-// navigation. It cannot embed user data: Telegram delivers initData only to
-// client JS (launch-URL hash), so nothing is authenticated server-side yet.
-// Instead #content self-loads loadPath via htmx once telegram-web-app.js has
-// populated window.Telegram.WebApp.initData — that request carries the
-// X-Telegram-Init-Data header (see app.js) and IS authenticated.
-//
-// htmx is vendored and pinned to 2.0.4. It used to load from unpkg as
-// "htmx.org@2" — a floating major, so a release could change behaviour
-// without us touching anything, and the whole app died if the CDN was
-// unreachable from the webview.
 templ Shell(active string, loadPath string) {
 	<!DOCTYPE html>
 	<html lang="es">

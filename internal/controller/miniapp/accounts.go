@@ -14,23 +14,16 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// accountParam carries the drilled-into account. Query param y no segmento de
-// path, por el mismo criterio que categoryParam en categories.go: el drill vive
-// en el mismo handler que el índice, así la pestaña sigue marcada y no hay una
-// segunda ruta que mantener en sincronía.
 const accountParam = "account"
 
 func (c *controller) handleAccounts(ctx *gin.Context) {
 	userID := ctx.GetUint64(contextUserIDKey)
-	// El drill cuelga del mismo handler que el índice, como el de categorías.
+
 	if raw := ctx.Query(accountParam); raw != "" {
 		c.handleAccountLeaf(ctx, userID, raw)
 		return
 	}
-	// Mismo ámbito que Resumen y Categorías: el saldo de las tarjetas es el de
-	// hoy y no depende del período, así que no hay razón para que esta pantalla
-	// tenga memoria propia. Lo único que el período mueve acá es el gráfico, y
-	// con una ventana de un mes se dibuja solo (ver accounts.templ).
+
 	p := periodFromQuery(ctx, templates.SinglePeriodScope)
 
 	accounts, err := c.accounts.FindByUserID(userID)
@@ -39,9 +32,6 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 		return
 	}
 
-	// One currency at a time. ARS and USD never share an axis: a balance of
-	// USD 500 next to ARS 2.000.000 flattens the line into the baseline, and
-	// the two numbers mean nothing to each other anyway.
 	accounts = slices.DeleteFunc(accounts, func(a account.Account) bool {
 		return a.Currency != p.Currency
 	})
@@ -51,10 +41,6 @@ func (c *controller) handleAccounts(ctx *gin.Context) {
 	seenMonths := map[string]bool{}
 	var runningByAccount [][]monthBalance
 
-	// El total sale del mismo loop que ya suma cada cuenta: ni una consulta más,
-	// y cuadra con las filas por construcción porque es literalmente esos
-	// números sumados. Sin riesgo de cambio: accounts ya viene filtrado a una
-	// sola moneda más arriba, así que acá nunca se suman pesos con dólares.
 	total := decimal.Zero
 
 	for _, a := range accounts {
@@ -106,10 +92,6 @@ type monthBalance struct {
 	Balance float64
 }
 
-// cumulativeBalances runs a cumsum over ALL deltas (oldest first, as
-// MonthlyDeltasForAccount returns them) and only then keeps the trailing
-// `keep` months — cumsumming over the full history avoids the
-// opening-balance boundary bug a pre-filtered window would hit (spec §5).
 func cumulativeBalances(deltas []movement.MonthlyDelta, keep int) []monthBalance {
 	var running float64
 	all := make([]monthBalance, len(deltas))
@@ -136,20 +118,12 @@ func valuesForRunning(running []monthBalance, months []string) []float64 {
 	return out
 }
 
-// movementLeafLimit es el tope de filas de la hoja, y también el máximo que
-// ListForAccount acepta: por encima de eso cae a su default.
 const movementLeafLimit = 50
 
-// msgUnclassified nombra en pantalla lo que internamente es PENDING_REVIEW. Esa
-// jerga no llega a la vista, pero la fila sí: es plata que movió el saldo, y es
-// justo el movimiento que el usuario querría corregir.
 const msgUnclassified = "Sin clasificar"
 
-// handleAccountLeaf sirve la hoja de UNA cuenta: los movimientos que explican su
-// saldo, transferencias y filas reservadas incluidas.
 func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw string) {
-	// Mismo ámbito que el índice: un extracto de cuenta se lee por mes, igual
-	// que la grilla de saldos de la que se llega acá.
+
 	p := periodFromQuery(ctx, templates.SinglePeriodScope)
 
 	id, err := strconv.ParseUint(raw, 10, 64)
@@ -158,8 +132,6 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 		return
 	}
 
-	// La cuenta se busca entre las del usuario. El id de la query nunca se usa
-	// para consultar directo: es entrada del usuario y apunta a plata.
 	accounts, err := c.accounts.FindByUserID(userID)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
@@ -172,9 +144,6 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 	}
 	acc := accounts[idx]
 
-	// Recién ahora, con el id validado: los controles del período tienen que
-	// volver a ESTA hoja, no al índice. Va después de la validación para no
-	// reflejar en un link un id que resultó no ser del usuario.
 	p = p.WithDrill("&" + accountParam + "=" + strconv.FormatUint(id, 10))
 	p.HideCurrency = true
 
@@ -189,8 +158,6 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 		return
 	}
 
-	// Apertura y cierre salen del acumulado mensual completo, NO de las filas
-	// listadas: con el tope, la suma de lo visible no cerraría.
 	fromKey := p.From.Format("2006-01")
 	opening := sumDeltas(deltas, func(month string) bool { return month < fromKey })
 	inWindow := sumDeltas(deltas, func(month string) bool {
@@ -214,8 +181,6 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 	templates.AccountLeaf(data).Render(ctx.Request.Context(), ctx.Writer)
 }
 
-// sumDeltas suma los deltas cuyos meses cumplen keep. Las claves son "YYYY-MM",
-// así que compararlas como strings ordena igual que como fechas.
 func sumDeltas(deltas []movement.MonthlyDelta, keep func(month string) bool) decimal.Decimal {
 	sum := decimal.Zero
 	for _, d := range deltas {
@@ -226,9 +191,6 @@ func sumDeltas(deltas []movement.MonthlyDelta, keep func(month string) bool) dec
 	return sum
 }
 
-// movementRows arma las filas de la hoja. El monto va CON SIGNO, al revés que en
-// todas las otras vistas: acá la dirección es contra esta cuenta, y es justo el
-// contenido de la pantalla.
 func movementRows(movs []movement.Movement, cur currency.Currency) []templates.MovementRow {
 	rows := make([]templates.MovementRow, 0, len(movs))
 	for _, m := range movs {
@@ -248,13 +210,6 @@ func movementRows(movs []movement.Movement, cur currency.Currency) []templates.M
 	return rows
 }
 
-// taxonomyNote es el "de qué fue" que acompaña a la fecha. En la hoja de una
-// CUENTA cada fila cae en una categoría distinta, así que el par identifica el
-// gasto tanto como su descripción — al revés que en la hoja de una
-// subcategoría, donde el par sería el mismo en las 50 filas y no informa nada.
-//
-// Se omite cuando el título ya ES la subcategoría (un movimiento sin
-// descripción), porque repetirla al lado no agrega nada.
 func taxonomyNote(category, subcategory, title string) string {
 	if category == constants.PendingReview {
 		return msgUnclassified

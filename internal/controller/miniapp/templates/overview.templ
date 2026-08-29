@@ -1,8 +1,5 @@
 package templates
 
-// TrendChartData is the JSON shape read by app.js's "bar-grouped"/"line-multi"
-// chart types (see static/app.js): Chart.js's {labels, datasets} shape directly.
-// Exported: built by package miniapp's handlers, rendered by this package.
 type TrendChartData struct {
 	Labels   []string        `json:"labels"`
 	Datasets []TrendDataset  `json:"datasets"`
@@ -11,34 +8,22 @@ type TrendChartData struct {
 type TrendDataset struct {
 	Label string    `json:"label"`
 	Data  []float64 `json:"data"`
-	// Role es "expense" | "income" para las series de Resumen; app.js lo
-	// resuelve a un color. Las series por cuenta (Cuentas) siguen mandando
-	// BackgroundColor con su hex de slot: ahí el color ES la identidad.
 	Role            string `json:"role,omitempty"`
 	BackgroundColor string `json:"backgroundColor,omitempty"`
 }
 
-// OverviewData is what Overview renders.
 type OverviewData struct {
 	Period     Period
 	Gastos     string
 	Ingresos   string
 	Neto       string
-	NetoStatus string // "good" | "critical"
+	NetoStatus string
 	Empty      bool
 	TrendChart TrendChartData
-	// Variacion is what the balances did with no real transaction behind it
-	// (balance adjustments, investment yield), signed. It is deliberately NOT
-	// one of the three KPIs: it is not money earned or spent, and blending it
-	// into Ingresos is what made a CEDEAR revaluation read as salary.
-	// HasVariacion gates the whole row — a period without adjustments should
-	// not spend screen space saying "nothing happened".
 	HasVariacion bool
 	Variacion    string
 }
 
-// The <h2> the view used to open with is gone: the tab already says where you
-// are, and the period header earns that space by saying *when* you are.
 templ Overview(data OverviewData) {
 	@PeriodHeader(data.Period)
 	<div class="grid">

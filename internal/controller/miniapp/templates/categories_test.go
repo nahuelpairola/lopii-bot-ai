@@ -52,8 +52,7 @@ func TestSubcategoryLeaf_ShowsMovementsAndRealTotal(t *testing.T) {
 			t.Errorf("falta %q en la hoja:\n%s", want, html)
 		}
 	}
-	// El monto va en positivo: son todos gastos y el signo no aporta nada. Es la
-	// diferencia deliberada con la hoja de cuenta, donde la dirección ES el dato.
+
 	if strings.Contains(html, "-$34.500") {
 		t.Error("en esta hoja el monto va sin signo: son todos gastos")
 	}
@@ -74,8 +73,6 @@ func TestSubcategoryLeaf_Empty(t *testing.T) {
 	}
 }
 
-// Las dos pantallas profundas de Categorias tenian el Volver ABAJO del titulo.
-// Suben, y toman .tappable como el de la hoja de cuenta.
 func TestCategoriesDeepViews_BackLinkSitsAboveTheTitle(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -116,10 +113,6 @@ func TestCategoriesDeepViews_BackLinkSitsAboveTheTitle(t *testing.T) {
 	}
 }
 
-// El grafico de Categorias es de barras HORIZONTALES: cada barra es una
-// categoria, y con el alto fijo de Chart.js veinte categorias son veinte
-// pelitos. Necesita el envoltorio para que app.js le pueda dar un alto que
-// crece con las filas.
 func TestCategories_ChartSitsInABox(t *testing.T) {
 	data := CategoriesData{
 		Rows:  []CategoryRow{{Category: "Alimentación", Total: "$1"}},
@@ -141,10 +134,6 @@ func TestCategories_ChartSitsInABox(t *testing.T) {
 	}
 }
 
-// El total vivía solo en el <tfoot>, abajo de las diez filas: en una pantalla
-// con muchas categorías hay que scrollear para verlo, y es el numero que
-// responde "cuanto gaste este mes", la razon por la que alguien entra a esta
-// vista. Sube arriba, como el total de Cuentas.
 func TestCategories_TotalSitsAboveTheTable(t *testing.T) {
 	data := CategoriesData{
 		Rows: []CategoryRow{
@@ -166,5 +155,39 @@ func TestCategories_TotalSitsAboveTheTable(t *testing.T) {
 	}
 	if got := strings.Count(html, "$80.000"); got != 1 {
 		t.Errorf("el total aparece %d veces, want 1 — no se duplica arriba y en el pie:\n%s", got, html)
+	}
+}
+
+func TestCategoriesDrill_HeaderIsOneTotalLine(t *testing.T) {
+	data := CategoriesData{
+		Drill: "Alimentación",
+		Rows:  []CategoryRow{{Category: "Supermercado", Total: "$412.300", Share: "100%"}},
+		Total: "$412.300",
+	}
+
+	var sb strings.Builder
+	if err := SubcategoryDrill(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	back := strings.Index(html, "Volver")
+	h1 := strings.Index(html, "<h1>")
+	total := strings.Index(html, "page-total")
+	if total < 0 {
+		t.Fatalf("el total no toma .page-total, asi que sigue siendo un bloque aparte:\n%s", html)
+	}
+	if !(back < h1 && h1 < total) {
+		t.Errorf("el orden tiene que ser Volver → h1 → total (got %d, %d, %d):\n%s", back, h1, total, html)
+	}
+	if strings.Contains(html[h1:total], `class="group-title"`) {
+		t.Errorf("el rotulo Total sigue en su propio renglon arriba de la cifra:\n%s", html)
+	}
+	if !strings.Contains(html, `class="balance-line page-total"`) {
+		t.Errorf("el total no toma la forma que ya usan las dos hojas de movimientos:\n%s", html)
+	}
+
+	if !strings.Contains(html, `<span class="money">$412.300</span>`) {
+		t.Errorf("la cifra perdio .money, y con eso los numerales tabulares:\n%s", html)
 	}
 }

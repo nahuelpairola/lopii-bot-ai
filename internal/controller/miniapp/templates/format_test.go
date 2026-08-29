@@ -57,11 +57,11 @@ func TestFormatCompact(t *testing.T) {
 	}
 }
 
-func TestScaleNote(t *testing.T) {
-	if got := ScaleNote(currency.ARS); got != " · en miles de $" {
-		t.Errorf("ScaleNote(ARS) = %q, want %q", got, " · en miles de $")
+func TestScaleLabel(t *testing.T) {
+	if got := ScaleLabel(currency.ARS); got != "en miles de $" {
+		t.Errorf("ScaleLabel(ARS) = %q, want %q", got, "en miles de $")
 	}
-	if got := ScaleNote(currency.USD); got != "" {
-		t.Errorf("ScaleNote(USD) = %q, want empty", got)
+	if got := ScaleLabel(currency.USD); got != "" {
+		t.Errorf("ScaleLabel(USD) = %q, want empty", got)
 	}
 }

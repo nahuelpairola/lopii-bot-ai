@@ -1,17 +1,5 @@
 package templates
 
-// movementList es la lista de movimientos que comparten las dos hojas: la de
-// una cuenta y la de una subcategoría. Se extrajo al aparecer el segundo
-// consumidor, no antes.
-//
-// Filas y no <table>: cuatro datos por movimiento en un webview angosto obligan
-// a scrollear en horizontal si esto fuera una tabla.
-//
-// Agrupada por día: la fecha subió al encabezado y salió de las 50 filas, así
-// la meta de cada fila queda con lo único que distingue una de otra dentro del
-// mismo día. Cada grupo es su propio <section> porque el buscador de la hoja
-// esconde el grupo ENTERO cuando ninguna de sus filas matchea — si no, el
-// encabezado del día queda flotando sin nada abajo.
 templ movementList(rows []MovementRow) {
 	for _, group := range GroupRowsByDay(rows) {
 		<section class="mov-group">

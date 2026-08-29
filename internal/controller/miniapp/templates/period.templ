@@ -2,23 +2,6 @@ package templates
 
 import "lopiibot.com/internal/currency"
 
-// PeriodHeader renders the window controls and, crucially, #app-state: the
-// hidden inputs the tab bar pulls in via hx-include. That is how a tab
-// navigation keeps the period the user picked without any JS — the tab bar
-// lives in the shell and is rendered once, so it cannot carry fresh state in
-// its own hrefs.
-// AppState son los inputs ocultos que el tabbar levanta con hx-include
-// (tabbar.templ): así una navegación por pestaña conserva el período elegido
-// sin una línea de JS, porque el tabbar vive en el shell y se renderiza una
-// sola vez, sin poder llevar estado fresco en sus propios hrefs.
-//
-// Vive separado de PeriodHeader para que una vista sin controles visibles
-// pueda LLEVAR el estado sin MOSTRARLO — el caso histórico fue Admin (ya
-// removida), pero cualquier vista futura sin contenido dependiente del
-// período la necesita: unas flechas y unos chips ahí serían un control que no
-// hace nada. Una vista que emitiera los inputs a mano se desincronizaría el
-// día que se agregue un scope; por eso esto es un componente y no una copia.
-// PeriodHeader es hoy su único consumidor.
 templ AppState(p Period) {
 	<div id="app-state" hidden>
 		for _, s := range PresetScopes {

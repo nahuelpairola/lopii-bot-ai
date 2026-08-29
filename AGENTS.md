@@ -148,6 +148,7 @@ find the same *reasoning* in two places, one of them is already stale: fix it, d
 | A comment at a line | why *this* line is what it is: the conclusion, 1-3 lines | you are editing that line |
 | `internal/<pkg>/AGENTS.md` | the traps of that package: what compiles fine and behaves wrong | you touch any file in that package |
 | [docs/decisions.md](docs/decisions.md) | **why the design is what it is**: measurements, incidents, rejected alternatives | a comment points you there, or you are about to change a design choice |
+| [DESIGN.md](DESIGN.md) | the Mini App's design system: the Telegram token mapping, the type ramp, the 44px rule and the three fixed-colour exceptions | before changing anything visual in the Mini App |
 
 `docs/decisions.md` is the long form and the one most easily forgotten. It is grouped into nine
 addressable sections - money model, agent loop and QUERY, Groq quota, taxonomy, flows - so a code
@@ -156,6 +157,12 @@ there**: most were, with the production numbers that settled them.
 
 Two more, read on demand: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) indexes every reference doc
 (data model, business rules, recipes, dev setup, Grafana) and holds the anti-pattern list.
+
+`DESIGN.md` and `PRODUCT.md` sit at the repo root and are **generated** by `/impeccable document`
+from the shipped artifact, with `.impeccable/design.json` as their sidecar. Change them by
+regenerating, never by hand — an edited `DESIGN.md` drifts from the sidecar silently. Until
+2026-08-29 nothing in this table named `DESIGN.md`, so it was invisible to anyone reading only
+the index; that is how a comment purge nearly deleted measurements it turned out to hold.
 
 For structure, this repo has `.codegraph/` indexed: `codegraph_explore` answers "where is X, what
 calls Y, how does this flow" in one call, with verbatim source plus the call graph. Use it to get

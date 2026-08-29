@@ -25,8 +25,6 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 	incomeQ := base
 	incomeQ.Type = &incomeType
 
-	// A one-month window plots daily bars; anything wider plots months. Both
-	// shapes carry the same two series — gastos e ingresos, lado a lado.
 	groupBy := movement.GroupByMonth
 	bucketLabel := templates.ShortMonth
 	if p.Months == 1 {
@@ -55,12 +53,6 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 		return
 	}
 
-	// Lo que los saldos hicieron sin una transacción real detrás: ajustes de
-	// saldo y rendimiento de inversión. Va aparte de Gastos/Ingresos a
-	// propósito — una revaluación de CEDEARs entra hoy y sale mañana, y
-	// contarla como plata ganada o gastada rompe el promedio diario. Type nil
-	// descarta los transfer, y con eso caen solos los saldos iniciales y las
-	// patas de transferencia, que son plomería que nadie quiere ver.
 	variationQ := base
 	variationQ.OnlyReserved = true
 	variationRows, err := c.movements.SumForUser(variationQ, movement.GroupByType)
@@ -87,13 +79,10 @@ func (c *controller) handleOverview(ctx *gin.Context) {
 		Ingresos:   templates.FormatMoney(incomes, p.Currency),
 		Neto:       templates.FormatMoney(neto, p.Currency),
 		NetoStatus: status,
-		// Un período cuyo único evento fue un ajuste no está vacío: el saldo se
-		// movió. Sin la variación acá, la vista se contradecía sola —
-		// mostraba "+$84.200" y justo abajo "Sin movimientos en este período".
+
 		Empty:      expenses.IsZero() && incomes.IsZero() && variation.IsZero(),
 		TrendChart: trend,
-		// La fila solo existe si hubo variación: en un mes sin ajustes no
-		// tiene por qué ocupar lugar ni pedir atención.
+
 		HasVariacion: !variation.IsZero(),
 		Variacion:    signedMoney(variation, p.Currency),
 	}
@@ -109,10 +98,6 @@ func sumTotal(rows []movement.CategorySum) decimal.Decimal {
 	return rows[0].Total
 }
 
-// signedVariation folds the reserved rows, grouped by type, into one signed
-// figure. SumForUser returns SUM(ABS(amount)) — the sign is a storage detail
-// that never surfaces — so direction has to come back from the type label:
-// income is money that appeared in an account, expense money that left it.
 func signedVariation(rows []movement.CategorySum) decimal.Decimal {
 	v := decimal.Zero
 	for _, r := range rows {
@@ -125,8 +110,6 @@ func signedVariation(rows []movement.CategorySum) decimal.Decimal {
 	return v
 }
 
-// signedMoney renders a delta rather than a balance, so a gain carries its "+"
-// explicitly. FormatMoney already writes the "-" for a loss.
 func signedMoney(d decimal.Decimal, cur currency.Currency) string {
 	if d.IsPositive() {
 		return "+" + templates.FormatMoney(d, cur)
@@ -134,9 +117,6 @@ func signedMoney(d decimal.Decimal, cur currency.Currency) string {
 	return templates.FormatMoney(d, cur)
 }
 
-// buildTrendChart merges the two series into one Chart.js-ready shape, aligned
-// on the union of bucket labels present in either. display renders a bucket key
-// as its axis text; it runs last, so the alignment above works on the raw keys.
 func buildTrendChart(expenses, incomes []movement.CategorySum, display func(string) string) templates.TrendChartData {
 	keys := unionLabels(expenses, incomes)
 	labels := make([]string, len(keys))
@@ -152,10 +132,6 @@ func buildTrendChart(expenses, incomes []movement.CategorySum, display func(stri
 	}
 }
 
-// unionLabels returns every bucket key present in either series, oldest first.
-// SumForUser orders by total DESC — fine for a category ranking, nonsense for a
-// time axis — so the order is rebuilt here. Sorting the keys as strings is the
-// chronological sort: "YYYY-MM" and "YYYY-MM-DD" are zero-padded fixed-width.
 func unionLabels(a, b []movement.CategorySum) []string {
 	seen := map[string]bool{}
 	var labels []string

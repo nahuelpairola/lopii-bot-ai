@@ -8,45 +8,30 @@ package templates
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// TrendChartData is the JSON shape read by app.js's "bar-grouped"/"line-multi"
-// chart types (see static/app.js): Chart.js's {labels, datasets} shape directly.
-// Exported: built by package miniapp's handlers, rendered by this package.
 type TrendChartData struct {
 	Labels   []string       `json:"labels"`
 	Datasets []TrendDataset `json:"datasets"`
 }
 
 type TrendDataset struct {
-	Label string    `json:"label"`
-	Data  []float64 `json:"data"`
-	// Role es "expense" | "income" para las series de Resumen; app.js lo
-	// resuelve a un color. Las series por cuenta (Cuentas) siguen mandando
-	// BackgroundColor con su hex de slot: ahí el color ES la identidad.
-	Role            string `json:"role,omitempty"`
-	BackgroundColor string `json:"backgroundColor,omitempty"`
+	Label           string    `json:"label"`
+	Data            []float64 `json:"data"`
+	Role            string    `json:"role,omitempty"`
+	BackgroundColor string    `json:"backgroundColor,omitempty"`
 }
 
-// OverviewData is what Overview renders.
 type OverviewData struct {
-	Period     Period
-	Gastos     string
-	Ingresos   string
-	Neto       string
-	NetoStatus string // "good" | "critical"
-	Empty      bool
-	TrendChart TrendChartData
-	// Variacion is what the balances did with no real transaction behind it
-	// (balance adjustments, investment yield), signed. It is deliberately NOT
-	// one of the three KPIs: it is not money earned or spent, and blending it
-	// into Ingresos is what made a CEDEAR revaluation read as salary.
-	// HasVariacion gates the whole row — a period without adjustments should
-	// not spend screen space saying "nothing happened".
+	Period       Period
+	Gastos       string
+	Ingresos     string
+	Neto         string
+	NetoStatus   string
+	Empty        bool
+	TrendChart   TrendChartData
 	HasVariacion bool
 	Variacion    string
 }
 
-// The <h2> the view used to open with is gone: the tab already says where you
-// are, and the period header earns that space by saying *when* you are.
 func Overview(data OverviewData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -79,7 +64,7 @@ func Overview(data OverviewData) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(data.Gastos)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 47, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 32, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -92,7 +77,7 @@ func Overview(data OverviewData) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(data.Ingresos)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 51, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 36, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -120,7 +105,7 @@ func Overview(data OverviewData) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(data.Neto)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 61, Col: 15}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 46, Col: 15}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -138,7 +123,7 @@ func Overview(data OverviewData) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(data.Variacion)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 67, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/overview.templ`, Line: 52, Col: 39}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {

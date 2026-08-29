@@ -2,14 +2,14 @@ package templates
 
 type EvolutionCell struct {
 	Value     string
-	Intensity string // "" | CellMild | CellHigh
+	Intensity string
 }
 
 type EvolutionRow struct {
 	Label string
 	Icon  string
 	Href  string
-	Sub   bool // a subcategory row of the expanded category
+	Sub   bool
 	Cells []EvolutionCell
 }
 
@@ -27,7 +27,15 @@ templ Evolution(data EvolutionData) {
 	if data.Empty {
 		@EmptyState("Sin gastos en este período.")
 	} else {
-		<h1>Gasto por categoría{ ScaleNote(data.Period.Currency) }</h1>
+		<h1>Gasto por categoría</h1>
+		<p class="muted evolution-legend">
+			<span class={ "legend-swatch", CellMild }></span> arriba del promedio de la fila ·
+			<span class={ "legend-swatch", CellHigh }></span> muy por encima
+			if ScaleLabel(data.Period.Currency) != "" {
+				· { ScaleLabel(data.Period.Currency) }
+			}
+			· Tocá una categoría para abrir sus subcategorías.
+		</p>
 		<div class="evolution-scroll">
 			<table class="evolution">
 				<thead>
@@ -66,6 +74,5 @@ templ Evolution(data EvolutionData) {
 				</tbody>
 			</table>
 		</div>
-		<p class="muted evolution-legend">La sombra marca los meses por encima de tu promedio en esa fila. Tocá una categoría para abrir sus subcategorías.</p>
 	}
 }

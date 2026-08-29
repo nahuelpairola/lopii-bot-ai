@@ -101,8 +101,6 @@ func TestAccountLeaf_WarnsWhenCapped(t *testing.T) {
 	}
 }
 
-// El buscador y su cartel de "sin resultados" los maneja app.js por id. Si un
-// `templ generate` mal corrido se come el input, no hay nada más que lo note.
 func TestAccountLeaf_RendersFilterInput(t *testing.T) {
 	data := AccountLeafData{
 		AccountName: "Galicia",
@@ -159,9 +157,6 @@ func TestAccountLeaf_EmptyStillShowsBalances(t *testing.T) {
 	}
 }
 
-// La fecha sale de las 50 filas y sube a un encabezado por dia. Lo que queda
-// en la meta es solo "Categoria › Subcategoria", que es lo que distingue una
-// fila de otra dentro del mismo dia.
 func TestAccountLeaf_GroupsMovementsByDay(t *testing.T) {
 	data := AccountLeafData{
 		AccountName: "Efectivo",
@@ -189,9 +184,6 @@ func TestAccountLeaf_GroupsMovementsByDay(t *testing.T) {
 	}
 }
 
-// Cada grupo es su propio contenedor. Sin eso el buscador no tiene que
-// esconder cuando ninguna fila de ese dia matchea, y el encabezado queda
-// flotando solo.
 func TestAccountLeaf_EachDayIsItsOwnGroupElement(t *testing.T) {
 	data := AccountLeafData{
 		AccountName: "Efectivo",
@@ -212,10 +204,6 @@ func TestAccountLeaf_EachDayIsItsOwnGroupElement(t *testing.T) {
 	}
 }
 
-// Una vista titulada abre con UN h1. No habia ningun h1 en la app: cuatro
-// vistas titulaban con h2 y Evolucion con un <caption>. El tamanio no cambia
-// —el h1 se estila al 1.75rem que tenia el h2, que es el techo de la rampa—
-// asi que esto es estructura, no enfasis.
 func TestAccountLeaf_OpensWithASingleH1(t *testing.T) {
 	data := AccountLeafData{AccountName: "Galicia", BackQuery: "/app/accounts?p=6m"}
 

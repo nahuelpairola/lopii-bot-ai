@@ -6,10 +6,6 @@ import (
 	"testing"
 )
 
-// La vista de admin se saco de la Mini App entera por decision del usuario
-// (2026-08-25): la pestania OOB, /app/admin y toda su maquinaria del lado del
-// handler. Este test se queda como guarda de que no vuelva ningun residuo
-// visible — el swap OOB era el unico que existia en el Resumen.
 func TestOverview_CarriesNoOOBSwap(t *testing.T) {
 	var sb strings.Builder
 	if err := Overview(OverviewData{}).Render(context.Background(), &sb); err != nil {
