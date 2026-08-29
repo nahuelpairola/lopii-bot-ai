@@ -134,21 +134,26 @@ mapping, the measured contrasts. Read it before changing anything visual, and re
 `/impeccable document` after you do; it is derived from the shipped artifact and
 `.impeccable/design.json` is its sidecar.
 
-The rule it turns on: **the app does not own its palette — Telegram does.** `app.css` remaps 19
-pico tokens onto `--tg-theme-*` across **three** selector blocks (light,
-`prefers-color-scheme: dark`, `[data-theme=dark]`), because one block either loses to pico on
-specificity or wins everywhere and drags one theme's fallbacks over the other's palette — which
-looks wrong outside Telegram without anything failing. Every `--tg-*` reference carries a
-fallback; `TestAppCSS_EveryTelegramVarHasFallback` enforces it.
+The rule it turns on: **the app does not own its palette — Telegram does.** Which colours are
+remapped, which few stay fixed and why, are `DESIGN.md`'s to state; below is only what will bite
+you in this code.
 
-Three deliberate exceptions keep a fixed colour, and the reason is what the colour *means*, not
-taste: the positive green (Telegram ships `destructive-text-color` and has no positive
-counterpart), `AccountSlotColors` (colour is categorical identity — an account's card and its
-trend line must match, and eight distinguishable hues cannot be derived from an arbitrary theme),
-and pico's own light/dark fallbacks.
+**A new mapping goes in all three selector blocks, or it silently half-works.** `app.css` carries
+light, `prefers-color-scheme: dark` and `[data-theme=dark]` separately. One block either loses to
+pico on specificity or wins everywhere and drags one theme's fallbacks over the other's palette —
+nothing fails, it just looks wrong outside Telegram.
 
-Chart.js cannot read CSS variables, so Go sends a **role** and never a colour
-(`RoleExpense`/`RoleIncome`); `colorForRole()` in `app.js` resolves it from the computed style.
+**Two tests are the whole guard, and one of them is a hand-written list.**
+`TestAppCSS_EveryTelegramVarHasFallback` catches a missing fallback on its own, but
+`TestAppCSS_MapsPicoTokensToTelegramTheme` only checks the tokens named in
+`picoTokensMappedToTelegram` (`theme_test.go`). **Using a new pico colour in `app.css` without
+adding it to that map is invisible**: the token keeps pico's own hardcoded value and the suite
+stays green. That is exactly how `--pico-primary-focus` and `--pico-table-border-color` each went
+months unmapped — the focus ring and the table hairlines were pico azure and grey on every theme.
+
+**Never send a colour from Go to a chart.** Chart.js cannot read CSS variables, so Go sends a
+**role** (`RoleExpense`/`RoleIncome`) and `colorForRole()` in `app.js` resolves it from the
+computed style. A hex crossing that boundary is a colour that stops following the theme.
 
 ---
 
