@@ -125,6 +125,31 @@ thing for itself — nothing above the template enforces it.
 
 Chart math and period arithmetic are self-explanatory and tested — nothing about them here.
 
+## The palette is not ours
+
+**This package's code carries no comments** (2026-08-29): the code is the source of truth for
+behaviour, and everything a number in `app.css` used to explain lives in
+[DESIGN.md](../../../DESIGN.md) at the repo root — the type ramp, the 44px rule, the token
+mapping, the measured contrasts. Read it before changing anything visual, and regenerate it with
+`/impeccable document` after you do; it is derived from the shipped artifact and
+`.impeccable/design.json` is its sidecar.
+
+The rule it turns on: **the app does not own its palette — Telegram does.** `app.css` remaps 19
+pico tokens onto `--tg-theme-*` across **three** selector blocks (light,
+`prefers-color-scheme: dark`, `[data-theme=dark]`), because one block either loses to pico on
+specificity or wins everywhere and drags one theme's fallbacks over the other's palette — which
+looks wrong outside Telegram without anything failing. Every `--tg-*` reference carries a
+fallback; `TestAppCSS_EveryTelegramVarHasFallback` enforces it.
+
+Three deliberate exceptions keep a fixed colour, and the reason is what the colour *means*, not
+taste: the positive green (Telegram ships `destructive-text-color` and has no positive
+counterpart), `AccountSlotColors` (colour is categorical identity — an account's card and its
+trend line must match, and eight distinguishable hues cannot be derived from an arbitrary theme),
+and pico's own light/dark fallbacks.
+
+Chart.js cannot read CSS variables, so Go sends a **role** and never a colour
+(`RoleExpense`/`RoleIncome`); `colorForRole()` in `app.js` resolves it from the computed style.
+
 ---
 
 **Why the design is this way** — the measurements, incidents and rejected
