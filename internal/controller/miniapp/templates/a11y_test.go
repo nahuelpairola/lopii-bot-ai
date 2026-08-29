@@ -171,3 +171,47 @@ func TestTrendChartAlt_SurvivesEmptyAndSinglePointSeries(t *testing.T) {
 		t.Errorf("no nombra la serie: %q", got)
 	}
 }
+
+func TestOverview_HasAHeadingEvenThoughItShowsNone(t *testing.T) {
+	var sb strings.Builder
+	if err := Overview(OverviewData{Period: Period{Currency: currency.ARS}, Empty: true}).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if !strings.Contains(html, `<h1 class="sr-only">`) {
+		t.Errorf("la pantalla de entrada no tiene ningun encabezado, asi que navegando por encabezados no hay donde anclar:\n%s", html)
+	}
+}
+
+func TestEvolution_LegendSwatchesAreDecorative(t *testing.T) {
+	data := EvolutionData{
+		Period: Period{Currency: currency.ARS},
+		Months: []string{"2026-08"},
+		Rows:   []EvolutionRow{{Label: "Alimentación", Cells: []EvolutionCell{{Value: "60"}}}},
+		Totals: []EvolutionCell{{Value: "60"}},
+	}
+
+	var sb strings.Builder
+	if err := Evolution(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if got := strings.Count(html, `legend-swatch`); got != 2 {
+		t.Fatalf("muestras = %d, want 2", got)
+	}
+	if got := strings.Count(html, `aria-hidden="true"></span>`); got != 2 {
+		t.Errorf("las muestras son spans vacios y no estan marcadas como decorativas:\n%s", html)
+	}
+}
+
+func TestPeriodHeader_NamesTheChipGroup(t *testing.T) {
+	var sb strings.Builder
+	if err := PeriodHeader(Period{Currency: currency.ARS}).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if html := sb.String(); !strings.Contains(html, `role="group" aria-label=`) {
+		t.Errorf("el grupo de chips no tiene nombre accesible:\n%s", html)
+	}
+}

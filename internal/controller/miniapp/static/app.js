@@ -130,14 +130,16 @@ document.addEventListener('htmx:configRequest', (evt) => {
 
 const ROUTE_STATUS_ID = 'route-status';
 
-function announceRoute() {
+function announce(text) {
   const status = document.getElementById(ROUTE_STATUS_ID);
-  if (!status) return;
+  if (!status || !text || text === status.textContent) return;
+  status.textContent = text;
+}
+
+function announceRoute() {
   const heading = document.querySelector('#content h1');
   const tab = document.querySelector('.tab-link[aria-current]');
-  const name = (heading && heading.textContent.trim()) || (tab && tab.textContent.trim());
-  if (!name || name === status.textContent) return;
-  status.textContent = name;
+  announce((heading && heading.textContent.trim()) || (tab && tab.textContent.trim()));
 }
 
 function markActiveTab() {
@@ -151,24 +153,44 @@ function markActiveTab() {
   });
 }
 
-document.addEventListener('htmx:responseError', (evt) => {
+function showError(message, retriable) {
   const content = document.getElementById('content');
   if (!content) return;
+
+  const article = document.createElement('article');
+  const text = document.createElement('p');
+  text.textContent = message;
+  article.append(text);
+
+  if (retriable) {
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'outline';
+    retry.textContent = 'Reintentar';
+    retry.addEventListener('click', () => {
+      htmx.ajax('GET', location.pathname + location.search, {
+        target: '#content',
+        indicator: '#content',
+      });
+    });
+    article.append(retry);
+  }
+
+  content.innerHTML = '';
+  content.append(article);
+  announce(message);
+}
+
+document.addEventListener('htmx:responseError', (evt) => {
   if (evt.detail.xhr.status === 401) {
-    content.innerHTML =
-      '<article><p>Sesión vencida. Volvé a abrir la app desde el botón del chat.</p></article>';
+    showError('Sesión vencida. Volvé a abrir la app desde el botón del chat.', false);
     return;
   }
-  content.innerHTML =
-    '<article><p>No se pudo cargar. Probá de nuevo en un momento.</p></article>';
+  showError('No se pudo cargar. Probá de nuevo en un momento.', true);
 });
 
 document.addEventListener('htmx:sendError', () => {
-  const content = document.getElementById('content');
-  if (content) {
-    content.innerHTML =
-      '<article><p>Sin conexión. Probá de nuevo cuando vuelva.</p></article>';
-  }
+  showError('Sin conexión. Probá de nuevo cuando vuelva.', true);
 });
 
 function applyTelegramTheme() {

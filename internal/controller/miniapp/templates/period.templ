@@ -28,7 +28,15 @@ templ PeriodHeader(p Period) {
 				<span class="period-cursor-off" aria-hidden="true">&rsaquo;</span>
 			}
 		</div>
-		<div class="chips" role="group">
+		<div
+			class="chips"
+			role="group"
+			if p.HideCurrency {
+				aria-label="Período"
+			} else {
+				aria-label="Período y moneda"
+			}
+		>
 			for _, preset := range p.Scope.Allowed {
 				<a
 					role="button"

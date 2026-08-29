@@ -50,6 +50,7 @@ var picoTokensMappedToTelegram = map[string]string{
 	"--pico-h3-color":                         "--tg-theme-text-color",
 	"--pico-muted-color":                      "--tg-theme-hint-color",
 	"--pico-muted-border-color":               "--tg-theme-section-separator-color",
+	"--pico-table-border-color":               "--tg-theme-section-separator-color",
 	"--pico-primary":                          "--tg-theme-accent-text-color",
 	"--pico-primary-hover":                    "--tg-theme-accent-text-color",
 	"--pico-primary-focus":                    "--tg-theme-accent-text-color",
@@ -313,6 +314,17 @@ func TestAppCSS_HeatCellsAreDerivedFromTheTextColour(t *testing.T) {
 		}
 		if !strings.Contains(rule, "--pico-color") {
 			t.Errorf("%s no deriva del color de texto, asi que el tinte no sigue al tema:\n%s", sel, rule)
+		}
+	}
+}
+
+func TestAppCSS_ThemesTheBrowsersOwnSurfaces(t *testing.T) {
+	css := readAppCSS(t)
+
+	for _, sel := range []string{"::selection {", "input {"} {
+		rule := ruleAt(t, css, sel)
+		if !strings.Contains(rule, "var(--pico-") {
+			t.Errorf("%s no sale de la paleta, asi que se queda con el default del navegador:\n%s", sel, rule)
 		}
 	}
 }
