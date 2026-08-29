@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-25T00:00:00Z",
+  "generatedAt": "2026-08-29T19:11:20Z",
   "title": "Design System: Lopii Mini App",
   "extensions": {
     "colorMeta": {
@@ -392,13 +392,17 @@
       }
     },
     "typographyMeta": {
-      "heading": {
-        "displayName": "Heading",
-        "purpose": "The one heading level, #content h1. Opens AccountLeaf, SubcategoryDrill, SubcategoryLeaf and Evolucion; Resumen has none, deliberately. Size/line-height matches what the old h2 (and Evolucion's old <caption>) already rendered at - a zero-pixel-delta semantic fix, not a size increase."
-      },
       "kpi": {
         "displayName": "KPI",
         "purpose": "Money inside a card. 1.75rem is a ceiling: $1.234.567,00 fits a 360px card at this size and not at 2rem."
+      },
+      "page-total": {
+        "displayName": "Page Total",
+        "purpose": "The one figure that answers the screen: Categorias' and its drill's Total, Cuentas' Saldo hoy. A step below the KPI because it shares a line with its own label and would crush it; the KPI stands alone in its card and keeps the top step."
+      },
+      "heading": {
+        "displayName": "Heading",
+        "purpose": "The one heading level, #content h1. Opens AccountLeaf, SubcategoryDrill, SubcategoryLeaf and Evolucion; Resumen has none, deliberately. It sits BELOW both money steps on purpose: at 1.75rem it tied the KPI figure and the page total, so the largest type on screen was simultaneously a label and a number and neither dominated."
       },
       "body": {
         "displayName": "Body",
@@ -516,7 +520,7 @@
       "refersTo": null,
       "description": "Categorias' three-column table (name, total, share). Same 0.85rem/0.35rem-0.4rem compaction as Evolucion and for the same reason, but no scroller or sticky column - three columns fit a 360px phone outright.",
       "html": "<table class=\"ds-cat-table\"><tr><td><a class=\"ds-row-link\" href=\"#\">🍝 Comida</a></td><td>$62.800</td><td>24%</td></tr></table>",
-      "css": ".ds-cat-table { font-size: 0.85rem; width: 100%; } .ds-cat-table th, .ds-cat-table td { padding: 0.35rem 0.4rem; }"
+      "css": ".ds-cat-table { font-size: 0.85rem; width: 100%; } .ds-cat-table th, .ds-cat-table td { padding: 0 0.4rem; height: 44px; }"
     },
     {
       "name": "Failure State",
@@ -538,17 +542,25 @@
       "name": "Row Link",
       "kind": "custom",
       "refersTo": "row-link",
-      "description": "The 44px-tall row-link rule for an <a> sitting inside a table cell, used by Categorias' category-row links and Evolucion's expandable-category row links. min-height does nothing on an inline <a>, which is why these rows measured ~32-36px with the 44px floor already written elsewhere and simply unreachable; .row-link fixes it by being a flex row instead of a min-height override.",
-      "html": "<td><a class=\"ds-row-link\" href=\"#\">🍝 Comida</a></td>",
-      "css": ".ds-row-link { display: flex; align-items: center; min-height: 44px; text-decoration: none; color: inherit; }"
+      "description": "A table-cell row link that fills its cell. The 44px pitch is set on the cell; the link stretches inside it.",
+      "html": "<table><tbody><tr><td class=\"ds-row-cell\"><a class=\"ds-row-link\" href=\"#\">&#127837; Alimentacion</a></td></tr></tbody></table>",
+      "css": ".ds-row-cell { height: 44px; padding: 0 0.4rem; border-bottom: 1px solid var(--pico-muted-border-color, #e7eaef); } .ds-row-link { display: flex; align-items: center; min-height: 44px; text-decoration: none; color: inherit; } .ds-row-link:active { opacity: 0.7; }"
     },
     {
-      "name": "Accounts Total",
+      "name": "Page Total",
       "kind": "custom",
-      "refersTo": "accounts-total",
-      "description": "Cuentas' running total, above the account cards and outside the .grid. Takes the KPI figure treatment (1.75rem/600) directly, since the scoped .grid article .money rule cannot reach it and this is the number that governs the whole screen.",
-      "html": "<p class=\"ds-accounts-total ds-money\">$1.204.880,55</p>",
-      "css": ".ds-accounts-total { font-size: 1.75rem; font-weight: 600; line-height: 1.2; margin: 0 0 var(--pico-spacing, 0.75rem); font-variant-numeric: tabular-nums; }"
+      "refersTo": "page-total",
+      "description": "The figure that governs a whole screen, on one line with its label. Cuentas' Saldo hoy, Categorias' and its drill's Total.",
+      "html": "<p class=\"ds-page-total\"><span>Total</span><span class=\"ds-money\">$412.300</span></p>",
+      "css": ".ds-page-total { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; margin: 0 0 0.75rem; color: var(--pico-color, #373c44); font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; } .ds-page-total .ds-money { font-size: 1.5rem; line-height: 1.2; font-variant-numeric: tabular-nums; }"
+    },
+    {
+      "name": "Evolucion Legend",
+      "kind": "custom",
+      "refersTo": "legend-swatch",
+      "description": "The two-step heat legend, above the Evolucion table. Swatches are filled by the same classes the table cells use, so the legend cannot drift from what it explains.",
+      "html": "<p class=\"ds-legend\"><span class=\"ds-swatch ds-swatch-mild\"></span> arriba del promedio de la fila &middot; <span class=\"ds-swatch ds-swatch-high\"></span> muy por encima &middot; en miles de $ &middot; Toca una categoria para abrir sus subcategorias.</p>",
+      "css": ".ds-legend { font-size: 0.8rem; color: var(--pico-muted-color, #646b79); font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0 0 0.75rem; } .ds-swatch { display: inline-block; width: 0.8rem; height: 0.8rem; border-radius: 0.25rem; vertical-align: -1px; } .ds-swatch-mild { background-color: color-mix(in srgb, var(--pico-primary, #0172ad) 22%, transparent); } .ds-swatch-high { background-color: color-mix(in srgb, var(--pico-primary, #0172ad) 45%, transparent); }"
     }
   ],
   "narrative": {
@@ -595,9 +607,14 @@
         "body": "No meaning is carried by color alone. The active tab gets a 2px geometric bar; the default account gets a star glyph with an aria-label; the Evolucion heat cells cap their mix at 45% so text on them stays legible."
       },
       {
+        "name": "The Number Wins Rule",
+        "body": "The largest thing on any screen is always a number, never a label. The ramp encodes it: KPI figure (1.75rem) to page total (1.5rem) to heading (1.25rem) to body (1rem). A title that ties the figure it introduces is a title that competes with it, and on a phone the figure loses. Any new step slots below the money, not beside it.",
+        "section": "typography"
+      },
+      {
         "name": "The One Heading Rule",
         "section": "typography",
-        "body": "There is exactly one heading level in the app: #content h1, styled at 1.75rem/1.15 - a zero-pixel-delta fix matching what the old h2 (and Evolucion's old caption) already rendered at. Every drill screen opens with it. Resumen has no heading, and that is kept, argued behavior, not a gap."
+        "body": "There is exactly one heading level in the app: #content h1, styled at 1.25rem/1.15 - a zero-pixel-delta fix matching what the old h2 (and Evolucion's old caption) already rendered at. Every drill screen opens with it. Resumen has no heading, and that is kept, argued behavior, not a gap."
       },
       {
         "name": "The Tabular Rule",
@@ -612,7 +629,7 @@
       {
         "name": "The 44px Rule",
         "section": "layout",
-        "body": "Anything tappable is at least 44x44, reached by whichever of three mechanisms fits: .tappable (min-width/min-height 44px, no centering) for a block-level element like the account card or a back link; .row-link (a 44px-tall flex row) for an inline <a> inside a table cell, where min-height does nothing; or a ::after overlay (inset: -6px 0) for a compact control like the 32px chip pill, which must not grow to 44px itself. .tab-link and the period cursor arrows still carry their own hand-written copy of the floor."
+        "body": "Anything tappable is at least 44x44, reached by whichever of three mechanisms fits: .tappable (min-width/min-height 44px, no centering) for a block-level element like the account card or a back link; .row-link (a 44px-tall flex row) for an inline <a> inside a table cell, where min-height does nothing; or a ::after overlay (inset: -6px 0) for a compact control like the 32px chip pill, which must not grow to 44px itself. .tab-link and the period cursor arrows still carry their own hand-written copy of the floor. The row height belongs to the cell, not to the link: charging the touch floor on the link and padding on the cell pays for it twice, which is what made rows measure ~55px against 13.6px type."
       },
       {
         "name": "The Rows-Not-Tables Rule",
@@ -631,30 +648,36 @@
       }
     ],
     "dos": [
-      "Do reach for a Pico custom property before writing a literal color. They are already mapped to the user's Telegram theme, so both themes and every custom one work for free.",
-      "Do give every var(--tg-...) a fallback, always. Outside Telegram there is no failure - just a transparent or black element nobody sees.",
+      "Do reach for a Pico custom property (`--pico-primary`, `--pico-muted-color`, `--pico-muted-border-color`, `--pico-background-color`, `--pico-card-background-color`) before writing a literal color. They are already mapped to the user's Telegram theme, so both themes and every custom one work for free.",
+      "Do give every `var(--tg-…)` a fallback, always. Outside Telegram there is no failure — just a transparent or black element nobody sees.",
       "Do mirror any new theme mapping across all three of Pico's theme contexts.",
-      "Do put .money on every monetary figure, wherever it renders.",
-      "Do give anything tappable a 44x44 minimum - via .tappable for a block-level element, .row-link for an inline <a> inside a table cell, or an ::after overlay for a compact control like the chip - and a deliberate pressed state.",
-      "Do use #content h1 for a drill screen's title, and nothing else as a heading. Resumen stays headingless; do not add one to fix that.",
-      "Do carry every meaning in a second channel besides color - a glyph, a label, or geometry like the active tab's 2px bar.",
-      "Do emit @AppState(p) from every view, even one with no period controls.",
-      "Do write the reason in the CSS when you override Pico. Every existing override says what broke; a silent one gets cleaned up by the next person.",
-      "Do derive a footer total from an aggregate over all rows, never from the rows on screen - the list is capped at 50."
+      "Do put `.money` on every monetary figure, wherever it renders.",
+      "Do give anything tappable a 44×44 minimum — via `.tappable` for a block-level element, `.row-link` for an inline `<a>` inside a table cell, or an `::after` overlay for a compact control like the chip — and a deliberate pressed state.",
+      "Do use `#content h1` for a drill screen's title, and nothing else as a heading. Resumen stays headingless; do not add one to \"fix\" that.",
+      "Do carry every meaning in a second channel besides color — a glyph, a label, or geometry like the active tab's 2px bar.",
+      "Do emit `@AppState(p)` from every view, even one with no period controls.",
+      "Do record the reason for a Pico override here, not in the CSS. This package's code carries no comments — the code is the source of truth for behaviour, and this file is the source of truth for why the visual system is what it is. An override whose reason is written nowhere gets \"cleaned up\" by the next person, so an override and a line in this document ship together.",
+      "Do keep the largest thing on any screen a number. See The Number Wins Rule.",
+      "Do set a data row's height on the cell and let the link stretch inside it. Charging the touch floor on the link *and* padding on the cell pays for it twice.",
+      "Do derive a footer total from an aggregate over all rows, never from the rows on screen — the list is capped at 50."
     ],
     "donts": [
       "Don't write a fixed color for anything but the three documented exceptions: account slots, the income series, and the tap-highlight rgba.",
-      "Don't send a color from Go to a chart. Send a role and resolve it in app.js; that is what keeps chart data following the theme.",
+      "Don't send a color from Go to a chart. Send a role and resolve it in `app.js`; that is what keeps chart data following the theme.",
       "Don't derive account slot colors from the theme. Color is identity there, and eight distinguishable hues cannot be pulled out of an arbitrary theme.",
-      "Don't add a web font. system-ui is the stack; a webview on a bad connection cannot wait for a download to render text that is mostly numbers.",
-      "Don't load anything from a CDN or add a build step. Vendor and pin it under static/, the way htmx 2.0.4, Pico 2.1.1 and Chart.js are.",
-      "Don't add a decorative box-shadow, gradient, or backdrop blur. Depth is a 1px border and a background.",
-      "Don't color the Variacion figure - or any figure other than Neto - with a status hue.",
-      "Don't turn a movement list into a <table>, or take the horizontal scroller off Evolucion.",
-      "Don't use the hidden attribute to hide a .mov-row; display: flex beats it.",
-      "Don't give .tappable a justify-content: center; its current consumers all read left-aligned. An element that wants centering states that itself, the way the chip does.",
-      "Don't use min-height to make an inline <a> inside a table cell tappable - it does nothing there. Use .row-link.",
-      "Don't go below 0.75rem for text, or above 1.75rem for a figure inside a card or a heading."
+      "Don't add a web font. `system-ui` is the stack; a webview on a bad connection cannot wait for a download to render text that is mostly numbers.",
+      "Don't load anything from a CDN or add a build step. Vendor and pin it under `static/`, the way htmx 2.0.4, Pico 2.1.1 and Chart.js are.",
+      "Don't add a decorative `box-shadow`, gradient, or backdrop blur. Depth is a 1px border and a background.",
+      "Don't color the Variación figure — or any figure other than Neto — with a status hue.",
+      "Don't turn a movement list into a `<table>`, or take the horizontal scroller off Evolución.",
+      "Don't use the `hidden` attribute to hide a `.mov-row`; `display: flex` beats it.",
+      "Don't give `.tappable` a `justify-content: center`; its current consumers all read left-aligned from the start of their row or cell. An element that wants centering states that itself, the way the chip does.",
+      "Don't use `min-height` to make an inline `<a>` inside a table cell tappable — it does nothing there. Use `.row-link`.",
+      "Don't go below 0.75rem for text, or above 1.75rem for a figure inside a card. A heading tops out at 1.25rem — below both money steps, on purpose.",
+      "Don't write `overscroll-behavior` without an axis. Unqualified it sets both, and paired with an explicit `overflow-x: auto` it turns a horizontal scroller into a vertical scroll container that swallows the page's scroll.",
+      "Don't add a comment to this package's code. Behaviour belongs in the code and in a test's name; the reasoning belongs in this file.",
+      "Don't print a page total as a label above a figure. It is one line — `.balance-line page-total`, label left, figure right, `.money` on the figure.",
+      "Don't let a legend sit below what it explains, or name fewer steps than the thing actually has."
     ]
   }
 }
