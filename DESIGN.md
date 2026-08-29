@@ -18,6 +18,10 @@ colors:
   card-paper-dark: "var(--tg-theme-section-bg-color, rgb(26, 30.5, 40.25))"
   positive-green: "color-mix(in srgb, #0ca30c 70%, var(--pico-color))"
   negative-red: "color-mix(in srgb, var(--tg-theme-destructive-text-color, #d03b3b) 70%, var(--pico-color))"
+  heat-mild: "color-mix(in srgb, var(--pico-color) 8%, transparent)"
+  heat-high: "color-mix(in srgb, var(--pico-color) 18%, transparent)"
+  focus-ring: "color-mix(in srgb, var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #0172ad)) 50%, transparent)"
+  selection: "color-mix(in srgb, var(--pico-primary) 30%, transparent)"
   ledger-green: "#1baf7a"
   slot-1: "#2a78d6"
   slot-2: "#1baf7a"
@@ -147,6 +151,23 @@ components:
   legend-swatch:
     rounded: "{rounded.sm}"
     size: "0.8rem"
+  heat-cell-mild:
+    backgroundColor: "{colors.heat-mild}"
+    textColor: "{colors.statement-ink}"
+    typography: "{typography.table}"
+    padding: "{spacing.data-cell}"
+    height: "{spacing.touch}"
+  heat-cell-high:
+    backgroundColor: "{colors.heat-high}"
+    textColor: "{colors.statement-ink}"
+    typography: "{typography.table}"
+    padding: "{spacing.data-cell}"
+    height: "{spacing.touch}"
+  button-retry:
+    backgroundColor: "transparent"
+    textColor: "{colors.theme-accent}"
+    typography: "{typography.body}"
+    rounded: "{rounded.sm}"
 ---
 
 # Design System: Lopii Mini App
@@ -190,9 +211,12 @@ view needs to depend on the viewer — not as a screen this file still owns.
 
 **Key Characteristics:**
 
-- Telegram-themed: 19 Pico color tokens are remapped onto `--tg-theme-*`, each
+- Telegram-themed: 21 Pico color tokens are remapped onto `--tg-theme-*`, each
   with a fallback, so the app follows the user's client and still works outside
-  it.
+  it. **Every Pico colour the stylesheet touches is in that map** — the focus
+  ring and the table hairline were the last two to escape it, and each escape
+  looked exactly like a working default until someone with a custom theme
+  opened the app.
 - Flat and tonal: depth is a 1px hairline border and a card background, never a
   decorative shadow.
 - Tabular numerals everywhere money appears, so columns of figures stay
@@ -311,8 +335,25 @@ in the theme to derive it from.
 
 **The Reinforcement Rule.** No meaning is carried by color alone. The active tab
 gets a 2px geometric bar (muted grey against the accent is only 1.47:1); the
-default account gets a ★ glyph with an `aria-label`; the Evolución heat cells cap
-their mix at 45% so text on them stays legible.
+default account gets a ★ glyph with an `aria-label`; the Evolución heat cells are
+named in a legend that sits above the table.
+
+**The Tint-From-The-Ink Rule.** A background tint mixes from the **text** colour
+(`--pico-color`), never from the accent. The accent is whatever the user's client
+hands us: mix a tint from it and the resulting cell can land anywhere, including
+right on top of the text's own luminance, with nothing to warn you. Mixing from
+the ink makes the tint a fixed fraction of the ink-to-paper distance, so it
+always moves the right way — darker on a light theme, lighter on a dark one —
+and the contrast that survives is bounded by construction rather than by luck.
+This is what the Evolución heat cells do (8% and 18%). Note the asymmetry with
+the status colours, which mix *toward* the ink to make a **foreground**: same
+token, opposite job, and swapping the two makes contrast worse, not better.
+
+**The Browser-Surfaces Rule.** The parts of the page nobody drew still belong to
+the design. Text selection and the caret are themed from the palette
+(`{colors.selection}`, accent caret); the focus ring is `{colors.focus-ring}`.
+A default-blue selection halo on a green Telegram theme is the cheapest possible
+tell that the page was assembled rather than built.
 
 ## Typography
 
@@ -366,11 +407,14 @@ Any new step slots below the money, not beside it.
 
 **The One Heading Rule.** There is exactly one heading level in the app:
 `#content h1`, styled at 1.25rem/1.15. Every drill screen (account leaf,
-subcategory drill, subcategory leaf, Evolución) opens with it. **Resumen has
+subcategory drill, subcategory leaf, Evolución) opens with it. **Resumen shows
 no heading, and that is kept, argued behavior, not a gap** — the tab already
-says where you are, and the period header earns that space by saying *when*
-you are instead. Do not add an `<h2>` or a second heading weight anywhere; a
-screen that needs a title uses `<h1>`, a screen that doesn't stays as it is.
+says where you are, and the period header earns that space by saying *when* you
+are instead. It does carry `<h1 class="sr-only">Resumen</h1>`: the decision is
+that the title should not take vertical space, not that the entry screen should
+be unreachable by heading navigation. Do not add an `<h2>` or a second heading
+weight anywhere; a screen that needs a visible title uses `<h1>`, a screen that
+doesn't hides one rather than going without.
 
 **The Tabular Rule.** Anything that is money wears `.money`. No exceptions,
 including inside table cells and inline balance lines.
@@ -673,6 +717,13 @@ or two letters match half the list and the highlight becomes noise.
   not link further and renders the name as plain text). `.row-link` exists
   because `.tappable`'s `min-height` does nothing on an inline `<a>` inside a
   table cell — see The 44px Rule.
+- **Row header:** the name column is a `<th scope="row">`, not a `<td>`, the same
+  as Evolución — without it a screen reader reading a money cell cannot say which
+  category it belongs to. It carries `font-weight: inherit` so the semantic
+  change stays invisible: a row header is not a heading here, it is a label.
+- **Accessible name:** the table itself carries an `aria-label`
+  (`Gastos por categoría` / `…por subcategoría`), because the Categorías index
+  has no `<h1>` above it to borrow one from.
 
 ### Evolución Table
 
@@ -686,8 +737,9 @@ or two letters match half the list and the highlight becomes noise.
   explains what you are about to read, so putting it under the table meant
   scrolling past the shading you could not interpret in order to find out what
   it meant. It carries two real `.legend-swatch` chips (0.8rem square, `sm`
-  radius) filled by `.cell-mild` and `.cell-high` themselves, so the legend
-  cannot drift from the table it explains — the heat has two steps and a legend
+  radius, plus a 1px inset Hairline ring so a neutral tint is still visible as a
+  standalone square) filled by `.cell-mild` and `.cell-high` themselves, so the
+  legend cannot drift from the table it explains — the heat has two steps and a legend
   that names one leaves half the shading unexplained. The scale segment
   (`en miles de $`) is composed here with its own separator and **omitted
   entirely for USD**, which is not scaled; `ScaleLabel` returns the bare label
@@ -701,10 +753,17 @@ or two letters match half the list and the highlight becomes noise.
   background and an `inset -1px 0` Hairline shadow standing in for the border.
 - **Row link:** a category row that expands to subcategories is a `.row-link`
   — same reasoning as the Category Table above.
-- **Heat:** two steps of one hue against the row's own average —
-  `color-mix(in srgb, var(--pico-primary) 22% | 45%, transparent)`. The mix caps
-  at 45%; the earlier ramp reached full opacity and dark text on a saturated
-  cell failed contrast.
+- **Heat:** two neutral steps against the row's own average — `{colors.heat-mild}`
+  and `{colors.heat-high}`, both mixed from the ink per The Tint-From-The-Ink
+  Rule. The shading is deliberately **not** tinted with the accent: it used to
+  be (22% and 45% of `--pico-primary`), and because the accent is arbitrary per
+  user, the text sitting on a shaded cell had no guaranteed contrast. Two things
+  do not fix this and both look like they would — mixing toward `--pico-color`
+  the way the status colours do makes a *foreground*, and mixing against the page
+  background produces the identical pixel that `transparent` already composites
+  to. Losing the hue is the price; the accent still leads everywhere it carries
+  meaning (links, chips, the active tab), and the legend above the table names
+  both steps in words.
 - **Rows:** totals at weight 600; subcategory rows indented `1.25rem`, weight
   400, in Margin Grey — and at the same 44px pitch as their parents, even
   though they are not tappable. The indent survives the cell-height rule
@@ -744,6 +803,20 @@ or two letters match half the list and the highlight becomes noise.
   *is* a category there, so no label is optional.
 - **Motion:** animation is disabled outright under
   `prefers-reduced-motion: reduce`, in the chart options.
+- **Loaded on demand.** Chart.js is not in the shell. `app.js` injects it from
+  `body[data-chart-src]` the first time a view actually contains a
+  `canvas[data-chart-type]`, memoising the promise. Evolución has no chart and
+  used to pay 204 KB for it anyway. If the injection fails the `.chart-box` is
+  hidden rather than left as an empty 220px hole.
+- **Two kinds of canvas, named differently.** A chart that repeats a table
+  already on screen (both `bar-single` charts, whose bars *are* the rows of the
+  table under them) is `aria-hidden="true"` — announcing it would read the same
+  figures twice. A chart that is the **only** representation of its data
+  (Resumen's `bar-grouped`, Cuentas' `line-multi`) is `role="img"` with an
+  `aria-label` built in Go by `TrendChartAlt`, which describes each series by its
+  *shape* — first value, last value, peak and where it fell — rather than
+  enumerating every bucket. A month view has up to 31 buckets; a literal
+  enumeration is 62 numbers in one label, which is worse than silence.
 
 ### Empty State
 
@@ -768,6 +841,19 @@ All three replace `#content`. Silence is not an option here: without a message
 the loading opacity simply reverts and the tap reads as ignored rather than
 failed, which contradicts `PRODUCT.md`'s "Never silent" principle.
 
+**The Way Out Is In The Error Rule.** An error carries its own recovery. The two
+transient failures ship a **Reintentar** button that re-fires the current route
+(`htmx.ajax` against `location.pathname + location.search`); the 401 deliberately
+does **not**, because retrying cannot mint a new `initData` and a button that
+cannot work is worse than no button — its copy is the way out instead. Before
+this, a failed load was a dead end whose only exit was closing the app and
+reopening it from the chat.
+
+All three also announce themselves through the route status region. They arrive
+by direct `innerHTML`, which never fires `htmx:afterSwap`, so an error was
+inaudible even after the swap announcements existed — the one path where being
+silent mattered most.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -786,7 +872,16 @@ failed, which contradicts `PRODUCT.md`'s "Never silent" principle.
   an `::after` overlay for a compact control like the chip — and a deliberate
   pressed state.
 - **Do** use `#content h1` for a drill screen's title, and nothing else as a
-  heading. Resumen stays headingless; do not add one to "fix" that.
+  heading. Resumen's stays `.sr-only` — see The One Heading Rule.
+- **Do** finish the non-visual half of every screen you add: a name for any
+  table or `role="group"`, a text alternative for any canvas that is the only
+  copy of its data, `aria-hidden` on anything purely decorative, and a `<th
+  scope="row">` on the column that identifies the row. This app's visual
+  accessibility was good long before its semantics were, which is exactly how
+  the gap stayed invisible.
+- **Do** announce anything that replaces `#content` through the route status
+  region. htmx swaps do it via `htmx:afterSwap`; anything writing `innerHTML`
+  directly has to call `announce()` itself.
 - **Do** carry every meaning in a second channel besides color — a glyph, a
   label, or geometry like the active tab's 2px bar.
 - **Do** emit `@AppState(p)` from every view, even one with no period controls.
@@ -829,6 +924,18 @@ failed, which contradicts `PRODUCT.md`'s "Never silent" principle.
   tappable — it does nothing there. Use `.row-link`.
 - **Don't** go below 0.75rem for text, or above 1.75rem for a figure inside a
   card. A heading tops out at 1.25rem — below both money steps, on purpose.
+- **Don't** tint a background from the accent. Mix it from `--pico-color` — see
+  The Tint-From-The-Ink Rule.
+- **Don't** leave a Pico colour out of the theme map. The test in
+  `theme_test.go` is the guard; adding a token to the stylesheet without adding
+  it there is how the focus ring and the table hairline both got missed.
+- **Don't** put a script in the shell that only one view needs. Load it from a
+  `data-` attribute the first time a view actually contains the element it
+  draws, the way Chart.js is loaded.
+- **Don't** reference a static asset without the `?v=` build hash. An
+  unversioned URL is served `no-cache` on purpose, and the versioned one is
+  `immutable` — a long cache without the hash is how a webview keeps a stale
+  stylesheet forever.
 - **Don't** write `overscroll-behavior` without an axis. Unqualified it sets
   both, and paired with an explicit `overflow-x: auto` it turns a horizontal
   scroller into a vertical scroll container that swallows the page's scroll.

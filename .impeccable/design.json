@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-29T19:11:20Z",
+  "generatedAt": "2026-08-29T22:53:38.726484Z",
   "title": "Design System: Lopii Mini App",
   "extensions": {
     "colorMeta": {
@@ -389,6 +389,34 @@
           "#f7b79a",
           "#fcdfd0"
         ]
+      },
+      "heat-mild": {
+        "role": "neutral",
+        "displayName": "Heat Mild",
+        "canonical": "color-mix(in srgb, var(--pico-color) 8%, transparent)",
+        "tonalRamp": null,
+        "note": "Evolucion cell above its row average. Mixed from the INK, not the accent: the accent is arbitrary per user, so an accent tint could land on the text's own luminance with nothing to warn you. Mixing from the ink makes the tint a fixed fraction of the ink-to-paper gap, so it always moves the right way."
+      },
+      "heat-high": {
+        "role": "neutral",
+        "displayName": "Heat High",
+        "canonical": "color-mix(in srgb, var(--pico-color) 18%, transparent)",
+        "tonalRamp": null,
+        "note": "The second and last heat step. ~7.5:1 light / ~7.2:1 dark against the ink, measured on pico's fallbacks; for any other theme the guarantee is structural, not a number."
+      },
+      "focus-ring": {
+        "role": "primary",
+        "displayName": "Focus Ring",
+        "canonical": "color-mix(in srgb, var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #0172ad)) 50%, transparent)",
+        "tonalRamp": null,
+        "note": "--pico-primary-focus. Was the single token that escaped the theme map, leaving the focus ring pico's fixed azure on every theme."
+      },
+      "selection": {
+        "role": "primary",
+        "displayName": "Selection",
+        "canonical": "color-mix(in srgb, var(--pico-primary) 30%, transparent)",
+        "tonalRamp": null,
+        "note": "::selection. A browser surface nobody draws; left alone it ships Chrome blue over a themed page."
       }
     },
     "typographyMeta": {
@@ -510,25 +538,25 @@
       "name": "Evolucion Heat Cell",
       "kind": "custom",
       "refersTo": null,
-      "description": "The one dense surface. Two shading steps of the theme accent against the row's own average; the mix caps at 45% so text on a cell stays legible. Its h1 title now sits outside the horizontal scroller.",
+      "description": "The one dense surface. Two neutral shading steps against the row's own average, mixed from the ink so the tint follows the theme instead of the arbitrary accent. Its h1 title sits outside the horizontal scroller and the legend above the table.",
       "html": "<h1>Gasto por categoría</h1><div class=\"ds-evolution-scroll\"><table class=\"ds-evolution\"><tr><th scope=\"row\">Comida</th><td>$40.100</td><td class=\"ds-cell-mild\">$62.800</td><td class=\"ds-cell-high\">$98.400</td></tr></table></div>",
-      "css": ".ds-evolution { border-collapse: separate; border-spacing: 0; width: auto; font-size: 0.85rem; color: var(--pico-color, #373c44); } .ds-evolution th, .ds-evolution td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--pico-muted-border-color, #e7eaef); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; } .ds-evolution th[scope=\"row\"] { text-align: left; font-weight: 600; background: var(--pico-background-color, #fff); box-shadow: inset -1px 0 var(--pico-muted-border-color, #e7eaef); } .ds-cell-mild { background-color: color-mix(in srgb, var(--pico-primary, #0172ad) 22%, transparent); } .ds-cell-high { background-color: color-mix(in srgb, var(--pico-primary, #0172ad) 45%, transparent); }"
+      "css": ".ds-evolution { border-collapse: separate; border-spacing: 0; width: auto; font-size: 0.85rem; color: var(--pico-color, #373c44); } .ds-evolution th, .ds-evolution td { padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--pico-table-border-color, #e7eaef); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; } .ds-evolution th[scope=\"row\"] { text-align: left; font-weight: 600; background: var(--pico-background-color, #fff); box-shadow: inset -1px 0 var(--pico-table-border-color, #e7eaef); } .ds-cell-mild { background-color: color-mix(in srgb, var(--pico-color, #373c44) 8%, transparent); } .ds-cell-high { background-color: color-mix(in srgb, var(--pico-color, #373c44) 18%, transparent); }"
     },
     {
       "name": "Category Table",
       "kind": "custom",
       "refersTo": null,
-      "description": "Categorias' three-column table (name, total, share). Same 0.85rem/0.35rem-0.4rem compaction as Evolucion and for the same reason, but no scroller or sticky column - three columns fit a 360px phone outright.",
-      "html": "<table class=\"ds-cat-table\"><tr><td><a class=\"ds-row-link\" href=\"#\">🍝 Comida</a></td><td>$62.800</td><td>24%</td></tr></table>",
-      "css": ".ds-cat-table { font-size: 0.85rem; width: 100%; } .ds-cat-table th, .ds-cat-table td { padding: 0 0.4rem; height: 44px; }"
+      "description": "Categorias' three-column table (name, total, share). Same 0.85rem/0.35rem-0.4rem compaction as Evolucion and for the same reason, but no scroller or sticky column - three columns fit a 360px phone outright. The name column is a th scope=row carrying font-weight: inherit, so the semantics change and the look does not.",
+      "html": "<table class=\"ds-cat-table\"><tr><th scope=\"row\"><a class=\"ds-row-link\" href=\"#\">🍝 Comida</a></th><td>$62.800</td><td>24%</td></tr></table>",
+      "css": ".ds-cat-table { font-size: 0.85rem; width: 100%; } .ds-cat-table th, .ds-cat-table td { padding: 0 0.4rem; height: 44px; } .ds-cat-table th[scope=\"row\"] { font-weight: inherit; text-align: left; }"
     },
     {
       "name": "Failure State",
       "kind": "custom",
       "refersTo": null,
-      "description": "One of three wordings, each with its own way out. Silence is not an option: without a message the loading opacity reverts and the tap reads as ignored rather than failed.",
-      "html": "<article class=\"ds-failure\"><p>Sin conexión. Probá de nuevo cuando vuelva.</p></article>",
-      "css": ".ds-failure { background: var(--pico-card-background-color, #fff); border-radius: 0.25rem; padding: 0.75rem; color: var(--pico-color, #373c44); } .ds-failure p { margin: 0; }"
+      "description": "Every error carries its own way out. The two transient failures ship Reintentar, which re-fires the current route; the 401 deliberately does not, because retrying cannot mint a new initData.",
+      "html": "<article><p>No se pudo cargar. Probá de nuevo en un momento.</p><button class=\"ds-btn-retry\" type=\"button\">Reintentar</button></article>",
+      "css": ".ds-btn-retry { background: transparent; color: var(--pico-primary, #0172ad); border: 1px solid currentColor; border-radius: 0.25rem; padding: 0.4rem 0.9rem; min-height: 44px; font: inherit; } .ds-btn-retry:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--pico-primary-focus, rgba(2,154,232,0.5)); }"
     },
     {
       "name": "Tappable Target",
@@ -565,119 +593,140 @@
   ],
   "narrative": {
     "northStar": "The Account Statement",
-    "overview": "The Mini App is a statement that closes. Every screen exists so the number at the top can be explained by the rows underneath it, and the user can walk from a total down to the individual movement that produced it without ever losing the window they were reading. Trust is the deliverable: a figure that does not reconcile is worse than no figure at all.\n\nThe app does not own its palette. Telegram does. Every color token is a var(--tg-theme-*) reference with a fallback, so the surface is painted in whatever theme the user chose in their client - including a custom one this system has never seen. That inverts the usual relationship: brand does not live in hue here, because hue belongs to the user. It lives in density, in the tabular figure, and in the discipline that every number reconciles.\n\nThe material is deliberately thin. Pico CSS 2.1.1 provides the base, app.css adds a set of scoped corrections, and every one of them exists because something specific broke on a 360px Telegram webview. The system is a stack of small, argued repairs, not a theme.\n\nThere is no admin surface in this app. An invitation-management screen lived here through 2026-08-25 and was removed outright - route, templates, middleware and tab slot all gone, not merely hidden.",
+    "overview": "The Mini App is a statement that closes. Every screen exists so the number at the top can be explained by the rows underneath it, and the user can walk from a total down to the individual movement that produced it without ever losing the window they were reading. Trust is the deliverable: a figure that does not reconcile is worse than no figure at all. That is why the account leaf prints an opening and a closing balance around a capped list and says the list is capped, and why footers come from aggregates over every row rather than from what fits on screen.\n **The app does not own its palette. Telegram does.** Every color token is a `var(--tg-theme-*)` reference with a fallback, so the surface is painted in whatever theme the user chose in their client — including a custom one this system has never seen. That is the largest structural fact about this design system, and it inverts the usual relationship: brand does not live in hue here, because hue belongs to the user. It lives in density, in the tabular figure, and in the discipline that every number reconciles.\n The material is deliberately thin. Pico CSS 2.1.1 provides the base, `app.css` adds a set of scoped corrections, and every one of them exists because something specific broke on a 360px Telegram webview — a sticky column losing its border, a chip whose selected state measured 1.32:1, a tab bar sitting under the iOS home indicator, an inline `<a>` inside a table cell that a 44px rule could not reach. The system is a stack of small, argued repairs, not a theme. New work continues that discipline: reach for the Pico token before writing a value, and when you override, say why in the CSS.\n There is no admin surface in this app. An invitation-management screen lived here through 2026-08-25 and was removed outright at the user's request — route, templates, middleware and tab slot all gone, not merely hidden. Nothing below describes it; the OOB-into-a-reserved-slot technique it used is recorded once, in `internal/controller/miniapp/AGENTS.md`, as a pattern to reuse if a future view needs to depend on the viewer — not as a screen this file still owns.",
     "keyCharacteristics": [
-      "Telegram-themed: 19 Pico color tokens are remapped onto --tg-theme-*, each with a fallback, so the app follows the user's client and still works outside it.",
+      "Telegram-themed: 21 Pico color tokens are remapped onto `--tg-theme-*`, each with a fallback, so the app follows the user's client and still works outside it. **Every Pico colour the stylesheet touches is in that map** — the focus ring and the table hairline were the last two to escape it, and each escape looked exactly like a working default until someone with a custom theme opened the app.",
       "Flat and tonal: depth is a 1px hairline border and a card background, never a decorative shadow.",
       "Tabular numerals everywhere money appears, so columns of figures stay comparable.",
-      "44px minimum on everything tappable - tabs, period arrows, account cards, back links, table row-links - reached by whichever of two mechanisms fits the element.",
-      "One heading level in the whole app (#content h1), used by every drill screen and deliberately absent from Resumen.",
-      "No web fonts, no build step, no CDN: every dependency is vendored and pinned under static/.",
-      "Color is reinforcement, never the only channel: the active tab carries a 2px bar, the default account carries a star with an aria-label."
+      "44px minimum on everything tappable — tabs, period arrows, account cards, back links, table row-links — reached by whichever of two mechanisms fits the element (a padded box, or an invisible overlay over a compact one).",
+      "One heading level in the whole app (`#content h1`), used by every drill screen and deliberately absent from Resumen.",
+      "No web fonts, no build step, no CDN: every dependency is vendored and pinned under `static/`.",
+      "Color is reinforcement, never the only channel: the active tab carries a 2px bar, the default account carries a ★ with an `aria-label`."
     ],
     "rules": [
       {
-        "name": "The Theme-Follows-The-User Rule",
-        "section": "colors",
-        "body": "A color literal in app.css is a bug unless one of the three documented exceptions covers it (account slots, the income series, the tap-highlight). Every var(--tg-...) carries a fallback - a missing one does not fail loudly, it paints the element transparent or black, and only outside Telegram, where nobody is looking. TestAppCSS_EveryTelegramVarHasFallback enforces this."
+        "name": "The app does not own its palette. Telegram does.** Every color token is a\n`var(--tg-theme-*)` reference with a fallback, so the surface is painted in\nwhatever theme the user chose in their client — including a custom one this\nsystem has never seen. That is the largest structural fact about this design\nsystem, and it inverts the usual relationship: brand does not live in hue here,\nbecause hue belongs to the user. It lives in density, in the tabular figure, and\nin the discipline that every number reconciles.\n\nThe material is deliberately thin. Pico CSS 2.1.1 provides the base, `app.css`\nadds a set of scoped corrections, and every one of them exists because\nsomething specific broke on a 360px Telegram webview — a sticky column losing\nits border, a chip whose selected state measured 1.32:1, a tab bar sitting\nunder the iOS home indicator, an inline `<a>` inside a table cell that a\n44px rule could not reach. The system is a stack of small, argued repairs, not\na theme. New work continues that discipline: reach for the Pico token before\nwriting a value, and when you override, say why in the CSS.\n\nThere is no admin surface in this app. An invitation-management screen lived\nhere through 2026-08-25 and was removed outright at the user's request — route,\ntemplates, middleware and tab slot all gone, not merely hidden. Nothing below\ndescribes it; the OOB-into-a-reserved-slot technique it used is recorded once,\nin `internal/controller/miniapp/AGENTS.md`, as a pattern to reuse if a future\nview needs to depend on the viewer — not as a screen this file still owns.\n\n**Key Characteristics:**\n\n- Telegram-themed: 21 Pico color tokens are remapped onto `--tg-theme-*`, each\n  with a fallback, so the app follows the user's client and still works outside\n  it. **Every Pico colour the stylesheet touches is in that map** — the focus\n  ring and the table hairline were the last two to escape it, and each escape\n  looked exactly like a working default until someone with a custom theme\n  opened the app.\n- Flat and tonal: depth is a 1px hairline border and a card background, never a\n  decorative shadow.\n- Tabular numerals everywhere money appears, so columns of figures stay\n  comparable.\n- 44px minimum on everything tappable — tabs, period arrows, account cards,\n  back links, table row-links — reached by whichever of two mechanisms fits\n  the element (a padded box, or an invisible overlay over a compact one).\n- One heading level in the whole app (`#content h1`), used by every drill\n  screen and deliberately absent from Resumen.\n- No web fonts, no build step, no CDN: every dependency is vendored and pinned\n  under `static/`.\n- Color is reinforcement, never the only channel: the active tab carries a 2px\n  bar, the default account carries a ★ with an `aria-label`.\n\n## Colors\n\nThere is no fixed palette. There is a **mapping**, plus three narrow exceptions\nwhere a fixed value is the right answer and the reason is written down.\n\nEvery token below resolves through `var(--tg-theme-*, <fallback>)`. Inside\nTelegram the variable wins; outside it — or on a client older than Bot API 7.0,\nwhich is when `section-bg-color`, `accent-text-color` and\n`section-separator-color` arrived — the fallback wins and the app looks exactly\nas it did before the mapping existed. The fallbacks are Pico's own light and\ndark palettes, which is why they differ per theme.\n\n### Primary\n\n- **Theme Accent** (`--tg-theme-accent-text-color` → `--tg-theme-link-color` →\n  Pico's azure): every interactive affordance — links, the active tab's label\n  and its 2px bar, the default account star — plus the expense series in every\n  chart and the Evolución heat shading.\n- **Theme Button** / **Theme Button Text** (`--tg-theme-button-color` /\n  `--tg-theme-button-text-color`): the selected chip's fill and its label.\n  Selection is a fill, not a hue shift; Pico's one-step\n  `primary → primary-hover` shift measures 1.32:1 in dark mode, below the 3:1\n  WCAG asks of a state.\n\n### Secondary\n\n- **Ledger Green** (`#1baf7a`): the income series in charts, and the one chart\n  color still fixed. Fixed because Telegram exposes a destructive color and\n  **no positive one** — there is nothing in the theme to derive it from.\n\n### Tertiary\n\n- **Account Slots** (eight fixed hexes, `slot-1` through `slot-8`): assigned by\n  position so an account's snapshot card and its trend line always carry the\n  same color. Color follows the entity, never the ordering of a particular\n  render. Fixed on purpose — see The Categorical Exception Rule.\n\n### Neutral\n\n- **Statement Ink** (`--tg-theme-text-color`): body text and every figure not\n  carrying status.\n- **Margin Grey** (`--tg-theme-hint-color`): labels above KPIs, the\n  date-and-category line under a movement title, disabled period arrows,\n  subcategory rows in Evolución. Most of the interface lives here.\n- **Hairline** (`--tg-theme-section-separator-color`, falling back to the hint\n  color): the 1px rule between movement rows, the tab bar's top border, every\n  table cell border, an unselected chip's edge.\n- **Paper** (`--tg-theme-secondary-bg-color`): the page and the tab bar, which\n  must be opaque because content scrolls beneath it.\n- **Card Paper** (`--tg-theme-section-bg-color`): cards and form fields — no\n  longer the Variación callout, which is borderless and fill-less (see the\n  Variación Callout component). The page/section split is Telegram's own: the\n  page sits on the secondary background and cards rest on top of it.\n\n### Status\n\n- **Positive Green** and **Negative Red**: a positive or negative Neto, and\n  nothing else. Both are **derived, not fixed** — see The Mixed Status Rule.\n\n### Named Rules\n\n**The Theme-Follows-The-User Rule",
+        "body": "A color literal in `app.css` is a bug unless one of the three documented exceptions covers it (account slots, the income series, the tap-highlight). Reach for a Pico custom property; it is already mapped to Telegram. **Every `var(--tg-…)` carries a fallback** — a missing one does not fail loudly, it paints the element transparent or black, and only outside Telegram, where nobody is looking. `TestAppCSS_EveryTelegramVarHasFallback` enforces this.",
+        "section": "overview"
       },
       {
         "name": "The Three Contexts Rule",
-        "section": "colors",
-        "body": "Pico defines its palette in three theme contexts. The remap must appear in all three, each with that theme's own fallbacks. One plain :root block loses on specificity; one high-specificity block wins everywhere and then its single-theme fallbacks override Pico's dark palette outside Telegram, silently turning dark mode light."
+        "body": "Pico defines its palette in three theme contexts: `:root:not([data-theme=dark])`, `@media (prefers-color-scheme: dark)` with `:root:not([data-theme])`, and `[data-theme=dark]`. The remap must appear in **all three**, each with that theme's own fallbacks. One plain `:root` block loses on specificity; one high-specificity block wins everywhere and then its single-theme fallbacks override Pico's dark palette outside Telegram, silently turning dark mode light. `TestAppCSS_RemapsAllThreePicoThemeContexts` enforces this.",
+        "section": "colors"
       },
       {
         "name": "The Mixed Status Rule",
-        "section": "colors",
-        "body": "The Neto pair is derived, never fixed: color-mix(in srgb, <hue> 70%, var(--pico-color)). Measured, the fixed values gave 3.35:1 and 3.75:1, passing AA only as large text; mixed at 70% the four cases measure 4.82, 6.34, 6.50 and 4.83. The pair is asymmetric on purpose: red prefers Telegram's destructive color, green has no counterpart to prefer."
+        "body": "The Neto pair is derived, never fixed: `color-mix(in srgb, <hue> 70%, var(--pico-color))`. CSS cannot compute a contrast ratio, but it can mix a hue toward the theme's own text color, which Telegram has already guaranteed legible against its background — the hue survives and the lightness follows the theme. Measured, the fixed values gave 3.35:1 (green, light) and 3.75:1 (red, dark), passing AA only by counting as large text at 28px; mixed at 70% the four cases measure 4.82, 6.34, 6.50 and 4.83, clearing the 4.5:1 bar for *normal* text. Lowering the 70% buys contrast and costs saturation. The pair is asymmetric on purpose: red prefers `--tg-theme-destructive-text-color`, green has no counterpart to prefer.",
+        "section": "colors"
       },
       {
         "name": "The One Status Rule",
-        "section": "colors",
-        "body": "Positive Green and Negative Red appear on exactly one element per screen: the Neto figure. Variacion de saldos is deliberately uncolored - a positive variation can be a CEDEAR that rose or a load that was missing, and tinting it green would assert something the system does not know."
+        "body": "Positive Green and Negative Red appear on exactly one element per screen: the Neto figure. Variación de saldos is deliberately uncolored — a positive variation is not \"good\" the way a positive Neto is; it can be a CEDEAR that rose or a load that was missing, and tinting it green would assert something the system does not know.",
+        "section": "colors"
       },
       {
         "name": "The Categorical Exception Rule",
-        "section": "colors",
-        "body": "Account slot colors stay fixed hexes while everything else follows the theme. There, color is identity - the card and the trend line must match - and deriving eight mutually distinguishable hues from an arbitrary user theme is not a solvable problem."
+        "body": "Account slot colors stay fixed hexes while everything else follows the theme, and that is not an unfinished migration. There, color *is* identity — the card and the trend line must match — and deriving eight mutually distinguishable hues from an arbitrary user theme is not a solvable problem. Same logic for Ledger Green: no positive color exists in the theme to derive it from.",
+        "section": "colors"
       },
       {
         "name": "The Reinforcement Rule",
-        "section": "colors",
-        "body": "No meaning is carried by color alone. The active tab gets a 2px geometric bar; the default account gets a star glyph with an aria-label; the Evolucion heat cells cap their mix at 45% so text on them stays legible."
+        "body": "No meaning is carried by color alone. The active tab gets a 2px geometric bar (muted grey against the accent is only 1.47:1); the default account gets a ★ glyph with an `aria-label`; the Evolución heat cells are named in a legend that sits above the table.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tint-From-The-Ink Rule",
+        "body": "A background tint mixes from the **text** colour (`--pico-color`), never from the accent. The accent is whatever the user's client hands us: mix a tint from it and the resulting cell can land anywhere, including right on top of the text's own luminance, with nothing to warn you. Mixing from the ink makes the tint a fixed fraction of the ink-to-paper distance, so it always moves the right way — darker on a light theme, lighter on a dark one — and the contrast that survives is bounded by construction rather than by luck. This is what the Evolución heat cells do (8% and 18%). Note the asymmetry with the status colours, which mix *toward* the ink to make a **foreground**: same token, opposite job, and swapping the two makes contrast worse, not better.",
+        "section": "colors"
+      },
+      {
+        "name": "The Browser-Surfaces Rule",
+        "body": "The parts of the page nobody drew still belong to the design. Text selection and the caret are themed from the palette (`{colors.selection}`, accent caret); the focus ring is `{colors.focus-ring}`. A default-blue selection halo on a green Telegram theme is the cheapest possible tell that the page was assembled rather than built.",
+        "section": "colors"
       },
       {
         "name": "The Number Wins Rule",
-        "body": "The largest thing on any screen is always a number, never a label. The ramp encodes it: KPI figure (1.75rem) to page total (1.5rem) to heading (1.25rem) to body (1rem). A title that ties the figure it introduces is a title that competes with it, and on a phone the figure loses. Any new step slots below the money, not beside it.",
+        "body": "The largest thing on any screen is always a number, never a label. The ramp encodes it: KPI figure (1.75rem) → page total (1.5rem) → heading (1.25rem) → body (1rem). A title that ties the figure it introduces is a title that competes with it, and on a phone the figure loses. Any new step slots below the money, not beside it.",
         "section": "typography"
       },
       {
         "name": "The One Heading Rule",
-        "section": "typography",
-        "body": "There is exactly one heading level in the app: #content h1, styled at 1.25rem/1.15 - a zero-pixel-delta fix matching what the old h2 (and Evolucion's old caption) already rendered at. Every drill screen opens with it. Resumen has no heading, and that is kept, argued behavior, not a gap."
+        "body": "There is exactly one heading level in the app: `#content h1`, styled at 1.25rem/1.15. Every drill screen (account leaf, subcategory drill, subcategory leaf, Evolución) opens with it. **Resumen shows no heading, and that is kept, argued behavior, not a gap** — the tab already says where you are, and the period header earns that space by saying *when* you are instead. It does carry `<h1 class=\"sr-only\">Resumen</h1>`: the decision is that the title should not take vertical space, not that the entry screen should be unreachable by heading navigation. Do not add an `<h2>` or a second heading weight anywhere; a screen that needs a visible title uses `<h1>`, a screen that doesn't hides one rather than going without.",
+        "section": "typography"
       },
       {
         "name": "The Tabular Rule",
-        "section": "typography",
-        "body": "Anything that is money wears .money. No exceptions, including inside table cells and inline balance lines."
+        "body": "Anything that is money wears `.money`. No exceptions, including inside table cells and inline balance lines.",
+        "section": "typography"
       },
       {
         "name": "The Truncation Rule",
-        "section": "typography",
-        "body": "A movement's title and its meta line each truncate to one line with an ellipsis. A long merchant name may never push the amount off the right edge - the amount is the reason the row exists."
+        "body": "A movement's title and its meta line each truncate to one line with an ellipsis. A long merchant name may never push the amount off the right edge — the amount is the reason the row exists.",
+        "section": "typography"
       },
       {
         "name": "The 44px Rule",
-        "section": "layout",
-        "body": "Anything tappable is at least 44x44, reached by whichever of three mechanisms fits: .tappable (min-width/min-height 44px, no centering) for a block-level element like the account card or a back link; .row-link (a 44px-tall flex row) for an inline <a> inside a table cell, where min-height does nothing; or a ::after overlay (inset: -6px 0) for a compact control like the 32px chip pill, which must not grow to 44px itself. .tab-link and the period cursor arrows still carry their own hand-written copy of the floor. The row height belongs to the cell, not to the link: charging the touch floor on the link and padding on the cell pays for it twice, which is what made rows measure ~55px against 13.6px type."
+        "body": "Anything tappable is at least 44×44 — but not every element gets there the same way, and which mechanism applies depends on what the element is:",
+        "section": "layout"
       },
       {
         "name": "The Rows-Not-Tables Rule",
-        "section": "layout",
-        "body": "A list of movements is a stack of section.mov-group day groups -- each headed by a GroupTitle and holding a ul.mov-list of that day's rows -- not a table. GroupRowsByDay splits the list into consecutive same-date runs; the date lives once on the group header and rows carry only what varies within a day. Evolucion and Categorias are the two real tables in the app; only Evolucion pays for it with a horizontal scroller and a sticky first column."
+        "body": "A list of movements is a stack of `<section class=\"mov-group\">` day groups — each headed by a `GroupTitle` (`templates/group.templ`) and containing a `<ul class=\"mov-list\">` of flex rows — not a `<table>`. Four fields per movement in a narrow webview forces horizontal scrolling as a table; as rows, the text column flexes and truncates while the amount stays pinned right. The date lives once, on the group's `GroupTitle`, and not on each row — `GroupRowsByDay` (`templates/movement_row.go`) splits the list into consecutive same-date runs before render, so the row's meta line is free to hold only what actually varies between rows. Evolución and Categorías are the two real tables in the app; only Evolución pays for it with a horizontal scroller and a sticky first column — Categorías' three columns fit a 360px phone at table-size text without either.",
+        "section": "layout"
       },
       {
         "name": "The Carried-State Rule",
-        "section": "layout",
-        "body": "Every view emits AppState - a hidden #app-state block of inputs the tab bar reads with hx-include. A view that renders without it silently resets the user's period on the way out, because periodFromQuery never 400s. PeriodHeader is today the rule's only consumer and always shows its controls; the historical case of a controls-less consumer (the removed Admin screen) is gone, but the rule stands for the next one."
+        "body": "Every view emits `AppState` — a hidden `#app-state` block of inputs the tab bar reads with `hx-include`. A view that renders without it silently resets the user's period on the way out, because `periodFromQuery` never 400s: it falls to defaults, and the filter appears to change by itself. `PeriodHeader` is today the rule's only consumer and it always shows the controls it carries state for — the historical case of a view carrying state without showing it (the removed Admin screen, which had nothing to filter) is gone, but the rule is written for the next one: a future controls-less view must still emit `AppState`, not skip it because there is nothing to show.",
+        "section": "layout"
       },
       {
         "name": "The Flat-By-Default Rule",
-        "section": "elevation",
-        "body": "Surfaces are flat at rest, and a shadow must earn its place by solving a real layering problem the way the sticky column's inset does. Whether a genuinely floating layer may use an ambient shadow is undecided - the app has no such layer yet."
+        "body": "Surfaces are flat at rest, and a shadow must earn its place by solving a real layering problem the way the sticky column's inset does. Whether a genuinely floating layer (a sheet, a modal) may use an ambient shadow is **undecided** — the app has no such layer yet. Decide it when one arrives; do not smuggle one in as polish.",
+        "section": "elevation & depth"
+      },
+      {
+        "name": "The Way Out Is In The Error Rule",
+        "body": "An error carries its own recovery. The two transient failures ship a **Reintentar** button that re-fires the current route (`htmx.ajax` against `location.pathname + location.search`); the 401 deliberately does **not**, because retrying cannot mint a new `initData` and a button that cannot work is worse than no button — its copy is the way out instead. Before this, a failed load was a dead end whose only exit was closing the app and reopening it from the chat.",
+        "section": "components"
       }
     ],
     "dos": [
-      "Do reach for a Pico custom property (`--pico-primary`, `--pico-muted-color`, `--pico-muted-border-color`, `--pico-background-color`, `--pico-card-background-color`) before writing a literal color. They are already mapped to the user's Telegram theme, so both themes and every custom one work for free.",
-      "Do give every `var(--tg-…)` a fallback, always. Outside Telegram there is no failure — just a transparent or black element nobody sees.",
-      "Do mirror any new theme mapping across all three of Pico's theme contexts.",
-      "Do put `.money` on every monetary figure, wherever it renders.",
-      "Do give anything tappable a 44×44 minimum — via `.tappable` for a block-level element, `.row-link` for an inline `<a>` inside a table cell, or an `::after` overlay for a compact control like the chip — and a deliberate pressed state.",
-      "Do use `#content h1` for a drill screen's title, and nothing else as a heading. Resumen stays headingless; do not add one to \"fix\" that.",
-      "Do carry every meaning in a second channel besides color — a glyph, a label, or geometry like the active tab's 2px bar.",
-      "Do emit `@AppState(p)` from every view, even one with no period controls.",
-      "Do record the reason for a Pico override here, not in the CSS. This package's code carries no comments — the code is the source of truth for behaviour, and this file is the source of truth for why the visual system is what it is. An override whose reason is written nowhere gets \"cleaned up\" by the next person, so an override and a line in this document ship together.",
-      "Do keep the largest thing on any screen a number. See The Number Wins Rule.",
-      "Do set a data row's height on the cell and let the link stretch inside it. Charging the touch floor on the link *and* padding on the cell pays for it twice.",
-      "Do derive a footer total from an aggregate over all rows, never from the rows on screen — the list is capped at 50."
+      "**Do** reach for a Pico custom property (`--pico-primary`, `--pico-muted-color`, `--pico-muted-border-color`, `--pico-background-color`, `--pico-card-background-color`) before writing a literal color. They are already mapped to the user's Telegram theme, so both themes and every custom one work for free.",
+      "**Do** give every `var(--tg-…)` a fallback, always. Outside Telegram there is no failure — just a transparent or black element nobody sees.",
+      "**Do** mirror any new theme mapping across all three of Pico's theme contexts.",
+      "**Do** put `.money` on every monetary figure, wherever it renders.",
+      "**Do** give anything tappable a 44×44 minimum — via `.tappable` for a block-level element, `.row-link` for an inline `<a>` inside a table cell, or an `::after` overlay for a compact control like the chip — and a deliberate pressed state.",
+      "**Do** use `#content h1` for a drill screen's title, and nothing else as a heading. Resumen's stays `.sr-only` — see The One Heading Rule.",
+      "**Do** finish the non-visual half of every screen you add: a name for any table or `role=\"group\"`, a text alternative for any canvas that is the only copy of its data, `aria-hidden` on anything purely decorative, and a `<th scope=\"row\">` on the column that identifies the row. This app's visual accessibility was good long before its semantics were, which is exactly how the gap stayed invisible.",
+      "**Do** announce anything that replaces `#content` through the route status region. htmx swaps do it via `htmx:afterSwap`; anything writing `innerHTML` directly has to call `announce()` itself.",
+      "**Do** carry every meaning in a second channel besides color — a glyph, a label, or geometry like the active tab's 2px bar.",
+      "**Do** emit `@AppState(p)` from every view, even one with no period controls.",
+      "**Do** record the reason for a Pico override **here**, not in the CSS. This package's code carries no comments — the code is the source of truth for behaviour, and this file is the source of truth for why the visual system is what it is. An override whose reason is written nowhere gets \"cleaned up\" by the next person, so an override and a line in this document ship together.",
+      "**Do** keep the largest thing on any screen a number. See The Number Wins Rule.",
+      "**Do** set a data row's height on the cell and let the link stretch inside it. Charging the touch floor on the link *and* padding on the cell pays for it twice.",
+      "**Do** derive a footer total from an aggregate over all rows, never from the rows on screen — the list is capped at 50."
     ],
     "donts": [
-      "Don't write a fixed color for anything but the three documented exceptions: account slots, the income series, and the tap-highlight rgba.",
-      "Don't send a color from Go to a chart. Send a role and resolve it in `app.js`; that is what keeps chart data following the theme.",
-      "Don't derive account slot colors from the theme. Color is identity there, and eight distinguishable hues cannot be pulled out of an arbitrary theme.",
-      "Don't add a web font. `system-ui` is the stack; a webview on a bad connection cannot wait for a download to render text that is mostly numbers.",
-      "Don't load anything from a CDN or add a build step. Vendor and pin it under `static/`, the way htmx 2.0.4, Pico 2.1.1 and Chart.js are.",
-      "Don't add a decorative `box-shadow`, gradient, or backdrop blur. Depth is a 1px border and a background.",
-      "Don't color the Variación figure — or any figure other than Neto — with a status hue.",
-      "Don't turn a movement list into a `<table>`, or take the horizontal scroller off Evolución.",
-      "Don't use the `hidden` attribute to hide a `.mov-row`; `display: flex` beats it.",
-      "Don't give `.tappable` a `justify-content: center`; its current consumers all read left-aligned from the start of their row or cell. An element that wants centering states that itself, the way the chip does.",
-      "Don't use `min-height` to make an inline `<a>` inside a table cell tappable — it does nothing there. Use `.row-link`.",
-      "Don't go below 0.75rem for text, or above 1.75rem for a figure inside a card. A heading tops out at 1.25rem — below both money steps, on purpose.",
-      "Don't write `overscroll-behavior` without an axis. Unqualified it sets both, and paired with an explicit `overflow-x: auto` it turns a horizontal scroller into a vertical scroll container that swallows the page's scroll.",
-      "Don't add a comment to this package's code. Behaviour belongs in the code and in a test's name; the reasoning belongs in this file.",
-      "Don't print a page total as a label above a figure. It is one line — `.balance-line page-total`, label left, figure right, `.money` on the figure.",
-      "Don't let a legend sit below what it explains, or name fewer steps than the thing actually has."
+      "**Don't** write a fixed color for anything but the three documented exceptions: account slots, the income series, and the tap-highlight rgba.",
+      "**Don't** send a color from Go to a chart. Send a role and resolve it in `app.js`; that is what keeps chart data following the theme.",
+      "**Don't** derive account slot colors from the theme. Color is identity there, and eight distinguishable hues cannot be pulled out of an arbitrary theme.",
+      "**Don't** add a web font. `system-ui` is the stack; a webview on a bad connection cannot wait for a download to render text that is mostly numbers.",
+      "**Don't** load anything from a CDN or add a build step. Vendor and pin it under `static/`, the way htmx 2.0.4, Pico 2.1.1 and Chart.js are.",
+      "**Don't** add a decorative `box-shadow`, gradient, or backdrop blur. Depth is a 1px border and a background.",
+      "**Don't** color the Variación figure — or any figure other than Neto — with a status hue.",
+      "**Don't** turn a movement list into a `<table>`, or take the horizontal scroller off Evolución.",
+      "**Don't** use the `hidden` attribute to hide a `.mov-row`; `display: flex` beats it.",
+      "**Don't** give `.tappable` a `justify-content: center`; its current consumers all read left-aligned from the start of their row or cell. An element that wants centering states that itself, the way the chip does.",
+      "**Don't** use `min-height` to make an inline `<a>` inside a table cell tappable — it does nothing there. Use `.row-link`.",
+      "**Don't** go below 0.75rem for text, or above 1.75rem for a figure inside a card. A heading tops out at 1.25rem — below both money steps, on purpose.",
+      "**Don't** tint a background from the accent. Mix it from `--pico-color` — see The Tint-From-The-Ink Rule.",
+      "**Don't** leave a Pico colour out of the theme map. The test in `theme_test.go` is the guard; adding a token to the stylesheet without adding it there is how the focus ring and the table hairline both got missed.",
+      "**Don't** put a script in the shell that only one view needs. Load it from a `data-` attribute the first time a view actually contains the element it draws, the way Chart.js is loaded.",
+      "**Don't** reference a static asset without the `?v=` build hash. An unversioned URL is served `no-cache` on purpose, and the versioned one is `immutable` — a long cache without the hash is how a webview keeps a stale stylesheet forever.",
+      "**Don't** write `overscroll-behavior` without an axis. Unqualified it sets both, and paired with an explicit `overflow-x: auto` it turns a horizontal scroller into a vertical scroll container that swallows the page's scroll.",
+      "**Don't** add a comment to this package's code. Behaviour belongs in the code and in a test's name; the reasoning belongs in this file.",
+      "**Don't** print a page total as a label above a figure. It is one line — `.balance-line page-total`, label left, figure right, `.money` on the figure.",
+      "**Don't** let a legend sit below what it explains, or name fewer steps than the thing actually has."
     ]
   }
 }
