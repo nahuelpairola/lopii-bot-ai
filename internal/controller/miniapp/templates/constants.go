@@ -15,6 +15,8 @@ const (
 	RouteAccounts   = AppPrefix + "/" + TabAccounts
 	RouteEvolution  = AppPrefix + "/" + TabEvolution
 
+	RouteStatusID = "route-status"
+
 	NetoGood     = "good"
 	NetoCritical = "critical"
 )

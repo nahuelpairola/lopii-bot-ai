@@ -92,6 +92,18 @@ document.addEventListener('htmx:configRequest', (evt) => {
   } catch (e) {}
 });
 
+const ROUTE_STATUS_ID = 'route-status';
+
+function announceRoute() {
+  const status = document.getElementById(ROUTE_STATUS_ID);
+  if (!status) return;
+  const heading = document.querySelector('#content h1');
+  const tab = document.querySelector('.tab-link[aria-current]');
+  const name = (heading && heading.textContent.trim()) || (tab && tab.textContent.trim());
+  if (!name || name === status.textContent) return;
+  status.textContent = name;
+}
+
 function markActiveTab() {
   const active = location.pathname.replace(/^\/app\//, '').split('/')[0];
   document.querySelectorAll('.tab-link').forEach((link) => {
@@ -228,11 +240,12 @@ document.addEventListener('input', (evt) => {
     group.style.display = anyVisible ? '' : 'none';
   });
   const empty = document.getElementById(MOV_FILTER_EMPTY_ID);
-  if (empty) empty.hidden = shown > 0;
+  if (empty) empty.textContent = shown > 0 ? '' : (empty.dataset.msg || '');
 });
 
 document.addEventListener('htmx:afterSwap', (evt) => {
   initCharts(evt.detail.target);
   markActiveTab();
+  announceRoute();
   syncBackButton();
 });

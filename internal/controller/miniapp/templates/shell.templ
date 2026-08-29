@@ -15,6 +15,7 @@ templ Shell(active string, loadPath string) {
 			<script src="/app/static/app.js"></script>
 		</head>
 		<body>
+			<p id={ RouteStatusID } class="sr-only" role="status"></p>
 			<main class="container content-area" id="content" hx-get={ loadPath } hx-trigger="load">
 				<p aria-busy="true">Cargando…</p>
 			</main>

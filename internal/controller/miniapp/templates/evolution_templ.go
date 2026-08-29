@@ -128,7 +128,7 @@ func Evolution(data EvolutionData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "· Tocá una categoría para abrir sus subcategorías.</p><div class=\"evolution-scroll\"><table class=\"evolution\"><thead><tr><th scope=\"col\">Categoría</th>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "· Tocá una categoría para abrir sus subcategorías.</p><div class=\"evolution-scroll\"><table class=\"evolution\" aria-label=\"Gasto por categoría, mes a mes\"><thead><tr><th scope=\"col\">Categoría</th>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

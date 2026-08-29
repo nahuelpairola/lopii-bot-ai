@@ -33,7 +33,7 @@ templ Categories(data CategoriesData) {
 			<span class="money">{ data.Total }</span>
 		</p>
 		<div class="chart-box">
-			<canvas id="categorias-bars" data-chart-type="bar-single" data-chart-data-id="categorias-bars-data"></canvas>
+			<canvas id="categorias-bars" aria-hidden="true" data-chart-type="bar-single" data-chart-data-id="categorias-bars-data"></canvas>
 		</div>
 		@templ.JSONScript("categorias-bars-data", data.Chart)
 		@categoryTable(data, "Categoría")
@@ -52,7 +52,7 @@ templ SubcategoryDrill(data CategoriesData) {
 			<span class="money">{ data.Total }</span>
 		</p>
 		<div class="chart-box">
-			<canvas id="subcat-bars" data-chart-type="bar-single" data-chart-data-id="subcat-bars-data"></canvas>
+			<canvas id="subcat-bars" aria-hidden="true" data-chart-type="bar-single" data-chart-data-id="subcat-bars-data"></canvas>
 		</div>
 		@templ.JSONScript("subcat-bars-data", data.Chart)
 		@categoryTable(data, "Subcategoría")
@@ -89,20 +89,20 @@ templ SubcategoryLeaf(data SubcategoryLeafData) {
 }
 
 templ categoryTable(data CategoriesData, header string) {
-	<table class="cat-table">
+	<table class="cat-table" aria-label={ TableLabel(header) }>
 		<thead>
 			<tr><th scope="col">{ header }</th><th scope="col">Total</th><th scope="col">%</th></tr>
 		</thead>
 		<tbody>
 			for _, row := range data.Rows {
 				<tr>
-					<td>
+					<th scope="row">
 						if row.Href != "" {
 							<a class="row-link" href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Category }</a>
 						} else {
 							{ row.Icon } { row.Category }
 						}
-					</td>
+					</th>
 					<td class="money">{ row.Total }</td>
 					<td class="money muted">{ row.Share }</td>
 				</tr>

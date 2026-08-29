@@ -1,7 +1,7 @@
 package templates
 
 templ TabBar(active string) {
-	<nav class="tab-bar" hx-include="#app-state" hx-target="#content" hx-push-url="true" hx-indicator="#content">
+	<nav class="tab-bar" aria-label="Secciones" hx-include="#app-state" hx-target="#content" hx-push-url="true" hx-indicator="#content">
 		@tabLink(RouteOverview, TabOverview, "Resumen", active)
 		@tabLink(RouteCategories, TabCategories, "Categorías", active)
 		@tabLink(RouteAccounts, TabAccounts, "Cuentas", active)
