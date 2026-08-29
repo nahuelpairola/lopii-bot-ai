@@ -27,8 +27,44 @@ function colorForRole(role) {
   return accent || '#2a78d6';
 }
 
+let chartLib = null;
+
+function loadChartLib() {
+  if (window.Chart) return Promise.resolve();
+  if (!chartLib) {
+    chartLib = new Promise((resolve, reject) => {
+      const src = document.body.dataset.chartSrc;
+      if (!src) {
+        reject(new Error('sin data-chart-src'));
+        return;
+      }
+      const tag = document.createElement('script');
+      tag.src = src;
+      tag.onload = resolve;
+      tag.onerror = reject;
+      document.head.appendChild(tag);
+    });
+  }
+  return chartLib;
+}
+
 function initCharts(root) {
   const canvases = (root || document).querySelectorAll('canvas[data-chart-type]');
+  if (!canvases.length) return;
+  loadChartLib()
+    .then(() => {
+      applyChartTheme();
+      renderCharts(canvases);
+    })
+    .catch(() => {
+      canvases.forEach((canvas) => {
+        const box = canvas.closest('.chart-box');
+        if (box) box.hidden = true;
+      });
+    });
+}
+
+function renderCharts(canvases) {
   canvases.forEach((canvas) => {
     const canvasId = canvas.id;
     destroyChart(canvasId);
@@ -154,6 +190,7 @@ function applyTelegramChrome() {
 }
 
 function applyChartTheme() {
+  if (!window.Chart) return;
   const cs = getComputedStyle(document.documentElement);
   Chart.defaults.color = cs.getPropertyValue('--pico-color').trim();
   Chart.defaults.borderColor = cs.getPropertyValue('--pico-muted-border-color').trim();
@@ -174,7 +211,6 @@ function syncBackButton() {
 
 document.addEventListener('DOMContentLoaded', () => {
   applyTelegramTheme();
-  applyChartTheme();
   applyTelegramChrome();
   try {
     if (window.Telegram && window.Telegram.WebApp) {
@@ -183,7 +219,6 @@ document.addEventListener('DOMContentLoaded', () => {
       window.Telegram.WebApp.BackButton.onClick(() => history.back());
       window.Telegram.WebApp.onEvent('themeChanged', () => {
         applyTelegramTheme();
-        applyChartTheme();
         applyTelegramChrome();
         initCharts(document);
       });

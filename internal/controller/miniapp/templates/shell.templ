@@ -7,14 +7,13 @@ templ Shell(active string, loadPath string) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ AppName }</title>
-			<script src="https://telegram.org/js/telegram-web-app.js"></script>
-			<link rel="stylesheet" href="/app/static/pico.min.css"/>
-			<link rel="stylesheet" href="/app/static/app.css"/>
-			<script src="/app/static/chart.umd.min.js"></script>
-			<script src="/app/static/htmx.min.js"></script>
-			<script src="/app/static/app.js"></script>
+			<link rel="stylesheet" href={ StaticURL("pico.min.css") }/>
+			<link rel="stylesheet" href={ StaticURL("app.css") }/>
+			<script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+			<script defer src={ StaticURL("htmx.min.js") }></script>
+			<script defer src={ StaticURL("app.js") }></script>
 		</head>
-		<body>
+		<body data-chart-src={ StaticURL("chart.umd.min.js") }>
 			<p id={ RouteStatusID } class="sr-only" role="status"></p>
 			<main class="container content-area" id="content" hx-get={ loadPath } hx-trigger="load">
 				<p aria-busy="true">Cargando…</p>
