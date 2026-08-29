@@ -163,8 +163,10 @@ Two more, read on demand: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) indexes e
 commands and from different sources: `/impeccable document` derives `DESIGN.md` from the shipped
 artifact and writes `.impeccable/design.json` as its sidecar, while `/impeccable init` writes
 `PRODUCT.md` from an interview and has no sidecar. Running `document` does not refresh
-`PRODUCT.md`. Change either by regenerating, never by hand — an edited `DESIGN.md` drifts from
-its sidecar silently.
+`PRODUCT.md`. **Never edit `DESIGN.md` by hand** — it drifts from its sidecar silently, and the
+sidecar is what the live panel reads. `PRODUCT.md` has no sidecar, so a targeted edit to one
+section is fine and is the right tool when a single recorded decision changes; re-run
+`/impeccable init` only when the product itself moved.
 
 **Refresh `DESIGN.md` in the same branch as the change that dated it.** The design detector reads
 the `DESIGN.md` on your branch, so shipping a visual change while the refresh waits on another

@@ -121,11 +121,30 @@ carry it), money renders with tabular numerals so columns of figures stay compar
 interactive elements meet a 44×44 minimum. The surface is a mobile webview at ~360px wide —
 that, not desktop, is the design target.
 
-**Screen-reader support is explicitly out of scope, decided 2026-08-25 on audience grounds:**
-no current or expected user of this app uses one. The known gaps are the four `<canvas>` charts
-(a canvas exposes nothing to assistive tech) and the lack of an `aria-live` region for htmx
-navigations. Recorded here so a future pass does not re-derive them as oversights — they were
-found, costed, and declined. Revisit if the audience changes.
+**The screen-reader exemption is lifted, 2026-08-29.** It was recorded on 2026-08-25 on audience
+grounds — no current or expected user uses one — and it named exactly two gaps: the four
+`<canvas>` charts and the missing `aria-live` region for htmx navigations. Both are closed.
 
-This exemption is narrow. It does not license removing the `aria-label`s that exist, and it
-does not touch tap targets or contrast, which affect every user regardless of assistive tech.
+**The audience did not change; the cost-benefit did.** Each fix turned out to pay for a sighted
+user too, which is what the 08-25 costing missed:
+
+- The live region was built because htmx swaps announced nothing — and the same work is what
+  makes an error audible. Errors reach `#content` through direct `innerHTML`, which never fires
+  `htmx:afterSwap`, so the failure path was the one place with no feedback at all. That is a
+  "Never silent" violation independent of assistive tech.
+- Only two of the four canvases needed a text alternative. The two in Categorías repeat the table
+  under them and are `aria-hidden`. The other two are the only copy of their data, and their
+  alternative is Spanish prose built by `TrendChartAlt` — text any user can be shown, not an
+  assistive-tech-only artifact.
+
+**What is committed and what is not.** Committed: every chart is either marked decorative or
+carries a text alternative; anything replacing `#content` announces itself; tables carry
+accessible names and row headers; a background tint derives from the text colour so contrast
+survives an arbitrary Telegram theme. **Not committed: nothing here has been exercised with an
+actual screen reader.** The affordances are covered by Go tests over rendered HTML
+(`templates/a11y_test.go`); the JavaScript half — `announce`, `showError` — has no test at all,
+because this repo has no JS runner. Treat the screen-reader experience as plausible, not
+verified. The formal-standard line above still stands: lifting the exemption committed the app
+to specific affordances, not to a conformance target.
+
+The three requirements above were never part of the exemption and never depended on it.
