@@ -478,7 +478,7 @@ a[role="button"].chip::after {
    énfasis. El h1 existe porque no había NINGUNO en la app —cuatro vistas
    titulaban con h2 y Evolución con un <caption>—, no para verse más grande. */
 #content h1 {
-  font-size: 1.75rem;
+  font-size: 1.25rem;
   line-height: 1.15;
   margin-bottom: var(--pico-spacing);
 }
@@ -506,6 +506,15 @@ a[role="button"].chip::after {
   font-weight: 600;
   line-height: 1.2;
   margin: 0 0 var(--pico-spacing);
+}
+
+.page-total {
+  margin: 0 0 var(--pico-spacing);
+}
+
+.page-total .money {
+  font-size: 1.5rem;
+  line-height: 1.2;
 }
 
 /* --- Hoja de cuenta --- */

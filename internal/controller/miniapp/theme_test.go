@@ -2,6 +2,7 @@ package miniapp
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -333,5 +334,41 @@ func TestAppCSS_HorizontalScrollerDoesNotTrapVerticalScroll(t *testing.T) {
 	// esta declaracion no hace nada: se lee como si sostuviera algo.
 	if strings.Contains(ruleAt(t, css, ".content-area {"), "overscroll-behavior") {
 		t.Error(".content-area volvio a declarar overscroll-behavior, que ahi no hace nada")
+	}
+}
+
+// fontSizeRem saca el font-size en rem de un bloque de declaraciones.
+func fontSizeRem(t *testing.T, rule string) float64 {
+	t.Helper()
+	m := regexp.MustCompile(`font-size:\s*([0-9.]+)rem`).FindStringSubmatch(rule)
+	if m == nil {
+		t.Fatalf("la regla no declara font-size en rem:\n%s", rule)
+	}
+	v, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		t.Fatalf("font-size ilegible %q: %v", m[1], err)
+	}
+	return v
+}
+
+// Una sola regla enunciable: lo mas grande de la pantalla es SIEMPRE un numero.
+// Tenia tres ganadores en 1.75rem —el titulo, la cifra KPI y el total— asi que
+// no ganaba ninguno, y eso es a la vez el "titulo demasiado grande" de Evolucion
+// y la mitad del encabezado inflado de Categorias.
+func TestAppCSS_TitlesAreSmallerThanMoney(t *testing.T) {
+	css := readAppCSS(t)
+
+	h1 := fontSizeRem(t, ruleAt(t, css, "#content h1 {"))
+	kpi := fontSizeRem(t, ruleAt(t, css, ".grid article .money {"))
+	total := fontSizeRem(t, ruleAt(t, css, ".page-total .money {"))
+
+	if h1 >= kpi {
+		t.Errorf("el titulo mide %grem y la cifra KPI %grem: un rotulo no puede empatarle a un numero", h1, kpi)
+	}
+	if h1 >= total {
+		t.Errorf("el titulo mide %grem y el total %grem: mismo problema", h1, total)
+	}
+	if total > kpi {
+		t.Errorf("el total (%grem) le paso a la cifra KPI (%grem), que es el techo de la rampa", total, kpi)
 	}
 }
