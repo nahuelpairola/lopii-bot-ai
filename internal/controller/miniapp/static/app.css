@@ -439,6 +439,17 @@ a[role="button"].chip::after {
 
 .evolution-legend { font-size: 0.8rem; }
 
+/* La muestra toma su relleno de .cell-mild/.cell-high, las mismas clases que
+   pinta la tabla: la leyenda no puede desincronizarse del sombreado que
+   explica. Acá va sólo la caja. */
+.legend-swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
 /* --- Listas agrupadas ---------------------------------------------------- */
 
 /* El piso táctil, en un solo lugar. Estaba escrito a mano en .tab-link, las dos
