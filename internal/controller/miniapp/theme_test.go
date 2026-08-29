@@ -18,6 +18,38 @@ func readAppCSS(t *testing.T) string {
 	return string(b)
 }
 
+// ruleAt devuelve UN bloque de declaraciones, cortado en su propia llave de
+// cierre. Reemplaza a las ventanas de ancho fijo, que leian las reglas que
+// vinieran despues y hacian que una asercion negativa dejara de proteger nada.
+// Asume que ningun bloque tiene una "}" adentro de un comentario, que hoy se
+// cumple y despues del purgado de comentarios se cumple trivialmente.
+func ruleAt(t *testing.T, css, selector string) string {
+	t.Helper()
+	i := strings.Index(css, selector)
+	if i < 0 {
+		t.Fatalf("desaparecio la regla %s", selector)
+	}
+	j := strings.Index(css[i:], "}")
+	if j < 0 {
+		t.Fatalf("la regla %s no cierra", selector)
+	}
+	return css[i : i+j+1]
+}
+
+// Una ventana de ancho fijo lee las reglas que vengan despues: 700 caracteres
+// desde el selector del chip terminan tres reglas mas abajo. Un test que lee
+// tres reglas y opina sobre una no protege lo que su nombre dice.
+func TestRuleAt_CutsAtTheRulesOwnClosingBrace(t *testing.T) {
+	css := ".a { color: red; } .b { color: blue; }"
+
+	if got := ruleAt(t, css, ".a {"); got != ".a { color: red; }" {
+		t.Errorf("ruleAt = %q, quiere solo el bloque de .a", got)
+	}
+	if strings.Contains(ruleAt(t, css, ".a {"), "blue") {
+		t.Error("la ventana se comio la regla siguiente")
+	}
+}
+
 // picoTokensMappedToTelegram es el contrato de la capa de tema: qué token de
 // pico tiene que terminar leyendo qué variable de Telegram. Si alguien borra
 // una línea del remapeo, esto se pone en rojo y dice cuál.
@@ -101,14 +133,10 @@ func TestAppCSS_StatusColorsAreDerivedFromTheThemeText(t *testing.T) {
 	css := readAppCSS(t)
 
 	for _, tc := range []struct{ class, why string }{
-		{".neto-good", "el verde no tiene equivalente en Telegram, así que se deriva mezclando contra el texto del tema"},
-		{".neto-critical", "el rojo sale de --tg-theme-destructive-text-color y cae a la mezcla cuando el tema no lo trae"},
+		{".neto-good {", "el verde no tiene equivalente en Telegram, así que se deriva mezclando contra el texto del tema"},
+		{".neto-critical {", "el rojo sale de --tg-theme-destructive-text-color y cae a la mezcla cuando el tema no lo trae"},
 	} {
-		i := strings.Index(css, tc.class)
-		if i < 0 {
-			t.Fatalf("desapareció la regla %s", tc.class)
-		}
-		rule := css[i:min(i+240, len(css))]
+		rule := ruleAt(t, css, tc.class)
 		if !strings.Contains(rule, "color-mix(") {
 			t.Errorf("%s sigue con un color fijo: %s\nregla:\n%s", tc.class, tc.why, rule)
 		}
@@ -121,11 +149,7 @@ func TestAppCSS_StatusColorsAreDerivedFromTheThemeText(t *testing.T) {
 func TestAppCSS_CriticalPrefersTelegramDestructiveColor(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, ".neto-critical")
-	if i < 0 {
-		t.Fatal("desapareció la regla .neto-critical")
-	}
-	rule := css[i:min(i+240, len(css))]
+	rule := ruleAt(t, css, ".neto-critical {")
 	if !strings.Contains(rule, "--tg-theme-destructive-text-color") {
 		t.Errorf("el rojo tiene que preferir el color destructivo del tema; el verde no tiene contraparte y por eso es asimétrico\nregla:\n%s", rule)
 	}
@@ -138,12 +162,8 @@ func TestAppCSS_CriticalPrefersTelegramDestructiveColor(t *testing.T) {
 func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
 	css := readAppCSS(t)
 
-	for _, class := range []string{".cell-mild", ".cell-high"} {
-		i := strings.Index(css, class)
-		if i < 0 {
-			t.Fatalf("desapareció la regla %s", class)
-		}
-		rule := css[i:min(i+200, len(css))]
+	for _, class := range []string{".cell-mild {", ".cell-high {"} {
+		rule := ruleAt(t, css, class)
 		if strings.Contains(rule, "rgba(42, 120, 214") {
 			t.Errorf("%s sigue clavada en Data Blue: sobre un tema personalizado puede quedar ilegible\nregla:\n%s", class, rule)
 		}
@@ -159,11 +179,7 @@ func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
 func TestAppCSS_HasASingleTapTargetRule(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, ".tappable")
-	if i < 0 {
-		t.Fatal("no existe .tappable: la regla de 44px sigue repetida en cada selector")
-	}
-	rule := css[i:min(i+300, len(css))]
+	rule := ruleAt(t, css, ".tappable {")
 	for _, want := range []string{"min-height: 44px", "min-width: 44px"} {
 		if !strings.Contains(rule, want) {
 			t.Errorf(".tappable no declara %q:\n%s", want, rule)
@@ -179,11 +195,7 @@ func TestAppCSS_HasASingleTapTargetRule(t *testing.T) {
 func TestAppCSS_ChipsStayCompactButTappable(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, `a[role="button"].chip {`)
-	if i < 0 {
-		t.Fatal("desaparecio la regla del chip, o volvio a ser un selector de clase sola: pico trae a[role=button]{display:inline-block} con (0,2,0) y le gana")
-	}
-	rule := css[i:min(i+700, len(css))]
+	rule := ruleAt(t, css, `a[role="button"].chip {`)
 
 	if strings.Contains(rule, "min-height: 44px") {
 		t.Errorf("la pildora volvio a medir 44px, y un segmented control no se mide asi:\n%s", rule)
@@ -199,11 +211,7 @@ func TestAppCSS_ChipsStayCompactButTappable(t *testing.T) {
 		}
 	}
 
-	j := strings.Index(css, `a[role="button"].chip::after`)
-	if j < 0 {
-		t.Fatal("no existe el ::after del chip: la pildora es compacta pero el area tocable se quedo en 32px")
-	}
-	hit := css[j:min(j+300, len(css))]
+	hit := ruleAt(t, css, `a[role="button"].chip::after`)
 	for _, want := range []string{"position: absolute", "inset: -6px 0"} {
 		if !strings.Contains(hit, want) {
 			t.Errorf("el area tocable del chip no declara %q (6 + 32 + 6 = 44):\n%s", want, hit)
@@ -221,11 +229,7 @@ func TestAppCSS_ChipsStayCompactButTappable(t *testing.T) {
 func TestAppCSS_VariacionIsASectionFooterNotASideTab(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, ".variacion {")
-	if i < 0 {
-		t.Fatal("desaparecio la regla .variacion")
-	}
-	rule := css[i:min(i+400, len(css))]
+	rule := ruleAt(t, css, ".variacion {")
 
 	if strings.Contains(rule, "border-left") {
 		t.Errorf("la variacion sigue con el borde lateral de 3px:\n%s", rule)
@@ -244,11 +248,7 @@ func TestAppCSS_VariacionIsASectionFooterNotASideTab(t *testing.T) {
 func TestAppCSS_TappableDoesNotCenterItsLabel(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, ".tappable {")
-	if i < 0 {
-		t.Fatal("desaparecio la regla .tappable")
-	}
-	rule := css[i:min(i+300, len(css))]
+	rule := ruleAt(t, css, ".tappable {")
 
 	if strings.Contains(rule, "justify-content") {
 		t.Errorf(".tappable sigue centrando, y los links de fila que lo toman se leen desde la izquierda:\n%s", rule)
@@ -267,11 +267,7 @@ func TestAppCSS_TappableDoesNotCenterItsLabel(t *testing.T) {
 func TestAppCSS_RowLinksFillTheirCell(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, ".row-link {")
-	if i < 0 {
-		t.Fatal("no existe .row-link: un link de fila con display inline ignora min-height")
-	}
-	rule := css[i:min(i+300, len(css))]
+	rule := ruleAt(t, css, ".row-link {")
 	for _, want := range []string{"display: flex", "min-height: 44px", "align-items: center"} {
 		if !strings.Contains(rule, want) {
 			t.Errorf(".row-link no declara %q:\n%s", want, rule)
@@ -286,11 +282,7 @@ func TestAppCSS_RowLinksFillTheirCell(t *testing.T) {
 func TestAppCSS_ChartsHaveABox(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, ".chart-box {")
-	if i < 0 {
-		t.Fatal("no existe .chart-box: sin un padre con alto, Chart.js dibuja todo 2:1")
-	}
-	rule := css[i:min(i+300, len(css))]
+	rule := ruleAt(t, css, ".chart-box {")
 	for _, want := range []string{"position: relative", "height:"} {
 		if !strings.Contains(rule, want) {
 			t.Errorf(".chart-box no declara %q:\n%s", want, rule)
@@ -314,14 +306,10 @@ func TestAppCSS_HasNoDeadChartCanvasRule(t *testing.T) {
 func TestAppCSS_CategoryTableIsCompacted(t *testing.T) {
 	css := readAppCSS(t)
 
-	i := strings.Index(css, ".cat-table")
-	if i < 0 {
-		t.Fatal("no existe .cat-table: la tabla de Categorias sigue con el padding de pico")
+	if rule := ruleAt(t, css, ".cat-table {"); !strings.Contains(rule, "0.85rem") {
+		t.Errorf(".cat-table no declara 0.85rem: la tabla de Categorias sigue en tamanio de cuerpo:\n%s", rule)
 	}
-	rule := css[i:min(i+400, len(css))]
-	for _, want := range []string{"0.85rem", "padding:"} {
-		if !strings.Contains(rule, want) {
-			t.Errorf(".cat-table no declara %q:\n%s", want, rule)
-		}
+	if rule := ruleAt(t, css, ".cat-table th"); !strings.Contains(rule, "padding:") {
+		t.Errorf("las celdas de .cat-table no declaran padding, y vuelven al de pico:\n%s", rule)
 	}
 }
