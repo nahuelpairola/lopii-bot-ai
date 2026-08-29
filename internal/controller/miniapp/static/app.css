@@ -358,9 +358,18 @@ a[role="button"].chip::after {
   width: 100%;
 }
 
-.cat-table th, .cat-table td {
-  /* No está en :where(), de ahí el calificador — igual que en .evolution. */
+/* No está en :where(), de ahí el calificador — igual que en .evolution. */
+.cat-table thead th {
   padding: 0.35rem 0.4rem;
+}
+
+/* El alto sale de la CELDA, no del link: en layout de tabla `height` actúa
+   como mínimo y el .row-link de adentro lo llena. Cobrarlo en los dos lados
+   —44px de piso táctil MÁS 0.35rem arriba y abajo— daba filas de 55px contra
+   texto de 13.6px. */
+.cat-table tbody td {
+  height: 44px;
+  padding: 0 0.4rem;
 }
 
 .evolution-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
@@ -381,13 +390,24 @@ a[role="button"].chip::after {
   font-size: 0.85rem;
 }
 
+/* pico's own td,th padding makes 7 columns overflow a phone even with
+   compact numbers. That rule is NOT in :where(), hence the qualifier. */
 .evolution th, .evolution td {
-  /* pico's own td,th padding makes 7 columns overflow a phone even with
-     compact numbers. That rule is NOT in :where(), hence the qualifier. */
-  padding: 0.35rem 0.4rem;
   border-bottom: var(--pico-border-width) solid var(--pico-table-border-color);
   white-space: nowrap;
   text-align: right;
+}
+
+.evolution thead th {
+  padding: 0.35rem 0.4rem;
+}
+
+/* Mismo motivo que .cat-table tbody td. Acá además unifica las DOS alturas que
+   tenía la tabla: sólo las filas de categoría llevan .row-link, así que una de
+   subcategoría medía ~32px al lado de un padre de 55px. */
+.evolution tbody th, .evolution tbody td {
+  height: 44px;
+  padding: 0 0.4rem;
 }
 
 .evolution th[scope="row"],

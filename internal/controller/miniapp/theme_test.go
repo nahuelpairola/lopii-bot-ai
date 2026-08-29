@@ -310,7 +310,7 @@ func TestAppCSS_CategoryTableIsCompacted(t *testing.T) {
 	if rule := ruleAt(t, css, ".cat-table {"); !strings.Contains(rule, "0.85rem") {
 		t.Errorf(".cat-table no declara 0.85rem: la tabla de Categorias sigue en tamanio de cuerpo:\n%s", rule)
 	}
-	if rule := ruleAt(t, css, ".cat-table th"); !strings.Contains(rule, "padding:") {
+	if rule := ruleAt(t, css, ".cat-table thead th {"); !strings.Contains(rule, "padding:") {
 		t.Errorf("las celdas de .cat-table no declaran padding, y vuelven al de pico:\n%s", rule)
 	}
 }
@@ -370,5 +370,32 @@ func TestAppCSS_TitlesAreSmallerThanMoney(t *testing.T) {
 	}
 	if total > kpi {
 		t.Errorf("el total (%grem) le paso a la cifra KPI (%grem), que es el techo de la rampa", total, kpi)
+	}
+}
+
+// El piso tactil de .row-link vivia ADENTRO de una celda que ya cobraba
+// 0.35rem arriba y abajo: 44 + 11.2 = 55px contra texto de 13.6px. Y Evolucion
+// tenia DOS alturas, porque las filas de subcategoria no llevan link y median
+// ~32px al lado de un padre de 55px. El alto pasa a salir de la celda.
+func TestAppCSS_DataRowsHaveOneHeight(t *testing.T) {
+	css := readAppCSS(t)
+
+	for _, sel := range []string{".cat-table tbody td {", ".evolution tbody th, .evolution tbody td {"} {
+		rule := ruleAt(t, css, sel)
+		if !strings.Contains(rule, "height: 44px") {
+			t.Errorf("%s no fija el alto en la celda, asi que la fila lo hereda del link mas el padding:\n%s", sel, rule)
+		}
+		if !strings.Contains(rule, "padding: 0 ") {
+			t.Errorf("%s sigue cobrando padding vertical arriba de los 44px:\n%s", sel, rule)
+		}
+	}
+
+	// El encabezado NO toma 44px: no es tocable y estirarlo empuja la tabla
+	// fuera de la pantalla. .evolution-totals vive adentro del thead, asi que
+	// esta misma regla lo cubre.
+	for _, sel := range []string{".cat-table thead th {", ".evolution thead th {"} {
+		if rule := ruleAt(t, css, sel); !strings.Contains(rule, "padding: 0.35rem 0.4rem") {
+			t.Errorf("%s perdio su padding compacto:\n%s", sel, rule)
+		}
 	}
 }
