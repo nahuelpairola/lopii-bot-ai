@@ -50,8 +50,10 @@ var picoTokensMappedToTelegram = map[string]string{
 	"--pico-h3-color":                         "--tg-theme-text-color",
 	"--pico-muted-color":                      "--tg-theme-hint-color",
 	"--pico-muted-border-color":               "--tg-theme-section-separator-color",
+	"--pico-table-border-color":               "--tg-theme-section-separator-color",
 	"--pico-primary":                          "--tg-theme-accent-text-color",
 	"--pico-primary-hover":                    "--tg-theme-accent-text-color",
+	"--pico-primary-focus":                    "--tg-theme-accent-text-color",
 	"--pico-primary-background":               "--tg-theme-button-color",
 	"--pico-primary-inverse":                  "--tg-theme-button-text-color",
 	"--pico-form-element-background-color":    "--tg-theme-section-bg-color",
@@ -124,20 +126,6 @@ func TestAppCSS_CriticalPrefersTelegramDestructiveColor(t *testing.T) {
 	rule := ruleAt(t, css, ".neto-critical {")
 	if !strings.Contains(rule, "--tg-theme-destructive-text-color") {
 		t.Errorf("el rojo tiene que preferir el color destructivo del tema; el verde no tiene contraparte y por eso es asimétrico\nregla:\n%s", rule)
-	}
-}
-
-func TestAppCSS_HeatCellsUseTheThemeAccent(t *testing.T) {
-	css := readAppCSS(t)
-
-	for _, class := range []string{".cell-mild {", ".cell-high {"} {
-		rule := ruleAt(t, css, class)
-		if strings.Contains(rule, "rgba(42, 120, 214") {
-			t.Errorf("%s sigue clavada en Data Blue: sobre un tema personalizado puede quedar ilegible\nregla:\n%s", class, rule)
-		}
-		if !strings.Contains(rule, "var(--pico-primary") {
-			t.Errorf("%s no sigue al acento del tema\nregla:\n%s", class, rule)
-		}
 	}
 }
 
@@ -296,7 +284,7 @@ func TestAppCSS_TitlesAreSmallerThanMoney(t *testing.T) {
 func TestAppCSS_DataRowsHaveOneHeight(t *testing.T) {
 	css := readAppCSS(t)
 
-	for _, sel := range []string{".cat-table tbody td {", ".evolution tbody th, .evolution tbody td {"} {
+	for _, sel := range []string{".cat-table tbody th, .cat-table tbody td {", ".evolution tbody th, .evolution tbody td {"} {
 		rule := ruleAt(t, css, sel)
 		if !strings.Contains(rule, "height: 44px") {
 			t.Errorf("%s no fija el alto en la celda, asi que la fila lo hereda del link mas el padding:\n%s", sel, rule)
@@ -309,6 +297,34 @@ func TestAppCSS_DataRowsHaveOneHeight(t *testing.T) {
 	for _, sel := range []string{".cat-table thead th {", ".evolution thead th {"} {
 		if rule := ruleAt(t, css, sel); !strings.Contains(rule, "padding: 0.35rem 0.4rem") {
 			t.Errorf("%s perdio su padding compacto:\n%s", sel, rule)
+		}
+	}
+}
+
+func TestAppCSS_HeatCellsAreDerivedFromTheTextColour(t *testing.T) {
+	css := readAppCSS(t)
+
+	for _, sel := range []string{".cell-mild {", ".cell-high {"} {
+		rule := ruleAt(t, css, sel)
+		if strings.Contains(rule, "rgba(42, 120, 214") {
+			t.Errorf("%s volvio a un color fijo: sobre un tema personalizado puede quedar ilegible:\n%s", sel, rule)
+		}
+		if strings.Contains(rule, "--pico-primary") {
+			t.Errorf("%s mezcla contra el acento del usuario, que es arbitrario: el texto encima queda sin contraste garantizado:\n%s", sel, rule)
+		}
+		if !strings.Contains(rule, "--pico-color") {
+			t.Errorf("%s no deriva del color de texto, asi que el tinte no sigue al tema:\n%s", sel, rule)
+		}
+	}
+}
+
+func TestAppCSS_ThemesTheBrowsersOwnSurfaces(t *testing.T) {
+	css := readAppCSS(t)
+
+	for _, sel := range []string{"::selection {", "input {"} {
+		rule := ruleAt(t, css, sel)
+		if !strings.Contains(rule, "var(--pico-") {
+			t.Errorf("%s no sale de la paleta, asi que se queda con el default del navegador:\n%s", sel, rule)
 		}
 	}
 }

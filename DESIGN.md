@@ -18,6 +18,10 @@ colors:
   card-paper-dark: "var(--tg-theme-section-bg-color, rgb(26, 30.5, 40.25))"
   positive-green: "color-mix(in srgb, #0ca30c 70%, var(--pico-color))"
   negative-red: "color-mix(in srgb, var(--tg-theme-destructive-text-color, #d03b3b) 70%, var(--pico-color))"
+  heat-mild: "color-mix(in srgb, var(--pico-color) 8%, transparent)"
+  heat-high: "color-mix(in srgb, var(--pico-color) 18%, transparent)"
+  focus-ring: "color-mix(in srgb, var(--tg-theme-accent-text-color, var(--tg-theme-link-color, #0172ad)) 50%, transparent)"
+  selection: "color-mix(in srgb, var(--pico-primary) 30%, transparent)"
   ledger-green: "#1baf7a"
   slot-1: "#2a78d6"
   slot-2: "#1baf7a"
@@ -34,9 +38,15 @@ typography:
     fontWeight: 600
     lineHeight: 1.2
     fontFeature: "tabular-nums"
+  page-total:
+    fontFamily: "system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+    fontSize: "1.5rem"
+    fontWeight: 600
+    lineHeight: 1.2
+    fontFeature: "tabular-nums"
   heading:
     fontFamily: "system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
-    fontSize: "1.75rem"
+    fontSize: "1.25rem"
     lineHeight: 1.15
   body:
     fontFamily: "system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
@@ -64,6 +74,7 @@ rounded:
   pill: "1rem"
 spacing:
   cell: "0.35rem 0.4rem"
+  data-cell: "0 0.4rem"
   row: "0.5rem"
   base: "0.75rem"
   touch: "44px"
@@ -127,9 +138,36 @@ components:
   row-link:
     textColor: "inherit"
     height: "{spacing.touch}"
-  accounts-total:
+  data-cell:
+    backgroundColor: "transparent"
     textColor: "{colors.statement-ink}"
-    typography: "{typography.kpi}"
+    typography: "{typography.table}"
+    padding: "{spacing.data-cell}"
+    height: "{spacing.touch}"
+  page-total:
+    backgroundColor: "transparent"
+    textColor: "{colors.statement-ink}"
+    typography: "{typography.page-total}"
+  legend-swatch:
+    rounded: "{rounded.sm}"
+    size: "0.8rem"
+  heat-cell-mild:
+    backgroundColor: "{colors.heat-mild}"
+    textColor: "{colors.statement-ink}"
+    typography: "{typography.table}"
+    padding: "{spacing.data-cell}"
+    height: "{spacing.touch}"
+  heat-cell-high:
+    backgroundColor: "{colors.heat-high}"
+    textColor: "{colors.statement-ink}"
+    typography: "{typography.table}"
+    padding: "{spacing.data-cell}"
+    height: "{spacing.touch}"
+  button-retry:
+    backgroundColor: "transparent"
+    textColor: "{colors.theme-accent}"
+    typography: "{typography.body}"
+    rounded: "{rounded.sm}"
 ---
 
 # Design System: Lopii Mini App
@@ -173,9 +211,12 @@ view needs to depend on the viewer — not as a screen this file still owns.
 
 **Key Characteristics:**
 
-- Telegram-themed: 19 Pico color tokens are remapped onto `--tg-theme-*`, each
+- Telegram-themed: 21 Pico color tokens are remapped onto `--tg-theme-*`, each
   with a fallback, so the app follows the user's client and still works outside
-  it.
+  it. **Every Pico colour the stylesheet touches is in that map** — the focus
+  ring and the table hairline were the last two to escape it, and each escape
+  looked exactly like a working default until someone with a custom theme
+  opened the app.
 - Flat and tonal: depth is a 1px hairline border and a card background, never a
   decorative shadow.
 - Tabular numerals everywhere money appears, so columns of figures stay
@@ -294,8 +335,25 @@ in the theme to derive it from.
 
 **The Reinforcement Rule.** No meaning is carried by color alone. The active tab
 gets a 2px geometric bar (muted grey against the accent is only 1.47:1); the
-default account gets a ★ glyph with an `aria-label`; the Evolución heat cells cap
-their mix at 45% so text on them stays legible.
+default account gets a ★ glyph with an `aria-label`; the Evolución heat cells are
+named in a legend that sits above the table.
+
+**The Tint-From-The-Ink Rule.** A background tint mixes from the **text** colour
+(`--pico-color`), never from the accent. The accent is whatever the user's client
+hands us: mix a tint from it and the resulting cell can land anywhere, including
+right on top of the text's own luminance, with nothing to warn you. Mixing from
+the ink makes the tint a fixed fraction of the ink-to-paper distance, so it
+always moves the right way — darker on a light theme, lighter on a dark one —
+and the contrast that survives is bounded by construction rather than by luck.
+This is what the Evolución heat cells do (8% and 18%). Note the asymmetry with
+the status colours, which mix *toward* the ink to make a **foreground**: same
+token, opposite job, and swapping the two makes contrast worse, not better.
+
+**The Browser-Surfaces Rule.** The parts of the page nobody drew still belong to
+the design. Text selection and the caret are themed from the palette
+(`{colors.selection}`, accent caret); the focus ring is `{colors.focus-ring}`.
+A default-blue selection halo on a green Telegram theme is the cheapest possible
+tell that the page was assembled rather than built.
 
 ## Typography
 
@@ -309,17 +367,21 @@ down a column and a list of amounts can be scanned rather than read.
 
 ### Hierarchy
 
-- **Heading** (1.75rem, 1.15, Pico's default heading weight): `#content h1`,
-  the one heading level the app uses. Opens `AccountLeaf`, `SubcategoryDrill`,
-  `SubcategoryLeaf` and `Evolución`. 1.75rem is a deliberate zero-pixel-delta
-  fix, not a size increase — it is the exact size the old `<h2>` (and, on
-  Evolución, a bare `<caption>`) already rendered at; Pico's own `h1` is 2rem,
-  which would have raised the ceiling by a change that is structural, not one
-  of emphasis.
 - **KPI** (600, 1.75rem, 1.2): the money inside a card — Gastos / Ingresos /
-  Neto and each account balance. 1.75rem is a ceiling, not a taste: the longest
-  realistic balance (`$1.234.567,00`, 14 characters) fits a 360px card at this
-  size and not at 2rem.
+  Neto and each account balance. The top of the ramp, and a ceiling rather than
+  a taste: the longest realistic balance (`$1.234.567,00`, 14 characters) fits a
+  360px card at this size and not at 2rem.
+- **Page Total** (600, 1.5rem, 1.2): the one figure that answers the screen —
+  Categorías' and its drill's `Total`, Cuentas' `Saldo hoy`. It sits a step
+  below the KPI because it shares a line with its own label and would crush it;
+  the KPI stands alone in its card and keeps the top step.
+- **Heading** (1.25rem, 1.15, Pico's default heading weight): `#content h1`,
+  the one heading level the app uses. Opens `AccountLeaf`, `SubcategoryDrill`,
+  `SubcategoryLeaf` and `Evolución`. It sits **below both money steps** on
+  purpose. It used to be 1.75rem, level with the KPI figure and the page total,
+  which meant the largest type on screen was simultaneously a label and a
+  number and neither dominated — read on a phone as a title shouting over the
+  figure it introduces.
 - **Body** (400, 1rem): movement titles, prose, empty-state messages.
 - **Table** (400, 0.85rem): the Evolución grid and the Categorías table. At
   body size, Evolución's six months plus its category column measure 372px and
@@ -337,13 +399,22 @@ down a column and a list of amounts can be scanned rather than read.
 
 ### Named Rules
 
+**The Number Wins Rule.** The largest thing on any screen is always a number,
+never a label. The ramp encodes it: KPI figure (1.75rem) → page total
+(1.5rem) → heading (1.25rem) → body (1rem). A title that ties the figure it
+introduces is a title that competes with it, and on a phone the figure loses.
+Any new step slots below the money, not beside it.
+
 **The One Heading Rule.** There is exactly one heading level in the app:
-`#content h1`, styled at 1.75rem/1.15. Every drill screen (account leaf,
-subcategory drill, subcategory leaf, Evolución) opens with it. **Resumen has
+`#content h1`, styled at 1.25rem/1.15. Every drill screen (account leaf,
+subcategory drill, subcategory leaf, Evolución) opens with it. **Resumen shows
 no heading, and that is kept, argued behavior, not a gap** — the tab already
-says where you are, and the period header earns that space by saying *when*
-you are instead. Do not add an `<h2>` or a second heading weight anywhere; a
-screen that needs a title uses `<h1>`, a screen that doesn't stays as it is.
+says where you are, and the period header earns that space by saying *when* you
+are instead. It does carry `<h1 class="sr-only">Resumen</h1>`: the decision is
+that the title should not take vertical space, not that the entry screen should
+be unreachable by heading navigation. Do not add an `<h2>` or a second heading
+weight anywhere; a screen that needs a visible title uses `<h1>`, a screen that
+doesn't hides one rather than going without.
 
 **The Tabular Rule.** Anything that is money wears `.money`. No exceptions,
 including inside table cells and inline balance lines.
@@ -369,15 +440,22 @@ indicator, both reported as CSS variables. Beyond the page itself, `app.js`
 paints Telegram's **own** chrome to match: `setHeaderColor` (Bot API 6.1+) and
 `setBottomBarColor` (7.10+, behind a feature guard) are both fed the app's page
 background read from computed style, so the app is not a differently-colored
-rectangle inside the client's frame. `overscroll-behavior: contain` on the
-content area and on the Evolución scroller keeps a scroll from chaining out to
-the webview.
+rectangle inside the client's frame. The Evolución scroller contains its
+overscroll on **one named axis** — `overscroll-behavior-x: contain` — and
+nothing else in the app contains any. The unqualified form sets both axes, and
+because an explicit `overflow-x: auto` promotes the other axis from `visible`
+to `auto`, that turned a horizontal scroller into a vertical scroll container
+with nothing to scroll: it swallowed the upward gesture instead of chaining it
+to the page, and since the table fills the viewport there was nowhere left to
+touch. The content area carried the same declaration and it did nothing at all
+— `<main>` has no `overflow`, so it was never a scroll container.
 
 Above the content, every view opens with the period header: a cursor row
 (‹ label ›) over a chip row — period presets, a spacer, then the currency chips.
 Rhythm inside components: `0.5rem` vertical for a movement row,
-`0.35rem 0.4rem` for an Evolución or Categorías cell, `0` vertical / `0.6rem`
-horizontal for a chip.
+`0.35rem 0.4rem` for a table **header** cell, `0` vertical / `0.6rem` horizontal
+for a chip. A table **data** cell takes no vertical padding at all — its height
+is set on the cell itself (see The 44px Rule).
 
 ### Named Rules
 
@@ -397,6 +475,18 @@ the element is:
   the 44px rule already written and simply unreachable. `.row-link` fixes this
   by being a 44px-tall flex row (`display: flex; align-items: center;
   min-height: 44px; color: inherit;`) rather than a min-height override.
+- **The row height belongs to the cell, not to the link.** `.row-link`'s 44px
+  floor lived inside a `td`/`th` that also charged `0.35rem` top and bottom, so
+  the padding was paid twice and a row measured ~55px against 13.6px type. Data
+  cells now carry `height: 44px` (in table layout `height` acts as a minimum)
+  with no vertical padding, and the link stretches inside. Header cells keep
+  their compact padding and are deliberately *not* 44px — they are not tappable
+  and stretching them pushes the table off a phone.
+- **A row that is not tappable still takes the pitch.** Only Evolución's
+  category rows get an `Href`, so its subcategory rows carry no `.row-link` and
+  used to measure ~32px beside a 55px parent. They take 44px anyway: the floor
+  the tappable rows impose sets the pitch for the whole list, and a list with
+  two pitches reads as broken.
 - The chip is neither: `a[role="button"].chip` is a fixed 32px pill —
   Telegram's own segmented-control height — with `line-height: 1` and
   `display: inline-flex; align-items: center; justify-content: center`. Giving
@@ -519,12 +609,17 @@ be added by habit.
   `article .money`. Empty states and the expired-session notice are also
   `<article><p>`, and shrinking their text would ruin the one message that has to
   be read.
-- **Named exception — `.accounts-total`:** Cuentas' running total sits above the
-  account cards, outside the `.grid`, so the scoped rule above does not reach
-  it — and it is the figure that governs that whole screen, so it takes the
-  same 1.75rem/600 KPI treatment by a direct rule rather than by being inside
-  a card. It reads as the screen's own header figure, not as a card that
-  escaped the grid.
+- **Page total — `.balance-line.page-total`:** the figure that governs a whole
+  screen (Cuentas' `Saldo hoy`, Categorías' and its drill's `Total`) sits above
+  the content, outside the `.grid`, so the scoped rule above does not reach it.
+  It is **not** a third shape: `.page-total` is a modifier that declares only
+  the figure's size (Page Total, 1.5rem), while the shape — `space-between`,
+  baseline alignment, weight 600 — comes from `.balance-line`, which the two
+  movement leaves already used. Label and figure share one line:
+  `<p class="balance-line page-total"><span>Total</span><span class="money">…</span></p>`.
+  The inner `.money` is load-bearing, not decoration — it is where the tabular
+  figure lives, and the largest number on the screen is the last one that can
+  afford to lose it.
 - **Account card:** an `<a class="account-card tappable">` wrapping a KPI card
   — `display: block`, `color: inherit`, no underline, its 44×44 floor from
   `.tappable` in markup (see The 44px Rule). The name carries at most one ★
@@ -612,37 +707,68 @@ or two letters match half the list and the highlight becomes noise.
 
 - **Character:** three columns (name, total, share) that fit a 360px phone
   outright — no scroller, no sticky column, unlike Evolución.
-- **Shape:** `.cat-table`, `0.85rem` text, `0.35rem 0.4rem` cell padding — the
-  same compaction Evolución already carried, applied here for the same
-  reason: Pico's own `td`/`th` padding overflows a phone once a table has
-  real content in every cell.
+- **Shape:** `.cat-table`, `0.85rem` text — the same compaction Evolución
+  already carried, applied here for the same reason: Pico's own `td`/`th`
+  padding overflows a phone once a table has real content in every cell.
+  Header cells take `0.35rem 0.4rem`; data cells take `height: 44px` with
+  `0 0.4rem` and no vertical padding (see The 44px Rule).
 - **Row link:** each category/subcategory name is a `.row-link` when it drills
   further (the top-level view links to subcategories; the drill itself does
   not link further and renders the name as plain text). `.row-link` exists
   because `.tappable`'s `min-height` does nothing on an inline `<a>` inside a
   table cell — see The 44px Rule.
+- **Row header:** the name column is a `<th scope="row">`, not a `<td>`, the same
+  as Evolución — without it a screen reader reading a money cell cannot say which
+  category it belongs to. It carries `font-weight: inherit` so the semantic
+  change stays invisible: a row header is not a heading here, it is a label.
+- **Accessible name:** the table itself carries an `aria-label`
+  (`Gastos por categoría` / `…por subcategoría`), because the Categorías index
+  has no `<h1>` above it to borrow one from.
 
 ### Evolución Table
 
 - **Character:** the one dense surface, and it earns the density.
-- **Heading placement:** `<h1>Gasto por categoría{ScaleNote}</h1>` sits
-  **outside** `.evolution-scroll`, above the scroller — the title used to
-  scroll away sideways with the table when it lived inside it. It does not
-  repeat the period label; that already lives in the period header above.
+- **Heading placement:** `<h1>Gasto por categoría</h1>` sits **outside**
+  `.evolution-scroll`, above the scroller — the title used to scroll away
+  sideways with the table when it lived inside it. It does not repeat the
+  period label; that already lives in the period header above, and it no longer
+  carries the scale either — that moved into the legend.
+- **Legend:** one Label-size muted line **above** the table, never below it. It
+  explains what you are about to read, so putting it under the table meant
+  scrolling past the shading you could not interpret in order to find out what
+  it meant. It carries two real `.legend-swatch` chips (0.8rem square, `sm`
+  radius, plus a 1px inset Hairline ring so a neutral tint is still visible as a
+  standalone square) filled by `.cell-mild` and `.cell-high` themselves, so the
+  legend cannot drift from the table it explains — the heat has two steps and a legend
+  that names one leaves half the shading unexplained. The scale segment
+  (`en miles de $`) is composed here with its own separator and **omitted
+  entirely for USD**, which is not scaled; `ScaleLabel` returns the bare label
+  precisely so the template, not the string, owns the punctuation.
 - **Shape:** `border-collapse: separate` (a collapsed border belongs to the
   table, so a sticky cell would scroll away from its own border), `width: auto`,
-  0.85rem text, right-aligned cells, `0.35rem 0.4rem` padding, inside a
-  horizontal `overflow-x: auto` scroller.
+  0.85rem text, right-aligned cells, inside a horizontal `overflow-x: auto`
+  scroller. Header cells take `0.35rem 0.4rem`; data cells take `height: 44px`
+  with `0 0.4rem`.
 - **Sticky column:** row headers stick left at `z-index: 1` with a Paper
   background and an `inset -1px 0` Hairline shadow standing in for the border.
 - **Row link:** a category row that expands to subcategories is a `.row-link`
   — same reasoning as the Category Table above.
-- **Heat:** two steps of one hue against the row's own average —
-  `color-mix(in srgb, var(--pico-primary) 22% | 45%, transparent)`. The mix caps
-  at 45%; the earlier ramp reached full opacity and dark text on a saturated
-  cell failed contrast.
+- **Heat:** two neutral steps against the row's own average — `{colors.heat-mild}`
+  and `{colors.heat-high}`, both mixed from the ink per The Tint-From-The-Ink
+  Rule. The shading is deliberately **not** tinted with the accent: it used to
+  be (22% and 45% of `--pico-primary`), and because the accent is arbitrary per
+  user, the text sitting on a shaded cell had no guaranteed contrast. Two things
+  do not fix this and both look like they would — mixing toward `--pico-color`
+  the way the status colours do makes a *foreground*, and mixing against the page
+  background produces the identical pixel that `transparent` already composites
+  to. Losing the hue is the price; the accent still leads everywhere it carries
+  meaning (links, chips, the active tab), and the legend above the table names
+  both steps in words.
 - **Rows:** totals at weight 600; subcategory rows indented `1.25rem`, weight
-  400, in Margin Grey.
+  400, in Margin Grey — and at the same 44px pitch as their parents, even
+  though they are not tappable. The indent survives the cell-height rule
+  because `.evolution-sub th[scope="row"]` is (0,2,1) and outranks
+  `.evolution tbody th` at (0,1,2).
 
 ### Charts
 
@@ -677,6 +803,20 @@ or two letters match half the list and the highlight becomes noise.
   *is* a category there, so no label is optional.
 - **Motion:** animation is disabled outright under
   `prefers-reduced-motion: reduce`, in the chart options.
+- **Loaded on demand.** Chart.js is not in the shell. `app.js` injects it from
+  `body[data-chart-src]` the first time a view actually contains a
+  `canvas[data-chart-type]`, memoising the promise. Evolución has no chart and
+  used to pay 204 KB for it anyway. If the injection fails the `.chart-box` is
+  hidden rather than left as an empty 220px hole.
+- **Two kinds of canvas, named differently.** A chart that repeats a table
+  already on screen (both `bar-single` charts, whose bars *are* the rows of the
+  table under them) is `aria-hidden="true"` — announcing it would read the same
+  figures twice. A chart that is the **only** representation of its data
+  (Resumen's `bar-grouped`, Cuentas' `line-multi`) is `role="img"` with an
+  `aria-label` built in Go by `TrendChartAlt`, which describes each series by its
+  *shape* — first value, last value, peak and where it fell — rather than
+  enumerating every bucket. A month view has up to 31 buckets; a literal
+  enumeration is 62 numbers in one label, which is worse than silence.
 
 ### Empty State
 
@@ -701,6 +841,19 @@ All three replace `#content`. Silence is not an option here: without a message
 the loading opacity simply reverts and the tap reads as ignored rather than
 failed, which contradicts `PRODUCT.md`'s "Never silent" principle.
 
+**The Way Out Is In The Error Rule.** An error carries its own recovery. The two
+transient failures ship a **Reintentar** button that re-fires the current route
+(`htmx.ajax` against `location.pathname + location.search`); the 401 deliberately
+does **not**, because retrying cannot mint a new `initData` and a button that
+cannot work is worse than no button — its copy is the way out instead. Before
+this, a failed load was a dead end whose only exit was closing the app and
+reopening it from the chat.
+
+All three also announce themselves through the route status region. They arrive
+by direct `innerHTML`, which never fires `htmx:afterSwap`, so an error was
+inaudible even after the swap announcements existed — the one path where being
+silent mattered most.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -719,12 +872,28 @@ failed, which contradicts `PRODUCT.md`'s "Never silent" principle.
   an `::after` overlay for a compact control like the chip — and a deliberate
   pressed state.
 - **Do** use `#content h1` for a drill screen's title, and nothing else as a
-  heading. Resumen stays headingless; do not add one to "fix" that.
+  heading. Resumen's stays `.sr-only` — see The One Heading Rule.
+- **Do** finish the non-visual half of every screen you add: a name for any
+  table or `role="group"`, a text alternative for any canvas that is the only
+  copy of its data, `aria-hidden` on anything purely decorative, and a `<th
+  scope="row">` on the column that identifies the row. This app's visual
+  accessibility was good long before its semantics were, which is exactly how
+  the gap stayed invisible.
+- **Do** announce anything that replaces `#content` through the route status
+  region. htmx swaps do it via `htmx:afterSwap`; anything writing `innerHTML`
+  directly has to call `announce()` itself.
 - **Do** carry every meaning in a second channel besides color — a glyph, a
   label, or geometry like the active tab's 2px bar.
 - **Do** emit `@AppState(p)` from every view, even one with no period controls.
-- **Do** write the reason in the CSS when you override Pico. Every existing
-  override says what broke; a silent one gets "cleaned up" by the next person.
+- **Do** record the reason for a Pico override **here**, not in the CSS. This
+  package's code carries no comments — the code is the source of truth for
+  behaviour, and this file is the source of truth for why the visual system is
+  what it is. An override whose reason is written nowhere gets "cleaned up" by
+  the next person, so an override and a line in this document ship together.
+- **Do** keep the largest thing on any screen a number. See The Number Wins Rule.
+- **Do** set a data row's height on the cell and let the link stretch inside it.
+  Charging the touch floor on the link *and* padding on the cell pays for it
+  twice.
 - **Do** derive a footer total from an aggregate over all rows, never from the
   rows on screen — the list is capped at 50.
 
@@ -754,4 +923,25 @@ failed, which contradicts `PRODUCT.md`'s "Never silent" principle.
 - **Don't** use `min-height` to make an inline `<a>` inside a table cell
   tappable — it does nothing there. Use `.row-link`.
 - **Don't** go below 0.75rem for text, or above 1.75rem for a figure inside a
-  card or a heading.
+  card. A heading tops out at 1.25rem — below both money steps, on purpose.
+- **Don't** tint a background from the accent. Mix it from `--pico-color` — see
+  The Tint-From-The-Ink Rule.
+- **Don't** leave a Pico colour out of the theme map. The test in
+  `theme_test.go` is the guard; adding a token to the stylesheet without adding
+  it there is how the focus ring and the table hairline both got missed.
+- **Don't** put a script in the shell that only one view needs. Load it from a
+  `data-` attribute the first time a view actually contains the element it
+  draws, the way Chart.js is loaded.
+- **Don't** reference a static asset without the `?v=` build hash. An
+  unversioned URL is served `no-cache` on purpose, and the versioned one is
+  `immutable` — a long cache without the hash is how a webview keeps a stale
+  stylesheet forever.
+- **Don't** write `overscroll-behavior` without an axis. Unqualified it sets
+  both, and paired with an explicit `overflow-x: auto` it turns a horizontal
+  scroller into a vertical scroll container that swallows the page's scroll.
+- **Don't** add a comment to this package's code. Behaviour belongs in the code
+  and in a test's name; the reasoning belongs in this file.
+- **Don't** print a page total as a label above a figure. It is one line —
+  `.balance-line page-total`, label left, figure right, `.money` on the figure.
+- **Don't** let a legend sit below what it explains, or name fewer steps than
+  the thing actually has.

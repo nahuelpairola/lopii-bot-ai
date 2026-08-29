@@ -137,7 +137,7 @@ Full model (guard invariants, insufficient-funds gate, grouped transactions, FCI
 
 ## Where knowledge lives
 
-Four layers. **A rationale - the measurement, the incident, the rejected alternative - lives in
+Six layers. **A rationale - the measurement, the incident, the rejected alternative - lives in
 exactly ONE of them.** A one-line statement of a constraint may legitimately appear both at its
 code site and in a package's trap list; a retold incident or a measured number may not. If you
 find the same *reasoning* in two places, one of them is already stale: fix it, do not add a third.
@@ -149,6 +149,7 @@ find the same *reasoning* in two places, one of them is already stale: fix it, d
 | `internal/<pkg>/AGENTS.md` | the traps of that package: what compiles fine and behaves wrong | you touch any file in that package |
 | [docs/decisions.md](docs/decisions.md) | **why the design is what it is**: measurements, incidents, rejected alternatives | a comment points you there, or you are about to change a design choice |
 | [DESIGN.md](DESIGN.md) | the Mini App's design system: the Telegram token mapping, the type ramp, the 44px rule and the three fixed-colour exceptions | before changing anything visual in the Mini App |
+| [PRODUCT.md](PRODUCT.md) | who the product is for and what it promises: the usage scene, the brand commitments, the product principles the UI has to honour ("Never silent"), the accessibility stance | before deciding what a surface should *do* or say |
 
 `docs/decisions.md` is the long form and the one most easily forgotten. It is grouped into nine
 addressable sections - money model, agent loop and QUERY, Groq quota, taxonomy, flows - so a code
@@ -158,11 +159,23 @@ there**: most were, with the production numbers that settled them.
 Two more, read on demand: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) indexes every reference doc
 (data model, business rules, recipes, dev setup, Grafana) and holds the anti-pattern list.
 
-`DESIGN.md` and `PRODUCT.md` sit at the repo root and are **generated** by `/impeccable document`
-from the shipped artifact, with `.impeccable/design.json` as their sidecar. Change them by
-regenerating, never by hand — an edited `DESIGN.md` drifts from the sidecar silently. Until
-2026-08-29 nothing in this table named `DESIGN.md`, so it was invisible to anyone reading only
-the index; that is how a comment purge nearly deleted measurements it turned out to hold.
+`DESIGN.md` and `PRODUCT.md` sit at the repo root and are both **generated**, but by different
+commands and from different sources: `/impeccable document` derives `DESIGN.md` from the shipped
+artifact and writes `.impeccable/design.json` as its sidecar, while `/impeccable init` writes
+`PRODUCT.md` from an interview and has no sidecar. Running `document` does not refresh
+`PRODUCT.md`. **Never edit `DESIGN.md` by hand** — it drifts from its sidecar silently, and the
+sidecar is what the live panel reads. `PRODUCT.md` has no sidecar, so a targeted edit to one
+section is fine and is the right tool when a single recorded decision changes; re-run
+`/impeccable init` only when the product itself moved.
+
+**Refresh `DESIGN.md` in the same branch as the change that dated it.** The design detector reads
+the `DESIGN.md` on your branch, so shipping a visual change while the refresh waits on another
+branch makes it report a value that is genuinely on the ramp as off it, and a false positive
+teaches you to ignore the next real one.
+
+Until 2026-08-29 nothing in this table named `DESIGN.md`, so it was invisible to anyone reading
+only the index; that is how a comment purge nearly deleted measurements it turned out to hold.
+`PRODUCT.md` had the same gap until it got its row above.
 
 For structure, this repo has `.codegraph/` indexed: `codegraph_explore` answers "where is X, what
 calls Y, how does this flow" in one call, with verbatim source plus the call graph. Use it to get

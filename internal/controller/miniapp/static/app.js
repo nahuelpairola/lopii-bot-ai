@@ -27,8 +27,44 @@ function colorForRole(role) {
   return accent || '#2a78d6';
 }
 
+let chartLib = null;
+
+function loadChartLib() {
+  if (window.Chart) return Promise.resolve();
+  if (!chartLib) {
+    chartLib = new Promise((resolve, reject) => {
+      const src = document.body.dataset.chartSrc;
+      if (!src) {
+        reject(new Error('sin data-chart-src'));
+        return;
+      }
+      const tag = document.createElement('script');
+      tag.src = src;
+      tag.onload = resolve;
+      tag.onerror = reject;
+      document.head.appendChild(tag);
+    });
+  }
+  return chartLib;
+}
+
 function initCharts(root) {
   const canvases = (root || document).querySelectorAll('canvas[data-chart-type]');
+  if (!canvases.length) return;
+  loadChartLib()
+    .then(() => {
+      applyChartTheme();
+      renderCharts(canvases);
+    })
+    .catch(() => {
+      canvases.forEach((canvas) => {
+        const box = canvas.closest('.chart-box');
+        if (box) box.hidden = true;
+      });
+    });
+}
+
+function renderCharts(canvases) {
   canvases.forEach((canvas) => {
     const canvasId = canvas.id;
     destroyChart(canvasId);
@@ -92,6 +128,20 @@ document.addEventListener('htmx:configRequest', (evt) => {
   } catch (e) {}
 });
 
+const ROUTE_STATUS_ID = 'route-status';
+
+function announce(text) {
+  const status = document.getElementById(ROUTE_STATUS_ID);
+  if (!status || !text || text === status.textContent) return;
+  status.textContent = text;
+}
+
+function announceRoute() {
+  const heading = document.querySelector('#content h1');
+  const tab = document.querySelector('.tab-link[aria-current]');
+  announce((heading && heading.textContent.trim()) || (tab && tab.textContent.trim()));
+}
+
 function markActiveTab() {
   const active = location.pathname.replace(/^\/app\//, '').split('/')[0];
   document.querySelectorAll('.tab-link').forEach((link) => {
@@ -103,24 +153,44 @@ function markActiveTab() {
   });
 }
 
-document.addEventListener('htmx:responseError', (evt) => {
+function showError(message, retriable) {
   const content = document.getElementById('content');
   if (!content) return;
+
+  const article = document.createElement('article');
+  const text = document.createElement('p');
+  text.textContent = message;
+  article.append(text);
+
+  if (retriable) {
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'outline';
+    retry.textContent = 'Reintentar';
+    retry.addEventListener('click', () => {
+      htmx.ajax('GET', location.pathname + location.search, {
+        target: '#content',
+        indicator: '#content',
+      });
+    });
+    article.append(retry);
+  }
+
+  content.innerHTML = '';
+  content.append(article);
+  announce(message);
+}
+
+document.addEventListener('htmx:responseError', (evt) => {
   if (evt.detail.xhr.status === 401) {
-    content.innerHTML =
-      '<article><p>Sesión vencida. Volvé a abrir la app desde el botón del chat.</p></article>';
+    showError('Sesión vencida. Volvé a abrir la app desde el botón del chat.', false);
     return;
   }
-  content.innerHTML =
-    '<article><p>No se pudo cargar. Probá de nuevo en un momento.</p></article>';
+  showError('No se pudo cargar. Probá de nuevo en un momento.', true);
 });
 
 document.addEventListener('htmx:sendError', () => {
-  const content = document.getElementById('content');
-  if (content) {
-    content.innerHTML =
-      '<article><p>Sin conexión. Probá de nuevo cuando vuelva.</p></article>';
-  }
+  showError('Sin conexión. Probá de nuevo cuando vuelva.', true);
 });
 
 function applyTelegramTheme() {
@@ -142,6 +212,7 @@ function applyTelegramChrome() {
 }
 
 function applyChartTheme() {
+  if (!window.Chart) return;
   const cs = getComputedStyle(document.documentElement);
   Chart.defaults.color = cs.getPropertyValue('--pico-color').trim();
   Chart.defaults.borderColor = cs.getPropertyValue('--pico-muted-border-color').trim();
@@ -162,7 +233,6 @@ function syncBackButton() {
 
 document.addEventListener('DOMContentLoaded', () => {
   applyTelegramTheme();
-  applyChartTheme();
   applyTelegramChrome();
   try {
     if (window.Telegram && window.Telegram.WebApp) {
@@ -171,7 +241,6 @@ document.addEventListener('DOMContentLoaded', () => {
       window.Telegram.WebApp.BackButton.onClick(() => history.back());
       window.Telegram.WebApp.onEvent('themeChanged', () => {
         applyTelegramTheme();
-        applyChartTheme();
         applyTelegramChrome();
         initCharts(document);
       });
@@ -228,11 +297,12 @@ document.addEventListener('input', (evt) => {
     group.style.display = anyVisible ? '' : 'none';
   });
   const empty = document.getElementById(MOV_FILTER_EMPTY_ID);
-  if (empty) empty.hidden = shown > 0;
+  if (empty) empty.textContent = shown > 0 ? '' : (empty.dataset.msg || '');
 });
 
 document.addEventListener('htmx:afterSwap', (evt) => {
   initCharts(evt.detail.target);
   markActiveTab();
+  announceRoute();
   syncBackButton();
 });

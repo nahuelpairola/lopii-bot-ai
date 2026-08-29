@@ -41,7 +41,7 @@ templ Accounts(data AccountsData) {
 		</div>
 		if data.Period.Months > 1 {
 			<div class="chart-box">
-				<canvas id="cuentas-trend" data-chart-type="line-multi" data-chart-data-id="cuentas-trend-data"></canvas>
+				<canvas id="cuentas-trend" role="img" aria-label={ TrendChartAlt("saldo por cuenta", data.TrendChart, data.Period.Currency) } data-chart-type="line-multi" data-chart-data-id="cuentas-trend-data"></canvas>
 			</div>
 			@templ.JSONScript("cuentas-trend-data", data.TrendChart)
 		}
@@ -83,7 +83,7 @@ templ AccountLeaf(data AccountLeafData) {
 	} else {
 		<input id={ MovFilterID } type="search" placeholder="Buscar en esta cuenta" aria-label="Buscar movimientos" autocomplete="off"/>
 		@movementList(data.Rows)
-		<p id={ MovFilterEmptyID } class="muted" hidden>{ MsgFilterNoMatch }</p>
+		<p id={ MovFilterEmptyID } class="muted filter-status" role="status" data-msg={ MsgFilterNoMatch }></p>
 		if data.Capped {
 			<p class="muted">{ MsgLeafCapped }</p>
 		}

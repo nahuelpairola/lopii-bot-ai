@@ -26,6 +26,7 @@ type OverviewData struct {
 
 templ Overview(data OverviewData) {
 	@PeriodHeader(data.Period)
+	<h1 class="sr-only">Resumen</h1>
 	<div class="grid">
 		<article>
 			<p>Gastos</p>
@@ -57,7 +58,7 @@ templ Overview(data OverviewData) {
 		@EmptyState("Sin movimientos en este período.")
 	} else {
 		<div class="chart-box">
-			<canvas id="resumen-trend" data-chart-type="bar-grouped" data-chart-data-id="resumen-trend-data"></canvas>
+			<canvas id="resumen-trend" role="img" aria-label={ TrendChartAlt("gastos e ingresos", data.TrendChart, data.Period.Currency) } data-chart-type="bar-grouped" data-chart-data-id="resumen-trend-data"></canvas>
 		</div>
 		@templ.JSONScript("resumen-trend-data", data.TrendChart)
 	}
