@@ -9,6 +9,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/quote"
 )
 
 var (
@@ -25,7 +26,7 @@ const (
 
 func monthlyBuilder(t *testing.T, m fakeMovements, a fakeAccounts) *Builder {
 	t.Helper()
-	return NewBuilder(m, a, fakeIcons{})
+	return NewBuilder(m, a, fakeIcons{}, fakeQuotes{})
 }
 
 func TestBuildMonthly_OpensWithIncomeSpentAndLeftover(t *testing.T) {
@@ -213,5 +214,81 @@ func TestBuildMonthly_ZeroVariationOmitsTheAside(t *testing.T) {
 
 	if strings.Contains(p.Text, "no es plata que entró") {
 		t.Errorf("the variation aside was rendered with zero variation:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_DollarLineNamesTheQuoteRowsOwnDate(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense|" + julKey: sums(row("", "1240000")),
+	}}
+	q := fakeQuotes{rows: map[string]*quote.Quote{
+		rateTypeMEP: {
+			Date:     time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC),
+			RateType: rateTypeMEP,
+			Ask:      dec("1204"),
+		},
+	}}
+
+	p, _ := NewBuilder(m, fakeAccounts{}, fakeIcons{}, q).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if !strings.Contains(p.Text, "29 de julio") {
+		t.Errorf("the line must name the quote row's own date, not the 31st:\n%s", p.Text)
+	}
+	if strings.Contains(p.Text, "31 de julio") {
+		t.Errorf("the asked-for date leaked into the copy:\n%s", p.Text)
+	}
+	if !strings.Contains(p.Text, "US$1.030") {
+		t.Errorf("expected 1240000/1204 rounded = US$1.030 in:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_NoQuoteOmitsTheDollarLine(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense|" + julKey: sums(row("", "1240000")),
+	}}
+
+	p, _ := NewBuilder(m, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if strings.Contains(p.Text, "US$") {
+		t.Errorf("a dollar figure was invented with no quote:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_RunwayNeedsThreeClosedMonths(t *testing.T) {
+	m := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|" + julKey: sums(row("", "1240000")),
+		},
+		deltas: map[uint64][]movement.MonthlyDelta{
+			1: {{Month: "2026-07", Delta: dec("2400000")}},
+		},
+	}
+	a := fakeAccounts{list: map[uint64][]account.Account{1: {
+		{Model: gorm.Model{ID: 1}, UserID: 1, Name: "Galicia", Currency: currency.ARS},
+	}}}
+
+	p, _ := NewBuilder(m, a, fakeIcons{}, fakeQuotes{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if strings.Contains(p.Text, "gastando como venís gastando") {
+		t.Errorf("runway rendered with fewer than 3 closed months of expense:\n%s", p.Text)
+	}
+}
+
+func TestRunwayWords_RoundsToHalfMonths(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{0.4, "menos de un mes"},
+		{1.1, "un mes"},
+		{1.8, "casi dos meses"},
+		{2.5, "2 y medio meses"},
+		{4.2, "más de 4 meses"},
+		{13.0, "más de un año"},
+	}
+	for _, c := range cases {
+		if got := runwayWords(c.in); got != c.want {
+			t.Errorf("runwayWords(%v) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }

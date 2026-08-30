@@ -12,6 +12,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/quote"
 )
 
 // MovementReader is the movement-repo surface the builder needs (consumer-local
@@ -39,14 +40,20 @@ type IconReader interface {
 	IconForCategory(userID uint64, category string) string
 }
 
+// QuoteReader is the quote-repo surface the monthly summary needs.
+type QuoteReader interface {
+	FindRateOnOrBefore(date time.Time, rateType string) (*quote.Quote, error)
+}
+
 type Builder struct {
 	movements MovementReader
 	accounts  AccountReader
 	icons     IconReader
+	quotes    QuoteReader
 }
 
-func NewBuilder(m MovementReader, a AccountReader, i IconReader) *Builder {
-	return &Builder{movements: m, accounts: a, icons: i}
+func NewBuilder(m MovementReader, a AccountReader, i IconReader, q QuoteReader) *Builder {
+	return &Builder{movements: m, accounts: a, icons: i, quotes: q}
 }
 
 const (

@@ -3,6 +3,7 @@ package summary
 import (
 	"fmt"
 	"html"
+	"math"
 	"strings"
 	"time"
 
@@ -38,6 +39,12 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 	sb.WriteString(openingLines(spent, earned))
 	sb.WriteString(spendComparison(spent, prevSpent, prevTo))
 
+	dollars, err := b.dollarLine(spent, to)
+	if err != nil {
+		return conversation.Prompt{}, err
+	}
+	sb.WriteString(dollars)
+
 	accountsBlock, closingARS, err := b.accountsCloseBlock(userID, currency.ARS, to)
 	if err != nil {
 		return conversation.Prompt{}, err
@@ -53,7 +60,31 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 			fmt.Fprintf(&sb, msgMonthlyVariation, money(v.Abs(), currency.ARS))
 		}
 	}
-	_ = closingARS
+	_, closingUSD, err := b.accountsCloseBlock(userID, currency.USD, to)
+	if err != nil {
+		return conversation.Prompt{}, err
+	}
+	_, prevClosingUSD, err := b.accountsCloseBlock(userID, currency.USD, prevTo)
+	if err != nil {
+		return conversation.Prompt{}, err
+	}
+	if closingUSD.IsPositive() {
+		diff := closingUSD.Sub(prevClosingUSD)
+		switch {
+		case diff.IsZero():
+			fmt.Fprintf(&sb, msgMonthlyUSDFlat, money(closingUSD, currency.USD))
+		case diff.IsPositive():
+			fmt.Fprintf(&sb, msgMonthlyUSDHeld, money(closingUSD, currency.USD), money(diff, currency.USD))
+		default:
+			fmt.Fprintf(&sb, msgMonthlyUSDHeldDn, money(closingUSD, currency.USD), money(diff.Abs(), currency.USD))
+		}
+	}
+
+	runway, err := b.runwayLine(userID, closingARS, from)
+	if err != nil {
+		return conversation.Prompt{}, err
+	}
+	sb.WriteString(runway)
 
 	return conversation.Prompt{Text: sb.String()}, nil
 }
@@ -153,4 +184,60 @@ func (b *Builder) accountsCloseBlock(userID uint64, cur currency.Currency, to ti
 
 func lastDayOfMonth(t time.Time) int {
 	return time.Date(t.Year(), t.Month()+1, 0, 0, 0, 0, 0, t.Location()).Day()
+}
+
+func (b *Builder) dollarLine(spent decimal.Decimal, to time.Time) (string, error) {
+	q, err := b.quotes.FindRateOnOrBefore(to, rateTypeMEP)
+	if err != nil {
+		return "", err
+	}
+	if q == nil || !q.Ask.IsPositive() {
+		return "", nil
+	}
+	usd := spent.Div(q.Ask).Round(0)
+	return fmt.Sprintf(msgMonthlyInDollars,
+		money(usd, currency.USD), q.Date.Day(), constants.MonthLongEs[q.Date.Month()-1]), nil
+}
+
+func (b *Builder) runwayLine(userID uint64, closingARS decimal.Decimal, from time.Time) (string, error) {
+	if !closingARS.IsPositive() {
+		return "", nil
+	}
+	sum := decimal.Zero
+	for i := 0; i < runwayMonths; i++ {
+		start := from.AddDate(0, -i, 0)
+		end := time.Date(start.Year(), start.Month()+1, 0, 0, 0, 0, 0, start.Location())
+		spent, err := b.total(monthQuery(userID, start, end, constants.Expense))
+		if err != nil {
+			return "", err
+		}
+		if spent.IsZero() {
+			return "", nil
+		}
+		sum = sum.Add(spent)
+	}
+	avg := sum.Div(decimal.NewFromInt(runwayMonths))
+	if !avg.IsPositive() {
+		return "", nil
+	}
+	months, _ := closingARS.Div(avg).Float64()
+	return fmt.Sprintf(msgMonthlyRunway, runwayWords(months)), nil
+}
+
+func runwayWords(m float64) string {
+	half := math.Round(m*2) / 2
+	switch {
+	case m < 1:
+		return "menos de un mes"
+	case m < 1.5:
+		return "un mes"
+	case m < 2:
+		return "casi dos meses"
+	case half >= 12:
+		return "más de un año"
+	case half == math.Trunc(half):
+		return fmt.Sprintf("más de %d meses", int(half))
+	default:
+		return fmt.Sprintf("%d y medio meses", int(half))
+	}
 }
