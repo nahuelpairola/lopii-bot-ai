@@ -91,7 +91,7 @@ func InitServer(conf *config.Config) error {
 	// neutro (messagingController.Handle, más abajo). Se arma acá, apenas
 	// existe userRepo, para que el resto del arranque se lea de arriba a
 	// abajo sin un salto hacia atrás.
-	tgTransport := telegram.New(tgBot, userRepo)
+	tgTransport := telegram.New(tgBot, userRepo, conf.Server.BaseHost)
 
 	llmOrchestrator := buildOrchestrator(conf, llmCallRecorder{insert: metricRepo.InsertLLMCall})
 

@@ -25,12 +25,13 @@ type AddressLookup interface {
 // Transport es el canal Telegram. Es el único lugar del árbol que conoce
 // *bot.Bot fuera del arranque del server.
 type Transport struct {
-	b     *bot.Bot
-	addrs AddressLookup
+	b        *bot.Bot
+	addrs    AddressLookup
+	baseHost string
 }
 
-func New(b *bot.Bot, addrs AddressLookup) *Transport {
-	return &Transport{b: b, addrs: addrs}
+func New(b *bot.Bot, addrs AddressLookup, baseHost string) *Transport {
+	return &Transport{b: b, addrs: addrs, baseHost: baseHost}
 }
 
 // ChatFor alcanza a un usuario que NO acaba de escribir: lo usan el sweeper de
@@ -45,7 +46,7 @@ func (t *Transport) ChatFor(userID uint64) (messenger.Chat, error) {
 	if err != nil {
 		return nil, fmt.Errorf("telegram: dirección inválida %q: %w", addr, err)
 	}
-	return chat{b: t.b, chatID: chatID}, nil
+	return chat{b: t.b, chatID: chatID, baseHost: t.baseHost}, nil
 }
 
 // Serve registra el handler catch-all en el bot y devuelve el http.Handler del
