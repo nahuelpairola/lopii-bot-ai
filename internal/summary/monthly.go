@@ -9,6 +9,7 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/constants"
+	"lopiibot.com/internal/controller/miniapp/templates"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
@@ -86,7 +87,30 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 	}
 	sb.WriteString(runway)
 
-	return conversation.Prompt{Text: sb.String()}, nil
+	cats, err := b.monthlyCategories(userID, from, to)
+	if err != nil {
+		return conversation.Prompt{}, err
+	}
+	prevCats, err := b.monthlyCategories(userID, prevFrom, prevTo)
+	if err != nil {
+		return conversation.Prompt{}, err
+	}
+	sb.WriteString(monthlyJumpLine(cats, prevCats, prevTo))
+
+	fold, err := b.monthlyFold(userID, cats, spent, from, to)
+	if err != nil {
+		return conversation.Prompt{}, err
+	}
+	sb.WriteString(fold)
+	sb.WriteString(msgMonthlyNote)
+
+	return conversation.Prompt{
+		Text: sb.String(),
+		Buttons: []conversation.Button{{
+			Label:      fmt.Sprintf(msgMonthlyButton, constants.MonthLongEs[to.Month()-1]),
+			WebAppPath: templates.RouteOverview + monthlyButtonQuery + to.Format("2006-01"),
+		}},
+	}, nil
 }
 
 func monthQuery(userID uint64, from, to time.Time, typ string) movement.MovementQuery {
@@ -240,4 +264,125 @@ func runwayWords(m float64) string {
 	default:
 		return fmt.Sprintf("%d y medio meses", int(half))
 	}
+}
+
+func jumpWords(ratio float64) string {
+	switch {
+	case ratio >= 5:
+		return "muchísimo más"
+	case ratio >= 3:
+		return "el triple"
+	case ratio >= 2.7:
+		return "casi el triple"
+	case ratio >= 2:
+		return "el doble"
+	case ratio >= 1.75:
+		return "casi el doble"
+	case ratio >= 1.5:
+		return "la mitad más"
+	default:
+		return "bastante más"
+	}
+}
+
+func shareWords(frac float64) string {
+	switch {
+	case frac >= 0.66:
+		return "dos tercios"
+	case frac >= 0.45:
+		return "la mitad"
+	case frac >= 0.28:
+		return "un tercio"
+	case frac >= 0.20:
+		return "un cuarto"
+	default:
+		return ""
+	}
+}
+
+func (b *Builder) monthlyCategories(userID uint64, from, to time.Time) ([]movement.CategorySum, error) {
+	return b.movements.SumForUser(monthQuery(userID, from, to, constants.Expense), movement.GroupByCategory)
+}
+
+func monthlyJumpLine(cats, prevCats []movement.CategorySum, prevTo time.Time) string {
+	if len(prevCats) == 0 {
+		return ""
+	}
+	prev := make(map[string]decimal.Decimal, len(prevCats))
+	for _, r := range prevCats {
+		prev[r.Label] = r.Total
+	}
+
+	jumped, best := -1, decimal.Zero
+	for i, c := range cats {
+		p, seen := prev[c.Label]
+		delta := c.Total.Sub(p)
+		if !delta.IsPositive() {
+			continue
+		}
+		if seen && !p.IsZero() && delta.Div(p).LessThan(decimal.NewFromFloat(jumpThreshold)) {
+			continue
+		}
+		if delta.GreaterThan(best) {
+			jumped, best = i, delta
+		}
+	}
+	if jumped < 0 {
+		return ""
+	}
+
+	c := cats[jumped]
+	name := html.EscapeString(c.Label)
+	amount := money(c.Total, currency.ARS)
+	prevMonth := constants.MonthLongEs[prevTo.Month()-1]
+	p, seen := prev[c.Label]
+	if !seen || p.IsZero() {
+		return fmt.Sprintf(msgMonthlyJumpNew, name, amount, prevMonth)
+	}
+	ratio, _ := c.Total.Div(p).Float64()
+	return fmt.Sprintf(msgMonthlyJump, name, amount, jumpWords(ratio), prevMonth)
+}
+
+func (b *Builder) monthlyFold(userID uint64, cats []movement.CategorySum, spent decimal.Decimal, from, to time.Time) (string, error) {
+	if len(cats) < 2 {
+		return "", nil
+	}
+	rows := cats
+	if len(rows) > monthlyRankingRows {
+		rows = rows[:monthlyRankingRows]
+	}
+
+	var sb strings.Builder
+	sb.WriteString(msgMonthlyFoldOpen)
+	for i, c := range rows {
+		icon := b.icons.IconForCategory(userID, c.Label)
+		name := icon + " " + html.EscapeString(c.Label)
+		share := ""
+		if i == 0 && spent.IsPositive() {
+			frac, _ := c.Total.Div(spent).Float64()
+			share = shareWords(frac)
+		}
+		if share != "" {
+			fmt.Fprintf(&sb, msgMonthlyFoldShare, name, money(c.Total, currency.ARS), share)
+			continue
+		}
+		fmt.Fprintf(&sb, msgMonthlyFoldRow, name, money(c.Total, currency.ARS))
+	}
+
+	top, err := b.movements.TopExpenseForUser(movement.MovementQuery{
+		UserID: userID, From: from, To: to, Currency: currency.ARS,
+	})
+	if err != nil {
+		return "", err
+	}
+	if top != nil {
+		desc := "sin detalle"
+		if top.Description != nil && *top.Description != "" {
+			desc = html.EscapeString(*top.Description)
+		}
+		fmt.Fprintf(&sb, msgMonthlyFoldTop, money(top.Amount.Abs(), currency.ARS), desc)
+		sb.WriteString("\n")
+	}
+	sb.WriteString(msgMonthlyFoldClose)
+	return sb.String(), nil
 }

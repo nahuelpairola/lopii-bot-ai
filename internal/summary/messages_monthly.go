@@ -27,3 +27,19 @@ const (
 	msgMonthlyUSDFlat   = "\n💵 En dólares tenés <b>%s</b>.\n"
 	msgMonthlyRunway    = "\nEntre todas tus cuentas tenés para <b>%s</b> gastando como venís gastando.\n"
 )
+
+const (
+	monthlyRankingRows = 5
+
+	msgMonthlyJump      = "\n⚠️ Lo que más cambió: <b>%s</b> te costó <b>%s</b>, %s que en %s.\n"
+	msgMonthlyJumpNew   = "\n⚠️ Lo que más cambió: <b>%s</b> te costó <b>%s</b>, y en %s no habías gastado nada ahí.\n"
+	msgMonthlyFoldOpen  = "\n<blockquote expandable><b>En qué se fue</b>\n"
+	msgMonthlyFoldRow   = "%s %s\n"
+	msgMonthlyFoldShare = "%s %s — %s de todo lo que gastaste\n"
+	msgMonthlyFoldTop   = "El gasto más caro del mes: %s en %s."
+	msgMonthlyFoldClose = "</blockquote>\n"
+	msgMonthlyNote      = "\n<blockquote>📩 Va cada día 3, además del resumen de los lunes. Para cortar los dos, escribime «no quiero más los resúmenes».</blockquote>"
+	msgMonthlyButton    = "📈 Ver %s en la app"
+
+	monthlyButtonQuery = "?p=month&m="
+)

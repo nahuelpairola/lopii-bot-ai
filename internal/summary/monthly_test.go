@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/quote"
@@ -289,6 +290,131 @@ func TestRunwayWords_RoundsToHalfMonths(t *testing.T) {
 	for _, c := range cases {
 		if got := runwayWords(c.in); got != c.want {
 			t.Errorf("runwayWords(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestBuildMonthly_FlagsTheCategoryThatJumped(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense|" + julKey:                            sums(row("", "1240000")),
+		"ARS|expense|" + movement.GroupByCategory + julKey: sums(row("Transporte", "150000"), row("Súper", "420000")),
+		"ARS|expense|" + movement.GroupByCategory + junKey: sums(row("Transporte", "75000"), row("Súper", "430000")),
+	}}
+
+	p, _ := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if !strings.Contains(p.Text, "⚠️") || !strings.Contains(p.Text, "<b>Transporte</b>") {
+		t.Errorf("the jumped category is missing:\n%s", p.Text)
+	}
+	if strings.Contains(p.Text, "⚠️ Lo que más cambió: <b>Súper</b>") {
+		t.Errorf("a category that did not jump was flagged:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_NoJumpOmitsTheWarningLine(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense|" + julKey:                            sums(row("", "1240000")),
+		"ARS|expense|" + movement.GroupByCategory + julKey: sums(row("Súper", "420000"), row("Casa", "260000")),
+		"ARS|expense|" + movement.GroupByCategory + junKey: sums(row("Súper", "410000"), row("Casa", "250000")),
+	}}
+
+	p, _ := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if strings.Contains(p.Text, "⚠️") {
+		t.Errorf("a warning line was rendered with no jump:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_SingleCategoryOmitsTheFoldedBlock(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense|" + julKey:                            sums(row("", "420000")),
+		"ARS|expense|" + movement.GroupByCategory + julKey: sums(row("Súper", "420000")),
+	}}
+
+	p, _ := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if strings.Contains(p.Text, "blockquote expandable") {
+		t.Errorf("the fold repeats the one figure already stated:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_CarriesOneWebAppButtonForThatMonth(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense|" + julKey: sums(row("", "1240000")),
+	}}
+
+	p, _ := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if len(p.Buttons) != 1 {
+		t.Fatalf("Buttons = %d, want 1", len(p.Buttons))
+	}
+	btn := p.Buttons[0]
+	if btn.WebAppPath != "/app/overview?p=month&m=2026-07" {
+		t.Errorf("WebAppPath = %q", btn.WebAppPath)
+	}
+	if btn.Data != "" {
+		t.Errorf("Data = %q, want empty — Telegram rejects a button carrying both", btn.Data)
+	}
+	if !strings.Contains(btn.Label, "julio") {
+		t.Errorf("Label = %q, want the reported month named", btn.Label)
+	}
+}
+
+func TestBuildMonthly_EscapesUserText(t *testing.T) {
+	m := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|" + julKey:                            sums(row("", "420000")),
+			"ARS|expense|" + movement.GroupByCategory + julKey: sums(row("Súper", "300000"), row("Casa", "120000")),
+		},
+		tops: map[string]*movement.Movement{
+			"ARS": {Description: strptr("neumáticos <b>& llantas</b>"), Amount: dec("-96000"), Type: constants.Expense, Currency: currency.ARS},
+		},
+	}
+
+	p, _ := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if strings.Contains(p.Text, "<b>& llantas</b>") {
+		t.Errorf("user text reached the message unescaped — Telegram will 400:\n%s", p.Text)
+	}
+	if !strings.Contains(p.Text, "&amp;") {
+		t.Errorf("expected the ampersand escaped in:\n%s", p.Text)
+	}
+}
+
+func TestJumpWords_SpeaksTheMagnitude(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{1.35, "bastante más"},
+		{1.6, "la mitad más"},
+		{1.9, "casi el doble"},
+		{2.1, "el doble"},
+		{2.8, "casi el triple"},
+		{3.4, "el triple"},
+		{7.0, "muchísimo más"},
+	}
+	for _, c := range cases {
+		if got := jumpWords(c.in); got != c.want {
+			t.Errorf("jumpWords(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestShareWords_SpeaksTheFraction(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{0.70, "dos tercios"},
+		{0.50, "la mitad"},
+		{0.33, "un tercio"},
+		{0.25, "un cuarto"},
+		{0.10, ""},
+	}
+	for _, c := range cases {
+		if got := shareWords(c.in); got != c.want {
+			t.Errorf("shareWords(%v) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
