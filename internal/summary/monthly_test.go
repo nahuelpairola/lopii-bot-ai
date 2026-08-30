@@ -418,3 +418,26 @@ func TestShareWords_SpeaksTheFraction(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildMonthly_AccountRiseNamesThePreviousMonth(t *testing.T) {
+	m := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|" + julKey: sums(row("", "1240000")),
+		},
+		deltas: map[uint64][]movement.MonthlyDelta{
+			1: {{Month: "2026-06", Delta: dec("235000")}, {Month: "2026-07", Delta: dec("85000")}},
+		},
+	}
+	a := fakeAccounts{list: map[uint64][]account.Account{1: {
+		{Model: gorm.Model{ID: 1}, UserID: 1, Name: "Mercado Pago", Currency: currency.ARS},
+	}}}
+
+	p, _ := monthlyBuilder(t, m, a).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if !strings.Contains(p.Text, "a fin de junio") {
+		t.Errorf("a 31-day month must not roll over into itself:\n%s", p.Text)
+	}
+	if strings.Contains(p.Text, "a fin de julio") {
+		t.Errorf("the reported month was named as its own predecessor:\n%s", p.Text)
+	}
+}

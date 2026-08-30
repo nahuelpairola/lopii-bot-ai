@@ -175,7 +175,7 @@ func (b *Builder) accountsCloseBlock(userID uint64, cur currency.Currency, to ti
 		return "", decimal.Zero, err
 	}
 	month := to.Format("2006-01")
-	prevMonth := constants.MonthLongEs[to.AddDate(0, -1, 0).Month()-1]
+	prevMonth := constants.MonthLongEs[time.Date(to.Year(), to.Month(), 1, 0, 0, 0, 0, to.Location()).AddDate(0, 0, -1).Month()-1]
 	totalClosing := decimal.Zero
 	var lines []string
 	for _, a := range accts {
