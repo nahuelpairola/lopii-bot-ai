@@ -19,6 +19,7 @@ type Reminder struct {
 	LastRemindedOn       *time.Time `gorm:"column:last_reminded_on"`
 	WeeklySummaryEnabled bool       `gorm:"column:weekly_summary_enabled"`
 	LastSummaryOn        *time.Time `gorm:"column:last_summary_on"`
+	LastMonthlySummaryOn *time.Time `gorm:"column:last_monthly_summary_on"`
 	CreatedAt            time.Time  `gorm:"column:created_at"`
 	UpdatedAt            time.Time  `gorm:"column:updated_at"`
 }
@@ -87,6 +88,21 @@ func (r *repository) ListWeeklyDue(before time.Time) ([]Reminder, error) {
 // SetLastSummaryOn marks the weekly summary as sent for `date` (ART this-Monday).
 func (r *repository) SetLastSummaryOn(userID uint64, date time.Time) error {
 	return r.conn.DB.Model(&Reminder{}).Where("user_id = ?", userID).Update("last_summary_on", date).Error
+}
+
+// ListMonthlyDue returns reminders opted into the summary whose monthly summary
+// hasn't been sent on/after `before`.
+func (r *repository) ListMonthlyDue(before time.Time) ([]Reminder, error) {
+	var rs []Reminder
+	err := r.conn.DB.
+		Where("weekly_summary_enabled AND (last_monthly_summary_on IS NULL OR last_monthly_summary_on < ?)", before).
+		Find(&rs).Error
+	return rs, err
+}
+
+// SetLastMonthlySummaryOn marks the monthly summary as sent for `date`.
+func (r *repository) SetLastMonthlySummaryOn(userID uint64, date time.Time) error {
+	return r.conn.DB.Model(&Reminder{}).Where("user_id = ?", userID).Update("last_monthly_summary_on", date).Error
 }
 
 // SetWeeklySummary toggles ONLY the weekly-summary flag, never the daily window
