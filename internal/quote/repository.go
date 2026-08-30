@@ -1,8 +1,10 @@
 package quote
 
 import (
+	"errors"
 	"time"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"lopiibot.com/internal/database"
 )
@@ -54,4 +56,22 @@ func (r *repository) InsertCPI(cs []CPI) error {
 	}
 	return r.conn.DB.Clauses(clause.OnConflict{DoNothing: true}).
 		CreateInBatches(cs, insertBatchSize).Error
+}
+
+// FindRateOnOrBefore returns the most recent quote of rateType dated on or
+// before date, or nil when the series has no such row.
+func (r *repository) FindRateOnOrBefore(date time.Time, rateType string) (*Quote, error) {
+	var q Quote
+	err := r.conn.DB.
+		Where("rate_type = ? AND date <= ?", rateType, date.Format("2006-01-02")).
+		Order("date DESC").
+		Limit(1).
+		Take(&q).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &q, nil
 }
