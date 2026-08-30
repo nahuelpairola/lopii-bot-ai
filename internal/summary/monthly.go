@@ -2,6 +2,7 @@ package summary
 
 import (
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -36,6 +37,23 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 	fmt.Fprintf(&sb, msgMonthlyHeader, monthTitle(to))
 	sb.WriteString(openingLines(spent, earned))
 	sb.WriteString(spendComparison(spent, prevSpent, prevTo))
+
+	accountsBlock, closingARS, err := b.accountsCloseBlock(userID, currency.ARS, to)
+	if err != nil {
+		return conversation.Prompt{}, err
+	}
+	sb.WriteString(accountsBlock)
+
+	if accountsBlock != "" {
+		v, err := b.variation(userID, currency.ARS, from, to)
+		if err != nil {
+			return conversation.Prompt{}, err
+		}
+		if !v.IsZero() {
+			fmt.Fprintf(&sb, msgMonthlyVariation, money(v.Abs(), currency.ARS))
+		}
+	}
+	_ = closingARS
 
 	return conversation.Prompt{Text: sb.String()}, nil
 }
@@ -79,4 +97,60 @@ func spendComparison(spent, prevSpent decimal.Decimal, prevTo time.Time) string 
 func monthTitle(t time.Time) string {
 	name := constants.MonthLongEs[t.Month()-1]
 	return strings.ToUpper(name[:1]) + name[1:]
+}
+
+func balanceAt(deltas []movement.MonthlyDelta, month string) (decimal.Decimal, decimal.Decimal) {
+	closing := decimal.Zero
+	delta := decimal.Zero
+	for _, d := range deltas {
+		if d.Month > month {
+			break
+		}
+		closing = closing.Add(d.Delta)
+		if d.Month == month {
+			delta = d.Delta
+		}
+	}
+	return closing, delta
+}
+
+func (b *Builder) accountsCloseBlock(userID uint64, cur currency.Currency, to time.Time) (string, decimal.Decimal, error) {
+	accts, err := b.accounts.FindByUserID(userID)
+	if err != nil {
+		return "", decimal.Zero, err
+	}
+	month := to.Format("2006-01")
+	prevMonth := constants.MonthLongEs[to.AddDate(0, -1, 0).Month()-1]
+	totalClosing := decimal.Zero
+	var lines []string
+	for _, a := range accts {
+		if a.Currency != cur {
+			continue
+		}
+		deltas, err := b.movements.MonthlyDeltasForAccount(uint64(a.ID))
+		if err != nil {
+			return "", decimal.Zero, err
+		}
+		closing, delta := balanceAt(deltas, month)
+		totalClosing = totalClosing.Add(closing)
+		if delta.IsZero() {
+			continue
+		}
+		name := html.EscapeString(a.Name)
+		if delta.IsPositive() {
+			lines = append(lines, fmt.Sprintf(msgMonthlyAccountUp,
+				name, money(closing, cur), money(delta, cur), prevMonth))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf(msgMonthlyAccountDown,
+			name, money(closing, cur), money(delta.Abs(), cur)))
+	}
+	if len(lines) == 0 {
+		return "", totalClosing, nil
+	}
+	return fmt.Sprintf(msgMonthlyAccountsHeader, lastDayOfMonth(to)) + strings.Join(lines, ""), totalClosing, nil
+}
+
+func lastDayOfMonth(t time.Time) int {
+	return time.Date(t.Year(), t.Month()+1, 0, 0, 0, 0, 0, t.Location()).Day()
 }

@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+	"lopiibot.com/internal/account"
+	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
 )
 
@@ -100,5 +103,115 @@ func TestBuildMonthly_NegativeLeftoverSaysItPlainly(t *testing.T) {
 	}
 	if strings.Contains(p.Text, "-$") || strings.Contains(p.Text, "$-") {
 		t.Errorf("a sign escaped into the copy:\n%s", p.Text)
+	}
+}
+
+func TestBalanceAt_AccumulatesFullHistoryAndStopsAtTheMonth(t *testing.T) {
+	deltas := []movement.MonthlyDelta{
+		{Month: "2026-05", Delta: dec("100000")},
+		{Month: "2026-06", Delta: dec("135000")},
+		{Month: "2026-07", Delta: dec("85000")},
+		{Month: "2026-08", Delta: dec("999999")},
+	}
+
+	closing, delta := balanceAt(deltas, "2026-07")
+
+	if !closing.Equal(dec("320000")) {
+		t.Errorf("closing = %s, want 320000", closing)
+	}
+	if !delta.Equal(dec("85000")) {
+		t.Errorf("delta = %s, want 85000", delta)
+	}
+}
+
+func TestBalanceAt_MonthWithNoActivityCarriesTheBalance(t *testing.T) {
+	deltas := []movement.MonthlyDelta{{Month: "2026-05", Delta: dec("100000")}}
+
+	closing, delta := balanceAt(deltas, "2026-07")
+
+	if !closing.Equal(dec("100000")) {
+		t.Errorf("closing = %s, want 100000", closing)
+	}
+	if !delta.IsZero() {
+		t.Errorf("delta = %s, want 0", delta)
+	}
+}
+
+func TestBuildMonthly_ListsAccountsThatMovedWithTheirCloseBalance(t *testing.T) {
+	m := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|" + julKey: sums(row("", "1240000")),
+			"ARS|income|" + julKey:  sums(row("", "2100000")),
+		},
+		deltas: map[uint64][]movement.MonthlyDelta{
+			1: {{Month: "2026-06", Delta: dec("235000")}, {Month: "2026-07", Delta: dec("85000")}},
+			2: {{Month: "2026-06", Delta: dec("552000")}, {Month: "2026-07", Delta: dec("-12000")}},
+		},
+	}
+	a := fakeAccounts{list: map[uint64][]account.Account{1: {
+		{Model: gorm.Model{ID: 1}, UserID: 1, Name: "Mercado Pago", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 2}, UserID: 1, Name: "Galicia", Currency: currency.ARS},
+	}}}
+
+	p, _ := monthlyBuilder(t, m, a).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	for _, want := range []string{"Mercado Pago", "$320.000", "↗", "Galicia", "$540.000", "↘"} {
+		if !strings.Contains(p.Text, want) {
+			t.Errorf("missing %q in:\n%s", want, p.Text)
+		}
+	}
+}
+
+func TestBuildMonthly_AccountThatDidNotMoveIsNotListed(t *testing.T) {
+	m := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|" + julKey: sums(row("", "1240000")),
+		},
+		deltas: map[uint64][]movement.MonthlyDelta{
+			1: {{Month: "2026-07", Delta: dec("85000")}},
+			2: {{Month: "2026-01", Delta: dec("50000")}},
+		},
+	}
+	a := fakeAccounts{list: map[uint64][]account.Account{1: {
+		{Model: gorm.Model{ID: 1}, UserID: 1, Name: "Mercado Pago", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 2}, UserID: 1, Name: "Dormida", Currency: currency.ARS},
+	}}}
+
+	p, _ := monthlyBuilder(t, m, a).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if strings.Contains(p.Text, "Dormida") {
+		t.Errorf("an account with no movement in the month was listed:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_NoAccountsOmitsTheBlock(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense|" + julKey: sums(row("", "1240000")),
+	}}
+
+	p, _ := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if strings.Contains(p.Text, "🏦") {
+		t.Errorf("the accounts block was rendered with no accounts:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_ZeroVariationOmitsTheAside(t *testing.T) {
+	m := fakeMovements{
+		sums: map[string][]movement.CategorySum{
+			"ARS|expense|" + julKey: sums(row("", "1240000")),
+		},
+		deltas: map[uint64][]movement.MonthlyDelta{
+			1: {{Month: "2026-07", Delta: dec("85000")}},
+		},
+	}
+	a := fakeAccounts{list: map[uint64][]account.Account{1: {
+		{Model: gorm.Model{ID: 1}, UserID: 1, Name: "Mercado Pago", Currency: currency.ARS},
+	}}}
+
+	p, _ := monthlyBuilder(t, m, a).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+
+	if strings.Contains(p.Text, "no es plata que entró") {
+		t.Errorf("the variation aside was rendered with zero variation:\n%s", p.Text)
 	}
 }
