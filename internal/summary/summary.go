@@ -23,6 +23,7 @@ type MovementReader interface {
 	// SumAmountForAccount computes an account's current balance (SUM over its
 	// movements) — the balance is never stored (movement.repository owns it).
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
+	MonthlyDeltasForAccount(accountID uint64) ([]movement.MonthlyDelta, error)
 }
 
 // AccountReader is the account-repo surface for the balances snapshot (listing

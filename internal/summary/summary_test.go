@@ -22,6 +22,7 @@ type fakeMovements struct {
 	tops   map[string]*movement.Movement
 	counts []movement.DayCount
 	bals   map[uint64]decimal.Decimal
+	deltas map[uint64][]movement.MonthlyDelta
 }
 
 func (f fakeMovements) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
@@ -39,6 +40,10 @@ func (f fakeMovements) CountByDayForUser(_ uint64, _, _ time.Time) ([]movement.D
 }
 func (f fakeMovements) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
 	return f.bals[id], nil
+}
+
+func (f fakeMovements) MonthlyDeltasForAccount(id uint64) ([]movement.MonthlyDelta, error) {
+	return f.deltas[id], nil
 }
 
 // fakeIcons stands in for subcategory.Cache, que nunca devuelve vacío: su
