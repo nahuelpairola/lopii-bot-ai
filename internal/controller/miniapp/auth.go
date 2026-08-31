@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	initDataMaxAge   = 24 * time.Hour
+	initDataMaxAge   = 48 * time.Hour
 	initDataHeader   = "X-Telegram-Init-Data"
 	contextUserIDKey = "miniapp_user_id"
 )
