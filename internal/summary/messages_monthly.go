@@ -1,44 +1,43 @@
 package summary
 
 const (
-	msgMonthlyHeader    = "📅 <b>%s cerró</b>\n\n"
-	msgMonthlyInAndOut  = "Entró <b>%s</b> y gastaste <b>%s</b>.\n"
+	msgMonthlyHeader    = "📅 <b>Así cerró %s</b>\n\n"
+	msgMonthlyInAndOut  = "Entró <b>%s</b>, gastaste <b>%s</b> y te quedaron <b>%s</b>.\n"
 	msgMonthlyOnlySpent = "Gastaste <b>%s</b>.\n"
-	msgMonthlyLeftover  = "Te quedó <b>%s</b>.\n"
-	msgMonthlyOverspent = "Se te fueron <b>%s</b> más de los que entraron.\n"
+	msgMonthlyOverspent = "Entró <b>%s</b> y gastaste <b>%s</b>: se te fueron <b>%s</b> de más.\n"
 	msgMonthlySpentLess = "<i>Gastaste %s menos que en %s.</i>\n"
 	msgMonthlySpentMore = "<i>Gastaste %s más que en %s.</i>\n"
 )
 
 const (
-	msgMonthlyAccountsHeader = "\n🏦 <b>Cómo terminaron tus cuentas el %d</b>\n"
-	msgMonthlyAccountUp      = "%s cerró en <b>%s</b> ↗ %s más que a fin de %s\n"
-	msgMonthlyAccountDown    = "%s cerró en <b>%s</b> ↘ %s menos\n"
-	msgMonthlyVariation      = "<i>De ese movimiento, %s no es plata que entró: son intereses y correcciones de saldo.</i>\n"
+	msgMonthlyAccountsHeader = "\n🏦 <b>Tus cuentas al %d de %s</b> <i>(contra el cierre de %s)</i>\n"
+	msgMonthlyAccountUp      = "%s <b>%s</b> ↗ %s más\n"
+	msgMonthlyAccountDown    = "%s <b>%s</b> ↘ %s menos\n"
+	msgMonthlyVariation      = "<i>De esa suba, %s son intereses y ajustes, no plata que entró.</i>\n"
 )
 
 const (
 	rateTypeMEP  = "bolsa"
 	runwayMonths = 3
 
-	msgMonthlyInDollars = "<i>Todo el mes te salió %s, al dólar MEP del %d de %s.</i>\n"
-	msgMonthlyUSDHeld   = "\n💵 En dólares tenés <b>%s</b>, %s más que hace un mes.\n"
-	msgMonthlyUSDHeldDn = "\n💵 En dólares tenés <b>%s</b>, %s menos que hace un mes.\n"
-	msgMonthlyUSDFlat   = "\n💵 En dólares tenés <b>%s</b>.\n"
-	msgMonthlyRunway    = "\nEntre todas tus cuentas tenés para <b>%s</b> gastando como venís gastando.\n"
+	msgMonthlyInDollars = "<i>Al MEP del %d de %s, el mes te salió %s.</i>\n"
+	msgMonthlyUSDHeld   = "\n💵 En dólares tenés <b>%s</b> — %s más que el mes pasado.\n"
+	msgMonthlyUSDHeldDn = "\n💵 En dólares tenés <b>%s</b> — %s menos que el mes pasado.\n"
+	msgMonthlyUSDFlat   = "\n💵 En dólares tenés <b>%s</b>, igual que el mes pasado.\n"
+	msgMonthlyRunway    = "\nCon lo que tenés en las cuentas y gastando así, te alcanza para <b>%s</b>.\n"
 )
 
 const (
 	monthlyRankingRows = 5
 
-	msgMonthlyJump      = "\n⚠️ Lo que más cambió: <b>%s</b> te costó <b>%s</b>, %s que en %s.\n"
-	msgMonthlyJumpNew   = "\n⚠️ Lo que más cambió: <b>%s</b> te costó <b>%s</b>, y en %s no habías gastado nada ahí.\n"
+	msgMonthlyJump      = "\n⚠️ <b>%s</b> se te fue para arriba: %s, %s que en %s.\n"
+	msgMonthlyJumpNew   = "\n⚠️ Apareció <b>%s</b>: %s. En %s no habías gastado nada ahí.\n"
 	msgMonthlyFoldOpen  = "\n<blockquote expandable><b>En qué se fue</b>\n"
 	msgMonthlyFoldRow   = "%s %s\n"
 	msgMonthlyFoldShare = "%s %s — %s de todo lo que gastaste\n"
-	msgMonthlyFoldTop   = "El gasto más caro del mes: %s en %s."
-	msgMonthlyFoldClose = "</blockquote>\n"
-	msgMonthlyNote      = "\n<blockquote>📩 Va cada día 3, además del resumen de los lunes. Para cortar los dos, escribime «no quiero más los resúmenes».</blockquote>"
+	msgMonthlyFoldTop   = "Lo más caro del mes: %s, %s."
+	msgMonthlyFoldClose = "</blockquote>"
+	msgMonthlyNote      = "\n<blockquote>📩 Este te llega cada día 3, además del de los lunes. Si no querés ninguno, escribime «no quiero más los resúmenes».</blockquote>"
 	msgMonthlyButton    = "📈 Ver %s en la app"
 
 	monthlyButtonQuery = "?p=month&m="

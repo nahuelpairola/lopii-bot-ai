@@ -36,7 +36,7 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, msgMonthlyHeader, monthTitle(to))
+	fmt.Fprintf(&sb, msgMonthlyHeader, constants.MonthLongEs[to.Month()-1])
 	sb.WriteString(openingLines(spent, earned))
 	sb.WriteString(spendComparison(spent, prevSpent, prevTo))
 
@@ -119,19 +119,16 @@ func monthQuery(userID uint64, from, to time.Time, typ string) movement.Movement
 }
 
 func openingLines(spent, earned decimal.Decimal) string {
-	var sb strings.Builder
 	if earned.IsZero() {
-		fmt.Fprintf(&sb, msgMonthlyOnlySpent, money(spent, currency.ARS))
-		return sb.String()
+		return fmt.Sprintf(msgMonthlyOnlySpent, money(spent, currency.ARS))
 	}
-	fmt.Fprintf(&sb, msgMonthlyInAndOut, money(earned, currency.ARS), money(spent, currency.ARS))
 	left := earned.Sub(spent)
 	if left.IsNegative() {
-		fmt.Fprintf(&sb, msgMonthlyOverspent, money(left.Abs(), currency.ARS))
-		return sb.String()
+		return fmt.Sprintf(msgMonthlyOverspent,
+			money(earned, currency.ARS), money(spent, currency.ARS), money(left.Abs(), currency.ARS))
 	}
-	fmt.Fprintf(&sb, msgMonthlyLeftover, money(left, currency.ARS))
-	return sb.String()
+	return fmt.Sprintf(msgMonthlyInAndOut,
+		money(earned, currency.ARS), money(spent, currency.ARS), money(left, currency.ARS))
 }
 
 func spendComparison(spent, prevSpent decimal.Decimal, prevTo time.Time) string {
@@ -147,11 +144,6 @@ func spendComparison(spent, prevSpent decimal.Decimal, prevTo time.Time) string 
 		tpl = msgMonthlySpentLess
 	}
 	return fmt.Sprintf(tpl, money(diff, currency.ARS), constants.MonthLongEs[prevTo.Month()-1])
-}
-
-func monthTitle(t time.Time) string {
-	name := constants.MonthLongEs[t.Month()-1]
-	return strings.ToUpper(name[:1]) + name[1:]
 }
 
 func balanceAt(deltas []movement.MonthlyDelta, month string) (decimal.Decimal, decimal.Decimal) {
@@ -192,18 +184,18 @@ func (b *Builder) accountsCloseBlock(userID uint64, cur currency.Currency, to ti
 			continue
 		}
 		name := html.EscapeString(a.Name)
-		if delta.IsPositive() {
-			lines = append(lines, fmt.Sprintf(msgMonthlyAccountUp,
-				name, money(closing, cur), money(delta, cur), prevMonth))
-			continue
+		tpl := msgMonthlyAccountUp
+		if delta.IsNegative() {
+			tpl = msgMonthlyAccountDown
 		}
-		lines = append(lines, fmt.Sprintf(msgMonthlyAccountDown,
-			name, money(closing, cur), money(delta.Abs(), cur)))
+		lines = append(lines, fmt.Sprintf(tpl, name, money(closing, cur), money(delta.Abs(), cur)))
 	}
 	if len(lines) == 0 {
 		return "", totalClosing, nil
 	}
-	return fmt.Sprintf(msgMonthlyAccountsHeader, lastDayOfMonth(to)) + strings.Join(lines, ""), totalClosing, nil
+	header := fmt.Sprintf(msgMonthlyAccountsHeader,
+		lastDayOfMonth(to), constants.MonthLongEs[to.Month()-1], prevMonth)
+	return header + strings.Join(lines, ""), totalClosing, nil
 }
 
 func lastDayOfMonth(t time.Time) int {
@@ -220,7 +212,13 @@ func (b *Builder) dollarLine(spent decimal.Decimal, to time.Time) (string, error
 	}
 	usd := spent.Div(q.Ask).Round(0)
 	return fmt.Sprintf(msgMonthlyInDollars,
-		money(usd, currency.USD), q.Date.Day(), constants.MonthLongEs[q.Date.Month()-1]), nil
+		q.Date.Day(), constants.MonthLongEs[q.Date.Month()-1], roundedUSD(usd)), nil
+}
+
+// roundedUSD renders an approximate dollar figure without the cents that
+// money() always prints.
+func roundedUSD(d decimal.Decimal) string {
+	return "US$" + currency.GroupThousands(d.StringFixed(0))
 }
 
 func (b *Builder) runwayLine(userID uint64, closingARS decimal.Decimal, from time.Time) (string, error) {

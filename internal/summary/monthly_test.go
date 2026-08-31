@@ -41,7 +41,7 @@ func TestBuildMonthly_OpensWithIncomeSpentAndLeftover(t *testing.T) {
 		t.Fatalf("BuildMonthly: %v", err)
 	}
 
-	for _, want := range []string{"Julio cerró", "$2.100.000", "$1.240.000", "$860.000"} {
+	for _, want := range []string{"Así cerró julio", "$2.100.000", "$1.240.000", "$860.000"} {
 		if !strings.Contains(p.Text, want) {
 			t.Errorf("missing %q in:\n%s", want, p.Text)
 		}
@@ -100,7 +100,7 @@ func TestBuildMonthly_NegativeLeftoverSaysItPlainly(t *testing.T) {
 	}}
 	p, _ := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
 
-	if !strings.Contains(p.Text, "Se te fueron") {
+	if !strings.Contains(p.Text, "se te fueron") {
 		t.Errorf("missing the negative-leftover sentence in:\n%s", p.Text)
 	}
 	if strings.Contains(p.Text, "-$") || strings.Contains(p.Text, "$-") {
@@ -434,10 +434,10 @@ func TestBuildMonthly_AccountRiseNamesThePreviousMonth(t *testing.T) {
 
 	p, _ := monthlyBuilder(t, m, a).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
 
-	if !strings.Contains(p.Text, "a fin de junio") {
+	if !strings.Contains(p.Text, "cierre de junio") {
 		t.Errorf("a 31-day month must not roll over into itself:\n%s", p.Text)
 	}
-	if strings.Contains(p.Text, "a fin de julio") {
+	if strings.Contains(p.Text, "cierre de julio") {
 		t.Errorf("the reported month was named as its own predecessor:\n%s", p.Text)
 	}
 }
