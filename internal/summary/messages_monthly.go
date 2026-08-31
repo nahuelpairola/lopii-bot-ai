@@ -30,7 +30,7 @@ const (
 const (
 	monthlyRankingRows = 5
 
-	msgMonthlyJump      = "\n⚠️ <b>%s</b> se te fue para arriba: %s, %s que en %s.\n"
+	msgMonthlyJump      = "\n⚠️ <b>%s</b> se te fue para arriba: %s, %s.\n"
 	msgMonthlyJumpNew   = "\n⚠️ Apareció <b>%s</b>: %s. En %s no habías gastado nada ahí.\n"
 	msgMonthlyFoldOpen  = "\n<blockquote expandable><b>En qué se fue</b>\n"
 	msgMonthlyFoldRow   = "%s %s\n"

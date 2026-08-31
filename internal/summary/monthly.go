@@ -264,23 +264,33 @@ func runwayWords(m float64) string {
 	}
 }
 
-func jumpWords(ratio float64) string {
+func jumpWords(ratio float64, prevMonth string) string {
 	switch {
-	case ratio >= 5:
-		return "muchísimo más"
-	case ratio >= 3:
-		return "el triple"
-	case ratio >= 2.7:
-		return "casi el triple"
-	case ratio >= 2:
-		return "el doble"
-	case ratio >= 1.75:
-		return "casi el doble"
-	case ratio >= 1.5:
-		return "la mitad más"
+	case ratio >= 3.5:
+		return timesOver(int(math.Round(ratio))) + " lo de " + prevMonth
+	case ratio >= 2.85:
+		return "el triple de " + prevMonth
+	case ratio >= 2.5:
+		return "casi el triple de " + prevMonth
+	case ratio >= 1.85:
+		return "el doble de " + prevMonth
+	case ratio >= 1.6:
+		return "casi el doble de " + prevMonth
+	case ratio >= 1.4:
+		return "la mitad más que en " + prevMonth
 	default:
-		return "bastante más"
+		return "bastante más que en " + prevMonth
 	}
+}
+
+// timesOver spells a whole multiple the way it gets said out loud, never as a
+// digit: "siete veces", not "7 veces".
+func timesOver(n int) string {
+	names := [...]string{"cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"}
+	if n < 4 || n > 3+len(names) {
+		return "más de diez veces"
+	}
+	return names[n-4] + " veces"
 }
 
 func shareWords(frac float64) string {
@@ -338,7 +348,7 @@ func monthlyJumpLine(cats, prevCats []movement.CategorySum, prevTo time.Time) st
 		return fmt.Sprintf(msgMonthlyJumpNew, name, amount, prevMonth)
 	}
 	ratio, _ := c.Total.Div(p).Float64()
-	return fmt.Sprintf(msgMonthlyJump, name, amount, jumpWords(ratio), prevMonth)
+	return fmt.Sprintf(msgMonthlyJump, name, amount, jumpWords(ratio, prevMonth))
 }
 
 func (b *Builder) monthlyFold(userID uint64, cats []movement.CategorySum, spent decimal.Decimal, from, to time.Time) (string, error) {

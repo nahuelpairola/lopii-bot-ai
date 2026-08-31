@@ -386,16 +386,18 @@ func TestJumpWords_SpeaksTheMagnitude(t *testing.T) {
 		in   float64
 		want string
 	}{
-		{1.35, "bastante más"},
-		{1.6, "la mitad más"},
-		{1.9, "casi el doble"},
-		{2.1, "el doble"},
-		{2.8, "casi el triple"},
-		{3.4, "el triple"},
-		{7.0, "muchísimo más"},
+		{1.35, "bastante más que en julio"},
+		{1.5, "la mitad más que en julio"},
+		{1.7, "casi el doble de julio"},
+		{2.1, "el doble de julio"},
+		{2.7, "casi el triple de julio"},
+		{3.0, "el triple de julio"},
+		{4.0, "cuatro veces lo de julio"},
+		{7.005, "siete veces lo de julio"},
+		{12.0, "más de diez veces lo de julio"},
 	}
 	for _, c := range cases {
-		if got := jumpWords(c.in); got != c.want {
+		if got := jumpWords(c.in, "julio"); got != c.want {
 			t.Errorf("jumpWords(%v) = %q, want %q", c.in, got, c.want)
 		}
 	}
