@@ -20,6 +20,9 @@ const (
 	rateTypeMEP  = "bolsa"
 	runwayMonths = 3
 
+	maxSpokenTimes  = 10
+	maxSpokenMonths = 12
+
 	msgMonthlyInDollars = "<i>Al MEP del %d de %s, el mes te salió %s.</i>\n"
 	msgMonthlyUSDHeld   = "\n💵 En dólares tenés <b>%s</b> — %s más que el mes pasado.\n"
 	msgMonthlyUSDHeldDn = "\n💵 En dólares tenés <b>%s</b> — %s menos que el mes pasado.\n"

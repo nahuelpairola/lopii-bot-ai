@@ -283,8 +283,8 @@ func TestRunwayWords_RoundsToHalfMonths(t *testing.T) {
 		{0.4, "menos de un mes"},
 		{1.1, "un mes"},
 		{1.8, "casi dos meses"},
-		{2.5, "2 y medio meses"},
-		{4.2, "más de 4 meses"},
+		{2.5, "dos meses y medio"},
+		{4.2, "más de cuatro meses"},
 		{13.0, "más de un año"},
 	}
 	for _, c := range cases {
@@ -378,6 +378,18 @@ func TestBuildMonthly_EscapesUserText(t *testing.T) {
 	}
 	if !strings.Contains(p.Text, "&amp;") {
 		t.Errorf("expected the ampersand escaped in:\n%s", p.Text)
+	}
+}
+
+func TestSpellNumber_CoversTheRangeBothCallersNeed(t *testing.T) {
+	cases := map[int]string{
+		1: "un", 2: "dos", 4: "cuatro", 7: "siete", 10: "diez", 11: "once",
+		0: "", 12: "", -1: "",
+	}
+	for in, want := range cases {
+		if got := spellNumber(in); got != want {
+			t.Errorf("spellNumber(%d) = %q, want %q", in, got, want)
+		}
 	}
 }
 

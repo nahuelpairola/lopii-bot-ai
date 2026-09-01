@@ -255,12 +255,12 @@ func runwayWords(m float64) string {
 		return "un mes"
 	case m < 2:
 		return "casi dos meses"
-	case half >= 12:
+	case half >= maxSpokenMonths:
 		return "más de un año"
 	case half == math.Trunc(half):
-		return fmt.Sprintf("más de %d meses", int(half))
+		return "más de " + spellNumber(int(half)) + " meses"
 	default:
-		return fmt.Sprintf("%d y medio meses", int(half))
+		return spellNumber(int(half)) + " meses y medio"
 	}
 }
 
@@ -283,14 +283,22 @@ func jumpWords(ratio float64, prevMonth string) string {
 	}
 }
 
-// timesOver spells a whole multiple the way it gets said out loud, never as a
-// digit: "siete veces", not "7 veces".
 func timesOver(n int) string {
-	names := [...]string{"cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"}
-	if n < 4 || n > 3+len(names) {
-		return "más de diez veces"
+	if n < 4 || n > maxSpokenTimes {
+		return "más de " + spellNumber(maxSpokenTimes) + " veces"
 	}
-	return names[n-4] + " veces"
+	return spellNumber(n) + " veces"
+}
+
+// spellNumber writes a small cardinal the way it is said out loud, or ""
+// when it falls outside the range the summary can spell.
+func spellNumber(n int) string {
+	names := [...]string{"un", "dos", "tres", "cuatro", "cinco", "seis",
+		"siete", "ocho", "nueve", "diez", "once"}
+	if n < 1 || n > len(names) {
+		return ""
+	}
+	return names[n-1]
 }
 
 func shareWords(frac float64) string {
