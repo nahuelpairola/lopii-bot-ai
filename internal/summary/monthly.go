@@ -212,7 +212,8 @@ func (b *Builder) dollarLine(spent decimal.Decimal, to time.Time) (string, error
 	}
 	usd := spent.Div(q.Ask).Round(0)
 	return fmt.Sprintf(msgMonthlyInDollars,
-		q.Date.Day(), constants.MonthLongEs[q.Date.Month()-1], roundedUSD(usd)), nil
+		q.Date.Day(), constants.MonthLongEs[q.Date.Month()-1],
+		money(q.Ask, currency.ARS), roundedUSD(usd)), nil
 }
 
 // roundedUSD renders an approximate dollar figure without the cents that

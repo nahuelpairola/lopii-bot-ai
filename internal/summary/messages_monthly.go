@@ -23,7 +23,7 @@ const (
 	maxSpokenTimes  = 10
 	maxSpokenMonths = 12
 
-	msgMonthlyInDollars = "<i>Al MEP del %d de %s, el mes te salió %s.</i>\n"
+	msgMonthlyInDollars = "<i>Al dólar MEP del %d de %s (%s), el mes te salió %s.</i>\n"
 	msgMonthlyUSDHeld   = "\n💵 En dólares tenés <b>%s</b> — %s más que el mes pasado.\n"
 	msgMonthlyUSDHeldDn = "\n💵 En dólares tenés <b>%s</b> — %s menos que el mes pasado.\n"
 	msgMonthlyUSDFlat   = "\n💵 En dólares tenés <b>%s</b>, igual que el mes pasado.\n"
@@ -40,7 +40,7 @@ const (
 	msgMonthlyFoldShare = "%s %s — %s de todo lo que gastaste\n"
 	msgMonthlyFoldTop   = "Lo más caro del mes: %s, %s."
 	msgMonthlyFoldClose = "</blockquote>"
-	msgMonthlyNote      = "\n<blockquote>📩 Este te llega cada día 3, además del de los lunes. Si no querés ninguno, escribime «no quiero más los resúmenes».</blockquote>"
+	msgMonthlyNote      = "\n<blockquote>📩 El resumen del mes va siempre, cada día 3. El de los lunes sí lo podés cortar: escribime «no quiero más los resúmenes».</blockquote>"
 	msgMonthlyButton    = "📈 Ver %s en la app"
 
 	monthlyButtonQuery = "?p=month&m="

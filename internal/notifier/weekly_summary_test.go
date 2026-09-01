@@ -27,8 +27,8 @@ func (s *wkStore) ListWeeklyDue(before time.Time) ([]reminder.Reminder, error) {
 	}
 	return out, nil
 }
-func (s *wkStore) ListMonthlyDue(time.Time) ([]reminder.Reminder, error) { return nil, nil }
-func (s *wkStore) SetLastMonthlySummaryOn(uint64, time.Time) error       { return nil }
+func (s *wkStore) ListMonthlyDue(time.Time) ([]uint64, error)      { return nil, nil }
+func (s *wkStore) SetLastMonthlySummaryOn(uint64, time.Time) error { return nil }
 func (s *wkStore) SetLastSummaryOn(userID uint64, date time.Time) error {
 	if s.sentOn == nil {
 		s.sentOn = map[uint64]time.Time{}

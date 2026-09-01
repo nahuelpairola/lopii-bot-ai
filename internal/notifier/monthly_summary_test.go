@@ -12,14 +12,15 @@ import (
 
 type mnStore struct {
 	wkStore
+	allUsers      []uint64
 	monthlySentOn map[uint64]time.Time
 }
 
-func (s *mnStore) ListMonthlyDue(before time.Time) ([]reminder.Reminder, error) {
-	var out []reminder.Reminder
-	for _, r := range s.due {
-		if r.LastMonthlySummaryOn == nil || r.LastMonthlySummaryOn.Before(before) {
-			out = append(out, r)
+func (s *mnStore) ListMonthlyDue(before time.Time) ([]uint64, error) {
+	var out []uint64
+	for _, id := range s.allUsers {
+		if sent, ok := s.monthlySentOn[id]; !ok || sent.Before(before) {
+			out = append(out, id)
 		}
 	}
 	return out, nil
@@ -57,7 +58,7 @@ func thirdAt(hour, min int) time.Time {
 }
 
 func TestSweepMonthlySummary_FiresOnTheThird(t *testing.T) {
-	store := &mnStore{wkStore: wkStore{due: []reminder.Reminder{{UserID: 1, WeeklySummaryEnabled: true}}}}
+	store := &mnStore{allUsers: []uint64{1}}
 	chat := &messenger.FakeChat{}
 
 	sent := newMonthlySweeper(store, chat, "MONTHLY").sweepMonthlySummary(context.Background(), thirdAt(9, 5))
@@ -74,7 +75,7 @@ func TestSweepMonthlySummary_FiresOnTheThird(t *testing.T) {
 }
 
 func TestSweepMonthlySummary_SkipsOtherDays(t *testing.T) {
-	store := &mnStore{wkStore: wkStore{due: []reminder.Reminder{{UserID: 1, WeeklySummaryEnabled: true}}}}
+	store := &mnStore{allUsers: []uint64{1}}
 	chat := &messenger.FakeChat{}
 	fourth := time.Date(2026, 8, 4, 9, 5, 0, 0, artLoc)
 
@@ -86,7 +87,7 @@ func TestSweepMonthlySummary_SkipsOtherDays(t *testing.T) {
 }
 
 func TestSweepMonthlySummary_NotBeforeNine(t *testing.T) {
-	store := &mnStore{wkStore: wkStore{due: []reminder.Reminder{{UserID: 1, WeeklySummaryEnabled: true}}}}
+	store := &mnStore{allUsers: []uint64{1}}
 	chat := &messenger.FakeChat{}
 
 	newMonthlySweeper(store, chat, "MONTHLY").sweepMonthlySummary(context.Background(), thirdAt(8, 30))
@@ -97,7 +98,7 @@ func TestSweepMonthlySummary_NotBeforeNine(t *testing.T) {
 }
 
 func TestSweepMonthlySummary_EmptyMonthSendsNothingButStillMarks(t *testing.T) {
-	store := &mnStore{wkStore: wkStore{due: []reminder.Reminder{{UserID: 1, WeeklySummaryEnabled: true}}}}
+	store := &mnStore{allUsers: []uint64{1}}
 	chat := &messenger.FakeChat{}
 
 	sent := newMonthlySweeper(store, chat, "").sweepMonthlySummary(context.Background(), thirdAt(9, 5))
@@ -126,7 +127,7 @@ func (w windowSpy) BuildMonthly(_ uint64, from, to, prevFrom, prevTo time.Time) 
 
 func TestSweepMonthlySummary_WindowIsThePreviousCalendarMonth(t *testing.T) {
 	var got [4]time.Time
-	store := &mnStore{wkStore: wkStore{due: []reminder.Reminder{{UserID: 1, WeeklySummaryEnabled: true}}}}
+	store := &mnStore{allUsers: []uint64{1}}
 	s := newMonthlySweeper(store, &messenger.FakeChat{}, "MONTHLY")
 	s.summaries = windowSpy{out: &got}
 

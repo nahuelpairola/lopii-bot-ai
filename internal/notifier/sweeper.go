@@ -28,7 +28,7 @@ type reminderStore interface {
 	SetLastRemindedOn(userID uint64, date time.Time) error
 	ListWeeklyDue(before time.Time) ([]reminder.Reminder, error)
 	SetLastSummaryOn(userID uint64, date time.Time) error
-	ListMonthlyDue(before time.Time) ([]reminder.Reminder, error)
+	ListMonthlyDue(before time.Time) ([]uint64, error)
 	SetLastMonthlySummaryOn(userID uint64, date time.Time) error
 }
 
@@ -282,35 +282,35 @@ func (s *Sweeper) sweepMonthlySummary(ctx context.Context, now time.Time) map[ui
 		return sent
 	}
 
-	for _, r := range due {
-		p, err := s.summaries.BuildMonthly(r.UserID, from, to, prevFrom, prevTo)
+	for _, userID := range due {
+		p, err := s.summaries.BuildMonthly(userID, from, to, prevFrom, prevTo)
 		if err != nil {
-			slog.ErrorContext(ctx, "notifier monthly build failed", "user_id", r.UserID, "err", err)
+			slog.ErrorContext(ctx, "notifier monthly build failed", "user_id", userID, "err", err)
 			continue
 		}
 		if p.Text == "" {
-			if err := s.reminders.SetLastMonthlySummaryOn(r.UserID, today); err != nil {
-				slog.ErrorContext(ctx, "notifier monthly set last summary failed", "user_id", r.UserID, "err", err)
+			if err := s.reminders.SetLastMonthlySummaryOn(userID, today); err != nil {
+				slog.ErrorContext(ctx, "notifier monthly set last summary failed", "user_id", userID, "err", err)
 			}
 			continue
 		}
-		u, err := s.users.FindByID(r.UserID)
+		u, err := s.users.FindByID(userID)
 		if err != nil {
-			slog.ErrorContext(ctx, "notifier monthly user lookup failed", "user_id", r.UserID, "err", err)
+			slog.ErrorContext(ctx, "notifier monthly user lookup failed", "user_id", userID, "err", err)
 			continue
 		}
 		chat, err := s.chats.ChatFor(u.ID)
 		if err != nil {
-			slog.ErrorContext(ctx, "notifier monthly chat lookup failed", "user_id", r.UserID, "err", err)
+			slog.ErrorContext(ctx, "notifier monthly chat lookup failed", "user_id", userID, "err", err)
 			continue
 		}
 		if err := chat.Send(ctx, p); err != nil {
-			slog.ErrorContext(ctx, "notifier monthly send failed", "user_id", r.UserID, "err", err)
+			slog.ErrorContext(ctx, "notifier monthly send failed", "user_id", userID, "err", err)
 			continue
 		}
-		sent[r.UserID] = struct{}{}
-		if err := s.reminders.SetLastMonthlySummaryOn(r.UserID, today); err != nil {
-			slog.ErrorContext(ctx, "notifier monthly set last summary failed", "user_id", r.UserID, "err", err)
+		sent[userID] = struct{}{}
+		if err := s.reminders.SetLastMonthlySummaryOn(userID, today); err != nil {
+			slog.ErrorContext(ctx, "notifier monthly set last summary failed", "user_id", userID, "err", err)
 		}
 	}
 	return sent

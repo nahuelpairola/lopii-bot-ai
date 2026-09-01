@@ -238,6 +238,9 @@ func TestBuildMonthly_DollarLineNamesTheQuoteRowsOwnDate(t *testing.T) {
 	if strings.Contains(p.Text, "31 de julio") {
 		t.Errorf("the asked-for date leaked into the copy:\n%s", p.Text)
 	}
+	if !strings.Contains(p.Text, "$1.204") {
+		t.Errorf("the line must name the rate it converted at:\n%s", p.Text)
+	}
 	if !strings.Contains(p.Text, "US$1.030") {
 		t.Errorf("expected 1240000/1204 rounded = US$1.030 in:\n%s", p.Text)
 	}
