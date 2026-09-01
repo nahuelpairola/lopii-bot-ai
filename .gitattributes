@@ -1,2 +1,6 @@
 # Shell scripts must keep LF endings — CRLF breaks the shebang under bash.
 *.sh text eol=lf
+
+# .env.example is copied straight to .env, and a CRLF there makes every value
+# carry a trailing \r — Telegram rejects the token. init.sh check 2 catches it.
+.env.example text eol=lf
