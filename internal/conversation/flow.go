@@ -25,8 +25,9 @@ type Prompt struct {
 // Button es un botón genérico: texto visible + dato que vuelve como
 // CallbackData cuando se lo presiona.
 type Button struct {
-	Label string
-	Data  string
+	Label      string
+	Data       string
+	WebAppPath string
 }
 
 // outcomeKind identifica qué tipo de resultado produjo un Step al

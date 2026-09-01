@@ -12,6 +12,7 @@ import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/quote"
 )
 
 // MovementReader is the movement-repo surface the builder needs (consumer-local
@@ -23,6 +24,7 @@ type MovementReader interface {
 	// SumAmountForAccount computes an account's current balance (SUM over its
 	// movements) — the balance is never stored (movement.repository owns it).
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
+	MonthlyDeltasForAccount(accountID uint64) ([]movement.MonthlyDelta, error)
 }
 
 // AccountReader is the account-repo surface for the balances snapshot (listing
@@ -38,14 +40,20 @@ type IconReader interface {
 	IconForCategory(userID uint64, category string) string
 }
 
+// QuoteReader is the quote-repo surface the monthly summary needs.
+type QuoteReader interface {
+	FindRateOnOrBefore(date time.Time, rateType string) (*quote.Quote, error)
+}
+
 type Builder struct {
 	movements MovementReader
 	accounts  AccountReader
 	icons     IconReader
+	quotes    QuoteReader
 }
 
-func NewBuilder(m MovementReader, a AccountReader, i IconReader) *Builder {
-	return &Builder{movements: m, accounts: a, icons: i}
+func NewBuilder(m MovementReader, a AccountReader, i IconReader, q QuoteReader) *Builder {
+	return &Builder{movements: m, accounts: a, icons: i, quotes: q}
 }
 
 const (

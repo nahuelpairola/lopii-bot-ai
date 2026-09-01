@@ -112,6 +112,20 @@ At `Months == 1` that chart is one floating dot per account, so the template ren
 `if data.Period.Months > 1`. A new period-driven element on that page has to decide the same
 thing for itself — nothing above the template enforces it.
 
+## The shell must forward the query string, or every deep link lands on the default
+
+`authInitData`'s non-HTMX branch renders `Shell(active, loadPath)`, and `loadPath` is what
+`#content` self-loads over HTMX. It used to be `c.Request.URL.Path` alone, so
+`/app/overview?p=month&m=2026-07` reached the shell and left it as a bare `/app/overview`: the
+period params were dropped before any handler saw them, and the view opened on the current
+month. Nothing failed — the app just ignored where it was told to go.
+
+`activeFromPath` still receives the **path only**. It picks the highlighted tab and must not
+see the query.
+
+This is what the monthly summary's WebApp button depends on: it deep-links the reported month
+(`?p=month&m=YYYY-MM`). Any future entry point that carries params depends on it too.
+
 ## Two smaller traps
 
 - `categoryParam` is a **query param, not a path segment**, because category names contain

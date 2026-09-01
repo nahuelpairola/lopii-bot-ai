@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	initDataMaxAge   = 24 * time.Hour
+	initDataMaxAge   = 48 * time.Hour
 	initDataHeader   = "X-Telegram-Init-Data"
 	contextUserIDKey = "miniapp_user_id"
 )
@@ -26,8 +26,12 @@ func authInitData(botToken string, users userLookup) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.GetHeader(hxRequestHeader) == "" {
 
+			loadPath := c.Request.URL.Path
+			if q := c.Request.URL.RawQuery; q != "" {
+				loadPath += "?" + q
+			}
 			c.Status(http.StatusOK)
-			templates.Shell(activeFromPath(c.Request.URL.Path), c.Request.URL.Path).
+			templates.Shell(activeFromPath(c.Request.URL.Path), loadPath).
 				Render(c.Request.Context(), c.Writer)
 			c.Abort()
 			return

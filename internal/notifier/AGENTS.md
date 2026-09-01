@@ -1,13 +1,17 @@
 # internal/notifier
 
 The `Sweeper`: one in-process `time.Ticker` goroutine driving every scheduled job — daily
-reminder, weekly summary, trace retention, USD quotes, CPI. **Use `codegraph_explore` for
+reminder, weekly summary, monthly summary, trace retention, USD quotes, CPI. **Use `codegraph_explore` for
 structure** — this file is only for what reading the code will not tell you.
 
 ## Every outbound message is `ParseMode: HTML`, set in the adapter now
 
 The sweeper reaches a user through `chatResolver.ChatFor` (`messenger.Chat`), and every send goes
-`messenger.SendText(ctx, chat, text)`. `ParseMode: models.ParseModeHTML` used to be set on a `send`
+`messenger.SendText(ctx, chat, text)` — **except the monthly summary**, which carries a WebApp
+button and therefore cannot: `SendText` is the no-buttons helper by definition, so
+`sweepMonthlySummary` calls `chat.Send(ctx, prompt)` with the `conversation.Prompt` the builder
+returns. A new emitter that needs a button has to do the same; routing it through `SendText`
+compiles and silently drops the keyboard. `ParseMode: models.ParseModeHTML` used to be set on a `send`
 closure built in `NewSweeper`; it now lives in `internal/messenger/telegram` (`chat.go`,
 `htmlParseMode`) and is global to every message that adapter sends — not something this package
 controls or can see. The weekly summary needs it — it uses `<b>` so the numbers can be scanned —
@@ -28,6 +32,32 @@ The reminder copy is safe by inspection rather than escaping — it is static, w
 it — and `reminder/messages_test.go` guards that it stays that way. If a reminder ever
 interpolates a name, that test is the thing that will not catch it: the test checks the constants,
 not the rendered message.
+
+## The monthly summary is not opt-in, and that changes where its candidates come from
+
+`sweepWeeklySummary` reads `ListWeeklyDue`, gated on `reminders.weekly_summary_enabled`. The
+monthly one is **not gated on anything**: `ListMonthlyDue` returns user ids resolved over
+`users` with a `LEFT JOIN` to `reminders`, because most users have no `reminders` row and a
+query over that table would silently reach only the few that do. Full reasoning and the
+production numbers in `docs/decisions.md` (§ Notifications and reminders).
+
+Two consequences worth carrying:
+
+- **`SetLastMonthlySummaryOn` upserts, and must write exactly one column** — never through the
+  general-purpose `Upsert`. When it creates the row, every opt-in flag is written false: the row
+  exists to hold a date, not to enable anything.
+- **Any copy that turns notifications off must say the monthly keeps coming.** `internal/flow`
+  guards this with a test over `MsgReminderAllOff` / `MsgWeeklySummaryOff`; it used to promise
+  "todas las notificaciones" and that became a lie the day the monthly stopped being optional.
+
+## The monthly runs before the weekly, and that ordering IS the suppression
+
+On a Monday the 3rd both summaries fire. `tick` calls `sweepMonthlySummary` first and hands its
+return value — the set of users it **actually sent to** — to `sweepWeeklySummary` as `skip`.
+Reordering the two calls, or dropping the parameter, silently double-messages those users.
+
+The set holds only users that were sent to, never those merely considered: a user whose month
+was empty gets no monthly, so their weekly must still go out.
 
 ## The ticker is in-process, like the rest of the schedulers
 

@@ -1,9 +1,11 @@
 # internal/quote — traps
 
 Owns two public series: `usd_quotes` (`Quote`) and `monthly_cpi` (`CPI`). Both are written by
-`notifier`'s sweeper and, as of today, **read by nobody** — the purchasing-power feature that
-will consume them is not built yet. Everything below is aimed at whoever writes that first
-reader, because all four traps produce a plausible wrong number rather than an error.
+`notifier`'s sweeper. `usd_quotes` has **one reader**: the monthly summary
+(`internal/summary`, via `FindRateOnOrBefore`) converts the month's spending to dollars.
+`monthly_cpi` is still read by nobody — the purchasing-power feature that will consume it is
+not built yet. Everything below matters to both, because all four traps produce a plausible
+wrong number rather than an error.
 
 The long "why" for the first three lives in the doc comments on `Quote` and `CPI`
 (`model.go`) — read them before touching either type. This file is the list, not a second copy.
@@ -24,6 +26,18 @@ The long "why" for the first three lives in the doc comments on `Quote` and `CPI
   by `Ask`; USD→ARS multiplies by `Bid`. Normally `Bid <= Ask`, but the source publishes the odd
   row backwards (verified: mayorista 2026-01-13, `compra=1466 venta=1457`), stored as-is. Anything
   computing a spread must tolerate a negative one.
+
+## The one read
+
+`FindRateOnOrBefore(date, rateType)` is the only product read of `usd_quotes`, and it exists to
+enforce the first two traps in code rather than by convention: it resolves with
+`date <= ? ORDER BY date DESC LIMIT 1` and returns the row it actually found, so its caller can
+label the price with that row's own date. It binds the date as a **string** (`2006-01-02`):
+`usd_quotes.date` is a plain `DATE`, and a `time.Time` makes Postgres cast the column with the
+session's timezone.
+
+It returns `(nil, nil)` when the series has no such row — not an error. A caller that treats
+that as a zero rate divides by zero; the monthly summary omits its dollar line instead.
 
 ## Writes
 

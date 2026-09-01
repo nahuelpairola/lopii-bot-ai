@@ -292,12 +292,14 @@ const (
 		"Mandame \"quiero crear otra categoría\" cuando quieras agregar más."
 	MsgCategoryMatchUse = "Listo ✅ — registrá el gasto nombrándolo y cae ahí solo (ej: \"gasté 5000 en un regalo\")."
 
+	msgMonthlyAlwaysOn = "El resumen del mes va igual, cada día 3."
+
 	MsgReminderDisabled  = "Dale, no te jodo más con eso 👍 Si querés que vuelva, avisame cuando quieras."
 	MsgReminderCancelled = "Listo, dejé todo como estaba 👌"
-	MsgReminderAllOff    = "🔕 Listo, apagué todas las notificaciones: ni recordatorio diario ni resumen semanal. Cuando quieras algo de vuelta, escribime \"notificaciones\"."
+	MsgReminderAllOff    = "🔕 Listo: ni recordatorio diario ni resumen de los lunes. " + msgMonthlyAlwaysOn + " Si querés algo de vuelta, escribime \"notificaciones\"."
 	MsgReminderHubExit   = "Listo 👌 Dejé todo como estaba."
 	MsgWeeklySummaryOn   = "📊 Listo, te mando el resumen todos los lunes."
-	MsgWeeklySummaryOff  = "📊 Ok, no te mando el resumen semanal."
+	MsgWeeklySummaryOff  = "📊 Ok, no te mando más el resumen de los lunes. " + msgMonthlyAlwaysOn
 
 	MsgNearDupSeparate = "Perfecto, los dejo separados."
 	MsgNearDupMerged   = "Listo, quedó uno solo."

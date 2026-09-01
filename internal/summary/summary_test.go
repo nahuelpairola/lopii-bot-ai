@@ -10,6 +10,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/quote"
 )
 
 // fakeMovements returns canned aggregates. sums maps
@@ -22,6 +23,7 @@ type fakeMovements struct {
 	tops   map[string]*movement.Movement
 	counts []movement.DayCount
 	bals   map[uint64]decimal.Decimal
+	deltas map[uint64][]movement.MonthlyDelta
 }
 
 func (f fakeMovements) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
@@ -41,6 +43,10 @@ func (f fakeMovements) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
 	return f.bals[id], nil
 }
 
+func (f fakeMovements) MonthlyDeltasForAccount(id uint64) ([]movement.MonthlyDelta, error) {
+	return f.deltas[id], nil
+}
+
 // fakeIcons stands in for subcategory.Cache, que nunca devuelve vacío: su
 // fallback es 📂.
 type fakeIcons struct{ byCategory map[string]string }
@@ -50,6 +56,12 @@ func (f fakeIcons) IconForCategory(_ uint64, category string) string {
 		return ic
 	}
 	return "📂"
+}
+
+type fakeQuotes struct{ rows map[string]*quote.Quote }
+
+func (f fakeQuotes) FindRateOnOrBefore(_ time.Time, rateType string) (*quote.Quote, error) {
+	return f.rows[rateType], nil
 }
 
 type fakeAccounts struct {
@@ -85,7 +97,7 @@ const (
 )
 
 func TestBuild_EmptyWeek(t *testing.T) {
-	b := NewBuilder(fakeMovements{counts: nil}, fakeAccounts{}, fakeIcons{})
+	b := NewBuilder(fakeMovements{counts: nil}, fakeAccounts{}, fakeIcons{}, fakeQuotes{})
 	text, err := b.Build(1, from, to, prevFrom, prevTo)
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -109,7 +121,7 @@ func TestBuild_ReportARSOnly(t *testing.T) {
 	fa := fakeAccounts{
 		list: map[uint64][]account.Account{1: {{Name: "Efectivo", Currency: currency.ARS}}},
 	}
-	text, err := NewBuilder(fm, fa, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, err := NewBuilder(fm, fa, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -154,7 +166,7 @@ func TestBuild_EscapesUserSuppliedStrings(t *testing.T) {
 		list: map[uint64][]account.Account{1: {{Name: "Mercado & Pago <test>", Currency: currency.ARS}}},
 	}
 
-	text, err := NewBuilder(fm, fa, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, err := NewBuilder(fm, fa, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -192,7 +204,7 @@ func TestBuild_BoldsTheValueThatAnswersEachLine(t *testing.T) {
 		list: map[uint64][]account.Account{1: {{Name: "Efectivo", Currency: currency.ARS}}},
 	}
 
-	text, err := NewBuilder(fm, fa, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, err := NewBuilder(fm, fa, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -231,7 +243,7 @@ func TestBuild_BalanceVariationIsNotIncome(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, err := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, err := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -256,7 +268,7 @@ func TestBuild_NoVariationLineWhenZero(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, err := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, err := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -274,7 +286,7 @@ func TestBuild_OnlyVariationSkipsTheZeroCashflowLines(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 1}},
 	}
-	text, err := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, err := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -295,7 +307,7 @@ func TestBuild_ComparesWithPreviousWeekInMoney(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if !strings.Contains(text, "<i>↘ $500 menos que la semana pasada</i>") {
 		t.Errorf("falta la comparación en plata; got:\n%s", text)
 	}
@@ -315,7 +327,7 @@ func TestBuild_AnnotatesTheCategoryThatJumped(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if !strings.Contains(text, "Transporte $400 · <i>$300 más que la semana pasada</i>") {
 		t.Errorf("falta la anotación del salto; got:\n%s", text)
 	}
@@ -335,7 +347,7 @@ func TestBuild_AnnotatesTheCategoryThatJumped(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ = NewBuilder(quiet, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ = NewBuilder(quiet, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if strings.Contains(text, "más que la semana pasada") {
 		t.Errorf("un 20%% no es un salto; got:\n%s", text)
 	}
@@ -358,7 +370,7 @@ func TestBuild_ProjectsMonthEndAsARange(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	// 12 días: p25=$1.000, p75=$3.000, lleva $24.000, quedan 19 días.
 	// Piso 24.000+19.000=43.000 → $40.000. Techo 24.000+57.000=81.000 → $90.000.
 	if !strings.Contains(text, "Julio va camino a cerrar entre <b>$40.000 y $90.000</b>") {
@@ -381,7 +393,7 @@ func TestBuild_ProjectionCountsDaysWithoutSpending(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	// Con los seis ceros adentro: p25=$0, p75=$3.000, lleva $18.000, quedan 19
 	// días. Piso 18.000 → $10.000. Techo 18.000+57.000=75.000 → $80.000.
 	// Sin los ceros el piso saldría $70.000: siete veces más alto.
@@ -404,7 +416,7 @@ func TestBuild_NoProjectionEarlyInTheMonth(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: earlyTo, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, earlyFrom, earlyTo, earlyFrom.AddDate(0, 0, -7), earlyFrom.AddDate(0, 0, -1))
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, earlyFrom, earlyTo, earlyFrom.AddDate(0, 0, -7), earlyFrom.AddDate(0, 0, -1))
 	if strings.Contains(text, "va camino a cerrar") {
 		t.Errorf("con 5 días de muestra no se proyecta; got:\n%s", text)
 	}
@@ -425,7 +437,7 @@ func TestBuild_GroupsForeignAccountsInOneLine(t *testing.T) {
 		{Model: gorm.Model{ID: 2}, Name: "Mercado Pago", Currency: currency.USD},
 		{Model: gorm.Model{ID: 3}, Name: "FCI", Currency: currency.USD},
 	}}}
-	text, _ := NewBuilder(fm, fa, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fa, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if !strings.Contains(text, "Mercado Pago <b>$121.208</b>") {
 		t.Errorf("falta el saldo en pesos; got:\n%s", text)
 	}
@@ -444,7 +456,7 @@ func TestBuild_RoundsTheWeeklyComparison(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if !strings.Contains(text, "↘ $268.000 menos que la semana pasada") {
 		t.Errorf("la comparación no se redondeó; got:\n%s", text)
 	}
@@ -468,7 +480,7 @@ func TestBuild_BandCrossingOneMillionStaysInPesos(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if strings.Contains(text, "$0,4") {
 		t.Errorf("un piso de menos de un millón no se cuenta en millones; got:\n%s", text)
 	}
@@ -487,7 +499,7 @@ func TestBuild_NoJumpAnnotationWithoutPreviousData(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if strings.Contains(text, "la semana pasada") {
 		t.Errorf("sin datos previos no se compara; got:\n%s", text)
 	}
@@ -503,7 +515,7 @@ func TestBuild_SkipsTheCategoryListWhenItRepeatsTheTotal(t *testing.T) {
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if strings.Contains(text, "Suscripciones") {
 		t.Errorf("la única categoría repite el total; got:\n%s", text)
 	}
@@ -520,7 +532,7 @@ func TestBuild_UsesTheRealCategoryIcons(t *testing.T) {
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
 	icons := fakeIcons{byCategory: map[string]string{"Vivienda": "🏠"}}
-	text, _ := NewBuilder(fm, fakeAccounts{}, icons).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, icons, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if !strings.Contains(text, "🏠 Vivienda $600") {
 		t.Errorf("falta el ícono real; got:\n%s", text)
 	}
@@ -542,7 +554,7 @@ func TestBuild_OpeningLineReactsToTheWeek(t *testing.T) {
 			m["ARS|income|"+wk] = sums(row("", earned))
 		}
 		fm := fakeMovements{sums: m, counts: []movement.DayCount{{Date: to, Count: 3}}}
-		text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+		text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 		return text
 	}
 	for _, c := range []struct{ spent, prev, earned, want string }{
@@ -570,7 +582,7 @@ func TestBuild_NoteIsAQuote(t *testing.T) {
 		sums:   map[string][]movement.CategorySum{"ARS|expense|" + wk: sums(row("", "1000"))},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
-	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if !strings.Contains(text, "<blockquote>📩 Va cada lunes") || !strings.Contains(text, "</blockquote>") {
 		t.Errorf("la nota no es un quote; got:\n%s", text)
 	}
@@ -590,12 +602,12 @@ func TestBuild_BalanceNoteOnlyWithAccounts(t *testing.T) {
 	fa := fakeAccounts{
 		list: map[uint64][]account.Account{1: {{Name: "Efectivo", Currency: currency.ARS}}},
 	}
-	text, _ := NewBuilder(fm, fa, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	text, _ := NewBuilder(fm, fa, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if !strings.Contains(text, "<blockquote>💰 ¿<b>Diferencia de saldo</b>") {
 		t.Errorf("falta la nota de ajuste de saldo con cuentas; got:\n%s", text)
 	}
 
-	textNoAccts, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}).Build(1, from, to, prevFrom, prevTo)
+	textNoAccts, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
 	if strings.Contains(textNoAccts, "Diferencia de saldo") {
 		t.Errorf("la nota de ajuste de saldo no debería aparecer sin cuentas; got:\n%s", textNoAccts)
 	}

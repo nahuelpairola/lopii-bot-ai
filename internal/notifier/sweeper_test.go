@@ -26,6 +26,8 @@ func (f *fakeReminders) SetLastRemindedOn(userID uint64, date time.Time) error {
 }
 func (f *fakeReminders) ListWeeklyDue(time.Time) ([]reminder.Reminder, error) { return nil, nil }
 func (f *fakeReminders) SetLastSummaryOn(uint64, time.Time) error             { return nil }
+func (f *fakeReminders) ListMonthlyDue(time.Time) ([]uint64, error)           { return nil, nil }
+func (f *fakeReminders) SetLastMonthlySummaryOn(uint64, time.Time) error      { return nil }
 
 type fakeMovements struct{ byUser map[uint64]int }
 

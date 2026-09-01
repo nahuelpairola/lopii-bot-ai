@@ -91,7 +91,7 @@ func InitServer(conf *config.Config) error {
 	// neutro (messagingController.Handle, más abajo). Se arma acá, apenas
 	// existe userRepo, para que el resto del arranque se lea de arriba a
 	// abajo sin un salto hacia atrás.
-	tgTransport := telegram.New(tgBot, userRepo)
+	tgTransport := telegram.New(tgBot, userRepo, conf.Server.BaseHost)
 
 	llmOrchestrator := buildOrchestrator(conf, llmCallRecorder{insert: metricRepo.InsertLLMCall})
 
@@ -116,8 +116,8 @@ func InitServer(conf *config.Config) error {
 
 	// Las dos goroutines de fondo: el sweeper (recordatorios, resumen semanal,
 	// retención de trazas, cotizaciones) y el drenaje de la cola de 429.
-	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo, subcategoryCache)
 	quoteRepo := quote.NewRepository(conn)
+	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo, subcategoryCache, quoteRepo)
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
 	sweeper := notifier.NewSweeper(tgTransport, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)

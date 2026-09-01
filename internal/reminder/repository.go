@@ -19,6 +19,7 @@ type Reminder struct {
 	LastRemindedOn       *time.Time `gorm:"column:last_reminded_on"`
 	WeeklySummaryEnabled bool       `gorm:"column:weekly_summary_enabled"`
 	LastSummaryOn        *time.Time `gorm:"column:last_summary_on"`
+	LastMonthlySummaryOn *time.Time `gorm:"column:last_monthly_summary_on"`
 	CreatedAt            time.Time  `gorm:"column:created_at"`
 	UpdatedAt            time.Time  `gorm:"column:updated_at"`
 }
@@ -87,6 +88,35 @@ func (r *repository) ListWeeklyDue(before time.Time) ([]Reminder, error) {
 // SetLastSummaryOn marks the weekly summary as sent for `date` (ART this-Monday).
 func (r *repository) SetLastSummaryOn(userID uint64, date time.Time) error {
 	return r.conn.DB.Model(&Reminder{}).Where("user_id = ?", userID).Update("last_summary_on", date).Error
+}
+
+// ListMonthlyDue returns the ids of every user whose monthly summary hasn't
+// been sent on/after `before`. It reads users, not reminders: the monthly
+// summary cannot be turned off, and most users have no reminders row at all.
+func (r *repository) ListMonthlyDue(before time.Time) ([]uint64, error) {
+	var ids []uint64
+	err := r.conn.DB.
+		Table("users u").
+		Joins("LEFT JOIN reminders r ON r.user_id = u.id").
+		Where("r.last_monthly_summary_on IS NULL OR r.last_monthly_summary_on < ?", before).
+		Order("u.id").
+		Pluck("u.id", &ids).Error
+	return ids, err
+}
+
+// SetLastMonthlySummaryOn marks the monthly summary as sent for `date`,
+// creating the row when the user has none. The row is created with every
+// opt-in flag off: it exists to hold the date, not to enable anything.
+func (r *repository) SetLastMonthlySummaryOn(userID uint64, date time.Time) error {
+	return r.conn.DB.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"last_monthly_summary_on"}),
+	}).Create(&Reminder{
+		UserID:               userID,
+		Enabled:              false,
+		WeeklySummaryEnabled: false,
+		LastMonthlySummaryOn: &date,
+	}).Error
 }
 
 // SetWeeklySummary toggles ONLY the weekly-summary flag, never the daily window
