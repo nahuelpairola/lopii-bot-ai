@@ -17,8 +17,9 @@ through the **real** handler rather than a copy, so the two paths cannot drift.
 
 ## `EnqueueBehindPending` belongs to the webhook edge only
 
-It runs from `handleConversationInput` (in `controller/messaging`) after the engine reports no open
-flow — never from `handleFreeText`. Called from there, a drained replay would queue itself again.
+It runs from the controller's `dispatch` (in `controller/messaging`) after the engine reports no
+open flow — never from `handleFreeText`. Called from there, a drained replay would queue itself
+again.
 
 Its job is ordering: while a user still has jobs waiting, a new message goes behind them so
 "no, 600" cannot be processed before "gasté 500".
@@ -43,12 +44,9 @@ Two rules the copy depends on:
   that would replay it, and the money would be recorded twice. Read `agent/AGENTS.md` before
   touching either side.
 
-`maxJobAge` (2h) is the giving-up point: past it, a job is not rate-limited any more but permanently
+`MaxJobAge` (2h) is the giving-up point: past it, a job is not rate-limited any more but permanently
 broken (dead key, billing, provider down), and the user gets told rather than left waiting.
 
 ---
 
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **Groq quota, the 429 queue and rate limits**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **Groq quota, the 429 queue and rate limits**.

@@ -13,7 +13,7 @@ A new write path that skips it compiles and inserts unnormalized money.
 
 ## `ReassignAccount` upholds a guard invariant in raw SQL
 
-`ReassignAccount` (`repository.go:291+`) is not a plain `UPDATE`. Internal transfers between the
+`ReassignAccount` (`repository.go`) is not a plain `UPDATE`. Internal transfers between the
 two accounts are soft-deleted **whole**, because re-pointing a single leg would produce a
 "transfer from `to` to `to`" — which `validateTransferGroups` rejects at insert time and nothing
 re-checks here. That SQL is hand-maintained correctness: editing it can produce data the guard
@@ -49,10 +49,10 @@ must never add the two rows — they are the same money seen twice.
 Binding a `time.Time` against `date` makes Postgres cast the column using the *session's*
 timezone (UTC), not the ART offset the parameter carries. Every "today" row then falls before an
 ART-anchored `since` and **vanishes from the result for part of the day**. It compiles, it runs,
-it loses rows. Full reasoning at `repository.go:108-117`.
+it loses rows.
 
 `FindSimilarForUser`'s `query string` parameter is dead — it no longer filters anything
-(`repository.go:98-106`). It stays in the signature because removing it ripples through the
+(`repository.go`). It stays in the signature because removing it ripples through the
 interface and three test mocks.
 
 ## `ListForAccount` breaks two house rules on purpose
@@ -77,7 +77,4 @@ does not remove it.
 
 ---
 
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **The money model** and **Movements: mutation and reference resolution**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **The money model** and **Movements: mutation and reference resolution**.

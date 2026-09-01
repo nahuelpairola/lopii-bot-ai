@@ -61,7 +61,8 @@ the two paths cannot drift.
 
 `handleFreeText` is one line: every message without an open flow goes to `agent.StartLoop`, and the
 loop picks one of its tools. The ten-branch switch that used to live here is gone, and so are
-`orchestrator.ClassifyIntent`, `ClassifyCreate` and `ResolveDelete`.
+orchestrator.ClassifyIntent, ClassifyCreate and ResolveDelete — the last two survive only as
+methods on test fakes, which nothing in production calls.
 
 That is the point of stage 5, not a refactor: routing *first* meant an intent had to be guessed
 before anything could be done, and on 2026-08-10 a user asked for one thing — move a batch of
@@ -75,7 +76,7 @@ model) **before** editing. The anti-pattern list is in `docs/ARCHITECTURE.md`.
 
 In tests, `c.sendText`/`c.sendPrompt`/`c.startFlow`/`c.handleFreeText` and every `finish*` bridge
 take a `messenger.Chat` directly — pass `&messenger.FakeChat{}`, not a Telegram `(bot, chatID)`
-pair. `edgeChat` and `newEdgeChat`, the temporary wrapper that used to stand in for that pair, are
+pair. edgeChat and newEdgeChat, the temporary wrapper that used to stand in for that pair, are
 gone as of Task 6: the webhook edge now arrives with `in.Chat` already resolved by the adapter
 (`internal/messenger/telegram`), so there is nothing left to wrap.
 
@@ -87,13 +88,10 @@ on the `messenger.Chat` it receives — never unwrap it back to `(bot, chatID)` 
 the webhook edge hands in, so any unwrap that only recognizes one concrete type fails silently for
 the other — and "silently" here means a replayed message that needs to ask the user something (a
 gap-fill, a QUERY reply, a settings wizard) gets dropped with no error and no message, which is
-exactly the "never silent" invariant `pendingjob/AGENTS.md` protects. This is why `asTelegramPair`
-and `pairOrLog` — the unwrap helpers that used to sit in `chat_bridge.go` — are gone: they were the
+exactly the "never silent" invariant `pendingjob/AGENTS.md` protects. This is why asTelegramPair
+and pairOrLog — the unwrap helpers that used to sit in chat_bridge.go — are gone: they were the
 bug, found in Task 8's first review round.
 
 ---
 
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **Groq quota, the 429 queue and rate limits** (the lock) and **Package layout, metrics and tooling**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **Groq quota, the 429 queue and rate limits** (the lock) and **Package layout, metrics and tooling**.

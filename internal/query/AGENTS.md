@@ -69,7 +69,4 @@ model) before touching anything that reads `amount`.
 
 ---
 
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **The agent loop and QUERY**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **The agent loop and QUERY**.

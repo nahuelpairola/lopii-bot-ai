@@ -4,7 +4,7 @@ Telegram Mini App: templ-rendered HTML views, served over HTMX.
 
 ## Auth is the Gin route group, and nothing else
 
-`RegisterRoutes` (`controller.go:87+`) builds two groups off the same prefix:
+`RegisterRoutes` (`controller.go`) builds two groups off the same prefix:
 
 ```go
 app    := engine.Group(templates.AppPrefix)  // public — static assets only
@@ -24,8 +24,8 @@ Until 2026-08-25 this package carried `/app/admin` (an invitation-management vie
 second `requireAdmin()` middleware layered on `authed`, reached from the tab bar by an
 `hx-swap-oob` anchor the Resumen partial shipped into an empty `<span>` slot the `TabBar`
 reserved (`TabBar` renders in the unauthenticated `Shell`, so it cannot itself know who is
-viewing). The user asked for it removed entirely, and it is: `admin.go`, its templates, the
-`requireAdmin` middleware, the `AdminPath`/`RouteAdmin` consts and the OOB slot are all gone —
+viewing). The user asked for it removed entirely, and it is: admin.go, its templates, the
+requireAdmin middleware, the AdminPath/RouteAdmin consts and the OOB slot are all gone —
 not merely unreachable. `invitation.Repository` still exists and is still wired into
 `messagingctrl` for `/start` code redemption in chat; only the Mini App surface for *managing*
 invitations went away.
@@ -171,7 +171,4 @@ computed style. A hex crossing that boundary is a colour that stops following th
 
 ---
 
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **The money model**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **The money model**.

@@ -22,7 +22,7 @@ acked *after* taking added latency to every tap for no reason. Nothing past `toI
 `AnswerCallbackQuery` — there is exactly one ack site, and it is this one. A second one (a new
 handler, a retry path) double-acks or acks a query the first ack already answered.
 
-## `Incoming` has no `Kind` and no `RawText` on purpose
+## `Incoming` has no `Kind` and no RawText on purpose
 
 Both are derivable from `Input` (`conversation.Input`): a callback carries `CallbackData`, a
 message carries `Text`. Adding either field back duplicates state that can drift from `Input` —

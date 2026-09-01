@@ -10,9 +10,9 @@ Since stage 5 deleted the router, `Config` carries five model fields
 
 | Call site | `callType` bucket | Model actually used |
 |---|---|---|
-| `account_manage.go:39` | `account_manage` | `o.createModel` |
-| `category_create.go:55` | `category_create` | `o.createModel` |
-| `onboarding.go:44` | `onboarding` | `o.createModel` |
+| `ResolveAccountManage` | `account_manage` | `o.createModel` |
+| `ClassifyCategoryCreate` | `category_create` | `o.createModel` |
+| `ClassifyOnboarding` | `onboarding` | `o.createModel` |
 
 **Retuning `createModel` retunes three unrelated wizard paths.** The separate Grafana buckets
 hide it — they suggest three independent call types. No test covers this.
@@ -36,9 +36,9 @@ Everything below follows from that, and none of it is arbitrary:
 
 ## `AgentTool.Kind` is vestigial — and that is a loaded gun
 
-`orderCallsByKind` and `kindRank` were deleted in stage 5 (see the comment at `agent.go:41`).
-**`Kind` survives as a field that nothing reads** — every tool still declares one, and no code
-looks at it.
+orderCallsByKind and kindRank were deleted in stage 5, along with the read-before-write ordering
+they enforced. **`Kind` survives as a field that nothing reads** — every tool still declares one,
+and no code looks at it.
 
 **The premise that justified deleting it expired the same day.** `a419524` removed ordering
 arguing the toolbox had no read tools — true when written — and `0b3427a`, later that
@@ -58,8 +58,8 @@ If ordering does come back, the old trap has to be avoided rather than reintrodu
 
 `numberFormatRule` (`number_format.go`) and the two consts in `movement_rules.go` are
 concatenated into `fmt.Sprintf` templates. A literal `%` corrupts the rendered system prompt at
-runtime — no panic, no error, the model just receives a garbled instruction block. Escape it as
-`%%`, as the "90%%" in `taxonomyAndAmountRules` does.
+runtime — no panic, no error, the model just receives a garbled instruction block. Any percentage
+that reaches a prompt const has to be written `%%`.
 
 `movement_rules.go` holds what the prompt templates say **verbatim**, deduplicated after a
 2026-08-08 fix had to be pasted into both by hand. It is two consts, not one, because
@@ -116,7 +116,4 @@ user's correction lost.
 
 ---
 
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **The agent loop and QUERY** and **Groq quota, the 429 queue and rate limits**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **The agent loop and QUERY** and **Groq quota, the 429 queue and rate limits**.
