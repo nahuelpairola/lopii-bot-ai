@@ -1,10 +1,3 @@
-// Package query es el loop de QUERY (consultas read-only al asistente). Vive
-// en su propio paquete (extraído de messaging en la costura de la etapa 6) y
-// NO sabe nada de Telegram-webhook ni del controller.
-//
-// Lo que el loop necesita del mundo exterior es la interfaz services, que el
-// borde (controller/messaging) implementa con puentes de una línea en
-// query_services.go. Este paquete nunca importa internal/controller/messaging.
 package query
 
 import (
@@ -28,9 +21,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// services es la vista del loop de QUERY sobre el controller de messaging.
-// La implementa *controller estructuralmente desde query_services.go — este
-// paquete nunca importa internal/controller/messaging.
 type services interface {
 	QueryAccountsByUserID(userID uint64) ([]account.Account, error)
 	QueryCategoriesByUser(userID uint64) ([]subcategory.Subcategory, error)
@@ -45,14 +35,6 @@ type services interface {
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
-// Tools are the read-only tools the QUERY loop composes. Invariants
-// live in the executor (Go), not here — the model only picks tools + ranges.
-// Optional params are declared nullable (`["string","null"]`) — the tool-
-// calling models routinely emit an explicit `null` for an argument they don't
-// want to set, and Groq validates arguments against the schema server-side, so
-// a plain `"string"` type 400s on that null before the executor ever runs.
-// json.Unmarshal of null leaves the Go zero value, so the executor already
-// treats it as "absent". Only from/to/currency are required (never null).
 var Tools = []orchestrator.AgentTool{
 	{
 		Name:        "list_categories",
@@ -115,8 +97,6 @@ var Tools = []orchestrator.AgentTool{
 	},
 }
 
-// queryToolArgs is the union of every tool's argument shape — one struct
-// keeps the executor's json.Unmarshal simple (unused fields stay zero).
 type queryToolArgs struct {
 	From     string `json:"from"`
 	To       string `json:"to"`
@@ -126,39 +106,12 @@ type queryToolArgs struct {
 	Account  string `json:"account"`
 	Search   string `json:"search"`
 	Limit    int    `json:"limit"`
-	// Category ya NO filtra movimientos: es el parámetro de list_categories, que
-	// acota el listado de TAXONOMÍA a una sola categoría. Las dos tools de
-	// movimientos filtran con Search.
 	Category string `json:"category"`
 }
 
-// Los cuatro desenlaces de una consulta que no devolvió filas. Son lo que ve el
-// MODELO, no el usuario, y por eso viven acá y no en messages.go.
-//
-// Son cuatro y no uno porque describen HECHOS DISTINTOS, y hasta el 2026-08-14
-// los cuatro salían por el mismo string ambiguo: el modelo tenía que elegir cuál
-// creer, y el 2026-08-13 eligió mal —contestó "No tenés registros de gastos en la
-// categoría Lote. El total gastado es $0 ARS" sobre $30.343,74 reales—.
-//
-// NINGUNO puede nombrar una herramienta. La narración forzada corre con
-// tool_choice:"none" y sin schemas, y ahí el modelo imita todo lo que se parezca
-// a una tool: la versión que decía "verificá con list_categories" hizo que
-// gpt-oss-20b devolviera 400 y que gpt-oss-120b le imprimiera al usuario
-// {"tool": "list_categories", "params": {}}. Lo fija TestQueryMessages_NameNoTool.
-
-// Run answers a read-only question via the agent loop. Returns
-// (answered, err): answered=false significa que el loop no produjo respuesta.
-//
-// El fracaso NO manda copy acá — la manda el caller, a propósito. Un 429 se encola
-// y se ackea (handleGroqError); si esta función mandara msgQueryFailed por su cuenta,
-// el usuario leería "no pude responder" Y el ack de la cola por el mismo mensaje.
-// Solo el caller sabe distinguir un 429 encolado de un fracaso de verdad.
 func Run(ctx context.Context, svc services, chat messenger.Chat, userID uint64, text string) (bool, error) {
 	prompt := SystemPrompt()
 
-	// El wrapper mira lo que DEVOLVIÓ el ejecutor, no lo que el modelo hizo con eso:
-	// es la única forma de enterarse de que la app emitió un veredicto propio sin
-	// cambiarle la firma a buildQueryExecutor, que usan quince tests.
 	var appVerdict, rangeFrom, rangeTo string
 	inner := NewExecutor(svc, userID)
 	execute := func(name string, raw json.RawMessage) (string, error) {
@@ -166,9 +119,6 @@ func Run(ctx context.Context, svc services, chat messenger.Chat, userID uint64, 
 		if strings.Contains(out, msgOnlyInternalMark) {
 			appVerdict = out
 		}
-		// El rango sale de los argumentos con los que el modelo LLAMÓ, que es
-		// justamente el dato en discusión: si resolvió mal el año, acá está el año
-		// equivocado, y reponerlo es lo que lo vuelve visible.
 		if emptyResultNamesARange(out) {
 			var args queryToolArgs
 			if json.Unmarshal(raw, &args) == nil {
@@ -178,7 +128,6 @@ func Run(ctx context.Context, svc services, chat messenger.Chat, userID uint64, 
 		return out, err
 	}
 
-	// Best-effort: a history load error never fails the query — run stateless.
 	turns, _ := svc.QueryChatRecent(userID)
 	history := make([]orchestrator.QueryTurn, len(turns))
 	for i, t := range turns {
@@ -192,7 +141,6 @@ func Run(ctx context.Context, svc services, chat messenger.Chat, userID uint64, 
 	answer = reinstateAppVerdict(answer, appVerdict)
 	answer = appendConsultedRange(answer, rangeFrom, rangeTo)
 	svc.QuerySendText(ctx, chat, answer)
-	// Best-effort append: a failure here never fails the answer the user already got.
 	_ = svc.QueryChatAppend(userID, text, answer)
 	return true, nil
 }
@@ -217,9 +165,6 @@ Para preguntas sobre el recordatorio de carga de gastos (si está activo, a qué
 Si la pregunta no se puede responder con estas herramientas, decilo con amabilidad en una línea.`, today)
 }
 
-// NewExecutor returns the execute closure the loop calls per tool call. It is
-// scoped to userID and owns every invariant (user-scoping, abs amounts,
-// ARS/USD separation) — the LLM can only pick tools and ranges.
 func NewExecutor(svc services, userID uint64) func(string, json.RawMessage) (string, error) {
 	return func(name string, raw json.RawMessage) (string, error) {
 		var args queryToolArgs
@@ -238,7 +183,7 @@ func NewExecutor(svc services, userID uint64) func(string, json.RawMessage) (str
 		case "get_reminder":
 			rem, err := svc.QueryReminderByUser(userID)
 			if err != nil {
-				rem = nil // no row (or lookup miss) -> "no configurado"
+				rem = nil
 			}
 			return describeReminder(rem), nil
 		default:
@@ -252,18 +197,6 @@ func execListCategories(svc services, userID uint64, args queryToolArgs) (string
 	if err != nil {
 		return "", err
 	}
-	// Las descripciones ("cuándo usarla") SOLO viajan en la lista filtrada, y no en
-	// la completa. Medido el 2026-08-10 con 66 filas: la lista entera con
-	// descripciones son ~1.325 tokens y sin ellas ~500. El resultado de una tool se
-	// reinyecta en CADA ronda posterior, así que esos ~825 tokens se pagan dos o tres
-	// veces por consulta contra un TPM de 8.000 — y una consulta multi-entidad se
-	// pasaba del techo justo por eso (ver el modelo de costo en
-	// orchestrator/client_loop.go).
-	//
-	// Para CONTESTAR alcanza el mapeo nombre → categoría | subcategoría; las
-	// descripciones existen para clasificar en CREATE, no para consultar. Cuando el
-	// modelo sí las necesita para desambiguar, filtra por categoría y ahí el bloque
-	// es chico y las manda completas.
 	withDescriptions := args.Category != ""
 	var lines []string
 	for _, s := range subs {
@@ -271,11 +204,6 @@ func execListCategories(svc services, userID uint64, args queryToolArgs) (string
 			continue
 		}
 		line := fmt.Sprintf("%s | %s", s.Category, s.Subcategory)
-		// Misma regla que orchestrator.buildTaxonomyBlock: una descripción vacía
-		// es deliberada (la migración de podado vacía las notas que no
-		// desambiguan), no un dato faltante. Sin esta guarda la respuesta al
-		// usuario sale con un separador colgante — "Alimentación | Supermercado | " —
-		// en 26 de las 65 globales.
 		if withDescriptions && s.Description != "" {
 			line += " | " + s.Description
 		}
@@ -300,7 +228,6 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 		return "", err
 	}
 	groupBy := args.GroupBy
-	// Sin partir por dirección, SUM(ABS) suma las DOS patas del mismo transfer.
 	transferSplit := args.Type == constants.Transfer && ungroupedSum(groupBy)
 	if transferSplit {
 		groupBy = movement.GroupByDirection
@@ -309,25 +236,6 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	if err != nil {
 		return "", err
 	}
-	// Un sum SIN agrupar devuelve SIEMPRE una fila —`COALESCE(SUM(ABS(amount)), 0)`
-	// sin GROUP BY es una fila con cero, nunca cero filas—, así que por ese camino
-	// "no encontré nada" llega disfrazado de total en cero y describeEmptyResult
-	// era INALCANZABLE. Y es el camino más común de todos: "¿cuánto gasté en X?".
-	//
-	// Medido contra el bot el 2026-08-18: preguntar por Supermercado en junio
-	// devolvía "total: 0.00 ARS" y el modelo narraba "no hay registros de gastos en
-	// Supermercado" — el mismo cero mudo que los cuatro mensajes vinieron a matar,
-	// vivo en la mitad del tráfico. Los tests no lo veían porque el fake devolvía
-	// nil, una forma que el repo no produce jamás.
-	//
-	// SUM(ABS()) nunca da negativo, así que un cero sale de no haber sumado nada —o
-	// de haber sumado sólo movimientos de monto cero ("me lo regalaron"), que caen
-	// en las sondas y se describen como ausencia. Impreciso en ese borde, y aun así
-	// mejor que el cero mudo.
-	//
-	// El transferSplit reabre esa misma puerta: al forzar el agrupado por
-	// dirección, ungroupedSum deja de ser cierto y el cero mudo volvería a pasar
-	// como "salió 0 / entró 0". allZero es la misma guarda para ese camino.
 	if len(rows) == 0 || (ungroupedSum(groupBy) && rows[0].Total.IsZero()) || (transferSplit && allZero(rows)) {
 		return describeEmptyResult(svc, q, args)
 	}
@@ -342,7 +250,6 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	if ungroupedSum(groupBy) {
 		return fmt.Sprintf("total: %s %s", rows[0].Total.Abs().StringFixed(2), cur), nil
 	}
-	// For account grouping, map account_id labels to names.
 	nameByID := map[string]string{}
 	if groupBy == "account" {
 		accts, _ := svc.QueryAccountsByUserID(userID)
@@ -369,7 +276,6 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	return strings.Join(lines, "\n"), nil
 }
 
-// Las dos patas de un transfer, etiquetadas. Nunca se suman: son la misma plata.
 const (
 	msgTransferOutFmt     = "salió: %s %s"
 	msgTransferInFmt      = "entró: %s %s"
@@ -377,15 +283,11 @@ const (
 	msgTransferInAcctFmt  = "entró a %s: %s %s"
 )
 
-// dirOut / dirIn son las etiquetas que devuelve movement.GroupByDirection.
 const (
 	dirOut = "out"
 	dirIn  = "in"
 )
 
-// renderTransferDirections arma las dos patas. Las DOS salen siempre, aunque una
-// esté en cero: una ausencia es un hecho y omitir la línea la vuelve indistinguible
-// de "no la consulté".
 func renderTransferDirections(rows []movement.CategorySum, account, cur string) string {
 	totals := map[string]decimal.Decimal{dirOut: decimal.Zero, dirIn: decimal.Zero}
 	for _, r := range rows {
@@ -408,36 +310,12 @@ func allZero(rows []movement.CategorySum) bool {
 	return true
 }
 
-// ungroupedSum dice si el pedido no lleva agrupación. Son dos valores y no uno
-// porque el schema declara "none" explícito y el modelo también puede omitir el
-// campo, y las dos cosas significan lo mismo.
 func ungroupedSum(groupBy string) bool {
 	return groupBy == movement.GroupByNone || groupBy == groupByNoneArg
 }
 
-// groupByNoneArg es el "none" del enum del schema. movement.GroupByNone es el
-// string vacío que entiende el repo; el modelo manda esta otra palabra.
 const groupByNoneArg = "none"
 
-// groupedTotalLine arma la línea de total de un agrupado, o dice que no va.
-//
-// Existe porque el modelo no suma: el 2026-08-14 recibió dos filas —Supermercado
-// 2.031.070 y Almacén 34.000— y contestó 2.031.070, la primera. Es el mismo
-// principio que ya gobierna las correcciones: la aritmética es de la app, y el
-// modelo sólo cita lo que la app calculó.
-//
-// Tres casos NO llevan total, y los tres son por corrección, no por estética:
-//
-//   - group_by=type. Las filas llegan en valor absoluto (CategorySum.Total es
-//     SUM(ABS(amount))), así que sumar el renglón de gastos con el de ingresos da
-//     un número que no es el gasto, ni el ingreso, ni el neto. Escribirlo sería
-//     peor que no escribir nada: la línea existe justamente para que el modelo la
-//     cite sin revisarla.
-//   - type=transfer, con cualquier agrupado. Es el mismo razonamiento: un
-//     transfer son DOS patas de la misma plata, así que todo total entre filas
-//     de transferencias es 2×.
-//   - Una sola fila. El total ES la fila, y repetirlo le presenta dos hechos
-//     donde hay uno.
 func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string) (string, bool) {
 	if groupBy == "type" || movType == constants.Transfer || len(rows) < 2 {
 		return "", false
@@ -468,12 +346,6 @@ func execListMovements(svc services, userID uint64, args queryToolArgs) (string,
 	return strings.Join(lines, "\n"), nil
 }
 
-// queryMovementLine renders one movement row for a QUERY answer. It uses
-// Amount.Abs() deliberately: ListForUser returns DB rows with the stored
-// SIGNED amount (an expense is negative), and the sign must never surface —
-// direction is the movement type, not a minus. (movementReceiptLine renders
-// the raw amount for CREATE receipts, where the draft is already positive;
-// QUERY needs the explicit Abs, so it has its own line renderer.)
 func queryMovementLine(m movement.Movement) string {
 	cat, sub := "", ""
 	if m.Subcategory != nil {
@@ -511,12 +383,10 @@ func execAccountBalance(svc services, userID uint64, args queryToolArgs) (string
 	return strings.Join(lines, "\n"), nil
 }
 
-// buildMovementQuery translates tool args into a movement.MovementQuery,
-// resolving the optional account name to an ID and validating the currency.
 func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (movement.MovementQuery, error) {
 	cur := currency.Currency(args.Currency)
 	if cur != currency.ARS && cur != currency.USD {
-		cur = currency.ARS // default per the ARS-if-unspecified convention
+		cur = currency.ARS
 	}
 	from, err := parseQueryDate(args.From)
 	if err != nil {
@@ -536,11 +406,6 @@ func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (moveme
 		t := args.Type
 		q.Type = &t
 	}
-	// stripLeadingIcon SIGUE haciendo falta, y ahora sobre un solo campo. El
-	// prompt le pide al modelo arrancar la línea con el emoji, list_categories
-	// devuelve "🍔 Alimentación", el modelo aprende ese string y lo copia al
-	// filtro. unaccent no borra emojis: sin esto, LIKE '%🍔 alimentacion%' no
-	// matchea nada y la respuesta sale $0 sobre gastos que existen.
 	if s := stripLeadingIcon(args.Search); s != "" {
 		q.Search = &s
 	}
@@ -554,15 +419,6 @@ func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (moveme
 			id := uint64(acct.ID)
 			q.AccountID = &id
 		}
-		// Un nombre que no matchea NO puede seguir de largo. Antes dejaba AccountID
-		// en nil y la consulta corría sin filtrar: el usuario preguntaba por una
-		// cuenta y le contestaban por todas, sin ninguna señal. Es el modo de falla
-		// más caro de los tres del 2026-08-13, porque devuelve un número grande y
-		// plausible en vez de un cero que llama la atención.
-		//
-		// El error vuelve al modelo como texto (AnswerQuery no aborta, lo reinyecta),
-		// así que lleva las cuentas reales: con eso se corrige solo en la ronda
-		// siguiente. Es lo mismo que ya hacía execAccountBalance más abajo.
 		if q.AccountID == nil {
 			return movement.MovementQuery{}, fmt.Errorf("no encontré la cuenta %q. Tus cuentas: %s",
 				args.Account, strings.Join(names, ", "))
@@ -571,12 +427,6 @@ func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (moveme
 	return q, nil
 }
 
-// matchAccount busca la cuenta por nombre sin distinguir mayúsculas. Devuelve
-// nil y la lista de nombres reales cuando no matchea, que es lo que arma el
-// mensaje de error. Está acá y no inline porque la usan dos sitios:
-// buildMovementQuery, para resolver el id, y accountName, para etiquetar las
-// dos patas de un transfer con el nombre GUARDADO y no con el que tipeó el
-// modelo ("fci").
 func matchAccount(accts []account.Account, name string) (*account.Account, []string) {
 	names := make([]string, 0, len(accts))
 	for i := range accts {
@@ -588,9 +438,6 @@ func matchAccount(accts []account.Account, name string) (*account.Account, []str
 	return nil, names
 }
 
-// accountName devuelve el nombre guardado de la cuenta que pidió el modelo, o
-// "" si no pidió ninguna. Un nombre que no existe ya lo rechazó
-// buildMovementQuery antes de llegar acá.
 func accountName(svc services, userID uint64, asked string) (string, error) {
 	if asked == "" {
 		return "", nil
@@ -605,33 +452,12 @@ func accountName(svc services, userID uint64, asked string) (string, error) {
 	return "", nil
 }
 
-// stripLeadingIcon saca el ícono que le antepusimos NOSOTROS al nombre de una
-// categoría antes de usarlo como filtro.
-//
-// list_categories y sum_movements(group_by=category) devuelven "🍔 Alimentación",
-// porque el prompt le pide al modelo que arranque la línea con el emoji. El modelo
-// aprende el nombre de esa salida y lo copia entero al filtro de la llamada
-// siguiente: el SQL compara contra "Alimentación" a secas, no matchea nada, y la
-// respuesta sale "$0" sobre gastos que existen. Visto en el eval del 2026-08-13.
-//
-// Va acá y no en cada productor de íconos porque este es el embudo: los dos filtros
-// de taxonomía de las dos tools pasan por buildMovementQuery.
-//
-// Corta hasta la primera letra o dígito, así un nombre real llega intacto —incluidos
-// los que tienen espacios y barras, como "Deudas / préstamos"—.
 func stripLeadingIcon(s string) string {
 	for i, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			return strings.TrimSpace(s[i:])
 		}
 	}
-	// Sin una sola letra ni dígito no hay nombre que rescatar, y devolver ""
-	// sería PEOR que no hacer nada: el llamador lee "" como "no vino filtro" y
-	// la consulta pasa a correr sin filtrar, contestando por todo. Es el mismo
-	// defecto que arregla la cuenta inexistente, un campo más allá.
-	//
-	// Un filtro nunca se ensancha en silencio: se deja como vino, la consulta
-	// devuelve cero, y eso el modelo sí lo sabe explicar.
 	return strings.TrimSpace(s)
 }
 
@@ -639,8 +465,6 @@ func parseQueryDate(s string) (time.Time, error) {
 	return time.Parse("2006-01-02", strings.TrimSpace(s))
 }
 
-// describeReminder renders a user's reminder for the QUERY loop to narrate.
-// nil = no reminder configured. Windows shown as whole hours (ART).
 func describeReminder(r *reminder.Reminder) string {
 	if r == nil {
 		return "El usuario no tiene ningún recordatorio de carga de gastos configurado."

@@ -6,8 +6,6 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// CreateErrorCopy maps a guard rejection to specific user copy, falling back
-// to the generic error. Mirrors account finish's ErrAccountAlreadyExists.
 func CreateErrorCopy(err error) string {
 	switch {
 	case errors.Is(err, movement.ErrZeroAmount):
@@ -23,12 +21,6 @@ func CreateErrorCopy(err error) string {
 	}
 }
 
-// GuardReason maps a guard rejection to a stable log value. Mirror of
-// CreateErrorCopy, which maps the same sentinels to user-facing copy.
-//
-// Los valores son un contrato con los logs de producción (campo `reason`):
-// cambiarlos rompe cualquier búsqueda histórica, aunque se renombren los
-// sentinels de Go.
 func GuardReason(err error) string {
 	switch {
 	case errors.Is(err, movement.ErrZeroAmount):

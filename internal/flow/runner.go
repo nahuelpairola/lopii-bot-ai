@@ -14,12 +14,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// runner es la dependencia mínima que el código de escritura de movimientos
-// (movement_write.go) y los finishes migrados (movement_finish.go,
-// account_finish.go) necesitan del borde (messaging). El tipo es unexported a
-// propósito; los MÉTODOS tienen que ser exportados porque una interfaz con
-// métodos unexported solo la pueden implementar tipos del mismo paquete, y acá
-// la implementa el *controller del borde. Ver el comentario de repos.go.
 type runner interface {
 	FindUserAccounts(userID uint64) ([]account.Account, error)
 	InsertAccount(*account.Account) error
@@ -49,9 +43,6 @@ type runner interface {
 	DisableReminder(userID uint64) error
 	SetWeeklySummary(userID uint64, enabled bool) error
 
-	// Outbound + métricas: lo que un finish de movimiento toca del canal y
-	// del borde (intent_events, nudges, borrado físico) y que flow no quiere
-	// conocer. SendText y StartFlow son los que vuelven a flow como salida.
 	ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint)
 	SendText(ctx context.Context, chat messenger.Chat, text string)
 	StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error

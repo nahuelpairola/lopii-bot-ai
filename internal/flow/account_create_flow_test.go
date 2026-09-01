@@ -8,9 +8,6 @@ import (
 	"lopiibot.com/internal/currency"
 )
 
-// fakeStateStore es una implementación mínima en memoria de la interfaz
-// (no exportada) que espera conversation.NewEngine, para poder ejercitar
-// el flow real de punta a punta sin tocar Postgres.
 type fakeStateStore struct {
 	flowName  string
 	stepName  string
@@ -237,23 +234,19 @@ func TestAccountCreateFlow_SeededBalance_ConfirmButtonKeepsValue(t *testing.T) {
 		t.Fatalf("StartWithData: %v", err)
 	}
 
-	// Name step shows the confirm button; tap it to keep "Cedears".
 	prompt, found, err := engine.Handle(userID, conversation.Input{CallbackData: OptionConfirmSeed})
 	if err != nil || !found || prompt.Finished {
 		t.Fatalf("confirm name: prompt=%+v found=%v err=%v", prompt, found, err)
 	}
 
-	// Currency step (normal ChoiceStep).
 	if _, _, err = engine.Handle(userID, conversation.Input{CallbackData: currency.USD.String()}); err != nil {
 		t.Fatalf("pick currency: %v", err)
 	}
 
-	// Balance step shows the seeded confirm button; tap it to keep "1041265".
 	if _, _, err = engine.Handle(userID, conversation.Input{CallbackData: OptionConfirmSeed}); err != nil {
 		t.Fatalf("confirm balance: %v", err)
 	}
 
-	// Confirm step finishes with the seeded values intact.
 	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: "confirm"})
 	if err != nil || !result.Finished {
 		t.Fatalf("confirm: result=%+v err=%v", result, err)
@@ -275,10 +268,9 @@ func TestAccountCreateFlow_SeededBalance_TypingOverrides(t *testing.T) {
 
 	seed := conversation.Data{"account_name": "Cedears", "account_balance": "1041265"}
 	engine.StartWithData(userID, AccountCreateFlowName, seed)
-	engine.Handle(userID, conversation.Input{CallbackData: OptionConfirmSeed})     // keep name
-	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()}) // currency
+	engine.Handle(userID, conversation.Input{CallbackData: OptionConfirmSeed})
+	engine.Handle(userID, conversation.Input{CallbackData: currency.ARS.String()})
 
-	// At the balance step, type a different number instead of tapping confirm.
 	if _, _, err := engine.Handle(userID, conversation.Input{Text: "999"}); err != nil {
 		t.Fatalf("type new balance: %v", err)
 	}
@@ -292,8 +284,6 @@ func TestAccountCreateFlow_SeededBalance_TypingOverrides(t *testing.T) {
 }
 
 func TestValidateBalanceAmount_AcceptsARComma(t *testing.T) {
-	// ValidateBalanceAmount returns "" when the input is a valid non-negative
-	// amount, or an error message otherwise. An AR comma-decimal must validate.
 	if msg := ValidateBalanceAmount("45685,9", nil); msg != "" {
 		t.Errorf("ValidateBalanceAmount(\"45685,9\") rejected valid AR amount: %q", msg)
 	}

@@ -10,8 +10,6 @@ const (
 	stepAccountMoveOffer = "account_move_offer_ask"
 )
 
-// NewAccountMoveOfferFlow is the one-question follow-up after a default
-// change: move the old default's movements into the new one?
 func NewAccountMoveOfferFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepAccountMoveOffer: conversation.ChoiceStep{

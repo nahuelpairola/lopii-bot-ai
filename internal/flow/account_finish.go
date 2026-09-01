@@ -15,9 +15,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// FinishAccountCreate is the Telegram-facing finish of the ACCOUNT_CREATE
-// confirm: cancel → cancel copy; duplicate name → friendly copy; success →
-// opening movement + success copy.
 func FinishAccountCreate(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
 		r.SendText(ctx, chat, MsgAccountCreateCancelled)
@@ -43,9 +40,6 @@ func FinishAccountCreate(ctx context.Context, r runner, chat messenger.Chat, dat
 	}
 
 	if err := InsertAccountOpeningMovement(r, newAccount, balance); err != nil {
-		// Se loguea porque acá se corta: esta función no devuelve error, así que
-		// sin esto un saldo de apertura que falla no deja rastro en ningún lado
-		// (ni en slog ni en request_traces) y la cuenta queda creada sin él.
 		slog.ErrorContext(ctx, "account opening movement failed",
 			"user_id", data.UserID(), "account_id", newAccount.ID, "err", err)
 		r.SendText(ctx, chat, MsgCouldNotSave("tu cuenta"))
@@ -55,22 +49,6 @@ func FinishAccountCreate(ctx context.Context, r runner, chat messenger.Chat, dat
 	r.SendText(ctx, chat, MsgAccountCreateSuccess(name, cur, balance))
 }
 
-// InsertAccountOpeningMovement inserts the opening transfer movement for
-// a freshly created account, same subcategory
-// (Sistema | Saldo inicial) and shape as insertInitialBalanceMovements —
-// inserted even when balance is "0", for the same reason: the balance is
-// always computed from movements, never stored (see movement.SumAmountForAccount).
-//
-// Toma la cuenta entera, y no (id, moneda) por separado, para que el movimiento
-// no pueda quedar en una moneda distinta a la de su cuenta: los dos datos salen
-// de la misma fila, así que el desajuste es irrepresentable en vez de chequeado.
-// Mezclar monedas es el error que corrompe un balance en silencio — el saldo es
-// SUM(amount) y no mira la moneda de cada fila.
-//
-// NO pasa por movement.Normalize, a propósito: el guard exige que toda
-// transferencia sea un grupo de 2 patas con transaction_id, y una apertura no
-// tiene contraparte (está tipada Transfer solo para quedar fuera de los
-// agregados de cash-flow). Rechazaría toda apertura, con cualquier monto.
 func InsertAccountOpeningMovement(r runner, acc *account.Account, balanceText string) error {
 	sub, err := r.FindSubcategory(acc.UserID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
 	if err != nil {
@@ -93,8 +71,6 @@ func InsertAccountOpeningMovement(r runner, acc *account.Account, balanceText st
 	}})
 }
 
-// FinishAccountManage applies the confirmed operation. Every branch
-// already passed its confirm gate inside the flow — this is pure execution.
 func FinishAccountManage(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeAccountManageCancelled)
@@ -109,9 +85,9 @@ func FinishAccountManage(ctx context.Context, r runner, chat messenger.Chat, dat
 	case OpRename:
 		FinishAccountRename(ctx, r, chat, data)
 	case OpAdjust:
-		FinishAccountAdjust(ctx, r, chat, data) // Task 7
+		FinishAccountAdjust(ctx, r, chat, data)
 	case OpDefault:
-		FinishAccountDefault(ctx, r, chat, data) // Task 8
+		FinishAccountDefault(ctx, r, chat, data)
 	default:
 		r.SendText(ctx, chat, MsgSomethingBroke)
 	}
@@ -136,10 +112,6 @@ func FinishAccountRename(ctx context.Context, r runner, chat messenger.Chat, dat
 	r.SendText(ctx, chat, "Listo, ahora se llama "+newName+".")
 }
 
-// FinishAccountAdjust inserts THE adjustment movement: delta between the
-// declared new total and SUM(amount). The app owns the sign here exactly
-// like the guard does: income → +Abs, expense → -Abs. Never the LLM (the
-// LLM never even saw the number — it came from a validated TextStep).
 func FinishAccountAdjust(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	accountID, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeyAccountID]), 10, 64)
 	if err != nil {
@@ -170,21 +142,12 @@ func FinishAccountAdjust(ctx context.Context, r runner, chat messenger.Chat, dat
 		return
 	}
 
-	// La cuenta se relee de la DB para que el guard compare la moneda del
-	// movimiento contra la verdad de la base, y no contra lo que dice la Data del
-	// flujo. Si las dos discrepan, el ajuste se rechaza en vez de escribir un
-	// movimiento en una moneda distinta a la de su cuenta — que es el error que
-	// corrompe un balance en silencio, porque el saldo es SUM(amount) y no mira
-	// la moneda de cada fila.
 	acc, err := r.GetAccount(accountID)
 	if err != nil {
 		r.SendText(ctx, chat, MsgCouldNotLoad)
 		return
 	}
 
-	// El tipo lo decide el signo del delta; el signo del amount lo re-deriva el
-	// guard a partir del tipo. Antes esa derivación estaba copiada acá a mano,
-	// duplicando la regla que movement.Normalize ya es dueño de aplicar.
 	mType := movement.Income
 	if delta.IsNegative() {
 		mType = movement.Expense
@@ -200,7 +163,7 @@ func FinishAccountAdjust(ctx context.Context, r runner, chat messenger.Chat, dat
 			Currency:      currency.Currency(conversation.StringOrEmpty(data[conversation.KeyAccountCurrency])),
 		}},
 		map[uint64]account.Account{accountID: *acc},
-		nil, // sin fallback a la default: la cuenta del ajuste siempre es explícita
+		nil,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "balance adjustment rejected by guard",
@@ -210,9 +173,6 @@ func FinishAccountAdjust(ctx context.Context, r runner, chat messenger.Chat, dat
 	}
 
 	if err := r.InsertMovementsBatch(movs); err != nil {
-		// Mismo motivo que en el finish de cuenta: función void, el error no
-		// sube a withTrace. Sin este log, un ajuste de saldo fallido es
-		// invisible en producción.
 		slog.ErrorContext(ctx, "balance adjustment insert failed",
 			"user_id", data.UserID(), "account_id", accountID, "err", err)
 		r.SendText(ctx, chat, MsgCouldNotSave("el ajuste"))
@@ -232,7 +192,6 @@ func FinishAccountDefault(ctx context.Context, r runner, chat messenger.Chat, da
 	cur := currency.Currency(conversation.StringOrEmpty(data[conversation.KeyAccountCurrency]))
 	name := conversation.StringOrEmpty(data[conversation.KeyAccountName])
 
-	// capture the previous default BEFORE unsetting it
 	prev, prevErr := r.FindDefaultAccountByCurrency(data.UserID(), cur)
 
 	if err := r.UnsetDefaultAccount(data.UserID(), cur); err != nil {
@@ -246,7 +205,6 @@ func FinishAccountDefault(ctx context.Context, r runner, chat messenger.Chat, da
 	r.ResolveMetric(ctx, data.UserID(), OutcomeAccountDefaultSet)
 	r.SendText(ctx, chat, fmt.Sprintf("⭐ %s es tu cuenta en %s por defecto.", name, cur.String()))
 
-	// same-currency guaranteed: prev is the old default OF THIS currency
 	if prevErr != nil || prev == nil || uint64(prev.ID) == accountID {
 		return
 	}
@@ -254,7 +212,6 @@ func FinishAccountDefault(ctx context.Context, r runner, chat messenger.Chat, da
 	if err != nil {
 		return
 	}
-	// don't offer to move an empty account — nothing meaningful to consolidate
 	if balance.IsZero() {
 		return
 	}

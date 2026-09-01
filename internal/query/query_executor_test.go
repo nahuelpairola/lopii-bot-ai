@@ -21,25 +21,15 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// --- fakes scoped to the query-executor use-case tests ---
-
 type fakeQueryMovements struct {
 	lastQuery   movement.MovementQuery
 	lastGroupBy string
 	lastLimit   int
-	// OJO con la forma que le ponés a sumRows: SIN agrupar el repo devuelve
-	// SIEMPRE una fila (COALESCE(SUM(...),0) sin GROUP BY), nunca nil. Un fake
-	// que devuelve nil para ese caso prueba una forma que no existe — y así fue
-	// como el cero mudo de execSumMovements sobrevivió a toda la suite.
-	sumRows  []movement.CategorySum
-	listRows []movement.Movement
-	balances map[uint64]decimal.Decimal
-	// listCalls/listByCall existen para el camino del resultado vacío, que hace
-	// hasta dos sondas ADEMÁS de la consulta real: sin poder devolver algo
-	// distinto por llamada no se puede distinguir "no hay en el rango" de "no
-	// existe en ningún lado".
-	listCalls  int
-	listByCall [][]movement.Movement
+	sumRows     []movement.CategorySum
+	listRows    []movement.Movement
+	balances    map[uint64]decimal.Decimal
+	listCalls   int
+	listByCall  [][]movement.Movement
 }
 
 func (r *fakeQueryMovements) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
@@ -119,8 +109,6 @@ func (r *fakeQuerySubcats) FindOwnedByUser(userID uint64) ([]subcategory.Subcate
 	return r.owned, nil
 }
 
-// queryTestServices adapta los fakes de repo a la interfaz query.services.
-// Solo los métodos que los tests ejercitan delegan; el resto son stubs.
 type queryTestServices struct {
 	movements *fakeQueryMovements
 	accounts  *fakeQueryAccounts
@@ -164,15 +152,6 @@ func newQueryExecutor(m *fakeQueryMovements, a *fakeQueryAccounts, s *fakeQueryS
 
 func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }
 
-// Case: "qué categorías hay y para qué sirve cada una"
-//
-// Las descripciones viajan SOLO en la lista filtrada. Medido el 2026-08-10 con la
-// taxonomía real (66 filas): con descripciones son ~1.325 tokens, sin ellas ~500. El
-// resultado de una tool se reinyecta en cada ronda posterior, así que la diferencia
-// se paga dos o tres veces por consulta contra un TPM de 8.000 — una consulta
-// multi-entidad se pasaba del techo justo por eso, y el 429 resultante mandaba el
-// mensaje a la cola, que reintentaba y volvía a pasarse. Para contestar alcanza el
-// mapeo nombre → categoría | subcategoría.
 func TestExec_ListCategories(t *testing.T) {
 	s := &fakeQuerySubcats{subs: []subcategory.Subcategory{
 		{Category: "Comida", Subcategory: "Restaurante", Description: "cuando comés afuera"},
@@ -217,7 +196,7 @@ func TestExec_ListCategories_LeadsWithIcon(t *testing.T) {
 
 func TestExec_SumMovements_GroupByCategory_LeadsWithIcon(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Comida", Total: dec("5000")}}}
-	s := &fakeQuerySubcats{} // IconForCategory returns "📂"
+	s := &fakeQuerySubcats{}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, s)
 
 	out, _ := exec("sum_movements", json.RawMessage(`{"from":"2026-05-01","to":"2026-05-31","currency":"ARS","group_by":"category"}`))
@@ -226,8 +205,6 @@ func TestExec_SumMovements_GroupByCategory_LeadsWithIcon(t *testing.T) {
 	}
 }
 
-// Case: "cuánto gasté en comida en mayo" — range + category + currency,
-// transfer excluded by default (Type nil).
 func TestExec_SumMovements_FoodInMay(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -253,7 +230,6 @@ func TestExec_SumMovements_FoodInMay(t *testing.T) {
 	}
 }
 
-// Case: "resumen del mes por categoría"
 func TestExec_SumMovements_GroupByCategory(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Comida", Total: dec("5000")}, {Label: "Auto", Total: dec("3000")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -267,7 +243,6 @@ func TestExec_SumMovements_GroupByCategory(t *testing.T) {
 	}
 }
 
-// Case: "gastos por cuenta" — group_by=account maps account_id label to name.
 func TestExec_SumMovements_GroupByAccount_MapsNames(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "7", Total: dec("1000")}}}
 	a := &fakeQueryAccounts{accts: []account.Account{{Model: gorm.Model{ID: 7}, Name: "Banco", Currency: currency.ARS}}}
@@ -282,8 +257,6 @@ func TestExec_SumMovements_GroupByAccount_MapsNames(t *testing.T) {
 	}
 }
 
-// Cases: "promedio mensual del auto" / "5k más que el mes pasado" / "20k por
-// día" — the data side. The loop composes these from per-month totals.
 func TestExec_SumMovements_GroupByMonth(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "2026-04", Total: dec("8000")}, {Label: "2026-05", Total: dec("13000")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -297,8 +270,6 @@ func TestExec_SumMovements_GroupByMonth(t *testing.T) {
 	}
 }
 
-// Case: "cuánto me rindió el broker" — income + Sistema|Rendimiento inversión
-// + account resolution to an id.
 func TestExec_SumMovements_BrokerIncome(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("10000")}}}
 	a := &fakeQueryAccounts{accts: []account.Account{{Model: gorm.Model{ID: 3}, Name: "Broker", Currency: currency.ARS}}}
@@ -319,12 +290,11 @@ func TestExec_SumMovements_BrokerIncome(t *testing.T) {
 	}
 }
 
-// Case: "mis compras en Carrefour" — search filter + abs rendering.
 func TestExec_ListMovements_SearchFilterAbs(t *testing.T) {
 	desc := "compra semanal"
 	m := &fakeQueryMovements{listRows: []movement.Movement{{
 		Type:        movement.Expense,
-		Amount:      dec("-1500"), // stored signed; must render abs
+		Amount:      dec("-1500"),
 		Currency:    currency.ARS,
 		Date:        time.Date(2026, 5, 10, 0, 0, 0, 0, time.UTC),
 		Description: &desc,
@@ -350,10 +320,6 @@ func TestExec_ListMovements_SearchFilterAbs(t *testing.T) {
 	}
 }
 
-// El prompt le pide al modelo arrancar la línea con el emoji y list_categories
-// devuelve "🍔 Alimentación". El modelo aprende ese string y lo copia al filtro.
-// unaccent no borra emojis: sin stripLeadingIcon el LIKE no matchea nada y la
-// respuesta sale $0 sobre gastos que existen.
 func TestExec_SumMovements_SearchStripsLeadingIcon(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -367,7 +333,6 @@ func TestExec_SumMovements_SearchStripsLeadingIcon(t *testing.T) {
 	}
 }
 
-// Case: "mis últimos movimientos de Mercado Pago" (account) + default limit.
 func TestExec_ListMovements_AccountAndDefaultLimit(t *testing.T) {
 	m := &fakeQueryMovements{listRows: []movement.Movement{}}
 	a := &fakeQueryAccounts{accts: []account.Account{{Model: gorm.Model{ID: 9}, Name: "Mercado Pago", Currency: currency.ARS}}}
@@ -382,8 +347,6 @@ func TestExec_ListMovements_AccountAndDefaultLimit(t *testing.T) {
 	}
 }
 
-// Cases: "mi saldo en cada cuenta" / "cuánto tengo en total" — signed balance,
-// per currency, never mixed.
 func TestExec_AccountBalance_AllSignedPerCurrency(t *testing.T) {
 	a := &fakeQueryAccounts{accts: []account.Account{
 		{Model: gorm.Model{ID: 1}, Name: "Banco", Currency: currency.ARS},
@@ -407,7 +370,6 @@ func TestExec_AccountBalance_AllSignedPerCurrency(t *testing.T) {
 	}
 }
 
-// Case: "mi saldo en dólares" filtered to one account by name.
 func TestExec_AccountBalance_ByName(t *testing.T) {
 	a := &fakeQueryAccounts{accts: []account.Account{
 		{Model: gorm.Model{ID: 1}, Name: "Banco", Currency: currency.ARS},
@@ -425,7 +387,6 @@ func TestExec_AccountBalance_ByName(t *testing.T) {
 	}
 }
 
-// Currency defaults to ARS when the model omits it (per the ARS-if-unspecified rule).
 func TestExec_SumMovements_DefaultsCurrencyARS(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("100")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -439,18 +400,9 @@ func TestExec_SumMovements_DefaultsCurrencyARS(t *testing.T) {
 	}
 }
 
-// Regresión del 2026-08-13: ante `list_movements(category="lote")` —donde "lote" no es
-// una categoría sino una palabra en la descripción de tres gastos de Vivienda— el
-// ejecutor devolvía "Sin movimientos en ese rango." y el modelo narró "No tenés
-// registros de gastos en la categoría Lote. El total gastado es $0 ARS". Eran $30.343,74.
-//
-// Cero filas y cero gastos son hechos distintos. Desde el 2026-08-14 el ejecutor
-// ya no se limita a AVISARLE al modelo que no los confunda: cuando las sondas
-// confirman que el término no aparece en ningún lado, corta con error, y un
-// error no se puede narrar como "$0". Vale para las DOS tools.
 func TestExec_NoRows_DoesNotAssertThereWereNoExpenses(t *testing.T) {
 	for _, tool := range []string{"sum_movements", "list_movements"} {
-		m := &fakeQueryMovements{} // sin filas: ni la consulta ni las sondas encuentran
+		m := &fakeQueryMovements{}
 		exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
 		out, err := exec(tool, json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","search":"lote"}`))
@@ -464,18 +416,6 @@ func TestExec_NoRows_DoesNotAssertThereWereNoExpenses(t *testing.T) {
 	}
 }
 
-// buildMovementQuery resolvía el nombre de cuenta a un id y, si no matcheaba ninguna,
-// dejaba AccountID en nil y corría la consulta SIN filtrar por cuenta: preguntás por
-// una cuenta y te contestan por todas, sin ninguna señal.
-//
-// Es el peor de los tres defectos del 2026-08-13 porque devuelve un número GRANDE y
-// plausible, mientras los otros dos devuelven cero o un total chico que llaman la
-// atención. Y no tenía cobertura: los dos tests que pasan `account`
-// (BrokerIncome, AccountAndDefaultLimit) usan nombres que sí existen en su fixture.
-//
-// No es una convención nueva: execAccountBalance, dos funciones más abajo, ya devuelve
-// "No encontré esa cuenta." ante lo mismo. De las tres tools que aceptan `account`,
-// una avisaba y dos se lo tragaban.
 func TestExec_UnknownAccount_FailsInsteadOfQueryingAllAccounts(t *testing.T) {
 	a := &fakeQueryAccounts{accts: []account.Account{
 		{Model: gorm.Model{ID: 1}, Name: "Banco", Currency: currency.ARS},
@@ -488,33 +428,17 @@ func TestExec_UnknownAccount_FailsInsteadOfQueryingAllAccounts(t *testing.T) {
 	if err == nil {
 		t.Fatalf("una cuenta inexistente tiene que fallar, no contestar por TODAS las cuentas; devolvió: %s", out)
 	}
-	// El error vuelve al modelo como texto (el loop no aborta), así que tiene que
-	// alcanzar para corregir el nombre solo.
 	if !strings.Contains(err.Error(), "Galicia") {
 		t.Errorf("el error tiene que nombrar la cuenta que no encontró: %v", err)
 	}
 	if !strings.Contains(err.Error(), "Banco") || !strings.Contains(err.Error(), "Wallet") {
 		t.Errorf("el error tiene que listar las cuentas reales para que el modelo se corrija: %v", err)
 	}
-	// Lo que de verdad importa: no llegó a consultar.
 	if m.lastQuery.UserID != 0 {
 		t.Errorf("no puede haber consultado la base con el filtro caído: %+v", m.lastQuery)
 	}
 }
 
-// El emoji que ponemos nosotros volvía adentro del filtro. list_categories y
-// sum_movements(group_by=category) anteponen el ícono al nombre —"🍔 Alimentación"—
-// porque el prompt le pide al modelo que arranque la línea con él. El modelo, que
-// aprende el nombre de ahí, lo copia entero al filtro siguiente, el SQL no matchea
-// nada y la respuesta es "$0".
-//
-// Encontrado por el eval el 2026-08-13: preguntando por tres subcategorías con
-// 5.000, 3.000 y 8.000 cargados, contestó "$0 / sin registros / $0". Es el mismo
-// daño que una cuenta inexistente, pero con el agravante de que el dato corrupto lo
-// generamos nosotros.
-//
-// Se limpia en buildMovementQuery, que es por donde pasan los dos filtros de
-// taxonomía de las dos tools, en vez de en cada productor de íconos.
 func TestBuildMovementQuery_StripsTheIconWeAddedFromTheFilter(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("5000")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -529,17 +453,6 @@ func TestBuildMovementQuery_StripsTheIconWeAddedFromTheFilter(t *testing.T) {
 	}
 }
 
-// Un filtro que queda VACÍO al sacarle el ícono no puede desaparecer: tiene que
-// seguir filtrando, aunque no matchee nada.
-//
-// Bug introducido el 2026-08-13 por el fix del emoji: stripLeadingIcon devuelve ""
-// cuando el string no tiene ninguna letra ni dígito, y el llamador trataba ese ""
-// como "no vino filtro" — o sea la consulta pasaba a correr SIN filtrar y contestaba
-// por todo. Es exactamente el defecto que este mismo commit venía a arreglar para
-// `account`, reintroducido un campo más allá.
-//
-// La regla es que un filtro nunca se ENSANCHA en silencio: si no se entiende, se
-// deja como vino y la consulta devuelve cero, que el modelo sí sabe explicar.
 func TestBuildMovementQuery_AnAllIconFilterStillFilters(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("999999")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -557,8 +470,6 @@ func TestBuildMovementQuery_AnAllIconFilterStillFilters(t *testing.T) {
 	}
 }
 
-// Un nombre real no se toca: hay categorías con espacios y barras ("Deudas /
-// préstamos") y no puede recortarse nada de eso.
 func TestBuildMovementQuery_LeavesARealNameAlone(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("1")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -573,7 +484,6 @@ func TestBuildMovementQuery_LeavesARealNameAlone(t *testing.T) {
 	}
 }
 
-// oneRow es una fila cualquiera, para que una sonda "encuentre algo".
 func oneRow() []movement.Movement {
 	d := "algo"
 	return []movement.Movement{{
@@ -583,12 +493,10 @@ func oneRow() []movement.Movement {
 	}}
 }
 
-// Cero en el rango pero SÍ en otras fechas: es ausencia verificada, y decirlo
-// así es verdadero. Antes esto y "el término no existe" eran el mismo cero.
 func TestExec_ListMovements_EmptyInRangeButExistsElsewhere(t *testing.T) {
 	m := &fakeQueryMovements{listByCall: [][]movement.Movement{
-		{},       // la consulta real: vacía
-		oneRow(), // sonda 1, rango ensanchado: hay
+		{},
+		oneRow(),
 	}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
@@ -601,14 +509,11 @@ func TestExec_ListMovements_EmptyInRangeButExistsElsewhere(t *testing.T) {
 	}
 }
 
-// El caso que rompía el arreglo: "transferencia" matchea 12 movimientos reales
-// que apply() esconde por ser de una categoría reservada. Sin la sonda 2, la app
-// afirmaría que no existe. Es peor que el cero mudo de antes.
 func TestExec_ListMovements_EmptyButOnlyInReserved(t *testing.T) {
 	m := &fakeQueryMovements{listByCall: [][]movement.Movement{
-		{},       // la consulta real
-		{},       // sonda 1, rango ensanchado, sin reservadas: nada
-		oneRow(), // sonda 2, sólo reservadas: hay
+		{},
+		{},
+		oneRow(),
 	}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
@@ -619,27 +524,17 @@ func TestExec_ListMovements_EmptyButOnlyInReserved(t *testing.T) {
 	if !strings.Contains(out, "internos") {
 		t.Errorf("tiene que explicar que sólo aparece en movimientos internos: %s", out)
 	}
-	// La sonda 2 es la que mira las reservadas: sin esto el test pasaría aunque
-	// alguien la escribiera sin activar el flag.
 	if !m.lastQuery.OnlyReserved {
 		t.Error("la última sonda tiene que correr con OnlyReserved = true")
 	}
 }
 
-// El agujero de la sonda 2, encontrado contra el bot el 2026-08-14: hereda el Type de
-// la consulta original, y con Type nil apply agrega `type <> transfer`, que esconde
-// justo las reservadas que más importan — Sistema | Transferencia y los saldos
-// iniciales son TODAS transferencias.
-//
-// Medido contra la base ese día: la sonda con type=transfer encuentra 12 filas y la
-// misma sonda con Type nil encuentra 0, así que esos 12 movimientos se declaraban
-// inexistentes con un error duro.
 func TestExec_ListMovements_ReservedProbeFindsTransfersWhenTypeIsNil(t *testing.T) {
 	m := &fakeQueryMovements{listByCall: [][]movement.Movement{
-		{},       // la consulta real
-		{},       // sonda 1, rango ensanchado
-		{},       // sonda 2 heredando Type nil: no ve las transferencias
-		oneRow(), // sonda 2 forzando type=transfer: ahí están
+		{},
+		{},
+		{},
+		oneRow(),
 	}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
@@ -658,10 +553,6 @@ func TestExec_ListMovements_ReservedProbeFindsTransfersWhenTypeIsNil(t *testing.
 	}
 }
 
-// El modelo puede INVERTIR el veredicto de la app. El 2026-08-14 el ejecutor entregó
-// "«transferencia» sólo aparece en movimientos internos…" —12 filas reales detrás— y el
-// usuario leyó "No se encontraron movimientos que digan transferencia". La app vuelve a
-// pegar lo suyo cuando eso pasa.
 func TestReinstateAppVerdict(t *testing.T) {
 	verdict := fmt.Sprintf(msgSearchOnlyInternalFmt, "transferencia")
 
@@ -670,20 +561,16 @@ func TestReinstateAppVerdict(t *testing.T) {
 		t.Errorf("el veredicto de la app tiene que volver a la respuesta: %s", got)
 	}
 
-	// Si el modelo ya lo dijo, no se repite.
 	yaLoDijo := "Esas transferencias son movimientos internos entre tus cuentas."
 	if got := reinstateAppVerdict(yaLoDijo, verdict); got != yaLoDijo {
 		t.Errorf("no puede repetir lo que el modelo ya supo decir: %s", got)
 	}
 
-	// Sin veredicto de la app no se toca nada.
 	if got := reinstateAppVerdict("total: $500", ""); got != "total: $500" {
 		t.Errorf("sin veredicto la respuesta va intacta: %s", got)
 	}
 }
 
-// Las tres consultas en cero: el término no existe en ningún lado. ESTE es el
-// que cierra el portón — el modelo no tiene con qué afirmar ausencia.
 func TestExec_ListMovements_SearchNotFoundAnywhere_IsError(t *testing.T) {
 	m := &fakeQueryMovements{listByCall: [][]movement.Movement{{}, {}, {}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -697,8 +584,6 @@ func TestExec_ListMovements_SearchNotFoundAnywhere_IsError(t *testing.T) {
 	}
 }
 
-// Una consulta SIN search que da cero es un cero honesto y sin ambigüedad: no
-// hubo movimientos en ese rango. No corresponde sondear nada.
 func TestExec_SumMovements_EmptyWithoutSearch_NoProbes(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: nil}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -726,18 +611,6 @@ func (r *fakeQueryMovements) CountByDayForUser(userID uint64, from, to time.Time
 	return nil, nil
 }
 
-// Ningún mensaje que le llegue al MODELO puede nombrar una herramienta.
-//
-// La narración forzada corre con tool_choice:"none" y sin schemas: ahí el modelo imita
-// cualquier cosa que se parezca a una tool. Medido el 2026-08-13 con el texto que
-// nombraba list_categories: gpt-oss-20b devolvió HTTP 400 "Tool choice is none, but
-// model called a tool", y gpt-oss-120b —que es el queryModel de producción— le imprimió
-// al usuario el texto {"tool": "list_categories", "params": {}}.
-//
-// Se escribe contra la lista REAL de tools y no contra un string: así también atrapa a
-// quien mañana meta sum_movements en un mensaje. Y contra los CUATRO mensajes, no uno:
-// desde el 2026-08-14 el vacío tiene cuatro salidas, y cada una es una puerta nueva
-// para el mismo mecanismo.
 func TestQueryMessages_NameNoTool(t *testing.T) {
 	msgs := map[string]string{
 		"msgQueryNoRowsInRange":    msgQueryNoRowsInRange,
@@ -754,10 +627,6 @@ func TestQueryMessages_NameNoTool(t *testing.T) {
 	}
 }
 
-// El bug: el 2026-08-14, contra la base real, el modelo recibió dos filas
-// agrupadas —Supermercado 2.031.070 y Almacén 34.000— y contestó 2.031.070.
-// Leyó la primera y tiró la segunda. La casa ya tiene la regla de que la
-// aritmética es de la app y nunca del modelo; acá no se estaba aplicando.
 func TestExec_SumMovements_GroupedCarriesTheTotal(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
 		{Label: "Supermercado", Total: dec("2031070")},
@@ -771,11 +640,6 @@ func TestExec_SumMovements_GroupedCarriesTheTotal(t *testing.T) {
 	}
 }
 
-// group_by=type es la excepción, y no es un detalle: las filas llegan en valor
-// absoluto (CategorySum.Total es SUM(ABS(amount))), así que sumar el renglón de
-// gastos con el de ingresos da un número que no es ni el gasto, ni el ingreso,
-// ni el neto. La app no puede escribir eso, porque toda la línea existe para
-// que el modelo la cite en vez de sumar él.
 func TestExec_SumMovements_GroupByTypeHasNoTotal(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
 		{Label: "expense", Total: dec("500000")},
@@ -792,8 +656,6 @@ func TestExec_SumMovements_GroupByTypeHasNoTotal(t *testing.T) {
 	}
 }
 
-// Una sola fila agrupada no lleva total: el total ES la fila, y repetirlo le
-// hace creer al modelo que hay dos hechos donde hay uno.
 func TestExec_SumMovements_SingleGroupedRowHasNoTotal(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Supermercado", Total: dec("5000")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
@@ -804,11 +666,6 @@ func TestExec_SumMovements_SingleGroupedRowHasNoTotal(t *testing.T) {
 	}
 }
 
-// El bug: una consulta vacía por resolver mal el año es INVISIBLE. El ejecutor
-// dice "sin movimientos con «Supermercado» entre 2024-08-01 y 2024-08-31", el
-// modelo redacta "no gastaste en Supermercado" y el rango —el único dato que
-// delata el error— no llega nunca al usuario. Reponerlo no previene la
-// resolución equivocada: la hace visible en el acto.
 func TestAppendConsultedRange_AddsTheWindowTheAppLookedIn(t *testing.T) {
 	got := appendConsultedRange("No encontré gastos en Supermercado.", "01/08/2024", "31/08/2024")
 	if !strings.Contains(got, "01/08/2024") || !strings.Contains(got, "31/08/2024") {
@@ -819,7 +676,6 @@ func TestAppendConsultedRange_AddsTheWindowTheAppLookedIn(t *testing.T) {
 	}
 }
 
-// Si el modelo sí nombró el rango, repetirlo es ruido.
 func TestAppendConsultedRange_SkipsWhenTheAnswerAlreadyNamesIt(t *testing.T) {
 	ya := "Entre 01/08/2024 y 31/08/2024 no hubo gastos en Supermercado."
 	if got := appendConsultedRange(ya, "01/08/2024", "31/08/2024"); got != ya {
@@ -827,32 +683,21 @@ func TestAppendConsultedRange_SkipsWhenTheAnswerAlreadyNamesIt(t *testing.T) {
 	}
 }
 
-// Sin rango capturado no se toca la respuesta: la mayoría de las consultas no
-// terminan vacías y no tienen nada que reponer.
 func TestAppendConsultedRange_SkipsWhenThereIsNoRange(t *testing.T) {
 	if got := appendConsultedRange("total: $500", "", ""); got != "total: $500" {
 		t.Errorf("tocó una respuesta sin rango: %q", got)
 	}
 }
 
-// Las fechas se reponen en formato argentino, no ISO. El prompt le prohíbe al
-// modelo mostrar 2026-07-01, así que la app tampoco puede colarlo por atrás.
 func TestFriendlyDate_RendersArgentineFormat(t *testing.T) {
 	if got := friendlyDate("2024-08-01"); got != "01/08/2024" {
 		t.Errorf("friendlyDate = %q", got)
 	}
-	// Lo que no parsea vuelve tal cual: el rango es informativo y nunca vale
-	// romper una respuesta que ya está lista por una fecha rara.
 	if got := friendlyDate("no es fecha"); got != "no es fecha" {
 		t.Errorf("friendlyDate no respetó lo impareseable: %q", got)
 	}
 }
 
-// Qué resultados vacíos merecen que se reponga el rango. Los dos que sí son los
-// que hablan de una VENTANA: la app miró un período concreto y no encontró nada,
-// y ahí el período es el dato sospechoso. Los otros dos desenlaces no: "sólo
-// aparece en movimientos internos" y "no encontré nada que diga X" son hechos
-// sobre el término, verdaderos en cualquier rango.
 func TestEmptyResultNamesARange(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -872,22 +717,10 @@ func TestEmptyResultNamesARange(t *testing.T) {
 	}
 }
 
-// LA FORMA QUE DEVUELVE EL REPO DE VERDAD. Un sum SIN agrupar hace
-// `COALESCE(SUM(ABS(amount)), 0)` sin GROUP BY, y eso en SQL devuelve SIEMPRE
-// exactamente una fila, con total 0. Nunca cero filas.
-//
-// Por eso describeEmptyResult era inalcanzable desde el camino más común
-// —"¿cuánto gasté en X?"— y ese camino seguía devolviendo el cero mudo que los
-// cuatro mensajes venían a matar. Medido contra el bot el 2026-08-18: preguntar
-// por Supermercado en junio devolvió "total: 0.00 ARS" y el modelo narró "no hay
-// registros", sin sonda, sin veredicto y sin rango.
-//
-// El fake tenía la culpa de que nadie lo viera: devolvía nil, una forma que el
-// repo no produce jamás, así que el test de al lado pasaba con producción rota.
 func TestExec_SumMovements_UngroupedZeroRowIsAnEmptyResult(t *testing.T) {
 	m := &fakeQueryMovements{
 		sumRows:    []movement.CategorySum{{Label: "", Total: dec("0")}},
-		listByCall: [][]movement.Movement{oneRow()}, // la sonda 1 sí encuentra
+		listByCall: [][]movement.Movement{oneRow()},
 	}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
 
@@ -903,10 +736,6 @@ func TestExec_SumMovements_UngroupedZeroRowIsAnEmptyResult(t *testing.T) {
 	}
 }
 
-// Un transfer son dos patas de la misma plata. Con group_by=account las filas
-// por cuenta sí significan algo, pero el total entre ellas es 2×. La línea de
-// total existe justamente porque el modelo la cita sin revisarla, así que acá
-// no puede existir.
 func TestGroupedTotalLine_RefusesTransfers(t *testing.T) {
 	rows := []movement.CategorySum{
 		{Label: "43", Total: dec("1448595.59")},
@@ -915,17 +744,11 @@ func TestGroupedTotalLine_RefusesTransfers(t *testing.T) {
 	if _, ok := groupedTotalLine(rows, movement.GroupByAccount, "ARS", constants.Transfer); ok {
 		t.Error("un resultado de transferencias no puede llevar línea de total: sumaría la misma plata dos veces")
 	}
-	// El caso normal no cambia.
 	if _, ok := groupedTotalLine(rows, movement.GroupByAccount, "ARS", constants.Expense); !ok {
 		t.Error("un agrupado de gastos sí lleva su total")
 	}
 }
 
-// La consulta real que rompió en producción el 2026-08-21. Los montos son los
-// de la base: 8 patas salientes de FCI hacia Mercado Pago en agosto.
-//
-// Antes contestaba $100.000 —el único movimiento que zafaba del filtro, y
-// encima mal categorizado— sobre $1.548.595,59 reales.
 func TestExec_SumMovements_TransferSplitsByDirection(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
 		{Label: "out", Total: dec("1548595.59")},
@@ -951,9 +774,6 @@ func TestExec_SumMovements_TransferSplitsByDirection(t *testing.T) {
 	}
 }
 
-// Una dirección sin filas sale en cero EXPLÍCITO y no se omite. Una ausencia es
-// un hecho: si la línea no está, el modelo no sabe si se consultó y dio cero o
-// si nadie la consultó, y ya contestó "no hay" sobre plata real por eso.
 func TestExec_SumMovements_TransferShowsBothDirectionsEvenAtZero(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
 		{Label: "out", Total: dec("5000")},
@@ -966,9 +786,6 @@ func TestExec_SumMovements_TransferShowsBothDirectionsEvenAtZero(t *testing.T) {
 	}
 }
 
-// El modelo pidió un agrupado: se respeta. Pisárselo con la dirección sería
-// contestarle otra pregunta. Lo que lo mantiene seguro es que tampoco lleva
-// total (ver TestGroupedTotalLine_RefusesTransfers).
 func TestExec_SumMovements_TransferHonoursAnExplicitGroupBy(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
 		{Label: "43", Total: dec("1000")},
@@ -985,7 +802,6 @@ func TestExec_SumMovements_TransferHonoursAnExplicitGroupBy(t *testing.T) {
 	}
 }
 
-// El camino común no cambia de forma.
 func TestExec_SumMovements_NonTransferUnchanged(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Total: dec("1000")}}}
 	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})

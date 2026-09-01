@@ -44,7 +44,10 @@ methods that the edge forwards to `internal/settings`.
 ## Two pickers, and only one of them re-searches
 
 `ask_user_flow.go` is a `TextStep` with accelerator buttons: free text is the point, and an answer
-naming none of the options makes the agent loop search again (`agent_dispatch.go`).
+naming none of the options makes the agent loop search again (`agent_dispatch.go`). Its budget is
+spent **per round, not per question** — an answer can be useless ("no sé") and make the executor
+park again with a new question — so the ceiling is frozen at park time. Otherwise a growing list
+of questions raises its own ceiling.
 `movement_update_flow.go`'s `movement_update_pick` and `movement_delete_flow.go` are `ChoiceStep`s:
 there, free text lands on `InvalidChoiceMessage` and nothing is re-searched.
 
@@ -55,12 +58,25 @@ cannot keep.
 
 ## Money
 
-Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
-model) **before** editing — the write pipeline (`movement_write.go`) is where those invariants are
-enforced. Note the one deliberate exception, documented at the call site: the near-duplicate gate
-(`near_duplicate_offer.go`) writes **without** going through `movement.Normalize`, and is only safe
-because the candidate must share type, currency and account. Loosening that rule means putting the
-guard back.
+Amounts, signs or `account_id`: `AGENTS.md` § The accounting model, before editing. The write
+pipeline (`movement_write.go`) is where those invariants are enforced.
+
+**A finish re-reads its rows from the DB instead of trusting what it was handed.**
+`FinishAccountAdjust` re-reads the account so the guard compares the movement's currency against
+the database rather than against the flow's `Data`; a mismatch is rejected instead of writing a
+movement in a currency its account does not hold, which is the error that corrupts a balance in
+silence (a balance is `SUM(amount)` and never looks at each row's currency).
+`ApplyNearDuplicateChoice` re-reads both rows for the same reason: a tap can arrive late, and
+adding an amount to a row that already changed corrupts a balance from a stale screen.
+
+**The one deliberate exception to the guard** is that same `ApplyNearDuplicateChoice`, which
+writes without `movement.Normalize`. It can: both rows came out of the guard when they were
+inserted, and `nearDuplicateCandidate` requires them to share type, currency and account — so they
+share a sign, the sum can neither zero out nor invert, and neither currency nor account changes
+here. Loosening the candidate rule means putting the guard back.
+
+**A failed balance adjustment is invisible without its log line.** The finish is a void function,
+so the error never reaches `traced`.
 
 In tests `b` is nil. Use `r.SendText(...)`, which guards; a direct `b.SendMessage` panics.
 

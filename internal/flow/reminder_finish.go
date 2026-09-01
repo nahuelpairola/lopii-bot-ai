@@ -9,8 +9,6 @@ import (
 	"lopiibot.com/internal/reminder"
 )
 
-// FinishReminderSetup applies the completed reminder_setup flow: disable, set
-// (preset or custom), or cancel — then sends a receipt. No confirm gate.
 func FinishReminderSetup(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	userID := data.UserID()
 
@@ -47,8 +45,6 @@ func FinishReminderSetup(ctx context.Context, r runner, chat messenger.Chat, dat
 	case ReminderActionWeeklyOnly:
 		on := conversation.Flag(data, conversation.KeyWeeklySummary)
 		if on && !conversation.Flag(data, KeyHubHasRow) {
-			// no row yet: SetWeeklySummary is UPDATE-only and would no-op.
-			// Create a minimal weekly-only row (daily disabled).
 			if err := r.UpsertReminder(&reminder.Reminder{
 				UserID:               userID,
 				Enabled:              false,
@@ -72,8 +68,6 @@ func FinishReminderSetup(ctx context.Context, r runner, chat messenger.Chat, dat
 		return
 	}
 
-	// set: a preset stored start/end mins directly; the custom path stored raw
-	// text validated by ParseWindow, so re-parsing here cannot fail.
 	startMin, err := strconv.Atoi(conversation.StringOrEmpty(data[ReminderStartKey]))
 	endMin, err2 := strconv.Atoi(conversation.StringOrEmpty(data[ReminderEndKey]))
 	if err != nil || err2 != nil {

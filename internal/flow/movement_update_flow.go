@@ -11,10 +11,6 @@ const (
 	stepConfirmUpdate       = "confirm_update"
 )
 
-// NewMovementUpdatePickFlow is only ever started when reference resolution
-// found 2+ ambiguous candidates (see free_text.go, Task 18) — a single
-// resolved candidate skips straight to NewMovementUpdateConfirmFlow via
-// proceedToUpdateConfirm.
 func NewMovementUpdatePickFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepPickUpdateCandidate: conversation.ChoiceStep{
@@ -47,9 +43,6 @@ func NewMovementUpdatePickFlow() *conversation.Flow {
 	return flow
 }
 
-// NewMovementUpdateConfirmFlow is a single confirm/cancel gate — always reached
-// before an UPDATE touches the DB, whether the candidate was a single
-// unambiguous resolveCandidates match or picked from a list.
 func NewMovementUpdateConfirmFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepConfirmUpdate: conversation.ChoiceStep{

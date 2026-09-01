@@ -36,8 +36,6 @@ func twoOwned() []subcategory.Subcategory {
 	}
 }
 
-// El flujo construye sin panic: NewFlow valida el grafo al registrar, así que
-// un NextStep colgado explota acá y no en producción.
 func TestCategoryManagePickFlow_BuildsWithoutPanic(t *testing.T) {
 	fl := NewCategoryManagePickFlow(fakeOwnedLister{})
 	if fl.Name != CategoryManagePickFlowName {
@@ -66,7 +64,6 @@ func TestCategoryManagePickFlow_ListsOneOptionPerOwnedRow(t *testing.T) {
 	if prompt.Buttons[0].Data != "7" {
 		t.Errorf("Buttons[0].Data = %q, want %q", prompt.Buttons[0].Data, "7")
 	}
-	// sin ícono propio cae al genérico, nunca a un label sin prefijo
 	if prompt.Buttons[1].Label != "📂 Regalos › Cumpleaños" {
 		t.Errorf("Buttons[1].Label = %q, want %q", prompt.Buttons[1].Label, "📂 Regalos › Cumpleaños")
 	}
@@ -119,11 +116,6 @@ func TestCategoryManagePickFlow_CancelMarksCancelledAndSetsNoSource(t *testing.T
 	}
 }
 
-// raceLister simula la ventana de la corrección de Arreglo 2: el cache
-// devuelve la fila en las dos primeras consultas (armado de botones +
-// validación de la opción elegida, adentro de ChoiceStep) pero ya no en la
-// tercera (la que OnChoice hace para sacar los nombres) — como si un
-// Reload() concurrente la hubiese sacado justo en el medio.
 type raceLister struct {
 	calls  *int
 	before []subcategory.Subcategory
@@ -143,8 +135,8 @@ func TestCategoryManagePickFlow_RowDisappearsBetweenQueries_NoPartialSource(t *t
 	calls := 0
 	lister := raceLister{
 		calls:  &calls,
-		before: twoOwned(),                                                          // fila 7 presente (armado de botones + match)
-		after:  []subcategory.Subcategory{ownedSub(9, "Regalos", "Cumpleaños", "")}, // fila 7 ya no está (lookup de nombres en OnChoice)
+		before: twoOwned(),
+		after:  []subcategory.Subcategory{ownedSub(9, "Regalos", "Cumpleaños", "")},
 		missAt: 3,
 	}
 	store := &fakeStateStore{}

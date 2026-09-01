@@ -19,14 +19,6 @@ const (
 	OptionNewCategory = "new_category"
 )
 
-// NewSubcategorySetupFlow builds the 7-step flow for creating a custom
-// subcategory (in an existing category or a brand-new one), including a
-// short description step that feeds orchestrator.TaxonomyEntry.Description
-// for future CREATE classification. Started by startSubcategorySetup
-// (free_text.go) whenever Call 1 classifies a message as CREATE_CATEGORY.
-// Every step is cancelable via TextStep.EscapeOptions/ChoiceOption's
-// CancelOption (the same mechanism account_create_flow.go already uses)
-// and back-able except the entry point StepChooseMode.
 func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.Flow {
 	backOption := func(to string) conversation.ChoiceOption {
 		return conversation.ChoiceOption{Label: "⬅️ Atrás", Value: OptionBack, NextStep: to}
@@ -108,11 +100,6 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			OnEscape: OnAccountCreateEscape,
 		},
 
-		// StepNewCategoryIcon is only ever reached via StepNewCategoryName's
-		// NextStep — the existing-category path in StepPickExistingCategory
-		// targets StepSubcategoryName directly, so this step is "skipped"
-		// by construction (two different NextStep targets) rather than via
-		// a runtime Skip/SkipIf check.
 		StepNewCategoryIcon: conversation.TextStep{
 			PromptText: func(conversation.Data) string { return "¿Qué emoji querés usar para esta categoría?" },
 			DataKey:    conversation.KeyCategoryIcon,
@@ -161,15 +148,6 @@ func NewSubcategorySetupFlow(subcategories subcategoryRepository) *conversation.
 			OnEscape: OnAccountCreateEscape,
 		},
 
-		// StepSubcategoryDescription asks the one thing the pre-existing
-		// scaffolding (msgAskNewCategoryName et al.) never covered: a short
-		// description of *when* this subcategory applies. This is not
-		// decorative — orchestrator.TaxonomyEntry.Description is fed to Call
-		// 2 CREATE as the classification hint (see the seeded taxonomy's own
-		// disambiguation notes, e.g. "NO incluye compras específicas como
-		// carnicería"); a user-created subcategory with no description is
-		// indistinguishable from PENDING_REVIEW to the LLM the next time a
-		// movement should land here.
 		StepSubcategoryDescription: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
 				return MsgAskSubcategoryDescription(conversation.StringOrEmpty(data["subcategory"]))

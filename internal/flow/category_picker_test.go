@@ -57,7 +57,6 @@ func TestCategoryOptions_NoExtrasIsJustCategories(t *testing.T) {
 	}
 }
 
-// Sin esto, un error de DB dejaría al usuario con cero botones y sin salida.
 func TestCategoryOptions_ListerErrorStillReturnsExtras(t *testing.T) {
 	subs := fakeCategoryLister{err: errFake}
 	opts := CategoryOptions(subs, conversation.Data{}, "next_step", CancelOption)
