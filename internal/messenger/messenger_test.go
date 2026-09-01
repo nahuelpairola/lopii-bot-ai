@@ -7,8 +7,6 @@ import (
 	"lopiibot.com/internal/conversation"
 )
 
-// SendText es un helper de paquete y no un método de la interfaz: un Prompt
-// sin botones YA es un texto. Este test fija esa equivalencia.
 func TestSendText_IsAPromptWithNoButtons(t *testing.T) {
 	f := &FakeChat{}
 	if err := SendText(context.Background(), f, "hola"); err != nil {
@@ -42,10 +40,6 @@ func TestFakeChat_RecordsPromptsAndTyping(t *testing.T) {
 	}
 }
 
-// FakeChat.Err simula una llamada que falló: ninguno de los dos métodos debe
-// dejar rastro cuando eso pasa. Send ya lo hacía; Typing sumaba a Typed antes
-// de devolver el error, así que un test que afirmara "no se mandó nada en el
-// error" pasaba mintiendo en la mitad callback-Typing.
 func TestFakeChat_ErrShortCircuitsBeforeRecording(t *testing.T) {
 	f := &FakeChat{Err: context.DeadlineExceeded}
 	if err := f.Send(context.Background(), conversation.Prompt{Text: "hola"}); err == nil {

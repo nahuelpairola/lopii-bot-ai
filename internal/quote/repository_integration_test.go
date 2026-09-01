@@ -10,9 +10,6 @@ import (
 	"lopiibot.com/internal/database"
 )
 
-// Run with: go test -tags integration ./internal/quote/
-// Requires local Postgres (docker compose up -d) with migrations applied.
-
 func newTestRepo(t *testing.T) *repository {
 	creds := database.Creds{
 		Host:     "localhost",

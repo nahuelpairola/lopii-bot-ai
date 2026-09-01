@@ -13,11 +13,6 @@ import (
 	"lopiibot.com/internal/quote"
 )
 
-// fakeMovements returns canned aggregates. sums maps
-// "CUR|type|groupBy|from(YYYY-MM-DD)" -> rows. La ventana entra en la clave
-// porque el builder consulta TRES ventanas con la misma forma de query: la
-// semana, la semana previa (comparación) y el mes hasta hoy (proyección). Sin
-// la fecha en la clave las tres se pisan y un test verde no prueba nada.
 type fakeMovements struct {
 	sums   map[string][]movement.CategorySum
 	tops   map[string]*movement.Movement
@@ -47,8 +42,6 @@ func (f fakeMovements) MonthlyDeltasForAccount(id uint64) ([]movement.MonthlyDel
 	return f.deltas[id], nil
 }
 
-// fakeIcons stands in for subcategory.Cache, que nunca devuelve vacío: su
-// fallback es 📂.
 type fakeIcons struct{ byCategory map[string]string }
 
 func (f fakeIcons) IconForCategory(_ uint64, category string) string {
@@ -83,13 +76,12 @@ func row(label, total string) movement.CategorySum {
 }
 
 var (
-	from     = time.Date(2026, 7, 6, 0, 0, 0, 0, time.UTC)  // Mon
-	to       = time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC) // Sun
+	from     = time.Date(2026, 7, 6, 0, 0, 0, 0, time.UTC)
+	to       = time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)
 	prevFrom = from.AddDate(0, 0, -7)
 	prevTo   = from.AddDate(0, 0, -1)
 )
 
-// Sufijos de clave: la semana reportada, la previa y el mes hasta hoy.
 const (
 	wk    = "|2026-07-06"
 	prevW = "|2026-06-29"
@@ -133,17 +125,12 @@ func TestBuild_ReportARSOnly(t *testing.T) {
 		"Comida $600",
 		"Lo más caro: <b>$350</b> · Cena",
 		"Efectivo <b>$2.500</b>",
-		// La salida se explica en palabras, no con un botón: un inline button
-		// de Telegram queda tocable para siempre en el historial. El resumen
-		// tiene que decir la frase que el router entiende.
 		"no quiero más el resumen semanal",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("missing %q in:\n%s", want, text)
 		}
 	}
-	// La jerga contable y los centavos se fueron: son lo que hacía que el
-	// mensaje leyera a planilla y no a resumen.
 	for _, unwanted := range []string{"1000.00", "Neto", "Prom. diario", "Actividad", "%", "ARS"} {
 		if strings.Contains(text, unwanted) {
 			t.Errorf("found %q (jerga contable) in:\n%s", unwanted, text)
@@ -171,8 +158,6 @@ func TestBuild_EscapesUserSuppliedStrings(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 
-	// El resumen se manda con ParseMode HTML: un & o un < sin escapar hace que
-	// Telegram devuelva 400 y el usuario no reciba NADA.
 	for _, want := range []string{
 		"Mercado &amp; Pago &lt;test&gt;",
 		"Comida &amp; bebida",
@@ -222,8 +207,6 @@ func TestBuild_BoldsTheValueThatAnswersEachLine(t *testing.T) {
 		}
 	}
 
-	// Lo que entró es insumo de lo que gastaste, y el orden ya jerarquiza el
-	// top de gastos: si TODO va en negrita, no resalta nada.
 	for _, unwanted := range []string{"entró <b>", "Comida <b>"} {
 		if strings.Contains(text, unwanted) {
 			t.Errorf("unexpected bold %q in:\n%s", unwanted, text)
@@ -231,15 +214,12 @@ func TestBuild_BoldsTheValueThatAnswersEachLine(t *testing.T) {
 	}
 }
 
-// Un ajuste de saldo (revaluación de una cuenta con CEDEARs, por ejemplo) no es
-// plata que entró: tiene su propio renglón y NO se mezcla con lo que gastaste.
 func TestBuild_BalanceVariationIsNotIncome(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
 			"ARS|expense|" + wk: sums(row("", "1000")),
 			"ARS|income|" + wk:  sums(row("", "1500")),
-			// Type nil + group by type: la consulta de variación (OnlyReserved).
-			"ARS||type" + wk: sums(row("income", "84200")),
+			"ARS||type" + wk:    sums(row("income", "84200")),
 		},
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
@@ -250,7 +230,6 @@ func TestBuild_BalanceVariationIsNotIncome(t *testing.T) {
 	if !strings.Contains(text, "Tus saldos subieron <b>$84.200</b> <i>por rendimientos y ajustes</i>") {
 		t.Fatalf("falta el renglón de variación; got: %q", text)
 	}
-	// Lo que importa: lo que entró sigue siendo 1500, sin los 84200 encima.
 	if !strings.Contains(text, "entró $1.500") {
 		t.Fatalf("la variación no debe tocar el ingreso; got: %q", text)
 	}
@@ -259,7 +238,6 @@ func TestBuild_BalanceVariationIsNotIncome(t *testing.T) {
 	}
 }
 
-// Una semana sin ajustes no gasta un renglón en decir que no pasó nada.
 func TestBuild_NoVariationLineWhenZero(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
@@ -277,8 +255,6 @@ func TestBuild_NoVariationLineWhenZero(t *testing.T) {
 	}
 }
 
-// Semana en la que lo único que pasó fue un ajuste: el bloque no debe recitar
-// "Gastaste $0" para después contar lo único que sí pasó.
 func TestBuild_OnlyVariationSkipsTheZeroCashflowLines(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
@@ -298,7 +274,6 @@ func TestBuild_OnlyVariationSkipsTheZeroCashflowLines(t *testing.T) {
 	}
 }
 
-// La comparación con la semana previa va en plata, no en porcentaje.
 func TestBuild_ComparesWithPreviousWeekInMoney(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
@@ -316,8 +291,6 @@ func TestBuild_ComparesWithPreviousWeekInMoney(t *testing.T) {
 	}
 }
 
-// B — la categoría que se disparó. Sin esto, "gastaste $500 menos" queda sin
-// explicación, que es justo la pregunta que dispara.
 func TestBuild_AnnotatesTheCategoryThatJumped(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
@@ -331,14 +304,10 @@ func TestBuild_AnnotatesTheCategoryThatJumped(t *testing.T) {
 	if !strings.Contains(text, "Transporte $400 · <i>$300 más que la semana pasada</i>") {
 		t.Errorf("falta la anotación del salto; got:\n%s", text)
 	}
-	// Comida subió $100 sobre $500: 20%, ruido. Se anota UNA sola categoría.
 	if strings.Contains(text, "Comida $600 ·") {
 		t.Errorf("no debe anotar la categoría que apenas se movió; got:\n%s", text)
 	}
 
-	// Y si la ÚNICA categoría es la que apenas se movió, tampoco se anota: la
-	// anotación vale porque es excepcional. Sin este caso el umbral no está
-	// probado — Transporte gana igual por ser el salto más grande.
 	quiet := fakeMovements{
 		sums: map[string][]movement.CategorySum{
 			"ARS|expense|" + wk:            sums(row("", "1000")),
@@ -353,8 +322,6 @@ func TestBuild_AnnotatesTheCategoryThatJumped(t *testing.T) {
 	}
 }
 
-// C2 — la proyección sale de la dispersión de los propios días del usuario, y
-// se redondea: un rango con centavos se contradice a sí mismo.
 func TestBuild_ProjectsMonthEndAsARange(t *testing.T) {
 	var daily []movement.CategorySum
 	for d := 1; d <= 6; d++ {
@@ -371,19 +338,14 @@ func TestBuild_ProjectsMonthEndAsARange(t *testing.T) {
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
 	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
-	// 12 días: p25=$1.000, p75=$3.000, lleva $24.000, quedan 19 días.
-	// Piso 24.000+19.000=43.000 → $40.000. Techo 24.000+57.000=81.000 → $90.000.
 	if !strings.Contains(text, "Julio va camino a cerrar entre <b>$40.000 y $90.000</b>") {
 		t.Errorf("falta la proyección; got:\n%s", text)
 	}
 }
 
-// Un día sin gastos es un día barato, no un dato que falta. SumForUser sólo
-// devuelve los días que tuvieron movimientos: si la muestra fueran esas filas
-// nomás, el piso saldría sesgado para arriba y la proyección inflaría.
 func TestBuild_ProjectionCountsDaysWithoutSpending(t *testing.T) {
 	var daily []movement.CategorySum
-	for d := 7; d <= 12; d++ { // seis días con gasto; del 1 al 6, nada
+	for d := 7; d <= 12; d++ {
 		daily = append(daily, row(time.Date(2026, 7, d, 0, 0, 0, 0, time.UTC).Format("2006-01-02"), "3000"))
 	}
 	fm := fakeMovements{
@@ -394,16 +356,11 @@ func TestBuild_ProjectionCountsDaysWithoutSpending(t *testing.T) {
 		counts: []movement.DayCount{{Date: to, Count: 3}},
 	}
 	text, _ := NewBuilder(fm, fakeAccounts{}, fakeIcons{}, fakeQuotes{}).Build(1, from, to, prevFrom, prevTo)
-	// Con los seis ceros adentro: p25=$0, p75=$3.000, lleva $18.000, quedan 19
-	// días. Piso 18.000 → $10.000. Techo 18.000+57.000=75.000 → $80.000.
-	// Sin los ceros el piso saldría $70.000: siete veces más alto.
 	if !strings.Contains(text, "entre <b>$10.000 y $80.000</b>") {
 		t.Errorf("los días sin gasto no entraron en la muestra; got:\n%s", text)
 	}
 }
 
-// Los primeros lunes del mes la muestra son tres días y el rango sale absurdo:
-// ahí no se proyecta, la línea directamente no aparece.
 func TestBuild_NoProjectionEarlyInTheMonth(t *testing.T) {
 	earlyFrom := time.Date(2026, 6, 29, 0, 0, 0, 0, time.UTC)
 	earlyTo := time.Date(2026, 7, 5, 0, 0, 0, 0, time.UTC)
@@ -422,8 +379,6 @@ func TestBuild_NoProjectionEarlyInTheMonth(t *testing.T) {
 	}
 }
 
-// Los saldos en dólares no se pierden ni se mezclan: van juntos en su renglón,
-// con centavos, que a escala dólar sí importan.
 func TestBuild_GroupsForeignAccountsInOneLine(t *testing.T) {
 	fm := fakeMovements{
 		sums:   map[string][]movement.CategorySum{"ARS|expense|" + wk: sums(row("", "1000"))},
@@ -446,8 +401,6 @@ func TestBuild_GroupsForeignAccountsInOneLine(t *testing.T) {
 	}
 }
 
-// "$267.999 menos que la semana pasada" es precisión de más: la comparación es
-// una magnitud, no una liquidación. Se redondea igual que el rango proyectado.
 func TestBuild_RoundsTheWeeklyComparison(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
@@ -462,8 +415,6 @@ func TestBuild_RoundsTheWeeklyComparison(t *testing.T) {
 	}
 }
 
-// Un rango que cruza el millón no se cuenta en millones: "$0,4 millones" es
-// peor que "$400.000" — la escala existe para acortar, no para achicar.
 func TestBuild_BandCrossingOneMillionStaysInPesos(t *testing.T) {
 	var daily []movement.CategorySum
 	for d := 1; d <= 12; d++ {
@@ -489,8 +440,6 @@ func TestBuild_BandCrossingOneMillionStaysInPesos(t *testing.T) {
 	}
 }
 
-// Sin semana previa con qué comparar, no hay salto que anunciar: "no gastaste
-// acá la semana pasada" sobre un usuario que recién arranca es ruido, no dato.
 func TestBuild_NoJumpAnnotationWithoutPreviousData(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
@@ -505,8 +454,6 @@ func TestBuild_NoJumpAnnotationWithoutPreviousData(t *testing.T) {
 	}
 }
 
-// Una sola categoría que ES todo el gasto no agrega nada: "Gastaste US$120,50 /
-// Suscripciones US$120,50" dice el mismo número dos veces.
 func TestBuild_SkipsTheCategoryListWhenItRepeatsTheTotal(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
@@ -521,8 +468,6 @@ func TestBuild_SkipsTheCategoryListWhenItRepeatsTheTotal(t *testing.T) {
 	}
 }
 
-// Los íconos son los mismos que muestra el resto del bot: el resumen era el
-// único lugar donde la categoría aparecía pelada.
 func TestBuild_UsesTheRealCategoryIcons(t *testing.T) {
 	fm := fakeMovements{
 		sums: map[string][]movement.CategorySum{
@@ -536,14 +481,11 @@ func TestBuild_UsesTheRealCategoryIcons(t *testing.T) {
 	if !strings.Contains(text, "🏠 Vivienda $600") {
 		t.Errorf("falta el ícono real; got:\n%s", text)
 	}
-	// Sin ícono propio, el fallback del cache — nunca una categoría pelada.
 	if !strings.Contains(text, "📂 Comida $400") {
 		t.Errorf("falta el fallback; got:\n%s", text)
 	}
 }
 
-// La línea de apertura reacciona a la semana, y sale de los números — no es
-// una frase al azar. Sin motivo claro, no hay línea.
 func TestBuild_OpeningLineReactsToTheWeek(t *testing.T) {
 	week := func(spent, prev, earned string) string {
 		m := map[string][]movement.CategorySum{
@@ -561,7 +503,7 @@ func TestBuild_OpeningLineReactsToTheWeek(t *testing.T) {
 		{"2000", "1000", "", "<i>Semana cara</i>"},
 		{"500", "1000", "", "<i>Semana tranquila</i>"},
 		{"1000", "1000", "5000", "<i>Entró bastante más de lo que salió</i>"},
-		{"1000", "1000", "", ""}, // nada que destacar: no se fuerza una frase
+		{"1000", "1000", "", ""},
 	} {
 		text := week(c.spent, c.prev, c.earned)
 		if c.want == "" {
@@ -576,7 +518,6 @@ func TestBuild_OpeningLineReactsToTheWeek(t *testing.T) {
 	}
 }
 
-// La nota va en blockquote: es el pie, no un renglón más del resumen.
 func TestBuild_NoteIsAQuote(t *testing.T) {
 	fm := fakeMovements{
 		sums:   map[string][]movement.CategorySum{"ARS|expense|" + wk: sums(row("", "1000"))},
@@ -591,8 +532,6 @@ func TestBuild_NoteIsAQuote(t *testing.T) {
 	}
 }
 
-// La nota de ajustar saldo solo tiene sentido si el resumen listó cuentas;
-// sin cuentas no hay nada de qué "diferencia" hablar.
 func TestBuild_BalanceNoteOnlyWithAccounts(t *testing.T) {
 	fm := fakeMovements{
 		sums:   map[string][]movement.CategorySum{"ARS|expense|" + wk: sums(row("", "1000"))},

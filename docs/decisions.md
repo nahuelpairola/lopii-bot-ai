@@ -209,6 +209,32 @@ message. The helper is shared with `GuessNamesOwnAccount` and reference resoluti
   model - so `TestEveryConfigFile_HasNoSameTurnModelCollision` is red on purpose. The table is left
   intact: it describes what really collides, and that did not change because a model went away.
 
+- **`qwen/qwen3.6-27b` is deliberately NOT the third model, and this is the note that keeps it
+  out.** It is the obvious candidate every time someone looks at
+  `TestEveryConfigFile_HasNoSameTurnModelCollision` sitting red and reaches for a third TPM
+  bucket to fix it. It emits its reasoning **inside the content**, so the `<think>` block reaches
+  the user. That is not a cost problem that a cap could solve — it breaks the output.
+- **The fallback lists are not the chain.** `agentRound` and `queryChain` build `[primary] +
+  list`, so the last step repeats the primary and retries a bucket that already bounced. Left
+  that way on purpose (2026-08-19): Groq leaves two usable models, both 8.000 TPM in separate
+  buckets, and two calls landing in different buckets is the only thing that makes stepping aside
+  worth anything.
+- **`QueryFallbackModels` is a separate list from the agent's, not a reuse.** Query's primary
+  (120b) is precisely the agent's first substitute, so sharing one list would send the first
+  retry to the model that just bounced.
+- **`NarrationModel` is chosen for NOT reasoning (2026-08-13).** The forced narration is the last
+  call of a query — no tools left to pick, only prose to write. A reasoning model spends the
+  completion budget thinking and returns empty; empty falls back to `queryModel`. Writing is
+  tens of completion tokens, reasoning is hundreds, so the reasoner can run out before it writes
+  anything. The measured numbers live at `maxNarrationCompletionTokens`, with the caveat that
+  they were taken against llama-3.3-70b, which no longer exists.
+- **`ClassifierModel` points at a different model on purpose (2026-08-12).** Groq's TPM ceiling
+  is per model and the loop already enters its own bucket about once every ninety seconds.
+  Which model is the eval's call, not the default's.
+- **`agentModel` has no default, and that is the safe failure.** Since stage 5, `Run` is the only
+  path a free-text message takes, so an environment that fails to declare it does not degrade —
+  every loop call gets a 400 from Groq. No default means it does not start instead.
+
 ## Notifications and reminders
 
 - **System→user notification engine: shared `send()` + ticker, per-notifier trigger/query stays specific.** `internal/notifier.Sweeper` is one `time.Ticker` goroutine whose `tick` calls a `sweepX` per notifier — today three: `sweepReminders`, `sweepWeeklySummary`, `sweepRetention`. The *only* shared asset is the ticker and an injected `send(ctx, chatID, text)` — deliberately reachable outside the sweeper so a future admin-triggered broadcast can call it directly without going through the ticker. Everything else (candidate query, fire condition, cadence, guard) is each notifier's own; there is no polymorphic `notifications` table, no notification-type registry, no templating engine. A `notifications(type, payload jsonb)` table would force a lowest-common-denominator schema and lose typed columns/FKs for a gain (one shared table) nobody needs — the reminder and a future Cafecito prompt or weekly summary don't share a data shape, only a delivery mechanism. Adding a second tenant is a ~20-line sibling function and one line in `tick`; a `[]notifier` abstraction is deferred to the third tenant (`// ponytail:` marked in `sweeper.go`).

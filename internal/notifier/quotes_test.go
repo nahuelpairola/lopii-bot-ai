@@ -33,12 +33,10 @@ type fakeQuoteAPI struct {
 	dateCalls  []time.Time
 	todayCalls int
 	cpiCalls   int
-	missing    map[string]bool // fechas que devuelven 404
-	err        error           // cuando no es nil, todo fetch falla
+	missing    map[string]bool
+	err        error
 }
 
-// FetchAll imita a la fuente real: historia larga, desde mucho antes del piso
-// del sembrado. Sólo las dos últimas filas deberían sobrevivir al filtro.
 func (f *fakeQuoteAPI) FetchAll() ([]quote.Quote, error) {
 	f.allCalls++
 	return []quote.Quote{
@@ -60,7 +58,6 @@ func (f *fakeQuoteAPI) FetchToday(time.Time) ([]quote.Quote, error) {
 	return []quote.Quote{{RateType: "oficial"}}, nil
 }
 
-// FetchCPI, igual que la real, arranca en 2011. El piso deja pasar 2025 y 2026.
 func (f *fakeQuoteAPI) FetchCPI() ([]quote.CPI, error) {
 	f.cpiCalls++
 	if f.err != nil {
@@ -74,7 +71,6 @@ func (f *fakeQuoteAPI) FetchCPI() ([]quote.CPI, error) {
 	}, nil
 }
 
-// art construye un instante en la zona horaria en la que corre el sweeper.
 func art(y int, mo time.Month, d, h, mi int) time.Time {
 	return time.Date(y, mo, d, h, mi, 0, 0, constants.ArgentinaZone)
 }
@@ -97,7 +93,6 @@ func TestSweepQuotes_EmptyTableSeedsWithOneFullFetch(t *testing.T) {
 	if len(a.dateCalls) != 0 {
 		t.Errorf("expected no per-date calls on seed, got %v", a.dateCalls)
 	}
-	// Sólo el año corriente: 2011 y 2025 quedan afuera, 2026 entra.
 	if len(s.inserted) != 2 {
 		t.Fatalf("expected 2 seeded quotes (sólo 2026), got %d: %v", len(s.inserted), s.inserted)
 	}
@@ -108,9 +103,6 @@ func TestSweepQuotes_EmptyTableSeedsWithOneFullFetch(t *testing.T) {
 	}
 }
 
-// Una tabla al día no vuelve a sembrar ni pide el día de hoy antes de las
-// 20:00, pero SÍ vuelve a pedir la ventana de asentamiento: son los días que
-// pudo haber escrito dolarapi y que el histórico tiene que corregir.
 func TestSweepQuotes_UpToDateTableOnlyRefetchesTheSettleWindow(t *testing.T) {
 	yesterday := day(2026, 8, 5)
 	s, a := &fakeQuoteStore{latest: &yesterday}, &fakeQuoteAPI{}
@@ -121,7 +113,6 @@ func TestSweepQuotes_UpToDateTableOnlyRefetchesTheSettleWindow(t *testing.T) {
 	if a.allCalls != 0 || a.todayCalls != 0 {
 		t.Errorf("no debe sembrar ni pedir hoy: all=%d today=%d", a.allCalls, a.todayCalls)
 	}
-	// Ventana de 3 días desde el 6: 3, 4 y 5. Nada del 2 para atrás.
 	if len(a.dateCalls) != 3 {
 		t.Fatalf("expected 3 refetches, got %v", a.dateCalls)
 	}
@@ -132,11 +123,7 @@ func TestSweepQuotes_UpToDateTableOnlyRefetchesTheSettleWindow(t *testing.T) {
 	}
 }
 
-// La razón de ser de la ventana: dolarapi escribió el día de hoy, así que al
-// día siguiente latest ES esa fecha. Sin la ventana el loop arrancaría en
-// latest+1 y ese valor provisorio no se volvería a pedir nunca.
 func TestSweepQuotes_RefetchesTheDayDolarAPIWrote(t *testing.T) {
-	// Ayer a las 20:00 dolarapi escribió el 2026-08-05; hoy es el 6.
 	provisional := day(2026, 8, 5)
 	s, a := &fakeQuoteStore{latest: &provisional}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
@@ -154,9 +141,6 @@ func TestSweepQuotes_RefetchesTheDayDolarAPIWrote(t *testing.T) {
 	}
 }
 
-// El hueco arranca ANTES que la ventana de asentamiento, así que este test
-// prueba el camino de hueco y no el de ventana: con last = 29/7 el loop tiene
-// que ir del 30/7 al 5/8, siete fechas, no las tres de la ventana.
 func TestSweepQuotes_LongGapFetchesEveryMissingDate(t *testing.T) {
 	last := day(2026, 7, 29)
 	s, a := &fakeQuoteStore{latest: &last}, &fakeQuoteAPI{}
@@ -216,7 +200,6 @@ func TestSweepCPI_InsertsFromTheSeedFloorOnward(t *testing.T) {
 	if a.cpiCalls != 1 {
 		t.Errorf("FetchCPI calls = %d, want 1", a.cpiCalls)
 	}
-	// Desde el año pasado: 2011 y 2024 quedan afuera, 2025 y 2026 entran.
 	if len(s.cpi) != 2 {
 		t.Fatalf("expected 2 months (2025 en adelante), got %d: %v", len(s.cpi), s.cpi)
 	}
@@ -227,15 +210,13 @@ func TestSweepCPI_InsertsFromTheSeedFloorOnward(t *testing.T) {
 	}
 }
 
-// Después de la corrida de arranque no vuelve a correr hasta la hora, aunque
-// pasen días: sin esto el arranque marcaría el turno y el horario no mandaría.
 func TestSweepCPI_AfterBootWaitsForTheHour(t *testing.T) {
 	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
 
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0)) // arranque
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0))
 	sw.sweepCPI(context.Background(), art(2026, 8, 6, 19, 59))
-	sw.sweepCPI(context.Background(), art(2026, 8, 7, 10, 0)) // otro día, fuera de hora
+	sw.sweepCPI(context.Background(), art(2026, 8, 7, 10, 0))
 
 	if a.cpiCalls != 1 {
 		t.Errorf("FetchCPI calls = %d, want 1 (sólo el arranque)", a.cpiCalls)
@@ -246,52 +227,48 @@ func TestSweepCPI_RunsOncePerDayAtTheHour(t *testing.T) {
 	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
 
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0)) // arranque
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 20, 0)) // la corrida del día
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 21, 0)) // ya corrió hoy
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0))
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 20, 0))
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 21, 0))
 	sw.sweepCPI(context.Background(), art(2026, 8, 6, 23, 0))
 	if a.cpiCalls != 2 {
 		t.Fatalf("FetchCPI calls = %d, want 2 (arranque + 20:00)", a.cpiCalls)
 	}
 
-	sw.sweepCPI(context.Background(), art(2026, 8, 7, 20, 0)) // al día siguiente
+	sw.sweepCPI(context.Background(), art(2026, 8, 7, 20, 0))
 	if a.cpiCalls != 3 {
 		t.Errorf("FetchCPI calls = %d, want 3 (una por día)", a.cpiCalls)
 	}
 }
 
-// Si la corrida del día falla, el turno NO se marca y se reintenta al pasar el
-// piso. Es lo que separa "corre a las 20:00" de "corre a las 20:00 o nunca".
 func TestSweepCPI_FailedRunRetriesAfterTheFloor(t *testing.T) {
 	s, a := &fakeQuoteStore{}, &fakeQuoteAPI{err: errBoom}
 	sw := newQuoteSweeper(s, a)
 
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0)) // arranque, falla
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 20, 0)) // reintento, falla
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 10, 0))
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 20, 0))
 	sw.sweepCPI(context.Background(), art(2026, 8, 6, 20, 30))
 	if a.cpiCalls != 2 {
 		t.Fatalf("FetchCPI calls = %d, want 2: el piso frena el de 20:30", a.cpiCalls)
 	}
 
 	a.err = nil
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 21, 0)) // ahora sí
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 21, 0))
 	if a.cpiCalls != 3 {
 		t.Fatalf("FetchCPI calls = %d, want 3", a.cpiCalls)
 	}
-	sw.sweepCPI(context.Background(), art(2026, 8, 6, 22, 0)) // ya salió bien
+	sw.sweepCPI(context.Background(), art(2026, 8, 6, 22, 0))
 	if a.cpiCalls != 3 {
 		t.Errorf("FetchCPI calls = %d: una corrida exitosa cierra el día", a.cpiCalls)
 	}
 }
 
-// El espejo del anterior para las cotizaciones: una corrida al arrancar, una
-// por día a horario, y el arranque temprano no gasta el turno.
 func TestSweepQuotes_RunsOncePerDayAtTheHour(t *testing.T) {
 	last := day(2026, 8, 5)
 	s, a := &fakeQuoteStore{latest: &last}, &fakeQuoteAPI{}
 	sw := newQuoteSweeper(s, a)
 
-	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 0)) // arranque
+	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 10, 0))
 	bootCalls := len(a.dateCalls)
 	if bootCalls == 0 {
 		t.Fatal("el arranque tiene que correr sea la hora que sea")
@@ -300,13 +277,11 @@ func TestSweepQuotes_RunsOncePerDayAtTheHour(t *testing.T) {
 		t.Errorf("a las 10:00 no se pide el valor del día, calls = %d", a.todayCalls)
 	}
 
-	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 15, 0)) // fuera de hora
+	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 15, 0))
 	if len(a.dateCalls) != bootCalls {
 		t.Errorf("no debe correr fuera de hora, calls = %v", a.dateCalls)
 	}
 
-	// A las 20:00 corre igual: el arranque temprano no gastó el turno, y acá sí
-	// se pide el valor del día en vivo.
 	sw.sweepQuotes(context.Background(), art(2026, 8, 6, 20, 0))
 	if len(a.dateCalls) == bootCalls {
 		t.Error("a las 20:00 tiene que correr aunque haya corrido al arrancar")

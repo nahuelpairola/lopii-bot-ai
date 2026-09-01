@@ -17,8 +17,6 @@ func newPickEngine(owned []subcategory.Subcategory) (*conversation.Engine, *fake
 	return engine, store
 }
 
-// Un usuario sin categorías propias vería un picker con solo "Cancelar": un
-// callejón. El guard tiene que cortar antes de arrancar el flujo.
 func TestStartCategoryManage_NoOwnCategories_DoesNotStartFlow(t *testing.T) {
 	engine, store := newPickEngine(nil)
 	s := &testServices{engine: engine}
@@ -44,8 +42,6 @@ func TestStartCategoryManage_WithOwnCategories_StartsPickFlow(t *testing.T) {
 	}
 }
 
-// Un error del repo no puede dejar al usuario sin respuesta ni arrancar un
-// flujo a medias.
 func TestStartCategoryManage_RepoError_DoesNotStartFlow(t *testing.T) {
 	engine, store := newPickEngine(nil)
 	s := &testServices{engine: engine, ownedErr: errFake}
@@ -58,10 +54,6 @@ func TestStartCategoryManage_RepoError_DoesNotStartFlow(t *testing.T) {
 	}
 }
 
-// El guard tiene que RESOLVER la métrica: el bot entendió y respondió bien.
-// Sin esto el evento queda pendiente y el sweeper lo marca "abandoned", que en
-// las métricas de asertividad se lee como una falla del bot. Pasó de verdad:
-// el primer "tengo categorías repetidas" en producción quedó como abandoned.
 func TestStartCategoryManage_NoOwnCategories_ResolvesMetric(t *testing.T) {
 	engine, _ := newPickEngine(nil)
 	s := &testServices{engine: engine}
@@ -75,25 +67,15 @@ func TestStartCategoryManage_NoOwnCategories_ResolvesMetric(t *testing.T) {
 	}
 }
 
-// Un 429 en la clasificación NO puede caer al wizard: el usuario pagaría las 7
-// preguntas por un problema de cupo que ya quedó encolado y se resuelve solo.
-// El invariante vive en StartSubcategorySetup —HandleGroqError ANTES del
-// fallback— y este test es su única red: el que lo cuidaba
-// (TestCreateCategory_RateLimited_EnqueuesAndSkipsWizard) se fue con
-// pending_jobs_test.go cuando el split borró ese archivo.
 func TestStartSubcategorySetup_RateLimited_SkipsWizard(t *testing.T) {
 	s := &testServices{
 		engine:      conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" }),
 		classifyErr: errFake,
-		groqHandled: true, // el 429 quedó encolado
+		groqHandled: true,
 	}
 
 	err := StartSubcategorySetup(context.Background(), s, &messenger.FakeChat{}, 1, "creá gastos de regalos")
 
-	// El orden importa: si el guard se rompe, el wizard arranca Y devuelve error
-	// (el engine de este harness no tiene ese flow registrado). Afirmando primero
-	// sobre startedFlow, el rojo dice cuál es el bug en vez de un "flow is not
-	// registered" que manda a buscar al lugar equivocado.
 	if s.startedFlow != "" {
 		t.Fatalf("arrancó %q con el 429 ya encolado; el wizard no tiene que correr", s.startedFlow)
 	}
@@ -102,8 +84,6 @@ func TestStartSubcategorySetup_RateLimited_SkipsWizard(t *testing.T) {
 	}
 }
 
-// La contracara: un error que NO es de cupo sí tiene que caer al wizard. Sin
-// este par, el test de arriba se puede satisfacer rompiendo el fallback.
 func TestStartSubcategorySetup_OtherError_FallsBackToWizard(t *testing.T) {
 	s := &testServices{
 		engine:      conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" }),

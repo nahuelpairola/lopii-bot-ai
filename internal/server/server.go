@@ -1,9 +1,3 @@
-// Package server es el composition root: arma todo y lo enciende.
-//
-// InitServer se lee de arriba a abajo a propósito — el orden ES la información
-// cuando el server no levanta. Lo que NO es orden de arranque vive al lado:
-// recorder.go (el adapter de telemetría), flows.go (los 15 registros de flujo)
-// y bootstrap.go (construir base, bot y orchestrator).
 package server
 
 import (
@@ -36,20 +30,12 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// quoteTimeoutSeconds: el fetch más grande es el sembrado de 2.9 MB, una vez
-// por deploy. 60 s le sobra y no bloquea nada — corre en la goroutine del sweeper.
 const quoteTimeoutSeconds = 60
 
 func InitServer(conf *config.Config) error {
-	// First statement: everything after this — including a failed DB connect —
-	// is logged through the configured handler.
 	logging.Init(conf.Log.Level, conf.Log.Format)
 
 	ginEngine := gin.New()
-	// /health/internal is polled continuously by the platform; its access log is
-	// pure noise and its latency/status add nothing. Every other route — external
-	// health, webhook, invitations, admin — stays logged. SkipPaths suppresses only
-	// the log line: the route still serves 200 OK unchanged.
 	ginEngine.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/health/internal", "/health/external"}}))
 	ginEngine.Use(gin.Recovery())
 
@@ -63,7 +49,6 @@ func InitServer(conf *config.Config) error {
 		return err
 	}
 
-	// Repositorios. Uno por tabla, todos sobre la misma conexión.
 	healthChecker := health.NewHealthChecker(conn)
 	invitationRepo := invitation.NewRepository(conn)
 	userRepo := user.NewRepository(conn)
@@ -86,11 +71,6 @@ func InitServer(conf *config.Config) error {
 	conversationRepo := conversation.NewRepository(conn)
 	actionsRepo := pendingaction.NewRepository(conn)
 
-	// tgTransport alcanza a un usuario a partir de su userID (el sweeper, el
-	// drenaje de 429, admin) y sirve el webhook una vez que existe el handler
-	// neutro (messagingController.Handle, más abajo). Se arma acá, apenas
-	// existe userRepo, para que el resto del arranque se lea de arriba a
-	// abajo sin un salto hacia atrás.
 	tgTransport := telegram.New(tgBot, userRepo, conf.Server.BaseHost)
 
 	llmOrchestrator := buildOrchestrator(conf, llmCallRecorder{insert: metricRepo.InsertLLMCall})
@@ -98,8 +78,6 @@ func InitServer(conf *config.Config) error {
 	conversationEngine := conversation.NewEngine(conversationRepo, messagingctrl.FlowResumeLabel)
 	registerFlows(conversationEngine, subcategoryCache, accountRepo, movementRepo)
 
-	// Controllers. metricRepo entra DOS veces —como metrics y como traces— porque
-	// las dos lecturas salen del mismo repo; no es un error de tipeo.
 	healthController := healthctrl.NewController(healthChecker)
 	messagingController := messagingctrl.NewController(
 		userRepo, invitationRepo, accountRepo, movementRepo, subcategoryCache, conversationEngine,
@@ -114,8 +92,6 @@ func InitServer(conf *config.Config) error {
 	ginEngine.POST("/webhook/telegram", gin.WrapH(tgTransport.Serve(messagingController.Handle)))
 	miniappController.RegisterRoutes(ginEngine)
 
-	// Las dos goroutines de fondo: el sweeper (recordatorios, resumen semanal,
-	// retención de trazas, cotizaciones) y el drenaje de la cola de 429.
 	quoteRepo := quote.NewRepository(conn)
 	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo, subcategoryCache, quoteRepo)
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})

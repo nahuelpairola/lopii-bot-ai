@@ -15,10 +15,6 @@ import (
 
 var errFake = errors.New("db down")
 
-// Réplicas de los helpers del borde (mismo criterio que internal/nudges y
-// internal/pendingjob): el fake viaja con los tests, no se importa del paquete
-// que se está vaciando.
-
 type fakeStateStore struct {
 	flowName  string
 	stepName  string
@@ -57,13 +53,9 @@ func ownedSub(id uint, category, sub, icon string) subcategory.Subcategory {
 	return s
 }
 
-// testServices implementa settings.Services. El engine es el REAL: los tests de
-// StartCategoryManage afirman sobre el stepName que quedó guardado, así que un
-// StartFlow simulado no probaría nada.
 type testServices struct {
 	engine *conversation.Engine
 
-	// repos
 	accounts     []account.Account
 	accountsErr  error
 	all          []subcategory.Subcategory
@@ -75,7 +67,6 @@ type testServices struct {
 	descriptions []string
 	rem          *reminder.Reminder
 
-	// LLM
 	match        *orchestrator.CategoryMatch
 	proposal     *orchestrator.CategoryProposal
 	classifyErr  error
@@ -86,7 +77,6 @@ type testServices struct {
 	gotText      string
 	gotTaxonomy  []orchestrator.TaxonomyEntry
 
-	// registros
 	texts       []string
 	resolved    []string
 	groqHandled bool

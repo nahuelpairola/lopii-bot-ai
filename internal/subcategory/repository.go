@@ -10,7 +10,7 @@ import (
 
 type Subcategory struct {
 	gorm.Model
-	UserID      *uint64 `gorm:"column:user_id"` // NULL para globales
+	UserID      *uint64 `gorm:"column:user_id"`
 	Category    string  `gorm:"column:category"`
 	Subcategory string  `gorm:"column:subcategory"`
 	Description string  `gorm:"column:description"`
@@ -29,7 +29,6 @@ func NewRepository(conn *database.Connection) *repository {
 	return &repository{conn: conn}
 }
 
-// FindAllForUser devuelve las propias del usuario + las globales del sistema.
 func (r *repository) FindAllForUser(userID uint64) ([]Subcategory, error) {
 	var subs []Subcategory
 	err := r.conn.DB.
@@ -38,9 +37,6 @@ func (r *repository) FindAllForUser(userID uint64) ([]Subcategory, error) {
 	return subs, err
 }
 
-// DistinctCategoriesForUser devuelve los nombres de categoría ya usados
-// por el usuario (sin repetir), para ofrecerlos como opciones al crear
-// una subcategoría nueva.
 func (r *repository) DistinctCategoriesForUser(userID uint64) ([]string, error) {
 	var categories []string
 	err := r.conn.DB.
@@ -52,8 +48,6 @@ func (r *repository) DistinctCategoriesForUser(userID uint64) ([]string, error) 
 	return categories, err
 }
 
-// FindByCategoryAndSubcategory busca una subcategoría específica (global
-// o de usuario) por su par category+subcategory.
 func (r *repository) FindByCategoryAndSubcategory(category, subcategory string) (*Subcategory, error) {
 	var s Subcategory
 	err := r.conn.DB.
@@ -68,9 +62,6 @@ func (r *repository) FindByCategoryAndSubcategory(category, subcategory string) 
 	return &s, nil
 }
 
-// FindAll devuelve absolutamente todas las subcategorías (globales y de
-// usuario) — usada para poblar Cache una sola vez al arrancar el server,
-// y de nuevo en cada Cache.Reload() tras un Insert (ver cache.go).
 func (r *repository) FindAll() ([]Subcategory, error) {
 	var subs []Subcategory
 	err := r.conn.DB.Find(&subs).Error
@@ -85,12 +76,6 @@ func (r *repository) Insert(s *Subcategory) error {
 	return err
 }
 
-// Delete borra (soft-delete vía deleted_at) una subcategoría del usuario. El
-// filtro por user_id es lo que hace imposible borrar una global aunque llegue
-// un ID arbitrario: las globales tienen user_id NULL y nunca matchean. Si no
-// afectó filas (id ajeno, inexistente, o global), devuelve
-// ErrSubcategoryNotFound — el llamador necesita distinguir "no borré nada" de
-// "borré" para no decirle al usuario que sacó algo que sigue ahí.
 func (r *repository) Delete(userID uint64, id uint64) error {
 	result := r.conn.DB.
 		Where("id = ? AND user_id = ?", id, userID).

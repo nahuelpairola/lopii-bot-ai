@@ -11,9 +11,6 @@ import (
 	"lopiibot.com/internal/messenger"
 )
 
-// StartReminderSetup opens the Notificaciones hub: it reads the user's current
-// reminder (if any) and seeds the panel state, so the root step can render both
-// features' status and preserve the weekly flag when only the window changes.
 func StartReminderSetup(ctx context.Context, s Services, chat messenger.Chat, userID uint64) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.ReminderSetupFlowName, "user_id", userID)
 	seed := conversation.Data{}

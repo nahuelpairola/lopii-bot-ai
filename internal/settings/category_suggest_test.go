@@ -41,8 +41,6 @@ func TestMergeSuggestionText_DescriptionAndSamples(t *testing.T) {
 	}
 }
 
-// La taxonomía que se le manda al LLM NO puede incluir la fila de origen, o se
-// sugeriría a sí misma.
 func TestSuggestMergeTarget_ExcludesSourceFromTaxonomy(t *testing.T) {
 	all := []subcategory.Subcategory{
 		ownedSub(7, "Comida", "Delivery", "🍕"),
@@ -123,13 +121,10 @@ func TestSuggestMergeTarget_OrchestratorErrorIsNoSuggestion(t *testing.T) {
 	}
 }
 
-// Un match alucinado (que no existe en la taxonomía del usuario) no se ofrece.
 func TestSuggestMergeTarget_HallucinatedMatchIsDiscarded(t *testing.T) {
 	s := &testServices{
 		all:   []subcategory.Subcategory{ownedSub(7, "Comida", "Delivery", "")},
 		match: &orchestrator.CategoryMatch{Category: "Inventada", Subcategory: "Nada"},
-		// byCatSub sin entrada para "Inventada|Nada": FindSubcategory devuelve
-		// ErrSubcategoryNotFound, tal como haría la Cache real ante una alucinación.
 	}
 
 	if got := SuggestMergeTarget(context.Background(), s, 1, 7, conversation.Data{}); got != nil {
