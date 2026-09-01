@@ -4,21 +4,19 @@ Every conversation flow: the 15 builders `server/flows.go` registers, their step
 movement write pipeline, the finishes, and the near-duplicate gate. **Use `codegraph_explore` for
 structure** — this file is only for what reading the code will not tell you.
 
-## Registering a flow touches three places, in three packages
+## Registering a flow touches three places, and one failure is silent
 
-Nothing enforces any of them:
+Nothing enforces any of them. The step-by-step is Recipe 2 in
+[`docs/recipes.md`](../../docs/recipes.md); what matters here is how each one fails:
 
-1. `server/flows.go` — a line in `registerFlows`
-2. `controller/messaging/controller.go` — a case in `handleFlowFinished`'s switch
-3. `controller/messaging/messages.go` — a case in `FlowResumeLabel`
+| Forgotten | What happens |
+|---|---|
+| `registerFlows` | the server fails at startup — loud, and therefore fine |
+| `handleFlowFinished`'s case | the flow completes into `msgSomethingBroke` |
+| `FlowResumeLabel`'s case | **nothing breaks for 24h**, then the resume gate offers "una conversación anterior" instead of real copy |
 
-Miss #1 and the server fails at startup (loud, fine). Miss #2 and the flow completes into
-`msgSomethingBroke`. **Miss #3 and nothing breaks until a user goes idle for 24h**, then the
-resume gate offers them "una conversación anterior" instead of real copy.
-
-Two of the three live in `messaging`, not here: the flow is *built* in this package but *finished*
-at the edge, because a finish needs the repos. That split is the reason the list is easy to
-half-do.
+Two of the three live in `messaging`, not here: a flow is *built* in this package but *finished*
+at the edge, because a finish needs the repos. That split is why the list is easy to half-do.
 
 ## `callback_data` is 64 bytes — send indices, not labels
 
