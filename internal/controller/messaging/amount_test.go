@@ -15,12 +15,12 @@ func TestParseARAmount(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"45685,9", "45685.9", false},  // AR comma decimal — the incident value
-		{"1.500,50", "1500.50", false}, // dots = thousands, comma = decimal
-		{"123000", "123000", false},    // plain integer
-		{"45685.9", "45685.9", false},  // already dot-normalized (LLM output)
-		{"  2650 ", "2650", false},     // surrounding whitespace
-		{"abc", "0", true},             // malformed
+		{"45685,9", "45685.9", false},
+		{"1.500,50", "1500.50", false},
+		{"123000", "123000", false},
+		{"45685.9", "45685.9", false},
+		{"  2650 ", "2650", false},
+		{"abc", "0", true},
 	}
 	for _, c := range cases {
 		got, err := movement.ParseARAmount(c.in)
@@ -44,7 +44,7 @@ func TestParseARAmount(t *testing.T) {
 func TestParseARAmount_UserFormats(t *testing.T) {
 	cases := []struct {
 		in   string
-		want string // decimal.String() esperado
+		want string
 		ok   bool
 	}{
 		{"2422,9", "2422.9", true},
@@ -71,8 +71,6 @@ func TestParseARAmount_UserFormats(t *testing.T) {
 }
 
 func TestParseARAmount_RejectsLetters(t *testing.T) {
-	// Antes estas entradas se "limpiaban" en silencio ("100k" -> 100), lo que
-	// producía un monto mal en un path de plata. Ahora tienen que fallar.
 	for _, in := range []string{"30k", "100k", "10 mil", "1.5m", "100 xyz", "2 millones", "cien"} {
 		if got, err := movement.ParseARAmount(in); err == nil {
 			t.Errorf("movement.ParseARAmount(%q) = %s, want error", in, got)
@@ -105,8 +103,6 @@ func TestParseARAmount_AcceptsValidNumbers(t *testing.T) {
 }
 
 func TestValidateBalanceAmount_RejectsAbbreviation(t *testing.T) {
-	// El hook que ven los flows: una abreviatura tiene que devolver el mensaje
-	// de error, y un número limpio tiene que pasar.
 	if msg := flow.ValidateBalanceAmount("30k", nil); msg != account.MsgInvalidAmount {
 		t.Errorf("flow.ValidateBalanceAmount(%q) = %q, want %q", "30k", msg, account.MsgInvalidAmount)
 	}

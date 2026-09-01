@@ -10,26 +10,33 @@ Postgres 16 on `:5432`. Credentials: DB=`lopiibot`, user=`lopiibot`, pass=`lopii
 
 ### Configure before first run
 
-**1. Secrets in `.env` (git-ignored), copied from `.env.example`:**
 ```bash
-ENV=local
-TELEGRAM_TOKEN=<token from @BotFather>
-GROQ_APIKEY=<key from console.groq.com>
+cp .env.example .env    # fill in TELEGRAM_TOKEN (@BotFather) and GROQ_APIKEY (console.groq.com)
+bash init.sh            # says what is missing, and starts nothing until it is not
 ```
-`telegram.token` and `groq.apiKey` are deliberately **empty** in `config/local.toml` — no
-secret is ever committed. Viper's `AutomaticEnv` fills them from the environment, so the
-`.env` has to be exported into the shell before `go run` (see Run below); `go run` does not
-read it on its own.
 
-**2. Tunnel host in `config/local.toml`:**
+The `.env` carries **three** variables and no more: `config/local.toml` already holds the whole
+`[database]` block matching Docker Compose. What the toml deliberately leaves **empty** is
+`telegram.token` and `groq.apiKey` — no secret is ever committed. Viper fills them from the
+environment via `AutomaticEnv`, so the `.env` has to be **exported** into the shell before
+`go run`; `go run` does not read it on its own.
+
+`init.sh` checks Postgres, the `.env` (presence, CRLF and the three secrets) and the admin
+migration. **What it cannot check for you:**
+
+**1. The tunnel host in `config/local.toml`:**
 ```toml
 [server]
-baseHost = "https://<your-tunnel>.devtunnels.ms"  # public HTTPS URL for Telegram webhook
+baseHost = "https://<your-tunnel>.devtunnels.ms"
 ```
-The DB config is already set to match Docker Compose — no changes needed.
 
-**3. Edit the admin migration (first time only):**
-`migrations/20260618230837_create_admin_user.sql` — replace `'TELEGRAM_ID'` with your numeric Telegram user ID.
+**2. The working directory.** It has to be `cmd/server/`: the config path resolves as
+`../../config/{ENV}.toml`, relative to the process's cwd. From the repo root the file is simply
+not there.
+
+**3. That the tunnel is alive.** The server starts fine and serves localhost, but Telegram never
+reaches the webhook and the bot receives nothing. A devtunnel URL changes when the tunnel
+restarts.
 
 ### Run
 
@@ -76,6 +83,21 @@ bash check.sh    # build + vet + errcheck + the default suite
 ```
 
 Unit tests mock the package's own local interfaces — no real Postgres outside the `integration`
-tag. Four build tags gate the suites that need Postgres or a Groq key, and one test is red on
-purpose: the table and the reasoning are in [AGENTS.md](../AGENTS.md#build-test-lint), not
-repeated here.
+tag. Four build tags gate the suites that need Postgres or a Groq key. **None run in CI — there
+is no CI.** They run when someone runs them.
+
+| Tag | Needs | Notes |
+|---|---|---|
+| `integration` | local Postgres (`docker compose up -d`) | 11 files. Drains and writes real rows |
+| `conv_test` | nothing | 3 files |
+| `llm_eval` | `GROQ_APIKEY` | 3 files, `internal/orchestrator` |
+| `query_eval` | `GROQ_APIKEY` **and** Postgres | 1 file |
+
+Both eval suites **fail loudly when `GROQ_APIKEY` is unset** rather than skipping in silence: the
+tag is asked for by hand, so a skip was a green that proved nothing. They spend real Groq quota,
+shared with production. `GROQ_APIKEY` is the only name that works — `GROQ_API_KEY` is exported by
+nothing, which is why the evals had never once run.
+
+`errcheck` runs inside `check.sh` as **information, not a gate**: the tree carries ~215 pre-existing
+findings (~38 outside tests, nearly all unchecked `bot.SendMessage`). Read the ones in your own
+diff, ignore the rest.

@@ -8,10 +8,6 @@ import (
 	"testing"
 )
 
-// Run with real Groq creds:
-//   GROQ_APIKEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestCategoryCreateEval -v
-// Excluded from default `go test ./...` (build tag) so CI needs no API key.
-
 func TestCategoryCreateEval_MatchesExisting(t *testing.T) {
 	key := evalKey(t)
 	o := New(Config{

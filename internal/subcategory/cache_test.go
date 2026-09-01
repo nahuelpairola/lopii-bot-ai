@@ -221,9 +221,6 @@ func TestCache_FindOwnedByUser_NoOwnRowsIsEmptyNotError(t *testing.T) {
 	}
 }
 
-// Las reservadas se siembran como globales (user_id NULL, is_global TRUE), así
-// que Reload nunca las mete en perUser. Este test fija esa garantía: si alguien
-// cambiara el seed, el picker de origen empezaría a ofrecer "Sistema".
 func TestCache_FindOwnedByUser_NeverReturnsReserved(t *testing.T) {
 	loader := &fakeLoader{subs: []Subcategory{
 		{Category: "Sistema", Subcategory: "Saldo inicial", IsGlobal: true},
@@ -264,9 +261,6 @@ func TestCache_Delete_PropagatesLoaderError(t *testing.T) {
 	}
 }
 
-// El repository devuelve ErrSubcategoryNotFound cuando RowsAffected == 0
-// (id ajeno, inexistente, o global); Cache.Delete es passthrough, así que
-// alcanza con fijar que ese error viaja sin transformarse.
 func TestCache_Delete_PropagatesNotFound(t *testing.T) {
 	loader := &fakeLoader{deleteErr: ErrSubcategoryNotFound}
 	cache, _ := NewCache(loader)

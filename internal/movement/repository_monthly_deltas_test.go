@@ -12,13 +12,11 @@ import (
 	"lopiibot.com/internal/currency"
 )
 
-// Run with: go test -tags integration ./internal/movement/
-// Requires local Postgres (docker compose up -d) with migrations applied.
 func TestMonthlyDeltasForAccount_SignedAndOrdered(t *testing.T) {
 	conn := testConnection(t)
 	r := InitRepository(conn)
 	accRepo := account.NewRepository(conn)
-	userID := uint64(1) // test admin user que ya existe en la DB
+	userID := uint64(1)
 
 	acc := &account.Account{UserID: userID, Name: "MonthlyDeltas_" + uuid.NewString()[:8], Currency: currency.ARS}
 	if err := accRepo.Insert(acc); err != nil {
@@ -35,9 +33,7 @@ func TestMonthlyDeltasForAccount_SignedAndOrdered(t *testing.T) {
 			t.Fatalf("insert movements: %v", err)
 		}
 	}
-	// opening transfer +10000 in month 1
 	mustInsert(Movement{UserID: userID, AccountID: &accountID, SubcategoryID: 1, Date: month1, Type: Transfer, Amount: decimal.NewFromInt(10000), Currency: currency.ARS})
-	// money moved out, -3000, in month 2
 	mustInsert(Movement{UserID: userID, AccountID: &accountID, SubcategoryID: 1, Date: month2, Type: Transfer, Amount: decimal.NewFromInt(-3000), Currency: currency.ARS})
 
 	deltas, err := r.MonthlyDeltasForAccount(accountID)

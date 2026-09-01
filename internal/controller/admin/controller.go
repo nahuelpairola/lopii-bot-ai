@@ -21,8 +21,6 @@ type onboardingEngine interface {
 	Clear(userID uint64) error
 }
 
-// chatResolver alcanza a un usuario por ID, sin conocer el canal concreto —
-// misma interfaz local que notifier y pendingjob.
 type chatResolver interface {
 	ChatFor(userID uint64) (messenger.Chat, error)
 }
@@ -40,13 +38,9 @@ func NewController(users userReader, accounts, movements resetter, engine onboar
 }
 
 func (c *controller) RegisterRoutes(engine *gin.Engine) {
-	// TODO: hardcoded adminID=1 hasta que exista login real (CLAUDE.md §6).
 	engine.POST("/admin/users/:telegramID/reset", middleware.RequireAdmin(1), c.Reset)
 }
 
-// Reset soft-deletes the user's accounts+movements, clears their flow state,
-// and re-fires onboarding (pushing the first prompt itself, so no next
-// message is silently eaten). intent_events is deliberately untouched.
 func (c *controller) Reset(ctx *gin.Context) {
 	telegramID := ctx.Param("telegramID")
 	u, err := c.users.FindByChannel(user.ChannelTelegram, telegramID)

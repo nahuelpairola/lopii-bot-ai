@@ -52,12 +52,10 @@ func TestMovementRow_GroupRoundTrip(t *testing.T) {
 	}
 }
 
-// TestCopyDataNeverReturnsNil — mismo invariante que conversation.cloneData:
-// los ~36 call sites escriben sobre la copia, así que devolver nil paniquea.
 func TestCopyDataNeverReturnsNil(t *testing.T) {
 	got := conversation.CopyData(nil)
 	if got == nil {
 		t.Fatal("conversation.CopyData(nil) devolvió nil: el próximo write va a paniquear")
 	}
-	got[conversation.KeyCancelled] = "true" // no debe paniquear
+	got[conversation.KeyCancelled] = "true"
 }

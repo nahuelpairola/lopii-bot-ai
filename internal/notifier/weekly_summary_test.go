@@ -54,7 +54,6 @@ func (w wkSummary) Build(uint64, time.Time, time.Time, time.Time, time.Time) (st
 }
 
 func mondayAt(hour, min int) time.Time {
-	// 2026-07-13 is a Monday (ART).
 	return time.Date(2026, 7, 13, hour, min, 0, 0, artLoc)
 }
 

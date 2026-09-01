@@ -108,12 +108,10 @@ func TestFinishReminderSetup_Cancelled(t *testing.T) {
 }
 
 func TestNewReminderSetupFlow_Valid(t *testing.T) {
-	// panics at construction if the step graph is invalid
 	_ = flow.NewReminderSetupFlow()
 }
 
 func TestReminderSetup_PresetThenWeeklyYes(t *testing.T) {
-	// flow.OnReminderPickWindow(preset) then flow.OnReminderWeekly(Sí) sets the flag; finish Upserts it.
 	data := flow.OnReminderPickWindow("1200-1320", conversation.Data{conversation.UserIDKey: uint64(42)})
 	data = flow.OnReminderWeekly(flow.OptionWeeklyOn, data)
 
@@ -130,14 +128,12 @@ func TestReminderSetup_PresetThenWeeklyYes(t *testing.T) {
 }
 
 func TestReminderSetup_WeeklyOnlyOff(t *testing.T) {
-	// weekly toggle OFF (row exists) -> SetWeeklySummary(userID,false); no Upsert/Disable.
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
 	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
 		conversation.UserIDKey: uint64(7),
 		flow.ReminderActionKey: flow.ReminderActionWeeklyOnly,
 		flow.KeyHubHasRow:      "true",
-		// conversation.KeyWeeklySummary absent => turning OFF
 	})
 	if repo.weeklySet == nil || *repo.weeklySet != false || repo.weeklySetFor != 7 {
 		t.Fatalf("expected SetWeeklySummary(7,false), got for=%d val=%v", repo.weeklySetFor, repo.weeklySet)
@@ -175,15 +171,12 @@ func TestFinishReminderSetup_SoftExit(t *testing.T) {
 }
 
 func TestFinishReminderSetup_WeeklyActivateNoRow(t *testing.T) {
-	// activating weekly for a user with NO reminders row must Upsert a minimal
-	// row (SetWeeklySummary is UPDATE-only and would silently no-op).
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
 	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
 		conversation.UserIDKey:        uint64(8),
 		flow.ReminderActionKey:        flow.ReminderActionWeeklyOnly,
 		conversation.KeyWeeklySummary: "true",
-		// flow.KeyHubHasRow absent => no row
 	})
 	if repo.upserted == nil || !repo.upserted.WeeklySummaryEnabled || repo.upserted.Enabled {
 		t.Fatalf("expected minimal weekly-only upsert (weekly=true, enabled=false), got %+v", repo.upserted)
@@ -239,7 +232,7 @@ func TestHubOptions_AllOff(t *testing.T) {
 			t.Error("Apagar todo must be hidden when nothing is on")
 		}
 	}
-	_ = hubOpt(t, opts, flow.OptionSoftExit) // Salir always present
+	_ = hubOpt(t, opts, flow.OptionSoftExit)
 }
 
 func TestHubOptions_AllOn(t *testing.T) {
@@ -268,7 +261,7 @@ func TestOnReminderHub(t *testing.T) {
 	cases := []struct {
 		value      string
 		wantAction string
-		wantWeekly string // "" = flag absent
+		wantWeekly string
 	}{
 		{flow.OptionHubDaily, "", ""},
 		{flow.OptionWeeklyOn, flow.ReminderActionWeeklyOnly, "true"},
@@ -297,8 +290,7 @@ func TestSkipHubIfSeeded(t *testing.T) {
 }
 
 func TestPickOptions_NoWeeklyButton(t *testing.T) {
-	// The band picker must not carry the weekly-summary button anymore.
-	fl := flow.NewReminderSetupFlow() // panics if the graph is invalid
+	fl := flow.NewReminderSetupFlow()
 	_ = fl
 	opts := flow.ReminderPickOptions(conversation.Data{})
 	for _, o := range opts {
@@ -335,16 +327,13 @@ func newReminderTestEngine() (*conversation.Engine, *fakeStateStore) {
 
 func TestReminderFlow_HubBandChange_SkipsWeekly(t *testing.T) {
 	engine, _ := newReminderTestEngine()
-	// hub entry seeded as if the user already had weekly ON and daily OFF
 	seed := conversation.Data{conversation.KeyWeeklySummary: "true", flow.KeyHubHasRow: "true"}
 	if _, err := engine.StartWithData(1, flow.ReminderSetupFlowName, seed); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	// tap "Activar recordatorio diario" -> picker
 	if _, _, err := engine.Handle(1, conversation.Input{CallbackData: flow.OptionHubDaily}); err != nil {
 		t.Fatalf("hub choice: %v", err)
 	}
-	// pick a preset band -> should COMPLETE (weekly skipped), preserving weekly=true
 	res, _, err := engine.Handle(1, conversation.Input{CallbackData: "1200-1320"})
 	if err != nil {
 		t.Fatalf("preset: %v", err)
@@ -369,11 +358,9 @@ func TestReminderFlow_Onboarding_SkipsHubShowsWeekly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	// hub was skipped -> first prompt is the band picker
 	if !strings.Contains(prompt.Text, "franja") {
 		t.Fatalf("onboarding must land on the band picker, got prompt %q", prompt.Text)
 	}
-	// pick a band -> weekly question shown (NOT finished)
 	res, _, err := engine.Handle(1, conversation.Input{CallbackData: "1200-1320"})
 	if err != nil {
 		t.Fatalf("preset: %v", err)

@@ -8,7 +8,6 @@ import (
 	"lopiibot.com/internal/flow"
 )
 
-// fakeMetricRepo captura las llamadas para las Tasks 4-6.
 type fakeMetricRepo struct {
 	logged        []loggedIntent
 	resolved      []string
@@ -41,15 +40,8 @@ func TestResolveMetric_PassesMovementIDs(t *testing.T) {
 	}
 }
 
-// modeUpdate vivía en movement_update_flow_test.go, que migró a agent (su
-// seed.go:26 define la misma constante). El flujo de UPDATE del borde sigue
-// viviendo acá, así que la constante queda con él.
 const modeUpdate = flow.ModeUpdate
 
-// Una corrección que se desvía al flujo de alta para llenar un gap de categoría
-// NO es un alta. Medido en vivo el 2026-08-12: "Era pollo" corrigió el
-// movimiento y quedó como create_inserted, que es la columna que lee el portón
-// de la etapa.
 func TestWriteOutcomeFor(t *testing.T) {
 	if got := writeOutcomeFor(conversation.Data{conversation.KeyMode: modeUpdate}); got != outcomeUpdateConfirmed {
 		t.Errorf("modo update escribió %q, want %q", got, outcomeUpdateConfirmed)
@@ -65,7 +57,6 @@ func TestWriteOutcomeFor(t *testing.T) {
 	}
 }
 
-// queuedIntents guarda las correcciones de intent que hizo el drenaje.
 func (f *fakeMetricRepo) SetIntentIfQueued(userID uint64, intent string) error {
 	f.queuedIntents = append(f.queuedIntents, intent)
 	return nil

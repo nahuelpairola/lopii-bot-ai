@@ -11,10 +11,6 @@ const (
 	StepConfirmDelete       = "confirm_delete"
 )
 
-// NewMovementDeleteFlow is a single flow, unlike UPDATE's two-hop chain: once
-// a candidate is known, deleting needs no further LLM call, so the picker step
-// just skips straight to confirm (via Skip, Task 1) whenever the caller already
-// seeded a resolved_index.
 func NewMovementDeleteFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		StepPickDeleteCandidate: conversation.ChoiceStep{

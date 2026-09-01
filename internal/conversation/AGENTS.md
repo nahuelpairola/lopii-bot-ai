@@ -13,24 +13,26 @@ here for its contract rather than restating it.
 
 **Every numeric field read out of `Data` needs a dual `int`/`float64` type switch**, or it
 silently degrades to zero for any value that has survived a round trip. This has already had to
-be written twice — `Data.UserID()` (`flow.go:150-159`) and `retryCount` (`engine.go:247-256`),
+be written twice — `Data.UserID()` (`flow.go`) and `retryCount` (`engine.go`),
 both ending in `default: return 0`. A third one written for `int` only will compile, pass a
 same-turn test, and return 0 in production.
 
 ## Reserved keys are protected by an underscore and nothing else
 
-`_user_id`, `_retry_count`, `_pending_error`, `_resume_cancelled` (`engine.go:36,46,69`,
-`flow.go:166`). A `Step` whose `DataKey` collides with one of these silently corrupts engine
+`UserIDKey`, `retryCountKey` and `ResumeCancelledKey` (`engine.go`) plus `pendingErrorKey`
+(`flow.go`) — the four underscore-prefixed keys `_user_id`, `_retry_count`, `_resume_cancelled`
+and `_pending_error`. A `Step` whose `DataKey` collides with one of these silently corrupts engine
 internals — the resume-gate retry counter, for instance — and no test can anticipate a future
 collision.
 
 ## `NewFlow`'s graph validation is narrower than it looks
 
 `PossibleNextSteps()` is a **static, self-reported declaration**, not a derived fact
-(`flow.go:77-80`). `NewFlow` validates only what each `Step` chose to list. In particular,
-`TextStep.EscapeOptionsFunc` buttons **must** target `NextStep` or `Finish`
-(`text_step.go:39-41`) — `PossibleNextSteps()` never inspects them, so a violating button jumps
-to an undeclared step with startup validation having given false confidence.
+(`flow.go`). `NewFlow` validates only what each `Step` chose to list, so anything computed at
+runtime has to declare its destinations by hand: a `ChoiceStep` using `OptionsFunc` **must** set
+`DeclaredNextSteps`, and `TextStep.EscapeOptionsFunc` buttons **must** target `NextStep` or
+`Finish` (`text_step.go`). Neither is inspected, so a violating button jumps to an undeclared
+step with startup validation having given false confidence.
 
 ## A `Button` carries either `Data` or `WebAppPath`, never both
 
@@ -50,12 +52,7 @@ mean "transform `Data` on this transition". Pick the wrong name and the compiler
 the field simply never fires.
 
 `Engine.resumeLabel` is injected rather than imported because this package cannot import
-`messaging` (`engine.go:216-220`); a flow with no case in the resolver silently gets a generic
+`messaging` (`engine.go`); a flow with no case in the resolver silently gets a generic
 label.
 
----
-
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **Conversation engine and flows**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **Conversation engine and flows**.

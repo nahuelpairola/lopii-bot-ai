@@ -52,13 +52,6 @@ func TestBuildCreateSeed_NoGaps_EmptyQueues(t *testing.T) {
 	}
 }
 
-// TestBuildCreateSeed_UnknownCategoryPair_QueuesGap cubre la causa raíz de los
-// create_failed observados en intent_events ("Carne 10 mil" falló dos veces): el
-// modelo devuelve un par que NO existe en la taxonomía del usuario en vez de
-// PENDING_REVIEW. Sin gap, el flujo va derecho a insertar y
-// FindByCategoryAndSubcategory falla — el movimiento se pierde y el usuario ve un
-// error genérico. Un par desconocido tiene que caer al gap-fill, igual que
-// PENDING_REVIEW.
 func TestBuildCreateSeed_UnknownCategoryPair_QueuesGap(t *testing.T) {
 	taxonomy := []orchestrator.TaxonomyEntry{
 		{Category: "Alimentación", Subcategory: "Café"},
@@ -78,9 +71,6 @@ func TestBuildCreateSeed_UnknownCategoryPair_QueuesGap(t *testing.T) {
 	}
 }
 
-// TestBuildCreateSeed_KnownCategoryPair_NoGap es la guarda del riesgo inverso: la
-// validación no debe abrir gaps donde hoy se inserta bien. El delta del fix tiene
-// que ser estrictamente error → pregunta, nunca inserto-OK → pregunta.
 func TestBuildCreateSeed_KnownCategoryPair_NoGap(t *testing.T) {
 	taxonomy := []orchestrator.TaxonomyEntry{
 		{Category: "Alimentación", Subcategory: "Café"},
@@ -98,10 +88,6 @@ func TestBuildCreateSeed_KnownCategoryPair_NoGap(t *testing.T) {
 	}
 }
 
-// TestBuildCreateSeed_NonTransferWithUnmatchedAccountName_QueuesAccountGap: el
-// modelo setea AccountNameGuess cuando el mensaje nombró una cuenta que no pudo
-// matchear con ninguna existente. Sin gap, la fila cae en la cuenta default de la
-// moneda y la cuenta nombrada nunca se crea: la intención del usuario se descarta.
 func TestBuildCreateSeed_NonTransferWithUnmatchedAccountName_QueuesAccountGap(t *testing.T) {
 	result := orchestrator.CreateResult{
 		Movements: []orchestrator.MovementDraft{
@@ -121,9 +107,6 @@ func TestBuildCreateSeed_NonTransferWithUnmatchedAccountName_QueuesAccountGap(t 
 	}
 }
 
-// TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap es la guarda del
-// riesgo inverso: sin cuenta nombrada no hay pregunta. Es el camino de la mayoría
-// de los CREATE que hoy funcionan y no puede ganar un prompt.
 func TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap(t *testing.T) {
 	result := orchestrator.CreateResult{
 		Movements: []orchestrator.MovementDraft{
@@ -141,12 +124,6 @@ func TestBuildCreateSeed_NonTransferWithoutAccountName_NoAccountGap(t *testing.T
 	}
 }
 
-// TestBuildCreateSeed_CounterpartyInDescription_NoAccountGap: "pizza con Pablo"
-// deja AccountNameGuess en "Pablo" y a Pablo DENTRO de la description — Pablo es
-// la contraparte, no una cuenta. Ese gasto hoy se guarda solo contra la default
-// y no puede ganar una pregunta, ni terminar creando una cuenta que se llama
-// como una persona (la fila que ya fija
-// TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount).
 func TestBuildCreateSeed_CounterpartyInDescription_NoAccountGap(t *testing.T) {
 	result := orchestrator.CreateResult{
 		Movements: []orchestrator.MovementDraft{
@@ -165,9 +142,6 @@ func TestBuildCreateSeed_CounterpartyInDescription_NoAccountGap(t *testing.T) {
 	}
 }
 
-// La otra dirección: el nombre NO está en la description, así que es una cuenta
-// del usuario y tiene que abrir gap. Sin este caso la regla queda medio
-// verificada — y es la mitad que puede CREAR una cuenta.
 func TestBuildCreateSeed_OwnAccountNotInDescription_OpensGap(t *testing.T) {
 	result := orchestrator.CreateResult{
 		Movements: []orchestrator.MovementDraft{
@@ -186,11 +160,6 @@ func TestBuildCreateSeed_OwnAccountNotInDescription_OpensGap(t *testing.T) {
 	}
 }
 
-// categoryGapsFor es la paridad que a UPDATE le faltaba: hasta el 2026-08-12
-// seedAndStartUpdateConfirm escribía conversation.KeyPendingCategoryGaps en nil hardcodeado,
-// así que una corrección que nombraba una categoría inexistente no marcaba gap,
-// insertaba derecho y FindByCategoryAndSubcategory fallaba — el movimiento se
-// perdía con un error genérico.
 func TestCategoryGapsFor(t *testing.T) {
 	taxonomy := []orchestrator.TaxonomyEntry{
 		{Category: "Alimentación", Subcategory: "Supermercado"},
@@ -218,8 +187,6 @@ func TestCategoryGapsFor(t *testing.T) {
 				{Category: "Ocio y salidas", Subcategory: "Salir a comer"},
 				{Category: "otra inventada", Subcategory: "y"},
 			}, taxonomy, []string{"1", "3"}},
-		// Sin con qué comparar no se inventan gaps: preguntar por TODO sería peor
-		// que no validar.
 		{"taxonomía vacía no valida",
 			[]movement.MovementRow{{Category: "cualquier cosa", Subcategory: "x"}}, nil, nil},
 	}
@@ -239,10 +206,6 @@ func TestCategoryGapsFor(t *testing.T) {
 	}
 }
 
-// Nombrar una cuenta que EXISTE no puede abrir un picker: el usuario ya dijo
-// cuál. Medido en vivo el 2026-08-12 con "Lote cemento 45000", donde el modelo
-// mandó account_name_guess="Mercado Pago" —la cuenta default, que existe— y el
-// bot preguntó igual a cuál iba.
 func TestBuildCreateSeed_NamedAccountThatExistsResolvesWithoutAsking(t *testing.T) {
 	accounts := []account.Account{
 		{Model: gorm.Model{ID: 46}, Name: "Mercado Pago", Currency: currency.ARS},
@@ -250,7 +213,7 @@ func TestBuildCreateSeed_NamedAccountThatExistsResolvesWithoutAsking(t *testing.
 	}
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
 		Type: "expense", Amount: "45000", Currency: "ARS",
-		AccountNameGuess: "mercado pago", // sin mayúsculas, como lo escribiría el usuario
+		AccountNameGuess: "mercado pago",
 		Category:         "Alimentación", Subcategory: "Supermercado",
 		Description: "Lote cemento", Date: "2026-08-12",
 	}}}
@@ -266,9 +229,6 @@ func TestBuildCreateSeed_NamedAccountThatExistsResolvesWithoutAsking(t *testing.
 	}
 }
 
-// Y la dirección contraria, que es la que protege la plata: un nombre que NO es
-// exactamente una cuenta del usuario NO se adivina. "Galicia" contra "banco
-// galicia" cae al gap y pregunta.
 func TestBuildCreateSeed_PartialAccountNameStillAsks(t *testing.T) {
 	accounts := []account.Account{{Model: gorm.Model{ID: 72}, Name: "banco galicia", Currency: currency.ARS}}
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
@@ -284,8 +244,6 @@ func TestBuildCreateSeed_PartialAccountNameStillAsks(t *testing.T) {
 	}
 }
 
-// Dos cuentas con el mismo nombre en monedas distintas: la moneda desempata. Sin
-// eso, un gasto en pesos podría caer en la cuenta en dólares.
 func TestBuildCreateSeed_SameNameDifferentCurrencyPicksByCurrency(t *testing.T) {
 	accounts := []account.Account{
 		{Model: gorm.Model{ID: 10}, Name: "Brubank", Currency: currency.ARS},

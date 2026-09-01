@@ -27,8 +27,6 @@ func TestMsgConfirmUpdateDiff_ShowsAccountChange(t *testing.T) {
 	}
 }
 
-// Desde el fold de merchant la description es la unica fuente del descriptor:
-// es un campo requerido del Call 2 CREATE, asi que siempre viene poblada.
 func TestMovementGapDescriptor_UsesDescription(t *testing.T) {
 	row := movement.MovementRow{Amount: "5000", Description: "compra en el super"}
 	if got := movement.MovementGapDescriptor(row); got != "$5000 · compra en el super" {
@@ -36,9 +34,6 @@ func TestMovementGapDescriptor_UsesDescription(t *testing.T) {
 	}
 }
 
-// TestAskPrompts_DistinguishRows is the regression test for the reported bug:
-// a compound message with 2 gapped rows must never show the same
-// category/subcategory ask-prompt twice — each has to name its own row.
 func TestAskPrompts_DistinguishRows(t *testing.T) {
 	rows := []movement.MovementRow{
 		{Amount: "5000", Description: "compra en Coto", Category: "PENDING_REVIEW"},
@@ -57,8 +52,6 @@ func TestAskPrompts_DistinguishRows(t *testing.T) {
 		t.Errorf("row 0 prompt missing position counter: %q", prompt0)
 	}
 
-	// Advance past row 0 (mirrors stepResolveCategory's OnChoice: gap stays
-	// queued until the paired subcategory answer pops it).
 	data[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice([]string{"1"})
 	prompt1 := flow.MsgAskCategory(data)
 	if prompt1 == prompt0 {
@@ -71,7 +64,6 @@ func TestAskPrompts_DistinguishRows(t *testing.T) {
 		t.Errorf("row 1 prompt missing position counter: %q", prompt1)
 	}
 
-	// Subcategory prompt for row 0, once its category was chosen.
 	data["gap_active_row"] = "0"
 	rows[0].Category = "Alimentación"
 	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
@@ -94,7 +86,7 @@ func TestMovementReceiptLine_ShowsAccountWhenLoaded(t *testing.T) {
 		t.Errorf("receipt line %q should show the account name", line)
 	}
 
-	m.Account = nil // not loaded → must not panic, must not add a stray separator
+	m.Account = nil
 	if line := movementReceiptLine(m); strings.Contains(line, "· ·") {
 		t.Errorf("receipt line %q added an empty account segment", line)
 	}
@@ -116,7 +108,6 @@ func TestMovementReceiptLine_IncludesCategorySubcategoryDescriptionDate(t *testi
 			t.Errorf("receipt line %q missing %q", line, want)
 		}
 	}
-	// El símbolo ya dice la moneda: "$3.000 ARS" es ruido.
 	if strings.Contains(line, "ARS") {
 		t.Errorf("receipt line %q repite la moneda al lado del símbolo", line)
 	}
@@ -136,8 +127,6 @@ func TestMsgConfirmUpdateDiff_IncludesSubcategoryDescriptionDate(t *testing.T) {
 			t.Errorf("diff message %q missing %q", msg, want)
 		}
 	}
-	// El diff es la pantalla que más se ve tras el atajo del recién-creado:
-	// el monto nuevo y el viejo tienen que leerse de un vistazo.
 	for _, want := range []string{"$3.500", "antes: $3.000"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("diff message %q missing %q", msg, want)

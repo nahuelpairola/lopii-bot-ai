@@ -28,10 +28,6 @@ type UpdatePickPayload struct {
 	BeforeRows    []movement.MovementRow `json:"before_rows"`
 }
 
-// replayingKey marca un ctx que corre dentro del drain. Las sites de error-Groq
-// lo consultan: en el webhook encolan+ackean el 429; en replay lo propagan al
-// drain (que gatea y deja el job) SIN re-encolar ni re-ackear. Sin esto el drain
-// re-encolaría el job que está drenando (loop) y spamearía el ack.
 type replayingKey struct{}
 
 func WithReplaying(ctx context.Context) context.Context {
@@ -42,7 +38,6 @@ func IsReplaying(ctx context.Context) bool {
 	return v
 }
 
-// bumpNextDrainAt sube nextDrainAt al máximo visto (org-wide, in-memory).
 func bumpNextDrainAt(t time.Time) {
 	drainMu.Lock()
 	defer drainMu.Unlock()
@@ -51,25 +46,17 @@ func bumpNextDrainAt(t time.Time) {
 	}
 }
 
-// HandleGroqError decide qué hacer con un error de una llamada Groq en un site
-// del webhook que replaya como free_text. Devuelve (handled, outErr): si handled,
-// el caller hace `return outErr` sin mandar su copy genérica.
-//   - webhook + RateLimited → encola free_text + ackea → (true, nil)
-//   - replay  + RateLimited → propaga el error al drain, sin mensaje → (true, err)
-//   - cualquier no-429 → (false, nil): el caller manda su copy de error de siempre
 func HandleGroqError(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
 	if EnqueueFreeText(ctx, s, repo, chat, userID, text, err) {
 		return true, nil
 	}
 	var rl *orchestrator.RateLimitedError
 	if errors.As(err, &rl) {
-		return true, err // replay: el drain gatea y deja el job
+		return true, err
 	}
 	return false, nil
 }
 
-// EnqueueFreeText encola un free_text y ackea si err es un 429. No hace nada
-// (false) si no es 429 o si estamos en replay (el drain maneja el 429).
 func EnqueueFreeText(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string, err error) bool {
 	var rl *orchestrator.RateLimitedError
 	if !errors.As(err, &rl) || IsReplaying(ctx) {
@@ -77,8 +64,6 @@ func EnqueueFreeText(ctx context.Context, s Services, repo Repository, chat mess
 	}
 	payload, _ := json.Marshal(FreeTextPayload{Text: text})
 	if ierr := repo.Insert(&PendingJob{UserID: userID, Kind: KindFreeText, Payload: payload}); ierr != nil {
-		// El enqueue falló: el mensaje del usuario se perdió de verdad → tiene que
-		// saberlo (msgCouldNotSave, no msgSomethingBroke).
 		slog.ErrorContext(ctx, "enqueue free_text failed", "user_id", userID, "err", ierr)
 		s.SendText(ctx, chat, msgCouldNotSave("tu mensaje"))
 		return true
@@ -88,9 +73,6 @@ func EnqueueFreeText(ctx context.Context, s Services, repo Repository, chat mess
 	return true
 }
 
-// EnqueueUpdatePick encola un update_pick (preserva el pick del
-// usuario). Solo lo llama finishMovementUpdatePickFlow (webhook-only), así que no
-// necesita el guard de replay.
 func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, message, txID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
 	var rl *orchestrator.RateLimitedError
 	if !errors.As(err, &rl) {
@@ -107,10 +89,6 @@ func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, chat me
 	return true
 }
 
-// EnqueueBehindPending: si el usuario ya tiene jobs pendientes, encola este texto
-// también y ackea — aunque el cupo haya vuelto — para que el drain lo procese en
-// orden (FIFO). Evita que "no, 600" se procese antes de "gasté 500". Solo texto
-// libre, solo en el webhook (el drain no pasa por acá). Devuelve true si encoló.
 func EnqueueBehindPending(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string) bool {
 	n, err := repo.CountByUser(userID)
 	if err != nil || n == 0 {
@@ -119,7 +97,7 @@ func EnqueueBehindPending(ctx context.Context, s Services, repo Repository, chat
 	payload, _ := json.Marshal(FreeTextPayload{Text: text})
 	if ierr := repo.Insert(&PendingJob{UserID: userID, Kind: KindFreeText, Payload: payload}); ierr != nil {
 		slog.ErrorContext(ctx, "enqueue behind pending failed", "user_id", userID, "err", ierr)
-		return false // no pudimos encolar → dejá que el flujo normal intente
+		return false
 	}
 	s.SendText(ctx, chat, msgQueuedBehindPending)
 	return true

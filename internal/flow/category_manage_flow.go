@@ -17,20 +17,14 @@ const (
 	OptionAcceptSuggestion = "accept_suggestion"
 	OptionChooseOther      = "choose_other"
 
-	// valores de conversation.KeyTargetOrigin
 	TargetOriginSuggested = "suggested"
 	TargetOriginManual    = "manual"
 
-	// DefaultCategoryIcon es el ícono cuando una fila no tiene uno propio.
 	DefaultCategoryIcon = "📂"
 
-	// TopDescriptionsForSuggestion acota cuántas descripciones se le mandan al LLM
-	// como contexto: suficientes para desambiguar, pocos para no diluir.
 	TopDescriptionsForSuggestion = 5
 )
 
-// OnCategoryManageCancel marca el flujo como cancelado, para que el finish
-// saltee toda escritura. Mismo contrato que OnAccountManageCancel.
 func OnCategoryManageCancel(value string, data conversation.Data) conversation.Data {
 	if value != OptionCancel {
 		return data
@@ -40,20 +34,12 @@ func OnCategoryManageCancel(value string, data conversation.Data) conversation.D
 	return next
 }
 
-// ClearTarget borra el destino elegido. Lo llama toda transición que reabre esa
-// elección: sin esto, aceptar la sugerencia, volver con Atrás y elegir "otra"
-// arrastraría el destino viejo y fusionaría contra la categoría rechazada.
 func ClearTarget(data conversation.Data) conversation.Data {
 	next := ClearTargetSubcategory(data)
 	delete(next, conversation.KeyTargetCategory)
 	return next
 }
 
-// ClearTargetSubcategory borra la subcategoría destino pero conserva la
-// categoría. Es lo que hace falta al volver desde el confirm al picker de
-// subcategoría: ese step lista las subcategorías DE una categoría, así que si
-// también se borrara la categoría el usuario aterrizaría en un picker vacío,
-// sin nada que elegir y sin entender por qué.
 func ClearTargetSubcategory(data conversation.Data) conversation.Data {
 	next := conversation.CopyData(data)
 	delete(next, conversation.KeyTargetSubcategoryID)
@@ -81,10 +67,6 @@ func TargetLabel(data conversation.Data) string {
 	return conversation.StringOrEmpty(data[conversation.KeyTargetCategory]) + " › " + conversation.StringOrEmpty(data[conversation.KeyTargetSubcategory])
 }
 
-// NewCategoryManagePickFlow es el flujo 1: un solo paso para elegir cuál de las
-// categorías propias sacar. Termina ahí porque lo que sigue necesita una
-// llamada al LLM, y eso no puede vivir dentro de un SkipIf — el controller
-// hace el puente (ver proceedToCategoryTarget) y arranca el flujo 2.
 func NewCategoryManagePickFlow(subs ownedSubcategoryLister) *conversation.Flow {
 	steps := map[string]conversation.Step{
 		StepPickSource: conversation.ChoiceStep{
@@ -105,11 +87,6 @@ func NewCategoryManagePickFlow(subs ownedSubcategoryLister) *conversation.Flow {
 				if value == OptionCancel {
 					return OnCategoryManageCancel(OptionCancel, data)
 				}
-				// Todo-o-nada: la fila se busca ANTES de tocar Data. Si esta
-				// segunda consulta no matchea (la vista del cache puede cambiar
-				// entre el armado de opciones y este OnChoice), no dejamos un
-				// origen a medias (ID seteado sin nombres) — devolvemos data
-				// intacta.
 				owned, _ := subs.FindOwnedByUser(data.UserID())
 				for _, s := range owned {
 					if strconv.FormatUint(uint64(s.ID), 10) == value {
@@ -133,12 +110,6 @@ func NewCategoryManagePickFlow(subs ownedSubcategoryLister) *conversation.Flow {
 	return flow
 }
 
-// NewCategoryManageTargetFlow es el flujo 2: ofrece la sugerencia del LLM, cae
-// a un picker manual de dos pasos si no hay o si el usuario la rechaza, y
-// termina en un confirm que muestra exactamente lo que se va a escribir.
-//
-// El picker es de dos pasos porque el catálogo global tiene ~90 subcategorías:
-// 90 botones en Telegram es inusable.
 func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flow {
 	hasSuggestion := func(data conversation.Data) bool {
 		return conversation.StringOrEmpty(data[conversation.KeySuggestedSubcategory]) != ""
@@ -152,8 +123,6 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 			PromptText: func(data conversation.Data) string {
 				return MsgCategoryManageSuggest(SourceLabel(data), conversation.StringOrEmpty(data[conversation.KeyMovementCount]), SuggestionLabel(data))
 			},
-			// El orden importa: sin movimientos no hay destino que elegir, así
-			// que ese chequeo va primero.
 			SkipIf: func(data conversation.Data) (string, bool) {
 				if isEmpty(data) {
 					return StepConfirmCategoryManage, true
@@ -192,7 +161,6 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 			PromptText: func(conversation.Data) string { return MsgCategoryManagePickTargetCat },
 			OptionsFunc: func(data conversation.Data) []conversation.ChoiceOption {
 				extra := make([]conversation.ChoiceOption, 0, 2)
-				// Solo se ofrece volver si hay una sugerencia a la que volver.
 				if hasSuggestion(data) {
 					extra = append(extra, BackOptionTo(StepSuggestTarget))
 				}
@@ -230,7 +198,7 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 					}
 					id := strconv.FormatUint(uint64(s.ID), 10)
 					if id == sourceID {
-						continue // el destino nunca puede ser el origen
+						continue
 					}
 					opts = append(opts, conversation.ChoiceOption{
 						Label:    SubcategoryIcon(s) + " " + s.Subcategory,
@@ -245,11 +213,6 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				if value == OptionCancel || value == OptionBack {
 					return OnCategoryManageCancel(value, data)
 				}
-				// Todo-o-nada: el ID y el nombre se escriben juntos o no se
-				// escribe ninguno. Un destino con ID pero sin nombre haría que
-				// el confirm dijera «Alimentos › » y el usuario no podría
-				// verificar qué está por confirmar — en una operación que mueve
-				// movimientos y borra una fila.
 				all, _ := subs.FindAllForUser(data.UserID())
 				for _, s := range all {
 					if strconv.FormatUint(uint64(s.ID), 10) != value {
@@ -277,8 +240,6 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				opts := []conversation.ChoiceOption{
 					{Label: "✅ Confirmar", Value: OptionConfirm, Finish: true},
 				}
-				// El Atrás vuelve al step donde se eligió el destino. Con
-				// conteo 0 no hubo elección, así que no se ofrece.
 				switch {
 				case isEmpty(data):
 				case conversation.StringOrEmpty(data[conversation.KeyTargetOrigin]) == TargetOriginSuggested:
@@ -294,9 +255,6 @@ func NewCategoryManageTargetFlow(subs targetSubcategoryLister) *conversation.Flo
 				case OptionCancel:
 					return OnCategoryManageCancel(OptionCancel, data)
 				case OptionBack:
-					// Volver a la sugerencia descarta el destino entero; volver
-					// al picker de subcategoría conserva la categoría, que es
-					// justo lo que ese step necesita para tener qué listar.
 					if conversation.StringOrEmpty(data[conversation.KeyTargetOrigin]) == TargetOriginSuggested {
 						return ClearTarget(data)
 					}

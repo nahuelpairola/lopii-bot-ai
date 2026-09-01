@@ -8,9 +8,6 @@ import (
 	"lopiibot.com/internal/database"
 )
 
-// state es el registro persistido en conversation_states. flow_name
-// identifica qué Flow está corriendo, step_name en qué paso está, y data
-// es el JSON serializado del Data acumulado del flujo.
 type state struct {
 	UserID    uint64    `gorm:"column:user_id;primaryKey"`
 	FlowName  string    `gorm:"column:flow_name"`
@@ -23,7 +20,6 @@ func (state) TableName() string {
 	return "conversation_states"
 }
 
-// repository implementa StateStore contra Postgres vía GORM.
 type repository struct {
 	conn *database.Connection
 }

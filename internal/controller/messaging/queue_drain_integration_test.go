@@ -26,37 +26,9 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// fakeChats es el chatResolver del drenaje para este test: como el
-// orchestrator, va fakeado a propósito — lo que se prueba acá es el
-// cableado (drainUser → replayJob → handleFreeText → StartLoop → INSERT),
-// no el transporte real. Un telegram.Transport de verdad con *bot.Bot nil
-// paniquea en el primer chat.Send; messenger.FakeChat no.
 type fakeChats struct{ chat *messenger.FakeChat }
 
 func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }
-
-// El drenaje de la cola de 429, de punta a punta contra el Postgres local:
-// pendingjob.Run → drainUser → replayJob → handleFreeText → StartLoop →
-// record_movements → INSERT. Es el único test del repo que prueba que un
-// mensaje perdido por falta de cupo vuelve y la plata TERMINA EN LA BASE; los
-// 15 unitarios de internal/pendingjob cubren encolar, diferir, rendirse y el
-// flag de replay, pero todos con fakes y ninguno toca Postgres.
-//
-// El orchestrator va fakeado A PROPÓSITO. Hasta 2026-08-18 esto corría contra
-// Groq real bajo el tag queue_eval, y esa versión mentía en las dos
-// direcciones: sin GROQ_APIKEY se salteaba en silencio (verde que no probaba
-// nada) y con la key se caía por el techo de 8.000 TPM o porque el modelo
-// elegía parkear en vez de registrar (rojo que no era un bug). Peor: estuvo
-// roto y mudo desde el 2026-08-12, cuando a419524 borró el router y mandó el
-// replay por el loop unificado sin actualizar la config del eval, que siguió
-// pasando el modelo del camino viejo.
-//
-// Con el tool call dictado, lo que se prueba es el CABLEADO —que es lo que el
-// test siempre quiso probar— y se prueba en milisegundos, sin cupo y sin key.
-// Qué tool elige el modelo es trabajo de los evals de internal/orchestrator.
-//
-// OJO: pendingjob.Run drena los jobs de TODOS los usuarios de la base que
-// apunte, no sólo los de este test. Correr contra local/dev, nunca contra prod.
 
 func queueDrainConn(t *testing.T) *database.Connection {
 	conn, err := database.Initialize(database.Creds{
@@ -68,9 +40,6 @@ func queueDrainConn(t *testing.T) *database.Connection {
 	return conn
 }
 
-// queueDrainUser siembra un usuario descartable con un channel_user_id
-// numérico: drainUser lo parsea con strconv.ParseInt, así que no puede ser el
-// "qeval-<n>" que usa query_eval_test.go (ese test nunca llega a drainUser).
 func queueDrainUser(t *testing.T, conn *database.Connection) (uid uint64, cleanup func()) {
 	userRepo := user.NewRepository(conn)
 	telegramID := fmt.Sprintf("%d", time.Now().UnixNano())
@@ -86,22 +55,9 @@ func queueDrainUser(t *testing.T, conn *database.Connection) (uid uint64, cleanu
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&pendingjob.PendingJob{})
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&movement.Movement{})
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&account.Account{})
-		// chat_turns tiene FK a users y el loop escribe una fila por turno. El
-		// test viejo no la limpiaba: el DELETE del usuario fallaba con
-		// query_turns_user_id_fkey y dejaba usuarios colgados en la base de dev,
-		// uno por corrida. GORM no lo gritaba porque el error del Delete no se
-		// chequea acá — el cleanup es best-effort a propósito, así que la única
-		// defensa es borrar en el orden correcto.
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&chathistory.ChatTurn{})
-		// conversation_states va por el repositorio, no por SQL suelto: la regla
-		// del repo es que a esa tabla se entra sólo por conversation.
 		_ = conversation.NewRepository(conn).Clear(uid)
-		// intent_events tiene FK a users. Este controller va con metrics=nil, así
-		// que no escribe ahí; se limpia igual por si otra corrida concurrente
-		// contra la misma base dejó una fila y el delete del usuario se traba.
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&metric.IntentEvent{})
-		// user_channels tiene FK a users: hay que borrarla antes que la fila de
-		// usuario o el DELETE final falla igual que las otras tablas de arriba.
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&user.UserChannel{})
 		conn.DB.Unscoped().Where("id = ?", uid).Delete(&user.User{})
 	}
@@ -128,8 +84,6 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 	}
 	bancoID := uint64(banco.ID)
 
-	// Saldo de apertura: con saldo 0 el gasto deja la cuenta en negativo y
-	// dispara el gate movement_negative_confirm en vez de insertar derecho.
 	saldoInicial, err := cache.FindByCategoryAndSubcategory(uid, "Sistema", "Saldo inicial")
 	if err != nil {
 		t.Fatalf("find Sistema|Saldo inicial: %v", err)
@@ -142,15 +96,9 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 		t.Fatalf("insert saldo de apertura: %v", err)
 	}
 
-	// El engine y el flujo de alta son los REALES, como en server.go: si el loop
-	// terminara parkeando, el parkeo tiene dónde caer en vez de explotar.
 	engine := conversation.NewEngine(conversation.NewRepository(conn), FlowResumeLabel)
 	engine.Register(flow.NewMovementCreateFlow(cache, accRepo))
 
-	// El fake dicta el tool call. classifyPairs es obligatorio: record_movements
-	// ya no recibe la categoría del loop —la asigna e.classify()— y sin un par
-	// el movimiento cae en PENDING_REVIEW, abre gap y el turno parkea en vez de
-	// insertar.
 	orch := &fakeFullOrchestrator{
 		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
@@ -177,8 +125,6 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 	defer cancel()
 	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
 
-	// Sin Groq de por medio el drenaje es inmediato; el deadline corto está para
-	// que un cuelgue falle rápido en vez de comerse el timeout del paquete.
 	deadline := time.Now().Add(10 * time.Second)
 	for {
 		n, err := jobsRepo.CountByUser(uid)
@@ -208,7 +154,6 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 	if want := decimal.RequireFromString("500"); !movs[0].Amount.Abs().Equal(want) {
 		t.Errorf("want abs(amount)=%s, got %s", want, movs[0].Amount)
 	}
-	// El signo ES la contabilidad: un gasto guardado en positivo infla el saldo.
 	if !movs[0].Amount.IsNegative() {
 		t.Errorf("el gasto quedó en %s: tiene que guardarse negativo", movs[0].Amount)
 	}
@@ -217,28 +162,6 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 	}
 }
 
-// El bug de la ronda 1 de review de la Task 8: SendPrompt/StartFlow/
-// FinishAnswerQuery/FinishManageSettings pasaban por pairOrLog, que sólo
-// reconocía un edgeChat — el tipo concreto que arma el borde del webhook con
-// newEdgeChat. Un chat resuelto por chatResolver.ChatFor (exactamente lo que
-// el drenaje usa) es OTRO tipo concreto, así que el type assertion fallaba
-// siempre, en silencio: replayJob devolvía nil (ni error ni 429), el job se
-// borraba, y el usuario no recibía nada — peor que antes del refactor, y en
-// contra del "nunca en silencio" de pendingjob/AGENTS.md.
-//
-// Este test reproduce exactamente ese camino: un replay cuyo turno NO puede
-// cerrar solo — necesita preguntarle algo al usuario — y afirma que la
-// pregunta LLEGÓ al chat. TestQueueDrain_ReplayInsertsTheMovement (arriba)
-// sólo cubre el camino feliz (CREATE que cierra sin preguntar nada) y por
-// construcción no podía haber atrapado este bug: nunca pasa por SendPrompt.
-//
-// El camino elegido es correct_movement con una corrección ambigua: dos
-// movimientos recientes sin relación textual con el mensaje, así que
-// resolveCandidates arma un picker (agent_executor.go:park, rama default) en
-// vez de resolver solo — eso es lo que fuerza el park CON Questions, que es
-// lo único que abre openAskUser en vez de resumeAgentAction (el otro sitio
-// afectado, StartFlow, ya lo cubre TestQueueDrain_ReplayInsertsTheMovement
-// indirectamente en el camino feliz).
 func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 	conn := queueDrainConn(t)
 
@@ -254,9 +177,6 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 
 	uid, cleanup := queueDrainUser(t, conn)
 	t.Cleanup(cleanup)
-	// t.Cleanup es LIFO: registrado DESPUÉS de cleanup, así que corre ANTES —
-	// pending_actions tiene FK a users, y este escenario deja una fila viva a
-	// propósito (el picker sigue abierto, sin contestar).
 	t.Cleanup(func() {
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&pendingaction.PendingAction{})
 	})
@@ -279,10 +199,6 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 		t.Fatalf("insert saldo de apertura: %v", err)
 	}
 
-	// Dos gastos recientes, sin relación textual con el mensaje de corrección
-	// de abajo — ninguno matchea, así que resolveCandidates cae en el
-	// fallback por recencia con AMBOS como candidatos, y park() abre el
-	// picker en vez de resolver uno solo.
 	comida, err := cache.FindByCategoryAndSubcategory(uid, "Alimentación", "Supermercado")
 	if err != nil {
 		t.Fatalf("find Alimentación|Supermercado: %v", err)
@@ -297,20 +213,11 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 	if err := movRepo.InsertBatch(rows); err != nil {
 		t.Fatalf("insert los dos gastos ambiguos: %v", err)
 	}
-	// resolveCandidates tiene un atajo (reference_resolution.go): si nada
-	// matchea textualmente pero el usuario "acaba de cargar algo"
-	// (CreatedAt dentro de flow.JustCreatedWindow, 10 min), devuelve UN solo
-	// candidato — el recién cargado — en vez de un picker. Envejecer los dos
-	// movimientos desactiva ese atajo a propósito, para forzar el picker que
-	// este test necesita.
 	old := time.Now().Add(-20 * time.Minute)
 	if err := conn.DB.Model(&movement.Movement{}).Where("id IN ?", []uint{rows[0].ID, rows[1].ID}).Update("created_at", old).Error; err != nil {
 		t.Fatalf("age the two movements: %v", err)
 	}
 
-	// ask_user tiene que estar registrado: es el flow que abre la pregunta del
-	// picker. movement_create no hace falta acá — este escenario no llega a
-	// record_movements.
 	engine := conversation.NewEngine(conversation.NewRepository(conn), FlowResumeLabel)
 	engine.Register(flow.NewAskUserFlow())
 
@@ -328,8 +235,6 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 		chatHistory: chatHist, actions: actionsRepo,
 	}
 
-	// El mensaje encolado no comparte ningún token con las dos descripciones
-	// de arriba — a propósito, para forzar el fallback por recencia.
 	payload, _ := json.Marshal(pendingjob.FreeTextPayload{Text: "che, corregime el monto a setecientos"})
 	job := &pendingjob.PendingJob{UserID: uid, Kind: pendingjob.KindFreeText, Payload: payload}
 	if err := jobsRepo.Insert(job); err != nil {
@@ -360,9 +265,6 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 		t.Fatal("el replay no llegó al loop: se drenó el job sin ejecutar nada")
 	}
 
-	// LA aserción: el bug de la ronda 1 hacía que esto quedara vacío — el
-	// picker se armaba (parkAgentActions insertaba la pending_action) pero
-	// SendPrompt nunca llegaba a mandarlo, y el job se borraba igual.
 	if len(chat.Sent) == 0 {
 		t.Fatal("el usuario no recibió NADA: el gap-fill se perdió en silencio (el bug de la ronda 1)")
 	}
@@ -371,8 +273,6 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 		t.Fatalf("el último mensaje no trae el picker de candidatos: %+v", last)
 	}
 
-	// Y en la base: la acción quedó parkeada esperando la respuesta, no
-	// resuelta ni perdida.
 	pending, err := actionsRepo.NextForUser(uid)
 	if err != nil {
 		t.Fatalf("expected a pending action open, got err: %v", err)
@@ -382,9 +282,6 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 	}
 }
 
-// Un job viejo se descarta SIN llamar al modelo: reintentarlo gastaría cupo por
-// un mensaje que el usuario ya dio por perdido. El orchestrator va nil a
-// propósito — si el drenaje lo tocara, el test panichea en vez de pasar.
 func TestQueueDrain_GiveUp_DoesNotCallOrchestrator(t *testing.T) {
 	conn := queueDrainConn(t)
 	jobsRepo := pendingjob.NewRepository(conn)

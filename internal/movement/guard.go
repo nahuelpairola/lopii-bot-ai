@@ -9,9 +9,6 @@ import (
 	"lopiibot.com/internal/account"
 )
 
-// Los sentinels del guard. Los call sites los mapean con errors.Is a copy para
-// el usuario y a un valor estable de log (ver messaging.createErrorCopy y
-// messaging.guardReason).
 var (
 	ErrZeroAmount              = errors.New("movement amount is zero")
 	ErrCurrencyAccountMismatch = errors.New("movement currency differs from its account")
@@ -19,7 +16,6 @@ var (
 	ErrNoAccountForCurrency    = errors.New("no account exists for this currency")
 )
 
-// AccountShortfall is one account a CREATE would drive into/deeper into negative.
 type AccountShortfall struct {
 	AccountID uint64
 	Name      string
@@ -27,16 +23,6 @@ type AccountShortfall struct {
 	After     decimal.Decimal
 }
 
-// Normalize enforces the money-model invariants on a fully-built,
-// transaction_id-assigned movement set. It mutates in place: expense→negative,
-// income→positive (LLM sign ignored); a nil account resolves to the currency's
-// default; and it rejects zero amounts, currency/account mismatches, and
-// malformed transfer groups. Pure (no repo/DB) — accountsByID and
-// defaultByCurrency are supplied by the caller.
-//
-// Vive en este paquete, y no en el controller, porque es el invariante del tipo
-// Movement: las reglas van al lado de lo que protegen. No agrega ninguna
-// dependencia — solo necesita account y decimal, que este paquete ya usa.
 func Normalize(movs []Movement, accountsByID map[uint64]account.Account, defaultByCurrency map[string]uint64) ([]Movement, error) {
 	for i := range movs {
 		m := &movs[i]
@@ -60,7 +46,6 @@ func Normalize(movs []Movement, accountsByID map[uint64]account.Account, default
 		case Income:
 			m.Amount = m.Amount.Abs()
 		}
-		// transfer: keep the LLM-classified sign (out negative / in positive).
 	}
 	if err := validateTransferGroups(movs); err != nil {
 		return nil, err
@@ -68,8 +53,6 @@ func Normalize(movs []Movement, accountsByID map[uint64]account.Account, default
 	return movs, nil
 }
 
-// validateTransferGroups checks every transfer belongs to a 2-leg,
-// same-transaction_id, distinct-account group; same-currency groups sum to 0.
 func validateTransferGroups(movs []Movement) error {
 	type leg struct {
 		accounts map[uint64]bool
@@ -84,11 +67,6 @@ func validateTransferGroups(movs []Movement) error {
 			continue
 		}
 		if m.TransactionID == nil || m.AccountID == nil {
-			// Las tres ramas de acá devolvían el MISMO sentinel, así que en
-			// producción un transfer sin group y uno con las dos piernas del mismo
-			// signo eran indistinguibles — y el agent loop paga una vuelta entera
-			// de ~4.200 tokens corrigiendo, sin que se pueda saber qué corrigió.
-			// El %w mantiene el errors.Is de todos los call sites.
 			return fmt.Errorf("%w: leg sin group o sin cuenta", ErrTransferLeg)
 		}
 		g := groups[*m.TransactionID]
@@ -114,10 +92,6 @@ func validateTransferGroups(movs []Movement) error {
 	return nil
 }
 
-// AssignTransactionIDs groups movements by the LLM-supplied group tag: a
-// non-empty group with 2+ members shares one fresh transaction_id; a lone or
-// empty group stays nil (independent). Replaces the old len(rows)>1 heuristic
-// that wrongly grouped independent movements.
 func AssignTransactionIDs(movs []Movement, groups []string) {
 	counts := map[string]int{}
 	for _, g := range groups {
@@ -139,11 +113,6 @@ func AssignTransactionIDs(movs []Movement, groups []string) {
 	}
 }
 
-// CheckBalances returns the accounts a movement set would drive into
-// or deeper into negative: after = before + Σdeltas, firing only when
-// after < 0 AND after < before (a net outflow that leaves it negative — an
-// inflow, or an outflow that stays >= 0, never fires; an already-negative
-// account isn't nagged unless the movement makes it worse).
 func CheckBalances(movs []Movement, balances map[uint64]decimal.Decimal, accountsByID map[uint64]account.Account) []AccountShortfall {
 	deltas := map[uint64]decimal.Decimal{}
 	for _, m := range movs {

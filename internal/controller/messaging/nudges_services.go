@@ -14,12 +14,6 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// Los métodos de este archivo implementan nudges.Services: lo que el
-// dispatcher de tips necesita del mundo, con el *controller* como
-// implementación. Puentes de una línea, como en agent_services.go.
-// *controller implementa la interfaz directamente desde la Task 7 — SendText,
-// SendPrompt y HandleQuery ya sólo piden messenger.Chat, así que no hace
-// falta un puente.
 var _ nudges.Services = (*controller)(nil)
 
 func (c *controller) EngineInProgress(userID uint64) (bool, error) {

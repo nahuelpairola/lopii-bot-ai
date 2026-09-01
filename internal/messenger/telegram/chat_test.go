@@ -7,9 +7,6 @@ import (
 	"lopiibot.com/internal/conversation"
 )
 
-// La grilla es 2 por fila salvo que UNA etiqueta sea larga: las filas son
-// parejas, así que la más larga manda. Ver el comentario de
-// maxLabelForTwoPerRow — el picker de correcciones queda inservible si se corta.
 func TestChunkButtons_TwoPerRow(t *testing.T) {
 	btns := []conversation.Button{
 		{Label: "🍔 Alimentación", Data: "a"},
@@ -30,7 +27,7 @@ func TestChunkButtons_TwoPerRow(t *testing.T) {
 
 func TestChunkButtons_OnePerRowWhenALabelIsLong(t *testing.T) {
 	btns := []conversation.Button{
-		{Label: "🔴 Cafe · $2.000 · 27/07", Data: "a"}, // 24 runas > 20
+		{Label: "🔴 Cafe · $2.000 · 27/07", Data: "a"},
 		{Label: "corto", Data: "b"},
 	}
 	rows := chunkButtons(btns, "")
@@ -50,7 +47,6 @@ func TestChunkButtons_EmptyIsNil(t *testing.T) {
 	}
 }
 
-// El ParseMode es un telegramismo y vive acá, no en el core.
 func TestBuildParams_AlwaysHTMLAndKeyboardOnlyWhenThereAreButtons(t *testing.T) {
 	p := buildParams(42, conversation.Prompt{Text: "hola"}, "")
 	if p.ParseMode != htmlParseMode {

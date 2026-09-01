@@ -40,15 +40,10 @@ func TestChoiceStep_Skip_DelegatesToSkipIf(t *testing.T) {
 	}
 }
 
-// fakeStep is a minimal Step used to test the engine/flow skip
-// mechanism directly, without going through TextStep/ChoiceStep.
 type fakeStep struct {
 	nextStep string
 	skip     func(data Data) (string, bool)
-	// process, if set, overrides the default Process behavior (plain
-	// Advance(nextStep, data) with data untouched). Lets a specific test
-	// simulate a step that actually writes to data before advancing.
-	process func(input Input, data Data) Transition
+	process  func(input Input, data Data) Transition
 }
 
 func (s fakeStep) Prompt(data Data) Prompt { return Prompt{Text: "prompt:" + s.nextStep} }
@@ -69,7 +64,7 @@ func (s fakeStep) Skip(data Data) (string, bool) {
 func TestFlow_AdvanceThroughSkips_StopsAtNonSkippableStep(t *testing.T) {
 	steps := map[string]Step{
 		"a": fakeStep{nextStep: "b", skip: func(Data) (string, bool) { return "b", true }},
-		"b": fakeStep{nextStep: "c"}, // not skippable
+		"b": fakeStep{nextStep: "c"},
 		"c": fakeStep{nextStep: "c"},
 	}
 	flow, err := NewFlow("test", "a", steps)
@@ -234,19 +229,12 @@ func TestTextStep_PossibleNextSteps_IncludesEscapeDestinations(t *testing.T) {
 	}
 }
 
-// TestCloneDataNeverReturnsNil fija el invariante que hace que cloneData no sea
-// un maps.Clone pelado.
-//
-// Un `data: null` en la columna JSONB deserializa a un Data nil SIN que
-// json.Unmarshal reporte error (ver repository.Get), y maps.Clone(nil) devuelve
-// nil. Como todos los call sites escriben sobre la copia, sin la guarda el
-// primer write paniquea y se lleva puesto el request.
 func TestCloneDataNeverReturnsNil(t *testing.T) {
 	got := cloneData(nil)
 	if got == nil {
 		t.Fatal("cloneData(nil) devolvió nil: el próximo write va a paniquear")
 	}
-	got["k"] = "v" // no debe paniquear
+	got["k"] = "v"
 	if got["k"] != "v" {
 		t.Errorf("la copia no es escribible: %v", got)
 	}

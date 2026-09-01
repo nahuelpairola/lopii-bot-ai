@@ -25,7 +25,6 @@ func (f *fakeJobs) ListPendingUserIDs() ([]uint64, error)          { return nil,
 func (f *fakeJobs) Delete(uint64) error                            { return nil }
 func (f *fakeJobs) CountByUser(uint64) (int64, error)              { return f.count, nil }
 
-// orchestrator stub que siempre devuelve RateLimitedError en el loop.
 type enqueueTestServices struct {
 	texts []string
 }
@@ -65,7 +64,6 @@ func TestEnqueueFreeText_RateLimited_Enqueues(t *testing.T) {
 	}
 }
 
-// jobText devuelve el texto que viajó en un job free_text.
 func TestEnqueueFreeText_NotRateLimited_NoEnqueue(t *testing.T) {
 	jobs := &fakeJobs{}
 	svc := &enqueueTestServices{}

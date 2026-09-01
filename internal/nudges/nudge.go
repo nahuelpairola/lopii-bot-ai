@@ -13,8 +13,6 @@ import (
 )
 
 const (
-	// correctTip vive en flow (NudgeCorrectTip) — la marca el finish de
-	// CREATE; el alias conserva el nombre corto para la lista de nudges.
 	correctTip         = flow.NudgeCorrectTip
 	nudgeQueryTip      = "query_tip"
 	nudgeReminderOffer = "reminder_offer"
@@ -28,44 +26,27 @@ const (
 	nudgeCompareTip     = "query_compare_tip"
 	nudgeUsdHoldingsTip = "query_usd_holdings_tip"
 
-	// nudgeQueryPrefix marca el callback del botón de un tip. Se rutea en
-	// handleConversationInput ANTES del engine, así un flow abierto no se come
-	// el tap como si fuera una opción suya.
 	nudgeQueryPrefix = "nudge_q:"
-	// nudgeMenuData es el callback del botón "Preguntame" del tip recurrente.
-	nudgeMenuData = "nudge_menu"
-	nudgeMenuTip  = "query_menu_tip"
+	nudgeMenuData    = "nudge_menu"
+	nudgeMenuTip     = "query_menu_tip"
 
-	// Dos cooldowns. Los reactivos responden a algo que el usuario acaba de
-	// hacer y pueden salir a diario; los de pregunta son ocho, y a 20h serían
-	// ocho días seguidos de tips, que se lee como que el bot no te deja en paz.
-	nudgeCooldown         = 20 * time.Hour // ~1 por día
-	questionNudgeCooldown = 44 * time.Hour // ~1 cada dos días
-	// menuNudgeCooldown: el recurrente sale cada ~7 días, no cada dos. Es un
-	// recordatorio, no una lección.
-	menuNudgeCooldown = 7 * 24 * time.Hour
+	nudgeCooldown         = 20 * time.Hour
+	questionNudgeCooldown = 44 * time.Hour
+	menuNudgeCooldown     = 7 * 24 * time.Hour
 
-	queryTipMin    = 5 // movimientos en los últimos 7 días
-	transferTipMin = 2 // cuentas
+	queryTipMin    = 5
+	transferTipMin = 2
 	reminderDays   = 3
 )
 
 type nudgeDef struct {
-	key string
-	// when recibe la snapshot de actividad compartida: los gates de densidad
-	// se resuelven sobre ella, sin una query por gate.
-	when func(s Services, userID uint64, stats *nudgeStats) bool
-	text string
-	// question, si no está vacía, cuelga un botón del tip con esta pregunta
-	// como label. El label ES la pregunta a propósito: el usuario aprende la
-	// frase y después la puede escribir solo.
-	question string
-	// recurring: solo el menú. Cambia el cooldown, cómo se marca
-	// (MarkSentAgain) y hace que el once-ever no lo frene.
+	key       string
+	when      func(s Services, userID uint64, stats *nudgeStats) bool
+	text      string
+	question  string
 	recurring bool
 }
 
-// cooldown: los tips de pregunta salen más espaciados que los reactivos.
 func (n nudgeDef) cooldown() time.Duration {
 	switch {
 	case n.recurring:
@@ -76,8 +57,6 @@ func (n nudgeDef) cooldown() time.Duration {
 	return nudgeCooldown
 }
 
-// nudgeQuestion devuelve la pregunta de una key, o "" si no existe o no tiene
-// pregunta. Es la validación del callback: una key desconocida no dispara nada.
 func nudgeQuestion(key string) string {
 	for _, n := range nudges {
 		if n.key == key {
@@ -87,12 +66,6 @@ func nudgeQuestion(key string) string {
 	return ""
 }
 
-// nudges se llena en init() y no en el literal de la var por una restricción
-// del compilador: el gate del menú llama a eligibleQuestions, que a su vez
-// recorre nudges. En runtime no hay ciclo (el closure corre mucho después del
-// arranque), pero el análisis de inicialización de Go lo sigue a través del
-// cuerpo de la función y lo rechaza igual. Moverlo a init() lo evita sin
-// partir la lista en dos lugares.
 var nudges []nudgeDef
 
 func init() {
@@ -121,11 +94,6 @@ func init() {
 			text: "🔄 Tip: movés plata entre tus cuentas así: «pasé 50 mil del banco a MP».",
 		},
 
-		// Los tips de pregunta, ordenados por VALOR decreciente y no por umbral:
-		// gana el primero que matchea, así que el orden es la prioridad. El
-		// criterio de admisión no es "¿se puede contestar?" sino "¿la respuesta
-		// cambia algo?" — un número que el usuario ya podía adivinar no vale un
-		// mensaje, y un tip flojo entrena a ignorar el 💡.
 		{
 			key: nudgeBalanceTip,
 			when: func(s Services, userID uint64, stats *nudgeStats) bool {
@@ -206,23 +174,17 @@ func init() {
 
 		{
 			key: nudgeMenuTip,
-			// "Todo lo que hoy te puedo ofrecer, ya te lo ofrecí" — y NO "ya te
-			// mandé todos los tips". Hay gates que ciertos usuarios no cumplen
-			// nunca (una sola cuenta => nudgeBalanceTip jamás; recordatorio ya
-			// configurado => nudgeReminderOffer jamás), así que un contador de
-			// pendientes no llegaría a cero y el menú no saldría NUNCA para ellos,
-			// que son justo a los que se les acabaron los tips.
 			when: func(s Services, userID uint64, stats *nudgeStats) bool {
 				if !hasActivityFloor(stats) {
 					return false
 				}
 				elig := eligibleQuestions(s, userID, stats)
 				if len(elig) == 0 {
-					return false // todavía no hay nada que ofrecer
+					return false
 				}
 				for _, n := range elig {
 					if !stats.sent[n.key] {
-						return false // queda una frase por enseñar
+						return false
 					}
 				}
 				return true
@@ -233,9 +195,6 @@ func init() {
 	}
 }
 
-// hasMultipleAccountsNoTransfer: 2+ cuentas y ningún movimiento con
-// subcategoría "Sistema | Transferencia" (excluye compra USD / FCI / ajustes,
-// que también son Type=Transfer pero otra subcategoría).
 func hasMultipleAccountsNoTransfer(s Services, userID uint64) bool {
 	accs, err := s.AccountsFindByUserID(userID)
 	if err != nil || len(accs) < transferTipMin {
@@ -250,21 +209,6 @@ func hasMultipleAccountsNoTransfer(s Services, userID uint64) bool {
 	return err == nil && !exists
 }
 
-// HandleCallback atiende el tap del botón de un tip. Devuelve true si el
-// callback era suyo (y ya lo respondió), false si no le corresponde.
-//
-// Corre ANTES del engine a propósito: si el usuario toca un botón viejo con un
-// flow abierto, el flow no se come el tap como si fuera una opción suya. La
-// consulta es read-only, así que el flow queda intacto esperando su input.
-//
-// Se saltea el loop: ya sabemos que es QUERY, y evitarlo
-// ahorra ~700 tokens por tap. Por eso tampoco escribe en intent_events: esa
-// tabla mide qué tan bien clasifica el router, y acá no hubo clasificación que
-// evaluar. El tap se mide en user_nudges.tapped_at.
-//
-// Si Groq está caído el tap se pierde con msgQueryFailed, y está bien: el
-// botón sigue tocable en el historial, así que el reintento es tocarlo de
-// nuevo. Encolarlo sería contestar veinte minutos tarde algo que ya no importa.
 func HandleCallback(ctx context.Context, s Services, chat messenger.Chat, userID uint64, data string) bool {
 	if data == nudgeMenuData {
 		sendQuestionMenu(ctx, s, chat, userID)
@@ -279,14 +223,10 @@ func HandleCallback(ctx context.Context, s Services, chat messenger.Chat, userID
 		return false
 	}
 	if s.NudgesAvailable() {
-		// Best-effort: perder la métrica nunca vale perder la respuesta.
 		if err := s.NudgesMarkTapped(userID, key); err != nil {
 			slog.ErrorContext(ctx, "nudge tap mark failed", "key", key, "err", err)
 		}
 	}
-	// La copy de fracaso la manda el caller (ver handleQuery): acá se manda siempre,
-	// incluso con un 429, que es justo lo que dice el comentario de arriba — el tap
-	// no se encola porque el botón sigue tocable en el historial.
 	if answered, err := s.HandleQuery(ctx, chat, userID, question); !answered {
 		if err != nil {
 			slog.ErrorContext(ctx, "nudge query failed", "key", key, "err", err)
@@ -296,9 +236,6 @@ func HandleCallback(ctx context.Context, s Services, chat messenger.Chat, userID
 	return true
 }
 
-// Maybe dispara como mucho un nudge tras procesar un mensaje. Guard:
-// nunca con un flow en curso; cooldown por tipo de tip; once-ever por
-// (user, nudge). Best-effort: cualquier error se loguea y se sigue.
 func Maybe(ctx context.Context, s Services, chat messenger.Chat, userID uint64) {
 	if !s.NudgesAvailable() {
 		return
@@ -318,9 +255,6 @@ func Maybe(ctx context.Context, s Services, chat messenger.Chat, userID uint64) 
 	if err != nil {
 		return
 	}
-	// Corte barato: nudgeCooldown es el más chico de todos, así que dentro de
-	// esa ventana no puede salir ningún tip y se vuelve sin armar la snapshot.
-	// Los cooldowns por tipo filtran después, dentro del loop.
 	if last != nil && time.Since(*last) < nudgeCooldown {
 		return
 	}

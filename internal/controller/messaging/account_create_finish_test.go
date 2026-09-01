@@ -97,8 +97,6 @@ func TestFinishAccountCreateFlow_MovementInsertFails_Propagates(t *testing.T) {
 		subcategories: &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Sistema|Saldo inicial": sub}},
 	}
 
-	// Should not panic even though b is nil (sendText guards it) and the
-	// movement insert fails after the account was already created.
 	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Jubilación", "ARS", "0"))
 
 	if len(accRepo.inserted) != 1 {

@@ -129,7 +129,7 @@ func TestAssignTransactionIDs_SharedGroupOneID(t *testing.T) {
 
 func TestAssignTransactionIDs_IndependentAreNil(t *testing.T) {
 	movs := make([]Movement, 3)
-	AssignTransactionIDs(movs, []string{"", "", ""}) // pan, med, carne
+	AssignTransactionIDs(movs, []string{"", "", ""})
 	for i, m := range movs {
 		if m.TransactionID != nil {
 			t.Errorf("mov %d got a transaction_id, want nil (independent)", i)
@@ -139,14 +139,14 @@ func TestAssignTransactionIDs_IndependentAreNil(t *testing.T) {
 
 func TestAssignTransactionIDs_LoneGroupIsNil(t *testing.T) {
 	movs := make([]Movement, 1)
-	AssignTransactionIDs(movs, []string{"g1"}) // only one member → not a group
+	AssignTransactionIDs(movs, []string{"g1"})
 	if movs[0].TransactionID != nil {
 		t.Error("a group of one must stay independent (nil)")
 	}
 }
 
 func TestAssignTransactionIDs_TwoDistinctGroups(t *testing.T) {
-	movs := make([]Movement, 4) // pasé 10 al banco y 20 a MP
+	movs := make([]Movement, 4)
 	AssignTransactionIDs(movs, []string{"a", "a", "b", "b"})
 	if *movs[0].TransactionID == *movs[2].TransactionID {
 		t.Error("distinct groups must get distinct transaction_ids")

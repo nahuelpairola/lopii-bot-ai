@@ -6,33 +6,21 @@ import (
 	"time"
 )
 
-// Result es lo que el motor le devuelve a un adaptador (messaging, web,
-// etc) después de procesar un input: qué mostrarle al usuario, y si el
-// flujo en cuestión terminó en esta misma interacción.
 type Result struct {
 	Prompt   Prompt
 	Finished bool
-	FlowName string // siempre seteado; relevante sobre todo cuando Finished es true
-	Data     Data   // solo tiene contenido útil cuando Finished es true
+	FlowName string
+	Data     Data
 }
 
-// stateStore persiste en qué flujo/paso/datos está cada usuario. La
-// implementación real vive en repository.go, contra conversation_states.
 type stateStore interface {
 	Get(userID uint64) (flowName, stepName string, data Data, updatedAt time.Time, found bool, err error)
 	Set(userID uint64, flowName, stepName string, data Data) error
 	Clear(userID uint64) error
 }
 
-// idleThreshold is how long a user can leave a flow untouched before the
-// next interaction shows the resume gate instead of the step's own
-// validation error.
 const idleThreshold = 10 * time.Minute
 
-// retryCountKey tracks consecutive Retry outcomes on the current step,
-// reset to absent on any successful Advance/Complete. A first mismatch
-// shows the step's own plain error (avoids interrupting a simple typo); a
-// second consecutive one escalates to the resume gate.
 const retryCountKey = "_retry_count"
 
 const (
@@ -40,12 +28,8 @@ const (
 	resumeCancel   = "_resume_cancel"
 )
 
-// ResumeCancelledKey is the Data marker the engine sets on Result when the user
-// cancels at the resume gate. Exported because it is produced here but read
-// cross-package in controller/messaging.
 const ResumeCancelledKey = "_resume_cancelled"
 
-// Engine orquesta Flows registrados contra la persistencia de estado.
 type Engine struct {
 	flows       map[string]*Flow
 	store       stateStore
@@ -56,29 +40,16 @@ func NewEngine(store stateStore, resumeLabel func(flowName string) string) *Engi
 	return &Engine{flows: make(map[string]*Flow), store: store, resumeLabel: resumeLabel}
 }
 
-// Register agrega un Flow ya validado (ver NewFlow) al motor.
 func (e *Engine) Register(f *Flow) {
 	e.flows[f.Name] = f
 }
 
-// UserIDKey es la key reservada bajo la cual el motor guarda el userID
-// dentro de Data al arrancar un flujo. Los Steps que necesiten saber
-// para qué usuario están corriendo lo leen de ahí, en vez de recibirlo
-// por closure — así un mismo Flow (registrado una sola vez) sirve para
-// todos los usuarios sin pisarse entre sí.
 const UserIDKey = "_user_id"
 
-// Start arranca un flujo desde cero para un usuario y devuelve el primer
-// Prompt a mostrar.
 func (e *Engine) Start(userID uint64, flowName string) (Prompt, error) {
 	return e.StartWithData(userID, flowName, Data{})
 }
 
-// StartWithData arranca un flujo pre-cargado con datos ya conocidos
-// (por ejemplo, lo que devolvió una clasificación de LLM), saltando
-// automáticamente cualquier paso cuya información ya esté resuelta. Si
-// el seed no deja nada por preguntar, devuelve un error — quien llama
-// no debería arrancar un flujo cuando no hay ningún hueco real.
 func (e *Engine) StartWithData(userID uint64, flowName string, seed Data) (Prompt, error) {
 	f, ok := e.flows[flowName]
 	if !ok {
@@ -108,23 +79,15 @@ func (e *Engine) StartWithData(userID uint64, flowName string, seed Data) (Promp
 	return step.Prompt(data), nil
 }
 
-// InProgress indica si el usuario tiene un flujo activo ahora mismo.
 func (e *Engine) InProgress(userID uint64) (bool, error) {
 	_, _, _, _, found, err := e.store.Get(userID)
 	return found, err
 }
 
-// Clear removes the user's in-progress flow state, if any. Used by the admin
-// reset endpoint before re-firing onboarding.
 func (e *Engine) Clear(userID uint64) error {
 	return e.store.Clear(userID)
 }
 
-// Handle procesa un input para el flujo en curso del usuario. Devuelve
-// found=false si el usuario no tiene ningún flujo activo (el adaptador
-// decide qué hacer en ese caso, el motor no opina). Antes de despachar al
-// Step actual, chequea los sentinels del resume gate y el umbral de
-// inactividad — ver resumeGateResult.
 func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, err error) {
 	flowName, stepName, data, updatedAt, found, err := e.store.Get(userID)
 	if err != nil || !found {
@@ -190,7 +153,7 @@ func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, 
 		}
 		return Result{Finished: true, FlowName: flowName, Data: transition.data}, true, nil
 
-	default: // outcomeAdvance
+	default:
 		delete(transition.data, retryCountKey)
 		resolved, err := f.advanceThroughSkips(transition.nextStep, transition.data)
 		if err != nil {
@@ -213,11 +176,6 @@ func (e *Engine) Handle(userID uint64, input Input) (result Result, found bool, 
 	}
 }
 
-// resumeGateResult builds the "¿retomamos o cancelamos?" prompt shown by
-// both gate triggers (idle timeout, 2nd consecutive Retry). label comes
-// from the Engine's resumeLabel resolver, injected at construction time
-// — conversation cannot import the messaging package that defines the
-// actual per-flow copy (see messaging.FlowResumeLabel).
 func (e *Engine) resumeGateResult(flowName string) Result {
 	label := e.resumeLabel(flowName)
 	return Result{
@@ -232,11 +190,6 @@ func (e *Engine) resumeGateResult(flowName string) Result {
 	}
 }
 
-// cloneData copia Data garantizando que el resultado NUNCA es nil. La garantía
-// es load-bearing: `maps.Clone(nil)` devuelve nil, y un `data: null` en la
-// columna JSONB deserializa a un Data nil sin que json.Unmarshal reporte error
-// (ver repository.Get). Sin la guarda, la primera escritura sobre esa copia
-// paniquea — el `make()` que había antes acá nunca tuvo ese problema.
 func cloneData(data Data) Data {
 	if data == nil {
 		return Data{}
@@ -248,7 +201,7 @@ func retryCount(data Data) int {
 	switch v := data[retryCountKey].(type) {
 	case int:
 		return v
-	case float64: // post-JSONB-round-trip shape
+	case float64:
 		return int(v)
 	default:
 		return 0

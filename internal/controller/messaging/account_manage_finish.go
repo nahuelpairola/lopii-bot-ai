@@ -8,9 +8,6 @@ import (
 	"lopiibot.com/internal/messenger"
 )
 
-// Los finishes de ACCOUNT_MANAGE viven en flow/account_finish.go. Estos
-// delegadores conservan los nombres de borde mientras los tests y
-// handleFlowFinished los usen.
 func (c *controller) finishAccountManageFlow(ctx context.Context, chat messenger.Chat, data conversation.Data) {
 	flow.FinishAccountManage(ctx, c, chat, data)
 }

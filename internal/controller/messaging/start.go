@@ -13,9 +13,6 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// HandleStart es el handler de /start CODE — un canje de invitación por
-// deep-link de Telegram, no un concepto neutro. Exportado porque la Task 9 lo
-// cuelga con Transport.RegisterCommand, fuera de este paquete.
 func (c *controller) HandleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
 	c.traced(ctx, "command", update.Message.Text, func(ctx context.Context) (*uint64, error) {
 		telegramID := fmt.Sprint(update.Message.From.ID)
@@ -76,9 +73,6 @@ func extractStartCode(text string) string {
 	return parts[1]
 }
 
-// reply es Telegram-shaped a propósito: el onboarding sigue siendo un
-// deep-link de Telegram, no un concepto neutro (ver el comentario de
-// HandleStart). Su único llamador es HandleStart.
 func (c *controller) reply(ctx context.Context, b *bot.Bot, update *models.Update, text string) {
 	if b == nil {
 		return

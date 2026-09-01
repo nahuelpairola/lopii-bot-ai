@@ -13,10 +13,6 @@ import (
 	"lopiibot.com/internal/orchestrator"
 )
 
-// StartAccountManage runs Call 2 account-match and branches: matched →
-// manage menu; wants-new → the existing (prefill-seeded) create flow;
-// unclear → the candidate picker. Candidates are always seeded — the pick
-// step needs them, the menu path skips it via SkipIf.
 func StartAccountManage(ctx context.Context, s Services, chat messenger.Chat, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.AccountManageFlowName, "user_id", userID)
 	accs, err := s.FindUserAccounts(userID)
@@ -64,7 +60,6 @@ func StartAccountManage(ctx context.Context, s Services, chat messenger.Chat, us
 		conversation.KeyCandidateCurrencies: conversation.EncodeStringSlice(curs),
 	}
 	if res.MatchedAccountID != nil {
-		// never trust an LLM id blindly — it must exist in the user's list
 		for _, a := range accs {
 			if uint64(a.ID) == *res.MatchedAccountID {
 				seed[conversation.KeyAccountID] = strconv.FormatUint(uint64(a.ID), 10)
@@ -84,15 +79,6 @@ func StartAccountCreate(ctx context.Context, s Services, chat messenger.Chat, us
 	return s.StartFlow(ctx, chat, userID, flow.AccountCreateFlowName, seed, "start account_create flow")
 }
 
-// accountCreateSeed reuses ClassifyOnboarding to prefill the flow when the
-// triggering message already states the account name and/or opening balance
-// (e.g. "Nueva cuenta: Cedears tengo 1041265"). It seeds only when exactly one
-// account is extracted; 0, >1, or an extractor error fall back to a blank flow
-// (StartWithData with an empty seed == Start). Currency is never seeded — it
-// stays the flow's currency ChoiceStep. No step is auto-skipped: the user still
-// confirms every value.
-//
-// Returns an empty (non-nil) Data when nothing should be prefilled.
 func accountCreateSeed(ctx context.Context, s Services, text string) conversation.Data {
 	seed := conversation.Data{}
 	res, err := s.ClassifyOnboarding(ctx, text)

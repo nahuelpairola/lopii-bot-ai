@@ -15,9 +15,6 @@ func gapData(rows []movement.MovementRow, gaps []string) conversation.Data {
 	}
 }
 
-// Saltearse la pregunta de categoría deja KeyGapActiveRow sin escribir: sin el
-// fallback al primer gap pendiente, la subcategoría elegida iría a la fila 0 —
-// otro movimiento.
 func TestActiveGapRow_FallsBackToFirstPendingGap(t *testing.T) {
 	rows := []movement.MovementRow{{Category: "Salud"}, {Category: "Transporte"}}
 	if got := ActiveGapRow(gapData(rows, []string{"1"})); got != 1 {
@@ -34,9 +31,6 @@ func TestActiveGapRow_PrefersTheExplicitActiveRow(t *testing.T) {
 	}
 }
 
-// "el gasto de 8500 ponelo en Transporte": la corrección deja el par
-// ("Transporte", "") — que no existe en la taxonomía y abre gap. La categoría
-// la nombró el usuario, así que sólo falta la subcategoría.
 func TestRowCategoryExists_UserNamedCategory(t *testing.T) {
 	repo := &fakeSubcatSetupRepo{categories: []string{"Salud", "Transporte"}}
 	rows := []movement.MovementRow{{Category: "Transporte", Subcategory: ""}}

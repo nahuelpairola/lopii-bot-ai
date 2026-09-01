@@ -8,12 +8,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// settingsServices implements settings.Services for *controller. El resto de los
-// métodos que la interfaz pide ya existen: los repos y el outbound los trae el
-// runner de flow (controller.go) y el loop del agente (agent_services.go).
-// *controller implementa la interfaz directamente desde la Task 7 — settings
-// ya sólo pide messenger.Chat, igual que SendText/SendPrompt/StartFlow/
-// HandleGroqError en controller.go — así que no hace falta un puente.
 var _ settings.Services = (*controller)(nil)
 
 func (c *controller) DistinctCategoriesForUser(userID uint64) ([]string, error) {
@@ -27,8 +21,6 @@ func (c *controller) FindOwnedSubcategories(userID uint64) ([]subcategory.Subcat
 func (c *controller) TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
 	return c.movements.TopDescriptionsBySubcategory(userID, subcategoryID, limit)
 }
-
-// RemindersFindByUserID ya está implementado en nudges_services.go (puente compartido).
 
 func (c *controller) ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error) {
 	return c.orchestrator.ResolveAccountManage(ctx, text, accounts)

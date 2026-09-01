@@ -74,13 +74,15 @@ func NewAccountSetupFlow() *conversation.Flow {
 }
 ```
 
-**3. Wire it in three places.** Nothing enforces any of them:
+**3. Wire it in three places.** Nothing enforces any of them, and forgetting each one fails
+differently — one of the three fails *silently*. What each one breaks:
+[`internal/flow/AGENTS.md`](../internal/flow/AGENTS.md).
 
-| Where | What | If you forget |
-|---|---|---|
-| `server/flows.go` | a line in `registerFlows`: `engine.Register(flow.NewAccountSetupFlow())` | server fails at startup — loud, fine |
-| `controller.go` → `handleFlowFinished` | a `case accountSetupFlowName:` | the flow completes into `msgSomethingBroke` |
-| `messages.go` → `FlowResumeLabel` | a `case accountSetupFlowName:` | **silent** — broken copy appears only after a user idles 24h |
+| Where | What |
+|---|---|
+| `server/flows.go` | a line in `registerFlows`: `engine.Register(flow.NewAccountSetupFlow())` |
+| `controller.go` → `handleFlowFinished` | a `case accountSetupFlowName:` |
+| `messages.go` → `FlowResumeLabel` | a `case accountSetupFlowName:` |
 
 **4. Start it** with `c.startFlow(...)`, or `engine.StartWithData(userID, name, seed)` when you
 have pre-resolved data and want the `SkipIf` walk to land on the first real gap.

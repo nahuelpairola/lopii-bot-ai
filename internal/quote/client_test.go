@@ -82,8 +82,6 @@ func TestFetchToday_StampsTheARTCalendarDate(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// 2026-08-07T01:30Z es todavía el 2026-08-06 en ART. Sin la conversión,
-	// la fila entra con la fecha de mañana.
 	qs, err := NewClient(Config{DolarAPIURL: srv.URL, TimeoutSeconds: 5}).
 		FetchToday(time.Date(2026, 8, 7, 1, 30, 0, 0, time.UTC))
 	if err != nil {

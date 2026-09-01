@@ -23,16 +23,12 @@ const (
 	OptionManageDefault = "op_default"
 	OptionManageCreate  = "op_create_new"
 
-	// operation values stored under conversation.KeyOperation and switched on in
-	// account_manage_finish.go — distinct from the optionManage* button values.
 	OpRename    = "rename"
 	OpAdjust    = "adjust"
 	OpDefault   = "default"
 	OpCreateNew = "create_new"
 )
 
-// OnAccountManageCancel marks the flow cancelled (finishAccountManageFlow
-// skips every write) — same contract as OnAccountCreateEscape.
 func OnAccountManageCancel(value string, data conversation.Data) conversation.Data {
 	if value != OptionCancel {
 		return data
@@ -54,10 +50,6 @@ func AccountManageBalance(balances balanceSummer, data conversation.Data) decima
 	return sum
 }
 
-// NewAccountManageFlow builds the account-management flow: an optional
-// candidate picker (skipped when Call 2 already matched the account), a
-// deterministic operation menu, and one confirm gate per operation — every
-// operation confirms, Cancelar aborts anywhere without touching anything.
 func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 	steps := map[string]conversation.Step{
 		StepAccountManagePick: conversation.ChoiceStep{
@@ -175,8 +167,6 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 		StepAccountManageConfirmAdjust: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
 				current := AccountManageBalance(balances, data)
-				// ponytail: error ignorado a propósito — StepAccountManageAskTotal ya
-				// validó este valor con ValidateBalanceAmount, así que acá no puede fallar.
 				newTotal, _ := movement.ParseARAmount(conversation.StringOrEmpty(data[conversation.KeyNewTotal]))
 				return MsgConfirmAccountAdjust(
 					conversation.StringOrEmpty(data[conversation.KeyAccountName]),

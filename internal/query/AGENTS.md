@@ -38,7 +38,14 @@ Three more things that are not obvious from the code:
 - **An empty result runs up to two probes** (`describeEmptyResult`) to tell four different facts
   apart. The reserved-category probe is not optional: `apply()` hides `Sistema` and
   `PENDING_REVIEW`, so without it a search for "transferencia" — 12 real movements — would be
-  reported as not existing at all, which is worse than the mute zero it replaced.
+  reported as not existing at all, which is worse than the mute zero it replaced. That probe
+  runs **twice**, and the second pass forces `type=transfer`: with `Type` nil, `apply` adds
+  `type <> transfer` and hides the reserved rows that matter most (`Sistema | Transferencia`,
+  the opening balances) exactly when they are needed. Measured 2026-08-14 against the DB — the
+  forced probe finds 12 rows, the same probe with `Type` nil finds 0.
+  The probes' own window (`searchProbeFrom`/`To`) is a pair of fixed, absurdly wide dates on
+  purpose: the probe asks "does this term exist anywhere", and a window relative to today would
+  make the answer change on its own as time passes.
   **The probes only run on ZERO rows.** A result where most rows were hidden and one survived
   never reaches them, and the model gets a confident partial total with nothing marking it — the
   2026-08-21 transfer bug, worse than the case the probes cover.
@@ -67,9 +74,4 @@ Amounts come back from the DB signed; everything shown to the model and to the u
 `Abs()`, with direction carried by the movement type. See `AGENTS.md` (§ The accounting
 model) before touching anything that reads `amount`.
 
----
-
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **The agent loop and QUERY**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **The agent loop and QUERY**.

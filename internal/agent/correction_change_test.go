@@ -21,17 +21,13 @@ func TestApplyChange_Amount(t *testing.T) {
 		{"multiply la mitad", "1000", correctionChange{fieldAmount, opMultiply, "0.5"}, "500", nil},
 		{"multiply el doble", "1000", correctionChange{fieldAmount, opMultiply, "2"}, "2000", nil},
 
-		// Bordes que destaparon reglas que la spec no tenía escritas.
 		{"multiply redondea a 2 decimales", "1001", correctionChange{fieldAmount, opMultiply, "0.5"}, "500.5", nil},
 		{"multiply del 30% redondea", "1001", correctionChange{fieldAmount, opMultiply, "0.3"}, "300.3", nil},
 		{"formato argentino en el valor", "1000", correctionChange{fieldAmount, opSet, "1.070,50"}, "1070.5", nil},
 
-		// El reintegro mayor que la compra daría vuelta el signo, y Normalize lo
-		// re-firmaría como INGRESO. Un gasto no se convierte en ingreso en silencio.
 		{"reintegro mayor que la compra", "700", correctionChange{fieldAmount, opSubtract, "2000"}, "", errRefundExceedsAmount},
 		{"reintegro exacto llega a cero", "700", correctionChange{fieldAmount, opSubtract, "700"}, "0", nil},
 
-		// Nunca coercionar a cero: así es como un "no entendí" se vuelve un borrado.
 		{"valor ilegible", "1000", correctionChange{fieldAmount, opSet, "asd"}, "", errUnparseableValue},
 		{"valor con abreviatura", "1000", correctionChange{fieldAmount, opSet, "2k"}, "", errUnparseableValue},
 		{"monto de origen ilegible", "", correctionChange{fieldAmount, opAdd, "100"}, "", errUnparseableValue},
@@ -50,8 +46,6 @@ func TestApplyChange_Amount(t *testing.T) {
 	}
 }
 
-// Sólo amount acepta aritmética. Sin esta guarda un `add` sobre currency o date
-// compila, corre y hace cualquier cosa.
 func TestApplyChange_ArithmeticOnlyOnAmount(t *testing.T) {
 	row := movement.MovementRow{Amount: "1000", Description: "Café"}
 	for _, f := range []changeField{fieldCategory, fieldAccount, fieldDate, fieldCurrency, fieldDescription, fieldType} {
@@ -71,8 +65,6 @@ func TestApplyChange_SetFields(t *testing.T) {
 	}
 
 	t.Run("category limpia la subcategoría", func(t *testing.T) {
-		// El usuario dice "proyecto hogar/agua" como UNA cosa: el par lo resuelve
-		// el gap contra la taxonomía, no el modelo.
 		got, err := applyChange(base, correctionChange{fieldCategory, opSet, "proyecto hogar"})
 		if err != nil {
 			t.Fatal(err)
@@ -83,8 +75,6 @@ func TestApplyChange_SetFields(t *testing.T) {
 	})
 
 	t.Run("account limpia el id resuelto", func(t *testing.T) {
-		// Sin esto el AccountID viejo le ganaría al nombre nuevo y la corrección
-		// no movería la plata de cuenta: un bug de saldos, no cosmético.
 		got, err := applyChange(base, correctionChange{fieldAccount, opSet, "Galicia"})
 		if err != nil {
 			t.Fatal(err)
@@ -112,8 +102,6 @@ func TestApplyChange_SetFields(t *testing.T) {
 	})
 }
 
-// transfer necesita dos patas y una contraparte: convertir un gasto en
-// transferencia es un delete + create, no una corrección.
 func TestApplyChange_TypeRejectsTransfer(t *testing.T) {
 	row := movement.MovementRow{Type: "expense", Amount: "1000"}
 	if _, err := applyChange(row, correctionChange{fieldType, opSet, "transfer"}); !errors.Is(err, errTransferNotACorrection) {
@@ -131,15 +119,7 @@ func TestApplyChange_DoesNotMutateInput(t *testing.T) {
 	}
 }
 
-// Regresión del 400 del 2026-08-12. El modelo omite `op` cuando no significa
-// nada —o sea en los seis campos que no son amount— y antes eso era un campo
-// REQUERIDO del schema: Groq validaba del lado del servidor y devolvía un 400
-// duro, matando el turno entero como "unclear".
-//
-// Sin defaultChangeOps, applyChange rechaza el cambio con errOpNotForField,
-// porque un op vacío no es opSet.
 func TestDefaultChangeOps_FillsTheOmittedSet(t *testing.T) {
-	// Tal cual lo emitió el modelo ante "El café de hoy fue en un bar".
 	changes := []correctionChange{{Field: fieldDescription, Value: "bar"}}
 	defaultChangeOps(changes)
 
@@ -155,8 +135,6 @@ func TestDefaultChangeOps_FillsTheOmittedSet(t *testing.T) {
 	}
 }
 
-// El op explícito NO se pisa: si el modelo dice "sumale", tiene que seguir
-// siendo una suma.
 func TestDefaultChangeOps_KeepsAnExplicitOp(t *testing.T) {
 	changes := []correctionChange{{Field: fieldAmount, Op: opAdd, Value: "1070"}}
 	defaultChangeOps(changes)

@@ -8,10 +8,6 @@ const (
 	MsgCategoryManagePickTargetCat = "¿A qué categoría los mando?"
 )
 
-// CategoryLabel arma "Categoría › Subcategoría" con su ícono, la forma en que
-// esta feature nombra una subcategoría en todos sus mensajes. Asume que el
-// ícono ya viene resuelto (nunca ""): el único llamador de flujo 1 lo pasa vía
-// SubcategoryIcon, que ya hizo el fallback.
 func CategoryLabel(icon, category, subcategory string) string {
 	return icon + " " + category + " › " + subcategory
 }

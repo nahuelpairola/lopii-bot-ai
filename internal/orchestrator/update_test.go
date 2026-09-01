@@ -20,7 +20,6 @@ func TestBuildUpdateSystemPrompt_IncludesAccountsAndRule(t *testing.T) {
 			t.Errorf("prompt missing %q", want)
 		}
 	}
-	// The account-correction rule must be present so the model knows to remap.
 	if !strings.Contains(strings.ToLower(prompt), "account_id") || !strings.Contains(prompt, "corrige la cuenta") {
 		t.Errorf("prompt missing the account-correction rule:\n%s", prompt)
 	}
@@ -84,10 +83,6 @@ func TestResolveUpdate_AcceptsStringResolved(t *testing.T) {
 }
 
 func TestResolveUpdate_AcceptsNullMentionedDates(t *testing.T) {
-	// Groq validates tool-call arguments against our JSON schema server-side
-	// (see flexBool comment) — a model that emits null for an unmentioned
-	// date field 400s unless the schema allows it. Regression for the
-	// "Pablo me devolvió cien pesos por el asado" 400 (no date in message).
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"mentioned_date_from\":null,\"mentioned_date_to\":null,\"movements\":[{\"type\":\"expense\",\"amount\":\"4900\",\"currency\":\"ARS\",\"category\":\"Alimentación\",\"subcategory\":\"Almacén / barrio\",\"payment_method\":\"transfer\",\"description\":\"pago a pablo por el asado\",\"date\":\"2026-07-07\"}]}"}}]}}]}`))
 	}))
@@ -106,10 +101,6 @@ func TestResolveUpdate_AcceptsNullMentionedDates(t *testing.T) {
 }
 
 func TestResolveUpdate_NetsReintegro(t *testing.T) {
-	// Regression for the netting rule in updateSystemPrompt: a reintegro
-	// discounts off the ORIGINAL amount, never lands as its own income.
-	// Canonical worked example from the prompt itself: café 700, reintegro
-	// 100 -> 600.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"movements\":[{\"type\":\"expense\",\"amount\":\"600\",\"currency\":\"ARS\",\"category\":\"Alimentación\",\"subcategory\":\"Salir a comer\",\"payment_method\":\"transfer\",\"description\":\"café\",\"date\":\"2026-07-10\"}]}"}}]}}]}`))
 	}))

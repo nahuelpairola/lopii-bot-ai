@@ -1,10 +1,5 @@
 package messaging
 
-// Copias del lado messaging de los fakes del loop. Los de agent viven en
-// internal/agent/fake_services_test.go; messaging no puede importar los archivos
-// _test de agent (ciclo de imports), así que se duplican acá. Son test-double
-// puros, no lógica de negocio — el trade-off está documentado en el ledger C1-1.
-
 import (
 	"encoding/json"
 	"errors"
@@ -44,7 +39,6 @@ func (r *fakeActionsRepo) NextForUser(userID uint64) (*pendingaction.PendingActi
 	return best, nil
 }
 
-// Update pisa la fila de rows que coincida por ID, igual que un Save real.
 func (r *fakeActionsRepo) Update(a *pendingaction.PendingAction) error {
 	for i, row := range r.rows {
 		if row.ID == a.ID {
@@ -77,9 +71,6 @@ func (r *fakeActionsRepo) CountForUser(userID uint64) (int64, error) {
 	return n, nil
 }
 
-// fakeStoreForController es un store compatible con conversation.Engine — la
-// satisfacción de interfaces en Go es estructural, así que este struct satisface
-// la interfaz unexportada stateStore del motor puro por su set de métodos.
 type fakeStoreForController struct {
 	flowName, stepName string
 	data               conversation.Data
@@ -100,15 +91,8 @@ func (s *fakeStoreForController) Clear(userID uint64) error {
 	return nil
 }
 
-// errRunNotWired es lo que devuelven los fakes cuando el test no programó el
-// loop. Un camino que llegue ahí sin quererlo migró antes de su etapa, y tiene que
-// fallar fuerte en vez de recibir una respuesta vacía plausible.
 var errRunNotWired = errors.New("Run is not wired in this test")
 
-// swallowTurnDone imita lo que el Run de verdad hace con ErrAgentTurnDone: no es
-// un error, es el executor avisando que la app se queda con el turno. Sin esto
-// cada fake lo propagaría como fallo y el test vería rojo donde el código real
-// ve un turno normal — de una sola vuelta, que es justo el punto.
 func swallowTurnDone(execute func(string, json.RawMessage) (string, error)) func(string, json.RawMessage) (string, error) {
 	return func(name string, args json.RawMessage) (string, error) {
 		result, err := execute(name, args)

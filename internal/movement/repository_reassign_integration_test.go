@@ -11,18 +11,11 @@ import (
 	"lopiibot.com/internal/currency"
 )
 
-// Run with: go test -tags integration ./internal/movement/
-// Requires local Postgres (docker compose up -d) with migrations applied.
-//
-// Cubre el caso de plata de ReassignAccount: una transferencia interna A↔B
-// se anula ENTERA (ambas patas soft-deleted), una transferencia externa C→A
-// se re-apunta a C→B, un expense externo se re-apunta, A queda en 0 y B
-// termina con bal(A)+bal(B) exacto.
 func TestReassignAccount_VoidsInternalTransfers_RepointsExternals(t *testing.T) {
 	conn := testConnection(t)
 	r := InitRepository(conn)
 	accRepo := account.NewRepository(conn)
-	userID := uint64(1) // test admin user que ya existe en la DB
+	userID := uint64(1)
 
 	accA := &account.Account{UserID: userID, Name: "Reassign_A_" + uuid.NewString()[:8], Currency: currency.ARS}
 	accB := &account.Account{UserID: userID, Name: "Reassign_B_" + uuid.NewString()[:8], Currency: currency.ARS}
@@ -41,14 +34,11 @@ func TestReassignAccount_VoidsInternalTransfers_RepointsExternals(t *testing.T) 
 			t.Fatalf("insert movements: %v", err)
 		}
 	}
-	// expense externo en A
 	mustInsert(Movement{UserID: userID, AccountID: &idA, SubcategoryID: 1, Type: Expense, Amount: decimal.NewFromInt(-1000), Currency: currency.ARS})
-	// transferencia INTERNA A->B (dos patas, misma tx)
 	mustInsert(
 		Movement{UserID: userID, AccountID: &idA, SubcategoryID: 1, Type: Transfer, Amount: decimal.NewFromInt(-500), Currency: currency.ARS, TransactionID: &internalTx},
 		Movement{UserID: userID, AccountID: &idB, SubcategoryID: 1, Type: Transfer, Amount: decimal.NewFromInt(500), Currency: currency.ARS, TransactionID: &internalTx},
 	)
-	// transferencia EXTERNA C->A (dos patas, misma tx)
 	mustInsert(
 		Movement{UserID: userID, AccountID: &idC, SubcategoryID: 1, Type: Transfer, Amount: decimal.NewFromInt(-300), Currency: currency.ARS, TransactionID: &externalTx},
 		Movement{UserID: userID, AccountID: &idA, SubcategoryID: 1, Type: Transfer, Amount: decimal.NewFromInt(300), Currency: currency.ARS, TransactionID: &externalTx},
@@ -70,7 +60,6 @@ func TestReassignAccount_VoidsInternalTransfers_RepointsExternals(t *testing.T) 
 	if !newB.Equal(combined) {
 		t.Fatalf("saldo de B tras reassign = %s, want %s (bal A+B)", newB, combined)
 	}
-	// GORM excluye soft-deleted por defecto: Count devuelve solo patas vivas
 	var internalLive int64
 	conn.DB.Model(&Movement{}).Where("transaction_id = ?", internalTx).Count(&internalLive)
 	if internalLive != 0 {

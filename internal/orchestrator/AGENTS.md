@@ -10,9 +10,9 @@ Since stage 5 deleted the router, `Config` carries five model fields
 
 | Call site | `callType` bucket | Model actually used |
 |---|---|---|
-| `account_manage.go:39` | `account_manage` | `o.createModel` |
-| `category_create.go:55` | `category_create` | `o.createModel` |
-| `onboarding.go:44` | `onboarding` | `o.createModel` |
+| `ResolveAccountManage` | `account_manage` | `o.createModel` |
+| `ClassifyCategoryCreate` | `category_create` | `o.createModel` |
+| `ClassifyOnboarding` | `onboarding` | `o.createModel` |
 
 **Retuning `createModel` retunes three unrelated wizard paths.** The separate Grafana buckets
 hide it — they suggest three independent call types. No test covers this.
@@ -36,9 +36,9 @@ Everything below follows from that, and none of it is arbitrary:
 
 ## `AgentTool.Kind` is vestigial — and that is a loaded gun
 
-`orderCallsByKind` and `kindRank` were deleted in stage 5 (see the comment at `agent.go:41`).
-**`Kind` survives as a field that nothing reads** — every tool still declares one, and no code
-looks at it.
+orderCallsByKind and kindRank were deleted in stage 5, along with the read-before-write ordering
+they enforced. **`Kind` survives as a field that nothing reads** — every tool still declares one,
+and no code looks at it.
 
 **The premise that justified deleting it expired the same day.** `a419524` removed ordering
 arguing the toolbox had no read tools — true when written — and `0b3427a`, later that
@@ -58,12 +58,40 @@ If ordering does come back, the old trap has to be avoided rather than reintrodu
 
 `numberFormatRule` (`number_format.go`) and the two consts in `movement_rules.go` are
 concatenated into `fmt.Sprintf` templates. A literal `%` corrupts the rendered system prompt at
-runtime — no panic, no error, the model just receives a garbled instruction block. Escape it as
-`%%`, as the "90%%" in `taxonomyAndAmountRules` does.
+runtime — no panic, no error, the model just receives a garbled instruction block. Any percentage
+that reaches a prompt const has to be written `%%`.
 
 `movement_rules.go` holds what the prompt templates say **verbatim**, deduplicated after a
 2026-08-08 fix had to be pasted into both by hand. It is two consts, not one, because
 `REGLA DE FECHA` sits between them and genuinely differs.
+
+## Round 0 forces a tool call, and both halves of that are load-bearing
+
+`Run` opens with `tool_choice: "required"`. Opening in `"auto"` risks the worst failure this loop
+has: the model replying *"listo, anoté tus $5.000"* without ever calling `record_movements` —
+**silent data loss**, indistinguishable from success to the user. `reply_help` and `ask_rewrite`
+exist so that every message has something legitimate to call.
+
+The cost is the other half: under `required` the model can refuse to emit anything at all, and
+Groq turns that into a **hard 400**. Observed on real correction messages ("Le erre eran 1500") —
+with 15 tools and a short, referent-less message, gpt-oss-20b emits nothing.
+
+`maxAgentIterations` is higher than `AnswerQuery`'s 3 because a compound message legitimately
+reads, writes and parks in one turn. It is still a runaway guard: the common turn is one round.
+
+## A failing round is invisible unless it is logged
+
+When a tool call errors, the error goes back to the **model** as text and the turn continues. In
+production that shows up only as an extra round of ~4.200 prompt tokens with nothing saying why.
+That is exactly what happened on 2026-08-08 with two-leg transfers: the guard kept rejecting them
+and the loop kept going. The log line at the round is the only thing that makes it visible.
+
+`ErrAgentTurnDone` is the executor saying "do not narrate this": the app already parked the
+action, or already has the reply it will send. Without it the turn costs **two** Groq calls — one
+to pick the tool, one to narrate something the app was going to overwrite anyway.
+
+The cut is checked **after** executing, so the writes and parkings the model asked for still
+happen when it narrates and acts in the same message.
 
 ## `Run` and `AnswerQuery` are two near-identical loops, kept apart on purpose
 
@@ -114,9 +142,4 @@ the model breaks for free. `correct_movement`'s `op` is nullable in the schema f
 reason: it was required, the model omitted it, and every such turn died as a hard 400 with the
 user's correction lost.
 
----
-
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **The agent loop and QUERY** and **Groq quota, the 429 queue and rate limits**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **The agent loop and QUERY** and **Groq quota, the 429 queue and rate limits**.

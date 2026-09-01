@@ -1,6 +1,3 @@
-// Package logging installs the process-wide slog logger. Its handler stamps the
-// ctx's trace_id onto every record, so a log line can always be joined to its
-// request_traces / llm_calls / intent_events rows.
 package logging
 
 import (
@@ -11,11 +8,6 @@ import (
 	"lopiibot.com/internal/trace"
 )
 
-// traceHandler stamps trace_id from ctx onto every record, so no call site can
-// forget it. ponytail: embedding means WithAttrs/WithGroup return the inner
-// handler and drop the stamp — harmless because nothing here uses slog.With
-// (every call site passes attrs inline). If slog.With shows up, implement
-// WithAttrs/WithGroup to re-wrap.
 type traceHandler struct{ slog.Handler }
 
 func (h traceHandler) Handle(ctx context.Context, r slog.Record) error {
@@ -25,9 +17,6 @@ func (h traceHandler) Handle(ctx context.Context, r slog.Record) error {
 	return h.Handler.Handle(ctx, r)
 }
 
-// Init installs the default logger. Unknown level/format fall back to the safe
-// production pair rather than failing — a typo in a TOML must never stop the
-// bot from booting.
 func Init(level, format string) {
 	opts := &slog.HandlerOptions{Level: parseLevel(level)}
 	var h slog.Handler

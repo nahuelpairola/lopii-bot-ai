@@ -14,12 +14,8 @@ type User struct {
 	CreatedAt time.Time `gorm:"column:created_at"`
 }
 
-// ChannelTelegram es el único lugar del modelo donde se nombra un canal.
-// El core pasa este valor como identificador opaco: nadie ramifica sobre él.
 const ChannelTelegram = "telegram"
 
-// UserChannel es la dirección de un usuario en un canal. Una persona puede
-// tener varias; el par (channel, channel_user_id) es único.
 type UserChannel struct {
 	ID            uint64    `gorm:"primaryKey"`
 	UserID        uint64    `gorm:"column:user_id"`
@@ -81,10 +77,6 @@ func (r *repository) Insert(u *User) error {
 	return r.conn.DB.Create(u).Error
 }
 
-// InsertWithChannel crea al usuario y su dirección en una sola transacción.
-// Son dos escrituras y tienen que ser atómicas: una fila en users sin su fila
-// en user_channels es un usuario sin dirección — invisible para FindByChannel,
-// y el reintento de /start inserta otra huérfana en vez de encontrarlo.
 func (r *repository) InsertWithChannel(u *User, channel, channelUserID string) error {
 	return r.conn.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(u).Error; err != nil {

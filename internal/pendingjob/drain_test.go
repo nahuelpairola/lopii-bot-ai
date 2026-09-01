@@ -31,8 +31,6 @@ type fakeUsers struct{}
 
 func (fakeUsers) FindByID(uint64) (*user.User, error) { return &user.User{}, nil }
 
-// fakeChats es el chatResolver de los tests: siempre devuelve el mismo
-// *messenger.FakeChat.
 type fakeChats struct{ chat *messenger.FakeChat }
 
 func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }

@@ -61,7 +61,7 @@ func TestChatCompletionLoop_ReturnsContent(t *testing.T) {
 
 func TestChatCompletionLoop_ErrorsOnNonOK(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest) // non-retryable 4xx → immediate error
+		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer server.Close()
 

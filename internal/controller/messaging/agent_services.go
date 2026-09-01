@@ -17,13 +17,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// Los métodos de este archivo implementan agent.agentServices: lo que el loop
-// unificado necesita del mundo, con el *controller* como implementación. Los que
-// ya existían por el runner de flow (FindUserAccounts, FindSubcategory,
-// ResolveMetric, SendText, StartFlow, FindRecentlyCreatedForUser) viven en
-// controller.go; acá están los que no había. Puentes de una línea, como en el
-// runner — el loop no importa los repos del borde.
-
 func (c *controller) AccountsHasDefaultForCurrency(userID uint64, cur currency.Currency) bool {
 	return c.accounts.HasDefaultForCurrency(userID, cur)
 }

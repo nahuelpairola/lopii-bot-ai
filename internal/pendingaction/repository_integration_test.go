@@ -13,8 +13,6 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// Run with: go test -tags integration ./internal/pendingaction/
-// Requires local Postgres (docker compose up -d) with migrations applied.
 func TestRepository_DrainsByPositionAndIsPerUser(t *testing.T) {
 	conn := testConnection(t)
 	r := NewRepository(conn)
@@ -31,8 +29,6 @@ func TestRepository_DrainsByPositionAndIsPerUser(t *testing.T) {
 		t.Fatalf("want ErrNoPendingAction on an empty queue, got %v", err)
 	}
 
-	// Se insertan a propósito fuera de orden: lo que manda es position, no
-	// el orden de llegada.
 	second := parked(mine, "correct_movement", 1)
 	first := parked(mine, "record_movements", 0)
 	for _, a := range []*PendingAction{second, first} {
@@ -56,7 +52,6 @@ func TestRepository_DrainsByPositionAndIsPerUser(t *testing.T) {
 	if next.ID != first.ID {
 		t.Fatalf("want the lowest position (%d, %s), got %d", first.ID, first.Tool, next.ID)
 	}
-	// Lo guardado tiene que volver entero: el drenaje lo lee de acá.
 	var qs []OpenQuestion
 	if err := json.Unmarshal(next.Questions, &qs); err != nil {
 		t.Fatalf("questions no vuelven como JSON: %v", err)
@@ -74,7 +69,6 @@ func TestRepository_DrainsByPositionAndIsPerUser(t *testing.T) {
 	if n, err := r.CountForUser(mine); err != nil || n != 1 {
 		t.Fatalf("delete tiene que sacar sólo esa fila, got count=%d err=%v", n, err)
 	}
-	// Y la del otro usuario ni se entera.
 	if n, err := r.CountForUser(theirs); err != nil || n != 1 {
 		t.Fatalf("la cola del otro usuario cambió: count=%d err=%v", n, err)
 	}

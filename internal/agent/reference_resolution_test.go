@@ -13,7 +13,6 @@ import (
 )
 
 func TestMatchesMessage_MultiWordDescription_SharedToken(t *testing.T) {
-	// "gasto en trabas" stored; user says only "...de trabas" — one shared word.
 	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("gasto en trabas")}}}
 	if !matchesMessage(group, "quiero eliminar mi registro de trabas") {
 		t.Error("expected a match on the shared token 'trabas'")
@@ -28,7 +27,6 @@ func TestMatchesMessage_ShortWordInLongMessage(t *testing.T) {
 }
 
 func TestMatchesMessage_StopwordOnlyOverlap_NoMatch(t *testing.T) {
-	// Only 3-char/stopword tokens overlap — must not match.
 	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("de la")}}}
 	if matchesMessage(group, "borra el de la lista") {
 		t.Error("expected no match on stopword-only overlap")
@@ -36,7 +34,6 @@ func TestMatchesMessage_StopwordOnlyOverlap_NoMatch(t *testing.T) {
 }
 
 func TestMatchesMessage_Amount(t *testing.T) {
-	// Verify amount matching still works.
 	amount := decimal.NewFromInt(1500)
 	group := transactionGroup{Movements: []movement.Movement{{Amount: amount}}}
 	if !matchesMessage(group, "fue 1500 pesos") {
@@ -45,8 +42,6 @@ func TestMatchesMessage_Amount(t *testing.T) {
 }
 
 func TestScoreGroup_ExpenseAmountMatchesDespiteStoredSign(t *testing.T) {
-	// Un gasto se guarda negativo (-61306.49), pero el usuario y el LLM sólo
-	// ven Abs(): el signo contable nunca puede ser parte del match.
 	amount := decimal.NewFromFloat(-61306.49)
 	now := time.Now()
 	group := transactionGroup{Movements: []movement.Movement{{Type: movement.Expense, Amount: amount, Date: now}}}
@@ -56,8 +51,6 @@ func TestScoreGroup_ExpenseAmountMatchesDespiteStoredSign(t *testing.T) {
 }
 
 func TestMatchesMessage_DescriptionToken(t *testing.T) {
-	// Desde el fold de merchant, el nombre del comercio vive en la description
-	// y este es el unico camino de match textual.
 	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("compra en Carrefour")}}}
 	if !matchesMessage(group, "el gasto en Carrefour fue mucho") {
 		t.Error("expected a match on the description token 'Carrefour'")
@@ -86,8 +79,6 @@ func TestMatchesMessage_CaseInsensitive(t *testing.T) {
 }
 
 func TestMatchesMessage_UnaccentedMessageMatchesAccentedDescription(t *testing.T) {
-	// The real production failure: "La panaderia era 2k" never matched a
-	// movement the LLM described as "compra en panadería".
 	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("compra en panadería")}}}
 	if !matchesMessage(group, "La panaderia era 2k") {
 		t.Error("unaccented message should match an accented description")
@@ -95,7 +86,6 @@ func TestMatchesMessage_UnaccentedMessageMatchesAccentedDescription(t *testing.T
 }
 
 func TestMatchesMessage_AccentedMessageMatchesUnaccentedDescription(t *testing.T) {
-	// The mirror case: folding has to happen on both sides, not just one.
 	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("compra en panaderia")}}}
 	if !matchesMessage(group, "La panadería era 2k") {
 		t.Error("accented message should match an unaccented description")
@@ -103,7 +93,6 @@ func TestMatchesMessage_AccentedMessageMatchesUnaccentedDescription(t *testing.T
 }
 
 func TestMatchesMessage_UnrelatedTokenStillDoesNotMatch(t *testing.T) {
-	// Folding must not make everything match everything.
 	group := transactionGroup{Movements: []movement.Movement{{Description: strPtr("compra en panadería")}}}
 	if matchesMessage(group, "nafta en la estación") {
 		t.Error("unrelated message should not match")
@@ -111,7 +100,6 @@ func TestMatchesMessage_UnrelatedTokenStillDoesNotMatch(t *testing.T) {
 }
 
 func TestMatchesMessage_TransferWithAccount(t *testing.T) {
-	// Verify that a transfer movement with an account is handled correctly.
 	accountID := uint64(123)
 	m := movement.Movement{
 		AccountID:   &accountID,
@@ -125,9 +113,6 @@ func TestMatchesMessage_TransferWithAccount(t *testing.T) {
 	}
 }
 
-// El caso guía, con las descripciones reales de la ventana del user 3 el
-// 2026-08-16 (ver la spec, § 1.2). La fila correcta es la única con cobertura
-// 1,00; todas las demás comparten "mercado"/"pago"/"tarjeta" y nada más.
 func TestScoreGroup_DebitoTarjetaLeGanaALasTransferencias(t *testing.T) {
 	msg := "Del débito tarjeta Mercado Pago se me reintegraron $70.000"
 	anchor := time.Date(2026, 8, 16, 0, 0, 0, 0, time.UTC)
@@ -150,7 +135,6 @@ func TestScoreGroup_DebitoTarjetaLeGanaALasTransferencias(t *testing.T) {
 	}
 }
 
-// El desempate por fecha no puede dar vuelta una diferencia de cobertura.
 func TestScoreGroup_LaFechaDesempataPeroNoManda(t *testing.T) {
 	msg := "la compra de locro"
 	anchor := time.Date(2026, 8, 19, 0, 0, 0, 0, time.UTC)
@@ -158,14 +142,12 @@ func TestScoreGroup_LaFechaDesempataPeroNoManda(t *testing.T) {
 		return transactionGroup{Movements: []movement.Movement{{Description: strPtr(desc), Date: d}}}
 	}
 
-	// Cobertura 1,00 pero quince días atrás, contra cobertura 0,50 de hoy.
 	viejoYExacto := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -15)), msg, anchor)
 	nuevoYFlojo := scoreGroup(group("Compra USD 100 a 1500", anchor), msg, anchor)
 	if viejoYExacto <= nuevoYFlojo {
 		t.Fatalf("exacto y viejo = %v, flojo y nuevo = %v: la fecha dio vuelta la cobertura", viejoYExacto, nuevoYFlojo)
 	}
 
-	// A cobertura igual, sí manda la fecha.
 	cerca := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -1)), msg, anchor)
 	lejos := scoreGroup(group("Compra de locro", anchor.AddDate(0, 0, -20)), msg, anchor)
 	if cerca <= lejos {
@@ -173,9 +155,6 @@ func TestScoreGroup_LaFechaDesempataPeroNoManda(t *testing.T) {
 	}
 }
 
-// Cobertura 0 sigue siendo "no matchea": el puntaje no puede inventar
-// candidatos a fuerza del término de fecha, o el fallback por recencia deja de
-// existir.
 func TestScoreGroup_SinCoberturaEsCero(t *testing.T) {
 	g := transactionGroup{Movements: []movement.Movement{
 		{Description: strPtr("Café"), Date: time.Now()},
@@ -185,7 +164,6 @@ func TestScoreGroup_SinCoberturaEsCero(t *testing.T) {
 	}
 }
 
-// fakeMovementRepoForResolve captures the arguments to the window queries.
 type fakeMovementRepoForResolve struct {
 	result               []movement.Movement
 	capturedSince        time.Time
@@ -266,8 +244,6 @@ func TestResolveCandidates_NoDate_UsesCreatedAtRecencyWindow(t *testing.T) {
 }
 
 func TestResolveCandidates_PastDatedButRecentlyCreated_Resolves(t *testing.T) {
-	// The reported bug: movement entered today, dated "ayer". The created_at
-	// window includes it; token "asado" matches → exactly 1 candidate.
 	yesterday := time.Now().AddDate(0, 0, -1)
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
 		{Model: gorm.Model{ID: 71}, Date: yesterday, Description: strPtr("Pago a Pablo por asado")},
@@ -284,8 +260,6 @@ func TestResolveCandidates_PastDatedButRecentlyCreated_Resolves(t *testing.T) {
 }
 
 func TestResolveCandidates_NoTextMatch_FallsBackToRecentWindow(t *testing.T) {
-	// Message shares no token/amount with either stored movement — the
-	// fallback must still offer them (the "¿cuál?" picker), not empty.
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
 		{Model: gorm.Model{ID: 1}, Description: strPtr("Café")},
 		{Model: gorm.Model{ID: 2}, Description: strPtr("Panadería")},
@@ -314,14 +288,6 @@ func TestResolveCandidates_EmptyWindow_ReturnsNoCandidates(t *testing.T) {
 	}
 }
 
-// TestResolveCandidates_NoTextMatch_JustCreated_ResolvesToThatOne reproduce el
-// caso real capturado en Telegram: el usuario carga "Pan 2 mil", el bot lo
-// registra, y 30 segundos después escribe "Eran 1500".
-//
-// Ese mensaje no matchea nada: "Pan" tiene 3 caracteres (< minMatchTokenLen) y
-// el 1500 es el monto NUEVO, no el guardado. Antes caía al fallback y le
-// mostraba un picker de 5 movimientos recientes —incluidos saldos de sistema—
-// entre los que había que cazar el correcto. Pero acaba de cargarlo: ese es.
 func TestResolveCandidates_NoTextMatch_JustCreated_ResolvesToThatOne(t *testing.T) {
 	now := time.Now()
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
@@ -343,16 +309,8 @@ func TestResolveCandidates_NoTextMatch_JustCreated_ResolvesToThatOne(t *testing.
 	}
 }
 
-// TestResolveCandidates_Fallback_SkipsSystemMovements: en la captura real, el
-// picker de "¿cuál es?" ofrecía la jubilación y un FCI (movimientos de la
-// categoría reservada "Sistema": saldos iniciales, ajustes, transferencias
-// internas). Una corrección de monto no se refiere jamás a esos, y encima se
-// muestran sin descripción, así que el botón queda como "21528105 ARS · · 2".
-//
-// Solo se filtran en el FALLBACK: si el usuario NOMBRA una transferencia, el
-// match textual la encuentra y ahí sí es un candidato legítimo.
 func TestResolveCandidates_Fallback_SkipsSystemMovements(t *testing.T) {
-	old := time.Now().Add(-5 * time.Hour) // fuera de justCreatedWindow
+	old := time.Now().Add(-5 * time.Hour)
 	sys := func(sub string) *subcategory.Subcategory {
 		return &subcategory.Subcategory{Category: "Sistema", Subcategory: sub}
 	}
@@ -376,14 +334,7 @@ func TestResolveCandidates_Fallback_SkipsSystemMovements(t *testing.T) {
 	}
 }
 
-// TestCandidateLabel cubre los defectos visibles en la captura de Telegram:
-// monto crudo ("2000 ARS", "21528105 ARS"), fecha ISO, y el doble separador
-// "· ·" cuando el movimiento no tiene descripción.
 func TestCandidateLabel(t *testing.T) {
-	// Fecha construida como en produccion: parse de "YYYY-MM-DD", o sea
-	// medianoche UTC. Construirla con startOfTodayArgentina() -el mismo valor
-	// contra el que compara movement.RelativeDate- ocultaba el bug de huso que se vio en
-	// Telegram (un movimiento de hoy salia "ayer").
 	nowART := time.Now().In(constants.ArgentinaZone)
 	today, _ := time.Parse("2006-01-02", nowART.Format("2006-01-02"))
 	sub := func(cat, s string) *subcategory.Subcategory {
@@ -417,9 +368,6 @@ func TestCandidateLabel(t *testing.T) {
 			want:  "🔴 FCI · US$3.614,66 · " + today.AddDate(0, 0, -3).Format("02/01"),
 		},
 		{
-			// Los movimientos vienen de la DB con el signo contable (un expense
-			// se guarda negativo). Ese signo NUNCA se le muestra al usuario: la
-			// dirección la da el tipo, no un menos.
 			name:  "el signo almacenado no llega al usuario",
 			group: mk("-2000", currency.ARS, strPtr("Pan"), sub("Alimentación", "Almacén / barrio"), today),
 			want:  "🔴 Pan · $2.000 · hoy",
@@ -433,18 +381,11 @@ func TestCandidateLabel(t *testing.T) {
 	}
 }
 
-// TestResolveCandidates_ManyTextMatches_IsCapped: el cap de fallbackRecentCap
-// solo se aplicaba al fallback, así que un mensaje ambiguo ("el super") sobre una
-// base con historia devolvía TODOS los que matchean. Con 20 candidatos el picker
-// son 20 botones de a 2 por fila, y encima conversation_states guarda los 20
-// grupos completos en JSONB. Se corta por recencia: groups ya viene newest-first.
 func TestResolveCandidates_ManyTextMatches_IsCapped(t *testing.T) {
 	now := time.Now()
 	var many []movement.Movement
 	for i := 0; i < 20; i++ {
 		many = append(many, movement.Movement{
-			// created_at viejo a propósito: sin esto el atajo del recién-creado
-			// se lleva el caso y no probaríamos el cap.
 			Model:       gorm.Model{ID: uint(100 + i), CreatedAt: now.Add(-time.Duration(i+2) * time.Hour)},
 			Description: strPtr("compra en el super"),
 		})
@@ -464,20 +405,15 @@ func TestResolveCandidates_ManyTextMatches_IsCapped(t *testing.T) {
 	}
 }
 
-// El corte de 5 pasa a ser por PARECIDO y no por recencia. Antes, con seis
-// matches, se quedaba con los cinco más nuevos y el único que nombraba la cosa
-// entera se caía si era el sexto.
 func TestResolveCandidates_ElCorteEsPorParecidoNoPorRecencia(t *testing.T) {
 	now := time.Now()
 	var window []movement.Movement
-	// Cinco genéricos, todos más nuevos que el correcto.
 	for i := 0; i < 5; i++ {
 		window = append(window, movement.Movement{
 			Model:       gorm.Model{ID: uint(200 + i), CreatedAt: now.Add(-time.Duration(i+2) * time.Hour)},
 			Description: strPtr("Transferencia Banco Galicia a Mercado Pago"),
 		})
 	}
-	// El correcto, el más viejo de todos.
 	window = append(window, movement.Movement{
 		Model:       gorm.Model{ID: 205, CreatedAt: now.Add(-200 * time.Hour)},
 		Description: strPtr("Débito tarjeta Mercado Pago"),
@@ -499,14 +435,6 @@ func TestResolveCandidates_ElCorteEsPorParecidoNoPorRecencia(t *testing.T) {
 	}
 }
 
-// TestResolveCandidates_NoDate_WindowIsDynamic: la ventana fija de 48h servía o
-// no según el ritmo de carga de cada uno. Quien carga 20 por día tenía 40
-// candidatos; quien carga 3 por semana no llegaba ni a lo del miércoles pasado.
-//
-// El criterio real no es el tiempo sino cuántos movimientos tenés frescos, así
-// que la ventana pasa a ser "los últimos N cargados", con un techo temporal
-// generoso para no arrastrar fósiles. Se ajusta sola al ritmo de cada usuario
-// sin calcular nada.
 func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
 		{Model: gorm.Model{ID: 1}, Description: strPtr("Café")},
@@ -520,8 +448,6 @@ func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 	if fake.capturedLimit != recencyLimit {
 		t.Errorf("limit = %d, want %d: la ventana se acota por cantidad, no solo por tiempo", fake.capturedLimit, recencyLimit)
 	}
-	// El techo temporal tiene que ser holgado: con 48h, un usuario de bajo
-	// volumen no alcanza sus propios movimientos de la semana pasada.
 	if recencyWindow < 30*24*time.Hour {
 		t.Errorf("recencyWindow = %v, want >= 30 días: es un techo contra fósiles, no la ventana real", recencyWindow)
 	}
@@ -530,16 +456,7 @@ func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 	}
 }
 
-// TestRelativeDate_MovementDateIsCivilNotInstant reproduce el bug visto en
-// Telegram: un movimiento cargado HOY salía como "(ayer)" en el recibo.
-//
-// La fecha de un movimiento es una FECHA civil que llega por time.Parse, o sea
-// medianoche UTC. startOfTodayArgentina() es medianoche ART = 03:00 UTC. Comparar
-// los dos como instantes deja la fecha de hoy 3 horas ANTES del corte, así que
-// "hoy" no se cumplía nunca. Convertirla a ART tampoco sirve: la corre un día
-// para atrás. Hay que comparar días calendario.
 func TestRelativeDate_MovementDateIsCivilNotInstant(t *testing.T) {
-	// exactamente como llega desde la DB / el flow: parse de "YYYY-MM-DD"
 	parseDay := func(s string) time.Time {
 		d, err := time.Parse("2006-01-02", s)
 		if err != nil {
@@ -565,14 +482,6 @@ func (r *fakeMovementRepoForResolve) CountByDayForUser(userID uint64, from, to t
 	return nil, nil
 }
 
-// El incidente del 2026-08-15: el usuario quiso corregir el débito de tarjeta
-// "del 04 de agosto". El movimiento existía (id 205, cargado el 08/08), pero la
-// ventana por created_at lo dejaba en la posición 36 de 30, así que el picker le
-// ofreció cuatro movimientos que no eran, y los ocho intentos fallaron.
-//
-// La rama de fecha ya existía; nadie le pasaba una fecha. Con una sola fecha, la
-// ventana tiene que cerrarse de los dos lados: abierta hasta hoy no acota nada,
-// que es lo mismo que no haberla pasado.
 func TestResolveCandidates_LoneDateFromAnchorsASingleDay(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
 	svc := &fakeServices{movements: fake}
@@ -594,10 +503,6 @@ func TestResolveCandidates_LoneDateFromAnchorsASingleDay(t *testing.T) {
 	}
 }
 
-// Cuando vienen los dos extremos, la ventana los cubre enteros. Ojo: un período
-// nombrado ("la semana pasada") ya NO llega acá con fechas — el schema le pide al
-// modelo que no las calcule, porque las calcula mal (ver TestAgentDateAnchorEval).
-// Esto pinea el tramo explícito, "los gastos del 3 al 5 de agosto".
 func TestResolveCandidates_DateRangeCoversTheWholeSpan(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
 	svc := &fakeServices{movements: fake}
@@ -619,8 +524,6 @@ func TestResolveCandidates_DateRangeCoversTheWholeSpan(t *testing.T) {
 	}
 }
 
-// El espejo. Con sólo dateTo, since se quedaba en el arranque de HOY y until en
-// una fecha pasada: la ventana salía invertida y no podía devolver nada.
 func TestResolveCandidates_LoneDateToAnchorsSymmetrically(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
 	svc := &fakeServices{movements: fake}

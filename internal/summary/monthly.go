@@ -15,9 +15,6 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// BuildMonthly assembles the closed-month summary for a user. from..to is the
-// reported month and prevFrom..prevTo the month before it. Returns the zero
-// Prompt when the user logged nothing in the reported month.
 func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Time) (conversation.Prompt, error) {
 	spent, err := b.total(monthQuery(userID, from, to, constants.Expense))
 	if err != nil {
@@ -215,8 +212,6 @@ func (b *Builder) dollarLine(spent decimal.Decimal, to time.Time) (string, error
 		money(q.Ask, currency.ARS), roundedUSD(usd)), nil
 }
 
-// roundedUSD renders an approximate dollar figure without the cents that
-// money() always prints.
 func roundedUSD(d decimal.Decimal) string {
 	return "US$" + currency.GroupThousands(d.StringFixed(0))
 }
@@ -290,8 +285,6 @@ func timesOver(n int) string {
 	return spellNumber(n) + " veces"
 }
 
-// spellNumber writes a small cardinal the way it is said out loud, or ""
-// when it falls outside the range the summary can spell.
 func spellNumber(n int) string {
 	names := [...]string{"un", "dos", "tres", "cuatro", "cinco", "seis",
 		"siete", "ocho", "nueve", "diez", "once"}

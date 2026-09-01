@@ -11,14 +11,9 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// activeUser: un usuario que viene cargando fuerte, con una sola cuenta en
-// pesos. Sirve de base para los tests del menú.
 func activeUser() (*testServices, *nudgeStats) {
 	days := []movement.DayCount{daysAgo(0, 20)}
 	svc := &testServices{
-		// dayCounts va también en el fake: sendQuestionMenu NO recibe el stats,
-		// lo reconstruye desde el repo para que el menú refleje los datos de
-		// este momento y no los de cuando salió el tip.
 		counts:     40,
 		dayCounts:  days,
 		accountsBy: []account.Account{{Name: "Galicia", Currency: currency.ARS}},
@@ -27,8 +22,6 @@ func activeUser() (*testServices, *nudgeStats) {
 	return svc, s
 }
 
-// El menú solo ofrece preguntas que hoy tienen datos: sin cuenta USD, la
-// pregunta por los dólares no aparece.
 func TestEligibleQuestions_SkipsWhatWouldAnswerEmpty(t *testing.T) {
 	svc, s := activeUser()
 
@@ -45,8 +38,6 @@ func TestEligibleQuestions_SkipsWhatWouldAnswerEmpty(t *testing.T) {
 	}
 }
 
-// El menú espera a que no quede ninguna pregunta ELEGIBLE sin mandar: los tips
-// específicos enseñan la frase y el menú no, así que van primero.
 func TestMenuTipGate_WaitsWhileAnEligibleQuestionIsUnsent(t *testing.T) {
 	svc, s := activeUser()
 
@@ -65,10 +56,6 @@ func TestMenuTipGate_WaitsWhileAnEligibleQuestionIsUnsent(t *testing.T) {
 	}
 }
 
-// EL BUG QUE ESTE GATE EVITA: un usuario de una sola cuenta nunca cumple el
-// gate de query_balance_tip. Con el gate ingenuo ("todos los tips mandados")
-// su contador de pendientes no llegaba a cero jamás y el menú no salía NUNCA
-// — justo para quien más lo necesita.
 func TestMenuTipGate_ReachableBySingleAccountUser(t *testing.T) {
 	svc, s := activeUser()
 	for _, n := range eligibleQuestions(svc, 1, s) {
@@ -83,9 +70,6 @@ func TestMenuTipGate_ReachableBySingleAccountUser(t *testing.T) {
 	}
 }
 
-// El menú sale en orden de declaración —que es orden de valor— y recorta
-// DESPUÉS. Antes barajaba primero, así que podía tirar las mejores preguntas y
-// además movía los botones de lugar en cada tap.
 func TestSendQuestionMenu_KeepsTheBestInDeclaredOrder(t *testing.T) {
 	svc, _ := activeUser()
 
@@ -116,7 +100,6 @@ func TestSendQuestionMenu_KeepsTheBestInDeclaredOrder(t *testing.T) {
 	}
 }
 
-// El tap de "Preguntame" manda el menú, no una consulta.
 func TestHandleNudgeQuery_MenuCallbackSendsTheMenu(t *testing.T) {
 	svc, _ := activeUser()
 

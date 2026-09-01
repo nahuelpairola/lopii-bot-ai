@@ -10,8 +10,6 @@ import (
 	"testing"
 )
 
-// categoryCreateServer returns an httptest server that captures the system
-// prompt and replies with the given tool-call arguments JSON.
 func categoryCreateServer(t *testing.T, argsJSON string, capture *string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

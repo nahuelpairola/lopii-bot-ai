@@ -45,10 +45,6 @@ var categoryCreateTool = toolSchema{
 	}`),
 }
 
-// ClassifyCategoryCreate runs the CREATE_CATEGORY resolution: a semantic
-// dup-check against the (already reserved/hidden-filtered) taxonomy, or a
-// complete proposal the user only has to confirm. Exactly one of
-// Match/Proposal is non-nil on success.
 func (o *Orchestrator) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []TaxonomyEntry) (CategoryCreateResult, error) {
 	systemPrompt := fmt.Sprintf(categoryCreateSystemPromptTemplate, buildTaxonomyBlock(taxonomy))
 
@@ -65,7 +61,6 @@ func (o *Orchestrator) ClassifyCategoryCreate(ctx context.Context, text string, 
 		return CategoryCreateResult{}, fmt.Errorf("orchestrator: category create returned neither match nor proposal")
 	}
 	if result.Match != nil && result.Proposal != nil {
-		// prefer the conservative answer when the model disobeys
 		result.Proposal = nil
 	}
 	return result, nil

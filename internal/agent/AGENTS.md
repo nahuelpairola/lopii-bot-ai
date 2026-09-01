@@ -45,14 +45,14 @@ account gets their expenses written to it.
   resolve `accountNamedInMessage` already found. Calling it there is dead code that reads
   as live.
 
-`account_name_guess` survives for one job only — naming an account that does **not exist
-yet** ("pagué el curso con Brubank") so the gap can offer to create it. It no longer picks
-between accounts that already exist, and it is ignored unless the message backs it up.
+`account_name_guess` survives for one job only — naming an account that does **not exist yet**
+("pagué el curso con Brubank") so the gap can offer to create it. It is ignored unless the message
+backs it up.
 
-`userText` is the **turn's** message, not the row's: a message naming one account assigns it
-to every row of that turn. Correct for "pagué luz 5000 y gas 3000 con mercado pago", wrong if
-the user mixes accounts in one message. No measured case; the UPDATE path
-(`movement_update_flow.go`, `accountGapsFor`) does not use any of this.
+`userText` is the **turn's** message, not the row's: a message naming one account assigns it to
+every row of that turn. Right for "pagué luz 5000 y gas 3000 con mercado pago", wrong if the user
+mixes accounts in one message — chosen knowingly, with no measured case of the second. The UPDATE
+path does not use any of this.
 
 ## One reference resolver, and it has two windows
 
@@ -87,6 +87,19 @@ otherwise drop all three and there would be nothing to search with. `SearchText`
 and never `Change` — `Change` is the model's paraphrase, and `applyAnswers` concatenates the
 user's answers onto it.
 
+## Draining an action: three rules that are not in the code's shape
+
+- **`budgetSlack` is 2 grace rounds** over the number of open questions. One for an answer that
+  did not help, one for the retry; a third would be making the user spend time on something the
+  bot is not going to understand.
+- **A candidate is validated BEFORE the action is deleted.** A corrupt payload is not dropped in
+  silence — it stays queued and fails loudly.
+- **When the field came from a button and the value was just typed, the app has the whole
+  correction and does NOT call the model.** The change is built in Go. Amounts never come through
+  here: they are typed straight, with no button.
+- Two accounts sharing a name **and** a currency do exist in production; picking one is
+  non-deterministic, so the resolver asks.
+
 ## The loop parks, it does not route
 
 There is no router (it was deleted in stage 5). When the loop needs an answer from the user it
@@ -98,14 +111,12 @@ The wizards themselves are not here — the ones reachable from `manage_settings
 
 ## Money
 
-Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
-model) **before** editing. The app owns the sign and the arithmetic; a correction arrives as a
-structured diff (`field`/`op`/`value`) and the app computes the result — the model never sends a
-number it worked out itself.
+Amounts, signs or `account_id`: `AGENTS.md` § The accounting model, before editing.
 
----
+Why: `docs/decisions.md`, section **The agent loop and QUERY**.
 
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **The agent loop and QUERY**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+## What is not this package's business
+
+`agent` decides **what** to do; `orchestrator` knows **how to talk to Groq**. Model choice,
+fallback chains, TPM ceilings and tool schemas are not decisions this package makes — see
+`orchestrator/AGENTS.md` before changing any of them here.

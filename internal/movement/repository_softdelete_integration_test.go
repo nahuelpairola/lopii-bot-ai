@@ -14,16 +14,6 @@ import (
 	"lopiibot.com/internal/database"
 )
 
-// Run with: go test -tags integration ./internal/movement/
-// Requires local Postgres (docker compose up -d) with migrations applied.
-//
-// El contrato que fija este archivo: borrar algo que YA no está es el estado
-// final pedido, no una falla. Antes no era así, y el 2026-08-10 dos
-// correcciones que el usuario había confirmado murieron acá — el usuario tocó
-// "confirmar", la fila ya estaba borrada, y el bot le dijo que había fallado.
-// Los dos caminos que lo disparan siguen vivos: el doble tap en el botón y el
-// replay que hace pendingjob después de un 429.
-
 func TestSoftDeleteByIDs_EmptySliceIsAnError(t *testing.T) {
 	r := InitRepository(testConnection(t))
 
@@ -41,7 +31,6 @@ func TestSoftDeleteByIDs_AlreadyDeletedIsNotAnError(t *testing.T) {
 		t.Fatalf("primer borrado: %v", err)
 	}
 
-	// El usuario confirma dos veces, o entra un replay del 429.
 	if err := r.SoftDeleteByIDs([]uint{id}); err != nil {
 		t.Fatalf("segundo borrado = %v, want nil (el estado final es el pedido)", err)
 	}
@@ -55,9 +44,6 @@ func TestSoftDeleteByIDs_UnknownIDIsAnError(t *testing.T) {
 	}
 }
 
-// seedDeletableMovement inserta una cuenta propia y un movimiento suelto sobre
-// ella, y devuelve el id del movimiento. Fecha fija y lejana para no pisar
-// datos reales del usuario de prueba.
 func seedDeletableMovement(t *testing.T, conn *database.Connection, r *repository) uint {
 	t.Helper()
 

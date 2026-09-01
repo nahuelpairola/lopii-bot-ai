@@ -29,9 +29,6 @@ func newAdjustController(currentBalance string) (*controller, *fakeMovementRepoF
 	sub.ID = 9
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{5: currentBalance}}
 	metrics := &fakeMetricRepo{}
-	// La cuenta 5 tiene que existir en el repo: finishAccountAdjust la relee para
-	// que el guard valide la moneda del movimiento contra la de la DB, y no
-	// contra la que dice la Data del flujo.
 	acc5 := acct(5, currency.ARS, true)
 	c := &controller{
 		movements:     movRepo,
@@ -50,7 +47,6 @@ func onlyInserted(t *testing.T, movRepo *fakeMovementRepoFull) movement.Movement
 	return movRepo.inserted[0]
 }
 
-// (a) positive delta → Income +2000, correct subcategory/account/currency.
 func TestFinishAccountAdjust_PositiveDelta(t *testing.T) {
 	c, movRepo, metrics := newAdjustController("50000")
 	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("52000"))
@@ -67,7 +63,6 @@ func TestFinishAccountAdjust_PositiveDelta(t *testing.T) {
 	}
 }
 
-// (b) negative delta → Expense stored with negative sign.
 func TestFinishAccountAdjust_NegativeDelta(t *testing.T) {
 	c, movRepo, _ := newAdjustController("50000")
 	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("48000"))
@@ -78,7 +73,6 @@ func TestFinishAccountAdjust_NegativeDelta(t *testing.T) {
 	}
 }
 
-// (c) already at that total → no insert, still resolves.
 func TestFinishAccountAdjust_NoChange(t *testing.T) {
 	c, movRepo, metrics := newAdjustController("50000")
 	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("50000"))
@@ -91,7 +85,6 @@ func TestFinishAccountAdjust_NoChange(t *testing.T) {
 	}
 }
 
-// (d) "dejar en cero": 50000 → 0 → Expense -50000.
 func TestFinishAccountAdjust_ToZero(t *testing.T) {
 	c, movRepo, _ := newAdjustController("50000")
 	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("0"))
@@ -102,7 +95,6 @@ func TestFinishAccountAdjust_ToZero(t *testing.T) {
 	}
 }
 
-// (e) account with no movements: balance 0 → 30000 → Income +30000.
 func TestFinishAccountAdjust_NoMovements(t *testing.T) {
 	c, movRepo, _ := newAdjustController("0")
 	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("30000"))
@@ -113,7 +105,6 @@ func TestFinishAccountAdjust_NoMovements(t *testing.T) {
 	}
 }
 
-// (f) negative current balance (overdraft): -1000 → 500 → Income +1500.
 func TestFinishAccountAdjust_NegativeCurrentBalance(t *testing.T) {
 	c, movRepo, _ := newAdjustController("-1000")
 	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("500"))
@@ -124,7 +115,6 @@ func TestFinishAccountAdjust_NegativeCurrentBalance(t *testing.T) {
 	}
 }
 
-// (g) decimal precision: 100.25 → 100.50 → Income +0.25 (exact, never float).
 func TestFinishAccountAdjust_DecimalPrecision(t *testing.T) {
 	c, movRepo, _ := newAdjustController("100.25")
 	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, adjustData("100.50"))
@@ -136,17 +126,10 @@ func TestFinishAccountAdjust_DecimalPrecision(t *testing.T) {
 	}
 }
 
-// TestFinishAccountAdjust_CurrencyMismatchRejected cubre lo que este camino gana
-// al pasar por el guard: si la moneda que arrastra la Data del flujo no es la de
-// la cuenta en la DB, el ajuste NO se escribe.
-//
-// Sin el guard el movimiento entraba igual, en una moneda distinta a la de su
-// cuenta, y el balance quedaba corrupto en silencio: el saldo es SUM(amount) y no
-// mira la moneda de cada fila, así que sumaría USD contra pesos sin chistar.
 func TestFinishAccountAdjust_CurrencyMismatchRejected(t *testing.T) {
-	c, movRepo, _ := newAdjustController("50000") // la cuenta 5 es ARS
+	c, movRepo, _ := newAdjustController("50000")
 	data := adjustData("52000")
-	data["account_currency"] = "USD" // la Data dice otra cosa
+	data["account_currency"] = "USD"
 
 	c.finishAccountAdjust(context.Background(), &messenger.FakeChat{}, data)
 

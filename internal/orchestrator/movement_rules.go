@@ -2,27 +2,6 @@ package orchestrator
 
 import "strings"
 
-// Las reglas de clasificación de movimientos que comparten, verbatim, los dos
-// caminos de CREATE: createSystemPromptTemplate (el camino pre-loop, que sigue
-// vivo mientras exista ese camino) y agentSystemPromptTemplate (el loop).
-//
-// Estaban duplicadas. El 2026-08-08 el fix de las piernas del transfer tuvo que
-// pegar el mismo párrafo en los dos archivos; tocar uno solo dejaba el camino
-// pre-loop clasificando mal, y nada avisaba.
-//
-// Son DOS consts y no una porque REGLA DE FECHA se mete en el medio y ahí los
-// dos prompts difieren de verdad: el loop aclara la zona horaria y agrega la
-// resolución de rangos para las herramientas de consulta, que create no tiene.
-// Esa regla queda duplicada A PROPÓSITO — no es el mismo texto, es texto
-// parecido, y unificarlo obligaría a meterle a create una instrucción sobre una
-// herramienta que no está en su toolbox.
-//
-// MISMA restricción que numberFormatRule: ni '%' literal (se concatenan en
-// plantillas de fmt.Sprintf; el '%%' de abajo es el escape correcto) ni
-// backtick (son raw string literals).
-
-// amountRules es lo que queda cuando la taxonomía se va del prompt: el loop
-// sigue necesitando cómo leer un monto, pero ya no clasifica.
 const amountRules = `
 REGLAS DE MONTO Y MONEDA:
 - Los montos abreviados ("200k", "1.5m") se expanden a su valor numérico completo.
@@ -51,27 +30,9 @@ REGLA DE AGRUPACIÓN (campo group):
 - Las piernas/ítems de UNA operación atómica (compra/venta USD, transferencia entre cuentas propias, suscripción/rescate FCI) llevan el MISMO group. Compras u operaciones separadas — incluso ítems de una tarjeta ("pan, medicamentos, carne"; "ropa, super") — NO llevan group.
 `
 
-// agentPatternRules es movementPatternRules SIN los nombres literales de
-// subcategoría.
-//
-// Esos pares —"Sistema | Transferencia", "Inversiones | Dólares"— están en el
-// prompt para que el modelo los COPIE, y por lo tanto también para que los
-// copie mal. En el loop los pone la app: structuralPair los deduce de la forma
-// del movimiento, que es un dato, no una interpretación.
-//
-// El const compartido NO se toca: createSystemPromptTemplate sigue clasificando
-// hasta que la etapa 5 borre ese camino, y sacárselos ahí lo dejaría sin con
-// qué.
 var agentPatternRules = strings.NewReplacer(
 	`, subcategoría "Inversiones | Dólares"`, "",
 	`, subcategoría "Sistema | Transferencia"`, "",
-	// La REGLA DE GANANCIA entera se va del loop. Su contenido era "es un income
-	// con subcategoría X", y `record_movements` YA NO TIENE campo de categoría:
-	// le pedía al modelo llenar algo inexistente. Lo que queda —que un
-	// rendimiento es un income— sale solo de la regla de tipo.
-	//
-	// Medido antes de sacarla: 0 usos en 442 mensajes de 45 días. Cuesta ~85
-	// tokens en CADA llamada del loop.
 	rendimientoRule, "",
 ).Replace(movementPatternRules)
 

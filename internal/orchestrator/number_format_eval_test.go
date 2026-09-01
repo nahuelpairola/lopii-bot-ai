@@ -10,12 +10,6 @@ import (
 	"testing"
 )
 
-// Run with real Groq creds:
-//   GROQ_APIKEY=... GROQ_BASE_URL=... GROQ_CREATE_MODEL=... go test -tags llm_eval ./internal/orchestrator/ -run TestNumberFormatEval -v
-// Excluded from default `go test ./...` (build tag) so CI needs no API key.
-
-// Las cuentas del eval. Vivían en create_eval_test.go, que se fue con
-// ClassifyCreate; este es el único eval que las seguía usando.
 var numberFormatEvalAccounts = []AccountOption{
 	{ID: 1, Name: "Banco", Currency: "ARS"},
 	{ID: 2, Name: "Mercado Pago", Currency: "ARS"},
@@ -24,7 +18,7 @@ var numberFormatEvalAccounts = []AccountOption{
 
 var numberFormatCreateCases = []struct {
 	msg        string
-	wantAmount string // expected normalized amount on the first movement
+	wantAmount string
 }{
 	{"gasté 1.041.265 en el súper", "1041265"},
 	{"pagué 1.500,50 de luz", "1500.50"},
@@ -32,10 +26,6 @@ var numberFormatCreateCases = []struct {
 	{"compré algo de 1.5m", "1500000"},
 }
 
-// El formato numérico ahora se prueba contra EL LOOP, que es quien extrae el
-// monto desde que la etapa 5 borró ClassifyCreate. El sujeto no cambió y sigue
-// siendo plata: leer "1.041.265" como 1041.265 cambia el monto MIL veces, y
-// nada río abajo lo puede notar — es un número perfectamente válido.
 func TestNumberFormatEval_Loop(t *testing.T) {
 	key := evalKey(t)
 	o := New(Config{
@@ -78,7 +68,7 @@ func TestNumberFormatEval_Loop(t *testing.T) {
 
 var numberFormatOnboardingCases = []struct {
 	msg         string
-	wantBalance string // expected normalized balance on the first account
+	wantBalance string
 }{
 	{"tengo 1.041.265 en el banco", "1041265"},
 	{"en la caja de ahorro 1.500,50", "1500.50"},
@@ -90,7 +80,7 @@ func TestNumberFormatEval_Onboarding(t *testing.T) {
 	o := New(Config{
 		APIKey:         key,
 		BaseURL:        evalBaseURL(),
-		CreateModel:    os.Getenv("GROQ_CREATE_MODEL"), // ClassifyOnboarding uses createModel
+		CreateModel:    os.Getenv("GROQ_CREATE_MODEL"),
 		TimeoutSeconds: 30,
 	})
 	for _, tc := range numberFormatOnboardingCases {

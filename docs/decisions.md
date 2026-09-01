@@ -34,7 +34,7 @@
 - **ARS/USD strictly separated.** No implicit FX conversion anywhere. Totals and summaries are reported per currency.
 - **Balance is always computed.** No `balance` column on `accounts`. Always `SUM(amount)` from `movements`.
 - **Anomaly detection — the insufficient-funds confirm gate.** Correct numbers is only half the goal; the other half is *surfacing* a suspicious computation instead of burying it. A well-formed movement that drives an account into or deeper into negative (`after < 0 && after < before`, per affected account, `after = SumAmountForAccount + Σ deltas`) stops at a confirm gate — **Registrar igual / Reescribir / Falta registrar algo** — showing the shortfall; the user decides. Distinct from the guard's *malformed*-row rejections (amount 0, currency mismatch): those are rewritten, this is confirmed. Reuses the `ChoiceStep` confirm pattern (`movement_confirm_flow.go`); friction only on the anomaly path, so frictionless CREATE is intact. Deterministic (balances-map input → pure check), Layer-1 testable. Same spec as below.
-- **Signed, account-attributed movements — the money model (money precision).** Every movement (expense/income/transfer) is attributed to a real account and stores a **signed** amount so `balance = SUM(amount)` is the whole accounting: `expense` negative on its source, `income` positive on its destination, transfer legs signed out/in. The sign is **internal to storage** and owned by the app (a guard normalizes `expense`→negative, `income`→positive on write), never by the LLM; it never escapes storage — user *and* LLM (as an UPDATE/DELETE candidate) both see `amount.Abs()`, with direction carried by the movement type. Account resolution is app-side and deterministic (LLM-matched → default of currency → gap-fill), because the account list shown to the LLM doesn't mark the default. This supersedes the earlier "expense/income are `account_id = NULL`, positive" rule, which the onboarding real-accounts redesign left incoherent (spending never debited the real balance) and which let malformed rows through (a negative `expense`, and a `0.00` from feeding a signed candidate into a positive-reasoning UPDATE prompt). Full rules in [business-rules.md](business-rules.md#the-accounting-model); spec + guard in `docs/superpowers/specs/2026-07-07-signed-account-attributed-movements-design.md`. **The single place where a wrong sign or `account_id` is a financial bug, not a cosmetic one.**
+- **Signed, account-attributed movements — the money model (money precision).** The model itself is in [AGENTS.md](../AGENTS.md#the-accounting-model--read-before-touching-any-money-path); what follows is why it replaced the previous one. This supersedes the earlier "expense/income are `account_id = NULL`, positive" rule, which the onboarding real-accounts redesign left incoherent (spending never debited the real balance) and which let malformed rows through (a negative `expense`, and a `0.00` from feeding a signed candidate into a positive-reasoning UPDATE prompt). Full rules in [business-rules.md](business-rules.md#the-accounting-model-money-precision--read-this-before-touching-any-money-path); spec + guard in `docs/superpowers/specs/2026-07-07-signed-account-attributed-movements-design.md`. **The single place where a wrong sign or `account_id` is a financial bug, not a cosmetic one.**
 - **A transfer query sees `Sistema | Transferencia`, and gets both legs separately (2026-08-21).** `MovementQuery.apply` excluded reserved categories unconditionally, so asking `type=transfer` selected exactly the rows the next clause deleted — every own-account transfer lives under `Sistema | Transferencia`. Measured in prod: *"¿cuánto transferí este mes de fci a mercado pago?"* answered **$100.000 against $1.548.595,59 real**, and the one surviving row only survived because it was miscategorised `Inversiones | FCI`. `describeEmptyResult`'s reserved probe never fired because it runs on **zero rows only** — the net covers "all hidden", not "mostly hidden", which is worse: plausible, specific, 15× off. The schema's own description already promised the escape hatch ("salvo que se pida `type=transfer`"), so this was a documented contract the code never kept. Two things make the fix safe, and both were measured before writing it: the exemption is **per-subcategory**, because `Sistema | Saldo inicial` is also `type=transfer` (11 rows) and a category-wide exemption would count every opening balance as a transfer; and an ungrouped transfer sum is **split by direction** (`GroupByDirection`) and never carries a total line, because a transfer is two rows and `SUM(ABS(amount))` over both is exactly 2× (14 legs = $2.897.191,18 = 2 × $1.448.595,59). Direction is *not* a tool parameter: returning both labelled answers every phrasing without a new schema field, and this model picks badly among near-identical options. The total-line refusal is the same reasoning that already governs `group_by=type`, and it is what stops the doubling returning through `group_by=account`. Scope was held to the `type=transfer` path — verified call site by call site that nothing in `summary`, `miniapp` or `nudges` ever sets `Type = transfer` on the non-`OnlyReserved` branch.
 - **Accounts hold fixed monetary amounts, never asset positions.** An account's balance is a single ARS or USD number — the current value. The bot does not model stocks/ETFs/cedears/FCI cuotapartes as units × price, does not auto-revalue, and does not accrue interest. Gains (rendimiento) belong to the account that earned them — recorded as `income` (`Sistema | Rendimiento inversión`) attributed to that account, never silent balance bumps; any account can have its own (explicit when stated, app-computed on an FCI redemption). `ClassifyOnboarding` extracts monetary balances only — never units/shares/tickers.
 
@@ -160,6 +160,13 @@ both directions with one rule.
 message. The helper is shared with `GuessNamesOwnAccount` and reference resolution; all 8 measured
 `FCI` rows are transfers, which are exempt. The limitation is documented instead.
 
+- **An eval can be impossible by construction, and look merely red (2026-08-12).** Nine cases of
+  the agent-loop eval expected `find_movements_to_correct`, which is *only a constant* — it was
+  never in `AgentTools()`, so it is never sent to the model. Those nine could not pass no matter
+  what the model did, and nobody noticed because a red eval reads like a model problem. Before
+  tuning a prompt against a failing case, check that the tool the case expects is actually one
+  the model was offered.
+
 ## Groq quota, the 429 queue and rate limits
 
 - **A terminal Groq 429 is a typed error (`orchestrator.RateLimitedError`), not a string to re-parse.** `Client.send`'s existing retry loop already computes the best available wait (header priority over body-parsed text); wrapping that wait in a struct returned via `errors.As` means the pending-jobs queue (and any future consumer) never re-derives or re-parses anything Groq said — it reads `RetryAfter` off the error itself. The alternative (checking `errors.Is(err, someSentinel)` and separately re-parsing the body for the wait) would duplicate parsing logic `send` already did.
@@ -209,6 +216,32 @@ message. The helper is shared with `GuessNamesOwnAccount` and reference resoluti
   model - so `TestEveryConfigFile_HasNoSameTurnModelCollision` is red on purpose. The table is left
   intact: it describes what really collides, and that did not change because a model went away.
 
+- **`qwen/qwen3.6-27b` is deliberately NOT the third model, and this is the note that keeps it
+  out.** It is the obvious candidate every time someone looks at
+  `TestEveryConfigFile_HasNoSameTurnModelCollision` sitting red and reaches for a third TPM
+  bucket to fix it. It emits its reasoning **inside the content**, so the `<think>` block reaches
+  the user. That is not a cost problem that a cap could solve — it breaks the output.
+- **The fallback lists are not the chain.** `agentRound` and `queryChain` build `[primary] +
+  list`, so the last step repeats the primary and retries a bucket that already bounced. Left
+  that way on purpose (2026-08-19): Groq leaves two usable models, both 8.000 TPM in separate
+  buckets, and two calls landing in different buckets is the only thing that makes stepping aside
+  worth anything.
+- **`QueryFallbackModels` is a separate list from the agent's, not a reuse.** Query's primary
+  (120b) is precisely the agent's first substitute, so sharing one list would send the first
+  retry to the model that just bounced.
+- **`NarrationModel` is chosen for NOT reasoning (2026-08-13).** The forced narration is the last
+  call of a query — no tools left to pick, only prose to write. A reasoning model spends the
+  completion budget thinking and returns empty; empty falls back to `queryModel`. Writing is
+  tens of completion tokens, reasoning is hundreds, so the reasoner can run out before it writes
+  anything. The measured numbers live at `maxNarrationCompletionTokens`, with the caveat that
+  they were taken against llama-3.3-70b, which no longer exists.
+- **`ClassifierModel` points at a different model on purpose (2026-08-12).** Groq's TPM ceiling
+  is per model and the loop already enters its own bucket about once every ninety seconds.
+  Which model is the eval's call, not the default's.
+- **`agentModel` has no default, and that is the safe failure.** Since stage 5, `Run` is the only
+  path a free-text message takes, so an environment that fails to declare it does not degrade —
+  every loop call gets a 400 from Groq. No default means it does not start instead.
+
 ## Notifications and reminders
 
 - **System→user notification engine: shared `send()` + ticker, per-notifier trigger/query stays specific.** `internal/notifier.Sweeper` is one `time.Ticker` goroutine whose `tick` calls a `sweepX` per notifier — today three: `sweepReminders`, `sweepWeeklySummary`, `sweepRetention`. The *only* shared asset is the ticker and an injected `send(ctx, chatID, text)` — deliberately reachable outside the sweeper so a future admin-triggered broadcast can call it directly without going through the ticker. Everything else (candidate query, fire condition, cadence, guard) is each notifier's own; there is no polymorphic `notifications` table, no notification-type registry, no templating engine. A `notifications(type, payload jsonb)` table would force a lowest-common-denominator schema and lose typed columns/FKs for a gain (one shared table) nobody needs — the reminder and a future Cafecito prompt or weekly summary don't share a data shape, only a delivery mechanism. Adding a second tenant is a ~20-line sibling function and one line in `tick`; a `[]notifier` abstraction is deferred to the third tenant (`// ponytail:` marked in `sweeper.go`).
@@ -224,3 +257,14 @@ message. The helper is shared with `GuessNamesOwnAccount` and reference resoluti
 - **`internal/controller/messaging` was split by cluster, one package per reason to change.** It had grown to ~10k non-test lines across 52 files — 4× the next package — and go.dev's module-layout guidance says the answer is to split off supporting packages under `internal/`, not to document around it. Done in stages, each a pure move verified by the full test protocol: copy→`messages`, flows→`flow`, the unified loop→`agent`, free-text reads→`query`, contextual tips→`nudges`, the 429 queue→`pendingjob`, the configuration wizards→`settings`. The edge kept 1.6k lines across 20 files: webhook handlers, `/start`, the bridges, `userLocks`, tracing, metric outcomes.
   The seam that made it work is the **consumer-defined interface**: each cluster declares the narrow set of methods it needs (`flow.runner`, `agent`'s `agentServices`, `settings.Services`, …) and `*controller` implements all of them structurally through one-line bridge files. No cluster imports a repository, and none imports another cluster's internals. The methods are exported although most interfaces are not — an interface with unexported methods can only be satisfied from inside its own package, and the implementation is at the edge.
   Two things were deliberately *not* moved. The wizard **starts** stay out of `flow` because they call the LLM and `flow` must not import `orchestrator` — they went to `settings`, which `flow` reaches back through two runner methods. And the tests that exercise a finish through the `*controller` stayed at the edge: they test webhook→engine→finish, which is the edge's job. Using `flow` does not make a test a `flow` test — only the builder/step tests moved.
+
+### Why `ArgentinaZone` is a fixed offset and not `time.LoadLocation` (2026-08-31)
+
+`constants.ArgentinaZone` is `time.FixedZone("ART", -3*60*60)`. `time.LoadLocation` would read
+the IANA tz database from the host, and the Alpine/scratch images this deploys to ship without
+it — the lookup fails at runtime, not at build. Argentina observes no DST, so a fixed offset
+loses nothing. If DST ever comes back, the switch is `time.LoadLocation` **plus** an embedded
+`time/tzdata` import, not `LoadLocation` alone.
+
+`TestArgentinaZone_IsUTCMinus3` is what keeps the offset honest.
+

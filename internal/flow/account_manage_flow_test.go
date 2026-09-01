@@ -36,7 +36,6 @@ func manageSeed(withAccount bool) conversation.Data {
 	return seed
 }
 
-// (a) seeded with account_id → pick is skipped, initial prompt is the menu.
 func TestAccountManageFlow_SeededMatch_SkipsPick(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -48,7 +47,6 @@ func TestAccountManageFlow_SeededMatch_SkipsPick(t *testing.T) {
 	}
 }
 
-// (b) no account_id → pick lists candidates; pick_0 sets fields + shows menu.
 func TestAccountManageFlow_Pick_SelectsCandidate(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -69,7 +67,6 @@ func TestAccountManageFlow_Pick_SelectsCandidate(t *testing.T) {
 	}
 }
 
-// (c) pick → create-new finishes with operation=create_new.
 func TestAccountManageFlow_Pick_CreateNew(t *testing.T) {
 	engine, _ := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -83,7 +80,6 @@ func TestAccountManageFlow_Pick_CreateNew(t *testing.T) {
 	}
 }
 
-// (d) pick → Cancelar finishes with cancelled=true.
 func TestAccountManageFlow_Pick_Cancel(t *testing.T) {
 	engine, _ := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -97,7 +93,6 @@ func TestAccountManageFlow_Pick_Cancel(t *testing.T) {
 	}
 }
 
-// (e) menu → rename → empty name retries → valid name → confirm finishes.
 func TestAccountManageFlow_Rename_HappyPath(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -107,12 +102,10 @@ func TestAccountManageFlow_Rename_HappyPath(t *testing.T) {
 	if store.stepName != StepAccountManageAskName {
 		t.Fatalf("after op_rename stepName = %q, want %q", store.stepName, StepAccountManageAskName)
 	}
-	// empty name → retry
 	result, _, _ := engine.Handle(userID, conversation.Input{Text: "   "})
 	if result.Finished || store.stepName != StepAccountManageAskName {
 		t.Fatalf("empty name should retry: finished=%v step=%q", result.Finished, store.stepName)
 	}
-	// valid name → confirm step
 	engine.Handle(userID, conversation.Input{Text: "FCI"})
 	if store.stepName != StepAccountManageConfirmRename {
 		t.Fatalf("after name stepName = %q, want %q", store.stepName, StepAccountManageConfirmRename)
@@ -126,7 +119,6 @@ func TestAccountManageFlow_Rename_HappyPath(t *testing.T) {
 	}
 }
 
-// (f) rename confirm → Atrás returns to the name step (does not finish).
 func TestAccountManageFlow_Rename_BackFromConfirm(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -143,7 +135,6 @@ func TestAccountManageFlow_Rename_BackFromConfirm(t *testing.T) {
 	}
 }
 
-// (g) menu → adjust → non-numeric/negative retry, then valid total confirms.
 func TestAccountManageFlow_Adjust_HappyPath(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -174,7 +165,6 @@ func TestAccountManageFlow_Adjust_HappyPath(t *testing.T) {
 	}
 }
 
-// (g') "dejar en cero": total 0 is accepted.
 func TestAccountManageFlow_Adjust_ZeroAccepted(t *testing.T) {
 	engine, store := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -190,7 +180,6 @@ func TestAccountManageFlow_Adjust_ZeroAccepted(t *testing.T) {
 	}
 }
 
-// (h) menu → default → confirm finishes with operation=default.
 func TestAccountManageFlow_Default_HappyPath(t *testing.T) {
 	engine, _ := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -205,7 +194,6 @@ func TestAccountManageFlow_Default_HappyPath(t *testing.T) {
 	}
 }
 
-// (i) Cancelar in the menu finishes with cancelled=true.
 func TestAccountManageFlow_Menu_Cancel(t *testing.T) {
 	engine, _ := newAccountManageTestEngine()
 	const userID = uint64(1)
@@ -219,7 +207,6 @@ func TestAccountManageFlow_Menu_Cancel(t *testing.T) {
 	}
 }
 
-// (j) Cancelar inside the name TextStep and inside the total TextStep.
 func TestAccountManageFlow_CancelInsideTextSteps(t *testing.T) {
 	const userID = uint64(1)
 

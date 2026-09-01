@@ -15,15 +15,10 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// AddressLookup resuelve la dirección de un usuario en este canal. Es la
-// interfaz local del adapter contra el repo de usuarios: acá no se importa
-// ningún tipo concreto de repositorio.
 type AddressLookup interface {
 	FindChannelID(userID uint64, channel string) (string, error)
 }
 
-// Transport es el canal Telegram. Es el único lugar del árbol que conoce
-// *bot.Bot fuera del arranque del server.
 type Transport struct {
 	b        *bot.Bot
 	addrs    AddressLookup
@@ -34,9 +29,6 @@ func New(b *bot.Bot, addrs AddressLookup, baseHost string) *Transport {
 	return &Transport{b: b, addrs: addrs, baseHost: baseHost}
 }
 
-// ChatFor alcanza a un usuario que NO acaba de escribir: lo usan el sweeper de
-// notifier y el drenaje de pendingjob. El strconv.ParseInt que estaba
-// duplicado en tres sitios vive acá y sólo acá.
 func (t *Transport) ChatFor(userID uint64) (messenger.Chat, error) {
 	addr, err := t.addrs.FindChannelID(userID, user.ChannelTelegram)
 	if err != nil {
@@ -49,8 +41,6 @@ func (t *Transport) ChatFor(userID uint64) (messenger.Chat, error) {
 	return chat{b: t.b, chatID: chatID, baseHost: t.baseHost}, nil
 }
 
-// Serve registra el handler catch-all en el bot y devuelve el http.Handler del
-// webhook. El borde no vuelve a ver un *models.Update.
 func (t *Transport) Serve(h messenger.Handler) http.Handler {
 	t.b.RegisterHandlerMatchFunc(
 		func(u *models.Update) bool { _, ok := toIncoming(u, t.b); return ok },
@@ -59,9 +49,6 @@ func (t *Transport) Serve(h messenger.Handler) http.Handler {
 			if !ok {
 				return
 			}
-			// El ack va acá adentro, antes del handler: apagar el reloj del
-			// botón es cosa de Telegram y lopii no sabe que existen los
-			// callbacks. Antes corría después de tomar el lock por usuario.
 			if cb := u.CallbackQuery; cb != nil && b != nil {
 				_, _ = b.AnswerCallbackQuery(ctx, &bot.AnswerCallbackQueryParams{CallbackQueryID: cb.ID})
 			}
@@ -71,25 +58,14 @@ func (t *Transport) Serve(h messenger.Handler) http.Handler {
 	return t.b.WebhookHandler()
 }
 
-// RegisterCommand cuelga un handler de comando. El onboarding (/start CODE) es
-// un canje de invitación por deep-link de Telegram, no un concepto neutro, así
-// que se registra por acá y no pasa por messenger.Handler.
 func (t *Transport) RegisterCommand(cmd string, fn bot.HandlerFunc) {
 	t.b.RegisterHandler(bot.HandlerTypeMessageText, cmd, bot.MatchTypePrefix, fn)
 }
 
-// toIncoming traduce un update a la superficie neutra. Devuelve false para
-// todo lo que el motor de conversaciones no puede procesar: comandos (los toma
-// RegisterCommand) y updates sin texto ni callback.
 func toIncoming(u *models.Update, b *bot.Bot) (messenger.Incoming, bool) {
 	switch {
 	case u.CallbackQuery != nil:
 		cb := u.CallbackQuery
-		// MaybeInaccessibleMessage es una unión: Message viene poblado para un
-		// mensaje vivo, InaccessibleMessage para uno borrado o demasiado viejo
-		// (teclado inline sobre un mensaje que Telegram ya no entrega entero).
-		// Los dos brazos traen su propio Chat, así que el chat de la respuesta
-		// se recupera en ambos casos — no hay que perder el callback.
 		var chatID int64
 		switch {
 		case cb.Message.Message != nil:
@@ -112,9 +88,6 @@ func toIncoming(u *models.Update, b *bot.Bot) (messenger.Incoming, bool) {
 	case u.Message != nil && u.Message.Text != "" && !strings.HasPrefix(u.Message.Text, "/"):
 		m := u.Message
 		if m.Chat.ID == 0 {
-			// Mismo invariante que la rama de callback: nunca devolver un
-			// Incoming con ok=true y chatID 0 (mandaría al chat 0, en
-			// silencio). Sin texto crudo del usuario en el log.
 			slog.Warn("telegram: mensaje sin chat resoluble, se descarta")
 			return messenger.Incoming{}, false
 		}

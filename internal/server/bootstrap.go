@@ -13,10 +13,6 @@ import (
 	"lopiibot.com/internal/orchestrator"
 )
 
-// Construir una pieza, no ordenar el arranque: el orden vive en InitServer
-// (server.go) y se lee de arriba a abajo, que es lo único que importa cuando el
-// server no levanta.
-
 func initializeDatabase(conf *config.Config) (*database.Connection, error) {
 	conn, err := database.Initialize(database.Creds{
 		Host:     conf.Database.Host,
@@ -50,9 +46,6 @@ func initializeBot(conf *config.Config, engine *gin.Engine) (*bot.Bot, error) {
 		return nil, err
 	}
 
-	// The Mini App menu button is cosmetic — register it best-effort, OFF the
-	// boot critical path. A slow or failing Telegram call here must never
-	// delay or abort the webhook loop (the bot's core function).
 	go func() {
 		if _, err := tgBot.SetChatMenuButton(context.Background(), &bot.SetChatMenuButtonParams{
 			MenuButton: &models.MenuButtonWebApp{
@@ -69,10 +62,6 @@ func initializeBot(conf *config.Config, engine *gin.Engine) (*bot.Bot, error) {
 	return tgBot, nil
 }
 
-// buildOrchestrator mapea la config a orchestrator.Config. El mapeo es a mano y
-// campo por campo a propósito: orchestrator es una hoja sin dependencia de
-// internal/config, así que este archivo es el único lugar donde los dos nombres
-// se tocan.
 func buildOrchestrator(conf *config.Config, recorder orchestrator.LLMRecorder) *orchestrator.Orchestrator {
 	orch := orchestrator.New(orchestrator.Config{
 		APIKey:              conf.Groq.APIKey,
@@ -89,9 +78,6 @@ func buildOrchestrator(conf *config.Config, recorder orchestrator.LLMRecorder) *
 		Recorder:            recorder,
 	})
 
-	// Avisa, no aborta: un operador puede tener una razón que la tabla no contempla, y
-	// tumbar el server por eso es peor que el problema que evita. El corte de verdad es
-	// el test sobre config/*.toml, que corre antes del deploy.
 	for _, conflicto := range config.ModelBucketConflicts(conf.Groq) {
 		slog.Warn("config: llamadas del mismo turno comparten modelo", "detalle", conflicto)
 	}

@@ -40,9 +40,6 @@ type userReader interface {
 	FindByID(id uint64) (*user.User, error)
 }
 
-// chatResolver alcanza a un usuario que no acaba de escribir — el sweeper
-// dispara desde un ticker, no desde un mensaje entrante. Interfaz local: acá
-// no se importa ningún tipo concreto de transporte (house rule).
 type chatResolver interface {
 	ChatFor(userID uint64) (messenger.Chat, error)
 }
@@ -69,29 +66,16 @@ type quoteClient interface {
 	FetchCPI() ([]quote.CPI, error)
 }
 
-// retentionDays es cuánto se conservan las tablas operativas (llm_calls,
-// request_traces, intent_events) antes de purgarse. Va en Go, no pg_cron.
 const retentionDays = 90
 
-// Sweeper drives all scheduled system->user notifications. Today it hosts one
-// tenant (reminders); future tenants add a sibling sweepX call in tick(). send
-// is injected so it is reachable by tests and, later, an admin broadcast — the
-// single reused asset. now is injected for deterministic tests.
 type Sweeper struct {
-	reminders reminderStore
-	movements movementReader
-	users     userReader
-	retention retentionStore
-	summaries summaryReader
-	quotes    quoteStore
-	quoteAPI  quoteClient
-	// El estado del scheduler de la ingesta, todo en memoria. Se reinicia al
-	// arrancar el proceso, y eso está bien: toda escritura es idempotente por
-	// PK, así que una corrida de más no cuesta nada. Ver dailyRun.
-	//
-	//   *Booted — ya corrió una vez en este proceso.
-	//   *RanOn  — el día en que la corrida a horario salió bien.
-	//   last*Attempt — cuándo se intentó por última vez, el piso del reintento.
+	reminders        reminderStore
+	movements        movementReader
+	users            userReader
+	retention        retentionStore
+	summaries        summaryReader
+	quotes           quoteStore
+	quoteAPI         quoteClient
 	quotesBooted     bool
 	cpiBooted        bool
 	quotesRanOn      time.Time
@@ -116,7 +100,6 @@ func NewSweeper(chats chatResolver, r reminderStore, m movementReader, u userRea
 	}
 }
 
-// Run ticks every interval until ctx is cancelled.
 func (s *Sweeper) Run(ctx context.Context, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
@@ -130,24 +113,15 @@ func (s *Sweeper) Run(ctx context.Context, interval time.Duration) {
 	}
 }
 
-// tick runs every notifier for this instant. now is in ART.
 func (s *Sweeper) tick(ctx context.Context, now time.Time) {
 	s.sweepReminders(ctx, now)
 	s.sweepRetention(now)
 	sentMonthly := s.sweepMonthlySummary(ctx, now)
 	s.sweepWeeklySummary(ctx, now, sentMonthly)
-	// Van últimos: el tick que siembra baja 2.9 MB una sola vez en la vida del
-	// deploy, y los sweeps de arriba están gateados por ventana de minuto-del-
-	// día, no por instante exacto. Unos segundos no les cuestan nada.
 	s.sweepQuotes(ctx, now)
 	s.sweepCPI(ctx, now)
-	// future tenants:
-	// s.sweepCafecito(ctx, now)
 }
 
-// sweepRetention purga métricas operativas más viejas que retentionDays. Corre
-// cada tick: el DELETE es idempotente y barato (índice created_at), casi siempre
-// 0 filas. ponytail: si el tick fuera caro, gatear a 1/día por la hora.
 func (s *Sweeper) sweepRetention(now time.Time) {
 	if s.retention == nil {
 		return
@@ -157,8 +131,6 @@ func (s *Sweeper) sweepRetention(now time.Time) {
 	}
 }
 
-// sweepReminders sends a nudge to any enabled user past their window midpoint
-// who has logged nothing today and hasn't been reminded today.
 func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	nowMin := now.Hour()*60 + now.Minute()
@@ -171,7 +143,7 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 
 	for _, r := range due {
 		if nowMin < r.MidpointMin() {
-			continue // not time yet
+			continue
 		}
 		moved, err := s.movements.FindRecentlyCreatedForUser(r.UserID, startOfDay, 0)
 		if err != nil {
@@ -179,7 +151,7 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 			continue
 		}
 		if len(moved) > 0 {
-			continue // already engaged today
+			continue
 		}
 		u, err := s.users.FindByID(r.UserID)
 		if err != nil {
@@ -201,11 +173,8 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 	}
 }
 
-// weeklySummaryFireMin is the ART minute-of-day the Monday summary fires at (09:00).
 const weeklySummaryFireMin = 9 * 60
 
-// sweepWeeklySummary sends the previous-week (Mon–Sun) summary to opted-in users,
-// once per week, on Mondays at/after 09:00 ART. Idempotent via last_summary_on.
 func (s *Sweeper) sweepWeeklySummary(ctx context.Context, now time.Time, skip map[uint64]struct{}) {
 	if now.Weekday() != time.Monday {
 		return
@@ -259,8 +228,6 @@ const (
 	monthlySummaryFireMin = 9 * 60
 )
 
-// sweepMonthlySummary sends the previous calendar month's summary to opted-in
-// users on the 3rd at/after 09:00 ART, and returns the users it reached.
 func (s *Sweeper) sweepMonthlySummary(ctx context.Context, now time.Time) map[uint64]struct{} {
 	sent := map[uint64]struct{}{}
 	if now.Day() != monthlySummaryDay {

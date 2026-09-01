@@ -61,9 +61,6 @@ func TestToIncoming_Callback(t *testing.T) {
 	}
 }
 
-// Un callback sobre un mensaje inaccesible (borrado, o demasiado viejo) trae
-// Message.Message == nil, pero Message.InaccessibleMessage sigue trayendo el
-// Chat: hay que recuperar el chatID de ahí, no perder el callback.
 func TestToIncoming_CallbackOnInaccessibleMessage(t *testing.T) {
 	u := &models.Update{CallbackQuery: &models.CallbackQuery{
 		ID:   "cb1",
@@ -82,9 +79,6 @@ func TestToIncoming_CallbackOnInaccessibleMessage(t *testing.T) {
 	}
 }
 
-// Si ninguno de los dos brazos de la unión trae un chat resoluble, no hay que
-// devolver un Incoming con chatID 0 (mandaría al chat 0, en silencio):
-// se descarta el update.
 func TestToIncoming_CallbackWithNoResolvableChatIsDropped(t *testing.T) {
 	u := &models.Update{CallbackQuery: &models.CallbackQuery{
 		ID:   "cb1",
@@ -96,8 +90,6 @@ func TestToIncoming_CallbackWithNoResolvableChatIsDropped(t *testing.T) {
 	}
 }
 
-// Un comando NO es input de conversación: /start lo maneja el adapter aparte
-// (canje de invitación por deep-link), no la superficie neutra.
 func TestToIncoming_CommandIsNotConversationInput(t *testing.T) {
 	u := &models.Update{Message: &models.Message{
 		Text: "/start ABC123",

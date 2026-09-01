@@ -27,7 +27,6 @@ func TestTraceHandlerStampsTraceID(t *testing.T) {
 		t.Errorf("trace_id = %v, want abc123", rec["trace_id"])
 	}
 
-	// No trace_id in ctx -> no attr.
 	buf.Reset()
 	logger.InfoContext(context.Background(), "no-trace")
 	if strings.Contains(buf.String(), "trace_id") {

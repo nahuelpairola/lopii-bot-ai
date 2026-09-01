@@ -55,15 +55,11 @@ func (r *repository) FindDefaultByCurrency(userID uint64, currency currency.Curr
 	return &a, nil
 }
 
-// HasDefaultForCurrency indica si el usuario ya tiene una cuenta default
-// en la moneda dada.
 func (r *repository) HasDefaultForCurrency(userID uint64, currency currency.Currency) bool {
 	_, err := r.FindDefaultByCurrency(userID, currency)
 	return err == nil
 }
 
-// UnsetDefault saca el flag default de la cuenta que hoy lo tiene en esa
-// moneda, dejando lugar para que otra pase a ser la nueva default.
 func (r *repository) UnsetDefault(userID uint64, currency currency.Currency) error {
 	return r.conn.DB.Model(&Account{}).
 		Where("user_id = ? AND currency = ? AND is_default = TRUE", userID, currency).
@@ -78,15 +74,10 @@ func (r *repository) Insert(a *Account) error {
 	return err
 }
 
-// SoftDeleteByUserID soft-deletes (sets deleted_at) every account of the
-// user. Balances/lookups already filter deleted_at IS NULL, and the partial
-// unique indexes are scoped … WHERE deleted_at IS NULL, so a fresh onboarding
-// can re-create same-named defaults without colliding.
 func (r *repository) SoftDeleteByUserID(userID uint64) error {
 	return r.conn.DB.Where("user_id = ?", userID).Delete(&Account{}).Error
 }
 
-// GetAccount obtiene una cuenta específica por ID.
 func (r *repository) GetAccount(id uint64) (*Account, error) {
 	var a Account
 	err := r.conn.DB.First(&a, id).Error
@@ -96,15 +87,12 @@ func (r *repository) GetAccount(id uint64) (*Account, error) {
 	return &a, nil
 }
 
-// SetDefault marca una cuenta como default, desmarcando las anteriores de esa moneda.
 func (r *repository) SetDefault(accountID uint64) error {
 	return r.conn.DB.Model(&Account{}).
 		Where("id = ?", accountID).
 		Update("is_default", true).Error
 }
 
-// Rename cambia el nombre de una cuenta. El índice único (user, nombre,
-// moneda) puede rechazarlo — se mapea a ErrAccountAlreadyExists.
 func (r *repository) Rename(accountID uint64, name string) error {
 	err := r.conn.DB.Model(&Account{}).
 		Where("id = ?", accountID).
@@ -115,9 +103,6 @@ func (r *repository) Rename(accountID uint64, name string) error {
 	return err
 }
 
-// isUniqueViolation detecta el código de error de Postgres para
-// violación de constraint único (23505), sin acoplar el resto del
-// código a pgconn directamente.
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"

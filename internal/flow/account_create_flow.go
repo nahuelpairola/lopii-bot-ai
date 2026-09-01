@@ -14,10 +14,6 @@ const (
 	StepAccountCreateConfirm     = "account_create_confirm"
 )
 
-// OnAccountCreateEscape is the shared OnEscape/OnChoice handler for this
-// flow's Cancelar and Atrás buttons: Cancelar flags cancelled=true (read
-// by finishAccountCreateFlow to skip every DB write); Atrás just moves to
-// the declared NextStep with data untouched.
 func OnAccountCreateEscape(value string, data conversation.Data) conversation.Data {
 	if value != OptionCancel {
 		return data
@@ -27,11 +23,6 @@ func OnAccountCreateEscape(value string, data conversation.Data) conversation.Da
 	return next
 }
 
-// NewAccountCreateFlow builds the 4-step flow for creating an additional,
-// purpose-specific account (investment, retirement, savings, etc.) —
-// creation only, cancelable/back-able at every step. Started by
-// startAccountCreate (free_text.go) whenever Call 1 classifies a message
-// as ACCOUNT_CREATE.
 func NewAccountCreateFlow() *conversation.Flow {
 	steps := map[string]conversation.Step{
 		StepAccountCreateAskName: conversation.TextStep{
@@ -62,9 +53,6 @@ func NewAccountCreateFlow() *conversation.Flow {
 				opts := make([]conversation.ChoiceOption, 0, len(currency.SupportedCurrencies)+2)
 				for _, cu := range currency.SupportedCurrencies {
 					opts = append(opts, conversation.ChoiceOption{
-						// El botón dice "💱 pesos"; el Value sigue siendo el
-						// código, que es lo que se guarda. Label y Value son dos
-						// cosas distintas justamente acá.
 						Label:    "💱 " + cu.Label(),
 						Value:    cu.String(),
 						NextStep: StepAccountCreateAskBalance,
@@ -132,8 +120,6 @@ func NewAccountCreateFlow() *conversation.Flow {
 	return flow
 }
 
-// ValidateBalanceAmount validates that text is a valid decimal amount
-// (non-negative). Used in account creation and initial balance flows.
 func ValidateBalanceAmount(text string, _ conversation.Data) string {
 	amount, err := movement.ParseARAmount(text)
 	if err != nil || amount.IsNegative() {

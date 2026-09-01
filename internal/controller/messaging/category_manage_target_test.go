@@ -72,8 +72,6 @@ func targetSeed(count string, withSuggestion bool) conversation.Data {
 	return seed
 }
 
-// El grafo del flujo 2 tiene que validar: si algún NextStep apuntara a un step
-// inexistente, NewFlow haría panic acá. Es la red del picker parametrizado.
 func TestCategoryManageTargetFlow_BuildsWithoutPanic(t *testing.T) {
 	fl := flow.NewCategoryManageTargetFlow(fakeTargetLister{})
 	if fl.InitialStep != flow.StepSuggestTarget {
@@ -81,7 +79,6 @@ func TestCategoryManageTargetFlow_BuildsWithoutPanic(t *testing.T) {
 	}
 }
 
-// Conteo 0 → ni sugerencia ni pickers: directo al confirm de borrado.
 func TestTargetFlow_ZeroCount_SkipsToConfirm(t *testing.T) {
 	engine, store := newTargetEngine()
 	prompt, err := engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("0", false))
@@ -94,7 +91,6 @@ func TestTargetFlow_ZeroCount_SkipsToConfirm(t *testing.T) {
 	if prompt.Text != flow.MsgCategoryManageConfirmDelete("Comida › Delivery") {
 		t.Errorf("Text = %q, want el confirm de borrado", prompt.Text)
 	}
-	// sin Atrás: no hubo ninguna elección que rehacer
 	for _, b := range prompt.Buttons {
 		if b.Data == flow.OptionBack {
 			t.Error("el confirm con conteo 0 no debería ofrecer Atrás")
@@ -102,7 +98,6 @@ func TestTargetFlow_ZeroCount_SkipsToConfirm(t *testing.T) {
 	}
 }
 
-// Con movimientos y sin sugerencia, arranca directo en el picker manual.
 func TestTargetFlow_NoSuggestion_SkipsToCategoryPicker(t *testing.T) {
 	engine, store := newTargetEngine()
 	prompt, err := engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
@@ -112,7 +107,6 @@ func TestTargetFlow_NoSuggestion_SkipsToCategoryPicker(t *testing.T) {
 	if store.stepName != flow.StepPickTargetCategory {
 		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepPickTargetCategory)
 	}
-	// sin sugerencia, este es el primer step real: no lleva Atrás
 	for _, b := range prompt.Buttons {
 		if b.Data == flow.OptionBack {
 			t.Error("sin sugerencia previa, el picker de categoría no debería ofrecer Atrás")
@@ -173,7 +167,6 @@ func TestTargetFlow_ChooseOther_GoesToCategoryPickerWithBack(t *testing.T) {
 	if store.stepName != flow.StepPickTargetCategory {
 		t.Fatalf("stepName = %q, want %q", store.stepName, flow.StepPickTargetCategory)
 	}
-	// hubo sugerencia, así que se puede volver a ella
 	found := false
 	for _, b := range result.Prompt.Buttons {
 		if b.Data == flow.OptionBack {
@@ -185,12 +178,10 @@ func TestTargetFlow_ChooseOther_GoesToCategoryPickerWithBack(t *testing.T) {
 	}
 }
 
-// El picker de subcategoría destino nunca puede ofrecer la fila de origen.
 func TestTargetFlow_SubcategoryPicker_ExcludesSource(t *testing.T) {
 	engine, store := newTargetEngine()
 	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 
-	// elegir la categoría "Comida", que es la del origen
 	result, _, err := engine.Handle(1, conversation.Input{CallbackData: "Comida"})
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
@@ -224,8 +215,6 @@ func TestTargetFlow_ManualPick_SetsTargetWithManualOrigin(t *testing.T) {
 	}
 }
 
-// EL test del destino stale: aceptar la sugerencia, volver, y elegir otra ruta
-// no puede dejar el destino viejo colgado.
 func TestTargetFlow_BackFromConfirm_ClearsTarget(t *testing.T) {
 	engine, store := newTargetEngine()
 	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", true))
@@ -338,7 +327,6 @@ func TestTargetFlow_BackFromSubcategoryPicker_ReturnsToCategoryPicker(t *testing
 	}
 }
 
-// Las reservadas nunca aparecen como destino.
 func TestTargetFlow_CategoryPicker_ExcludesReserved(t *testing.T) {
 	engine, _ := newTargetEngine()
 	prompt, err := engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
@@ -353,10 +341,6 @@ func TestTargetFlow_CategoryPicker_ExcludesReserved(t *testing.T) {
 	}
 }
 
-// --- puente (Task 8), testeable recién ahora que el flujo 2 existe ---
-
-// Conteo 0 → ni se le pregunta al LLM. Ahorra una llamada y latencia en el
-// camino más común de "esta categoría está vacía, sacala".
 func TestProceedToCategoryTarget_ZeroCountSkipsOrchestrator(t *testing.T) {
 	engine, store := newTargetEngine()
 	orch := &fakeCategoryOrchestrator{}
@@ -382,7 +366,6 @@ func TestProceedToCategoryTarget_ZeroCountSkipsOrchestrator(t *testing.T) {
 	if store.data[conversation.KeyMovementCount] != "0" {
 		t.Errorf("movement_count = %v, want \"0\"", store.data[conversation.KeyMovementCount])
 	}
-	// y con conteo 0 el flujo 2 tiene que haber saltado directo al confirm
 	if store.stepName != flow.StepConfirmCategoryManage {
 		t.Errorf("stepName = %q, want %q", store.stepName, flow.StepConfirmCategoryManage)
 	}
@@ -427,8 +410,6 @@ func TestProceedToCategoryTarget_PositiveCountSeedsSuggestion(t *testing.T) {
 	}
 }
 
-// Sin sugerencia utilizable, el flujo arranca igual — en el picker manual.
-// La sugerencia es un atajo, nunca un bloqueo.
 func TestProceedToCategoryTarget_OrchestratorErrorStillStartsFlow(t *testing.T) {
 	engine, store := newTargetEngine()
 	c := &controller{
@@ -452,8 +433,6 @@ func TestProceedToCategoryTarget_OrchestratorErrorStillStartsFlow(t *testing.T) 
 	}
 }
 
-// Un error al contar sí es fatal: sin el número no se puede mostrar un confirm
-// honesto, y este flujo borra datos.
 func TestProceedToCategoryTarget_CountErrorReturnsError(t *testing.T) {
 	engine, store := newTargetEngine()
 	c := &controller{
@@ -475,10 +454,6 @@ func TestProceedToCategoryTarget_CountErrorReturnsError(t *testing.T) {
 	}
 }
 
-// Volver con Atrás desde el confirm por el camino MANUAL tiene que dejar al
-// usuario en el picker de subcategoría con opciones reales. Si la categoría
-// destino se borrara junto con la subcategoría, ese picker no tendría nada que
-// listar (filtra por categoría) y el usuario quedaría en un callejón.
 func TestTargetFlow_BackFromConfirm_ManualPath_KeepsCategoryAndListsOptions(t *testing.T) {
 	engine, store := newTargetEngine()
 	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
@@ -503,7 +478,6 @@ func TestTargetFlow_BackFromConfirm_ManualPath_KeepsCategoryAndListsOptions(t *t
 		t.Errorf("conversation.KeyTargetSubcategoryID = %q tras Atrás, want vacío", got)
 	}
 
-	// lo que realmente importa: el picker tiene algo para elegir
 	picks := 0
 	for _, b := range result.Prompt.Buttons {
 		if b.Data != flow.OptionBack && b.Data != flow.OptionCancel {
@@ -515,9 +489,6 @@ func TestTargetFlow_BackFromConfirm_ManualPath_KeepsCategoryAndListsOptions(t *t
 	}
 }
 
-// raceTargetLister es el equivalente de raceLister para el flujo 2: devuelve el
-// catálogo completo en las primeras consultas y uno recortado a partir de
-// missAt, simulando un Reload() concurrente en el medio de la elección.
 type raceTargetLister struct {
 	calls  *int
 	before []subcategory.Subcategory
@@ -539,18 +510,14 @@ func (r raceTargetLister) DistinctCategoriesForUser(uint64) ([]string, error) {
 
 func (r raceTargetLister) IconForCategory(uint64, string) string { return flow.DefaultCategoryIcon }
 
-// Si la fila destino desaparece justo antes de que OnChoice busque su nombre,
-// NO puede quedar un destino con ID y sin nombre: el confirm diría
-// «Alimentos › » y el usuario no podría verificar qué está por confirmar, en
-// una operación que mueve movimientos y borra una fila.
 func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
 	full := targetCatalog()
 	calls := 0
 	lister := raceTargetLister{
 		calls:  &calls,
 		before: full,
-		after:  []subcategory.Subcategory{ownedSub(7, "Comida", "Delivery", "🍕")}, // sin la 3
-		missAt: 2,                                                                 // dentro de Handle("3"): 1=validación de la opción, 2=lookup del nombre
+		after:  []subcategory.Subcategory{ownedSub(7, "Comida", "Delivery", "🍕")},
+		missAt: 2,
 	}
 
 	store := &fakeStateStore{}
@@ -559,8 +526,6 @@ func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
 
 	engine.StartWithData(1, flow.CategoryManageTargetFlowName, targetSeed("3", false))
 	engine.Handle(1, conversation.Input{CallbackData: "Alimentos"})
-	// El prompt del paso de subcategoría ya se renderizó dentro del Handle
-	// anterior, así que el contador arranca de cero recién acá.
 	calls = 0
 
 	engine.Handle(1, conversation.Input{CallbackData: "3"})
@@ -572,10 +537,6 @@ func TestTargetFlow_TargetRowDisappears_NoPartialTarget(t *testing.T) {
 	}
 }
 
-// fakeCategoryOrchestrator embebe movementOrchestrator: los métodos que no se
-// usan quedan nil y explotan si alguien los llama por error. Se quedó en el
-// borde cuando el cluster de settings se fue — lo comparten los tests de
-// category_manage_apply y category_manage_target.
 type fakeCategoryOrchestrator struct {
 	movementOrchestrator
 	match       *orchestrator.CategoryMatch

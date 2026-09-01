@@ -11,13 +11,11 @@ import (
 	"lopiibot.com/internal/database"
 )
 
-// Run with: go test -tags integration ./internal/movement/
-// Requires local Postgres (docker compose up -d) with migrations applied.
 func TestInsertAccountsWithOpenings_RollsBackOnFailure(t *testing.T) {
 	conn := testConnection(t)
 	r := InitRepository(conn)
 
-	userID := uint64(1) // use the test admin user that exists in DB
+	userID := uint64(1)
 	before := countAccounts(t, conn, userID)
 
 	items := []AccountOpening{
@@ -26,9 +24,6 @@ func TestInsertAccountsWithOpenings_RollsBackOnFailure(t *testing.T) {
 			Movement: Movement{UserID: userID, SubcategoryID: 1, Type: Transfer, Amount: decimal.NewFromInt(100), Currency: currency.ARS},
 		},
 		{
-			// SubcategoryID 0 violates the movements.subcategory_id FK → forces
-			// a mid-transaction failure on the SECOND item's movement, rolling
-			// back the FIRST account that was just created.
 			Account:  &account.Account{UserID: userID, Name: "TestBank_Rollback_2", Currency: currency.ARS},
 			Movement: Movement{UserID: userID, SubcategoryID: 0, Type: Transfer, Amount: decimal.NewFromInt(50), Currency: currency.ARS},
 		},
@@ -42,7 +37,6 @@ func TestInsertAccountsWithOpenings_RollsBackOnFailure(t *testing.T) {
 	}
 }
 
-// testConnection connects to the local Docker Postgres instance used by integration tests.
 func testConnection(t *testing.T) *database.Connection {
 	creds := database.Creds{
 		Host:     "localhost",
@@ -58,7 +52,6 @@ func testConnection(t *testing.T) *database.Connection {
 	return conn
 }
 
-// countAccounts returns the number of non-deleted accounts for the given userID.
 func countAccounts(t *testing.T, conn *database.Connection, userID uint64) int64 {
 	var count int64
 	if err := conn.DB.Model(&account.Account{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {

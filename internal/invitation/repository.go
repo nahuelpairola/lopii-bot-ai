@@ -10,12 +10,9 @@ import (
 
 const (
 	expirationHours = 72
-	codeCharset     = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // sin caracteres ambiguos (0,O,1,I)
+	codeCharset     = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	codeLength      = 6
 
-	// listLimit topea la lista del admin. No hay paginación a propósito:
-	// cincuenta invitaciones son años de un bot privado, y las que importan
-	// mirar son siempre las últimas.
 	listLimit = 50
 )
 
@@ -71,9 +68,6 @@ func (r *repository) Create(createdBy uint64) (*Invitation, error) {
 	return inv, nil
 }
 
-// List devuelve las invitaciones más recientes primero. Sin filtro por
-// created_by: con un solo admin no acota nada, y con dos esconderían las del
-// otro en la única vista que existe para verlas todas.
 func (r *repository) List() ([]Invitation, error) {
 	var invs []Invitation
 	if err := r.conn.DB.Order("created_at desc").Limit(listLimit).Find(&invs).Error; err != nil {

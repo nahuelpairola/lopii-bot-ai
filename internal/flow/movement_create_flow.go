@@ -17,11 +17,6 @@ const (
 	stepResolveAccount      = "resolve_account"
 )
 
-// NewMovementCreateFlow builds the single registered flow used for CREATE's
-// gap-fill (and, per movement_update_flow.go, for reusing the same graph to
-// fill gaps in an UPDATE's corrected set). It is only ever started via
-// StartWithData when Call 2 CREATE left at least one gap — a fully-resolved
-// CREATE never touches the conversation engine at all (see free_text.go).
 func NewMovementCreateFlow(subcategories subcategoryRepository, accounts accountRepository) *conversation.Flow {
 	steps := map[string]conversation.Step{
 		stepCreateFirstAccount: conversation.TextStep{
@@ -31,7 +26,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			DataKey: conversation.KeyFirstAccountName,
 			SkipIf: func(data conversation.Data) (string, bool) {
 				if NeedsFirstAccount(data, HasDefaultFor(accounts, data)) {
-					return "", false // hay que preguntar
+					return "", false
 				}
 				return stepResolveCategory, true
 			},
@@ -62,7 +57,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			DataKey: conversation.KeyFirstAccountBalance,
 			SkipIf: func(data conversation.Data) (string, bool) {
 				if conversation.StringOrEmpty(data[conversation.KeyFirstAccountName]) == "" {
-					return stepResolveCategory, true // no hubo first-account
+					return stepResolveCategory, true
 				}
 				return "", false
 			},
@@ -92,14 +87,6 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 				if len(conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)) == 0 {
 					return stepResolveAccount, true
 				}
-				// El gap es del PAR, no del campo: una corrección que nombra una
-				// categoría existente deja la subcategoría vacía, y el par
-				// ("Transporte", "") no está en la taxonomía. Preguntar la
-				// categoría acá es hacerle repetir lo que acaba de decir —
-				// "ponelo en Transporte" contestado con las 18 categorías.
-				//
-				// Sólo en UPDATE: ahí la categoría la escribió el usuario. En
-				// CREATE es la del modelo, y ofrecerle cambiarla sigue valiendo.
 				if conversation.StringOrEmpty(data[conversation.KeyMode]) == ModeUpdate &&
 					rowCategoryExists(subcategories, data) {
 					return stepResolveSubcategory, true
@@ -188,7 +175,7 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 			PromptText: MsgAskAccount,
 			SkipIf: func(data conversation.Data) (string, bool) {
 				if len(conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)) == 0 {
-					return "", true // nothing left — the flow is complete
+					return "", true
 				}
 				return "", false
 			},

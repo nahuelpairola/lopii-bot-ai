@@ -74,9 +74,4 @@ another filter.
 The order also means a **send that succeeds while its stamp fails re-sends on the next tick** —
 deliberate: the log line is there, and a duplicate reminder beats a silent gap.
 
----
-
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **Notifications and reminders**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **Notifications and reminders**.

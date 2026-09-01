@@ -8,9 +8,6 @@ import (
 	"testing"
 )
 
-// narrationEfforts corre AnswerQuery hasta la narración forzada contra un Groq
-// falso y devuelve el reasoning_effort de CADA request, en orden. La última es
-// la forzada (tool_choice "none"); las anteriores son rondas normales.
 func narrationEfforts(t *testing.T, queryModel string) (efforts []string, choices []string) {
 	t.Helper()
 	call := 0
@@ -40,14 +37,6 @@ func narrationEfforts(t *testing.T, queryModel string) (efforts []string, choice
 	return efforts, choices
 }
 
-// La narración forzada se quedaba VACÍA: los gpt-oss cobran el razonamiento como
-// completion, y se comían los 400 de maxNarrationCompletionTokens antes de
-// escribir un carácter — el turno moría con ErrQueryMaxIterations, que nombra
-// una causa que no es. Medido contra Groq real el 2026-08-21: 318 tokens sin
-// effort (82 de margen), 78 con effort=low.
-//
-// Va SÓLO en la llamada forzada: ahí el modelo ya tiene los datos y sólo
-// redacta. En las rondas el razonamiento es el que elige las tools.
 func TestForcedNarration_AsksForLowReasoning(t *testing.T) {
 	efforts, choices := narrationEfforts(t, "openai/gpt-oss-20b")
 
@@ -65,9 +54,6 @@ func TestForcedNarration_AsksForLowReasoning(t *testing.T) {
 	}
 }
 
-// qwen contesta 400 "`reasoning_effort` must be one of `none` or `default`"
-// (verificado contra Groq el 2026-08-21) y un 400 no se reintenta: mandárselo
-// mata el turno. Sólo los gpt-oss lo aceptan.
 func TestForcedNarration_OmitsEffortForModelsThatRejectIt(t *testing.T) {
 	efforts, _ := narrationEfforts(t, "qwen/qwen3.6-27b")
 

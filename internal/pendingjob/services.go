@@ -8,8 +8,6 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// Services is what the drain and enqueue functions need from the world,
-// with the *controller as implementation. Bridge file: messaging/pendingjob_services.go.
 type Services interface {
 	UsersFindByID(userID uint64) (*user.User, error)
 	HandleFreeText(ctx context.Context, chat messenger.Chat, userID uint64, text string) error

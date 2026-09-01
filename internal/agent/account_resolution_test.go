@@ -11,8 +11,6 @@ import (
 	"lopiibot.com/internal/orchestrator"
 )
 
-// accountsUser3 son las cuentas reales del usuario 3 el 2026-08-22, incluida la
-// trampa: Banco Galicia (25) es la PRIMERA ARS por id, y la default es la 27.
 func accountsUser3() []account.Account {
 	return []account.Account{
 		{Model: gorm.Model{ID: 25}, Name: "Banco Galicia", Currency: currency.ARS},
@@ -51,8 +49,6 @@ func TestAccountNamedInMessage(t *testing.T) {
 	}
 }
 
-// Dos cuentas con el mismo nombre y la misma moneda existen en producción. Elegir
-// una es no determinista; preguntar es lo correcto.
 func TestAccountNamedInMessage_DuplicateNameIsAmbiguous(t *testing.T) {
 	accounts := []account.Account{
 		{Model: gorm.Model{ID: 27}, Name: "Mercado Pago", Currency: currency.ARS},
@@ -86,8 +82,6 @@ func TestGuessBackedByMessage(t *testing.T) {
 	}
 }
 
-// draftARS arma un gasto en pesos. Type va siempre explícito: el gate se decide
-// por Type, y un fixture que lo omite prueba otra cosa que la que dice.
 func draftARS(desc string, accountID *uint64, guess string) orchestrator.MovementDraft {
 	return orchestrator.MovementDraft{
 		Type: "expense", Amount: "5000", Currency: "ARS",
@@ -107,28 +101,24 @@ func TestBuildCreateSeed_AccountComesFromTheMessage(t *testing.T) {
 		wantGap  bool
 	}{
 		{
-			// El bug reportado: llm_calls 1173.
 			name:     "el modelo inventa la cuenta y el mensaje no la nombra",
 			userText: "$40000 kinesiologa el 19 de agosto",
 			draft:    draftARS("kinesiologa", acctID(25), ""),
 			wantAcct: "", wantGap: false,
 		},
 		{
-			// El bug reportado: llm_calls 1171, con el guess copiado del prompt.
 			name:     "guess copiado del bloque de cuentas del prompt",
 			userText: "$5585,77 pago de monotributo el día 20 de agosto",
 			draft:    draftARS("pago de monotributo", acctID(25), "Banco Galicia (ARS)"),
 			wantAcct: "", wantGap: false,
 		},
 		{
-			// llm_calls 1169: el turno que ya andaba bien, sigue andando.
 			name:     "el modelo no manda nada",
 			userText: "$22500 arreglo plomero",
 			draft:    draftARS("arreglo plomero", nil, ""),
 			wantAcct: "", wantGap: false,
 		},
 		{
-			// Los 28 aciertos por casualidad: ahora aciertan por la razón correcta.
 			name:     "guess alucinado con el nombre de la default",
 			userText: "3700 cerveza viernes a la noche",
 			draft:    draftARS("cerveza", acctID(27), "Mercado Pago"),
@@ -182,7 +172,6 @@ func TestBuildCreateSeed_AccountComesFromTheMessage(t *testing.T) {
 	}
 }
 
-// La moneda del movimiento elige entre dos cuentas homónimas.
 func TestBuildCreateSeed_MessageNamedAccountRespectsCurrency(t *testing.T) {
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
 		Type: "expense", Amount: "100", Currency: "USD",
@@ -195,9 +184,6 @@ func TestBuildCreateSeed_MessageNamedAccountRespectsCurrency(t *testing.T) {
 	}
 }
 
-// La regla es "todo lo que no es transfer", pero cada fixture de arriba es un
-// expense. Un income entra por la misma rama y nadie lo estaba probando — y es el
-// tipo que guarda el monto en POSITIVO, o sea la otra mitad del modelo contable.
 func TestBuildCreateSeed_IncomeResolvesLikeExpense(t *testing.T) {
 	income := func(guess string, accountID *uint64) orchestrator.CreateResult {
 		return orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
@@ -224,11 +210,6 @@ func TestBuildCreateSeed_IncomeResolvesLikeExpense(t *testing.T) {
 	})
 }
 
-// userText es del TURNO, no de la fila: un mensaje que nombra una cuenta y carga
-// dos gastos le pone esa cuenta a los dos. Es lo correcto para "pagué luz 5000 y
-// gas 3000 con mercado pago" y lo equivocado si el usuario mezcla cuentas en un
-// mensaje. Se eligió así a sabiendas — sin casos medidos de lo segundo — y este
-// test está para que cambiarlo sea una decisión y no un descuido.
 func TestBuildCreateSeed_OneNamedAccountAppliesToEveryRowOfTheTurn(t *testing.T) {
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		draftARS("luz", nil, ""),
@@ -241,10 +222,6 @@ func TestBuildCreateSeed_OneNamedAccountAppliesToEveryRowOfTheTurn(t *testing.T)
 	}
 }
 
-// La exención de transfer no es un detalle: es la única razón por la que el campo
-// account_id sigue existiendo. "mercadopago" pegado NO llega a coverage 1.0 contra
-// "Mercado Pago", así que el paso 1 no salvaría esta pierna — sólo el id la salva.
-// Mensaje real del 2026-08-20 (llm_calls, usuario 2).
 func TestBuildCreateSeed_TransferStillUsesModelAccountID(t *testing.T) {
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "transfer", Amount: "-90000", Currency: "ARS", AccountID: acctID(28),

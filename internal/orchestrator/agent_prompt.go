@@ -5,26 +5,6 @@ import (
 	"strings"
 )
 
-// agentSystemPromptTemplate is the unified prompt behind Run.
-//
-// It is an ASSEMBLY of prompts that already exist and are tuned against
-// production, not a rewrite:
-//
-//   - taxonomy / amount / date / compound / type / gain / grouping rules come
-//     verbatim from createSystemPromptTemplate (create.go)
-//   - the narration and Argentine-formatting rules come verbatim from
-//     query.SystemPrompt (internal/query)
-//   - the router's tie-breakers (router.go) are the one part genuinely
-//     rewritten: the router picked an INTENT, the model now picks a TOOL
-//
-// One rule is deliberately DROPPED: the QUERY prompt's "nunca hagas una
-// pregunta de aclaración — no podés recibir la respuesta del usuario". That was
-// a fact about a read-only loop with no way back to the user. ask_user gives it
-// one, so keeping the rule would forbid the primitive this stage exists for.
-//
-// %s placeholders, in order: today, the accounts block, the taxonomy block.
-// Es var y no const porque embebe agentTieBreakers(): los desempates viven
-// en tie_breakers.go, compartidos con el prompt del router.
 var agentSystemPromptTemplate = `Sos Lopii, el asistente de finanzas personales de un individuo en Argentina. A buen entendedor, pocas palabras: resolvé lo que te piden y contestá corto.
 
 Trabajás llamando herramientas. Cada mensaje del usuario se resuelve con una o más.
@@ -59,43 +39,18 @@ CÓMO RESPONDER:
 CUENTAS DEL USUARIO (id | nombre (moneda)):
 %s`
 
-// pendingQuestionSection is appended only when an ask_user is open. Without it
-// a bare "Brubank" — which is an ANSWER — reads to the model as a brand-new
-// request with no verb and nothing to do.
 const pendingQuestionSection = `
 
 PREGUNTA PENDIENTE: le hiciste al usuario esta pregunta y todavía no la contestó:
 %s
 Lo que escribió ahora es, muy probablemente, la respuesta. Interpretalo así antes de tratarlo como un pedido nuevo.`
 
-// recentEntitiesSection se agrega sólo cuando el usuario tocó algo en los
-// últimos minutos.
-//
-// "Al café de hoy sumale 1070" es una ANÁFORA: el trabajo es resolver una
-// referencia, no recordar una conversación. Pasarle al modelo la transcripción
-// de los turnos anteriores lo obliga a re-extraer la entidad de su propia
-// narración, le muestra sus turnos EQUIVOCADOS como ejemplos a imitar, y gasta
-// tokens en gramática. Este bloque lo arma la app desde `movements`, cuesta
-// ~100 tokens, y le da algo que la transcripción no puede: la fila misma, con
-// su id.
-//
-// Se reconstruye en cada prompt, así que un replay del 429 que llega tarde no
-// lo puede desordenar — a diferencia de un hilo al que se le van agregando
-// turnos.
 const recentEntitiesSection = `
 
 MOVIMIENTOS RECIENTES (últimos minutos, por si el usuario se refiere a uno):
 %s
 Si el mensaje habla de "el/la <algo> de hoy" o "eso que cargué", casi seguro es uno de estos: corregilo en vez de registrar uno nuevo.`
 
-// buildToolsBlock renders the "CUÁNDO USAR CADA HERRAMIENTA" list from the tools
-// that are actually going to be sent, en el orden en que vienen.
-//
-// Se arma, y no está escrito a mano en la plantilla, porque el prompt y el
-// toolbox tienen que decir lo mismo. Cuando no lo decían, salió caro: durante la
-// etapa 2 el loop mandaba las 14 tools aunque sólo 4 estuvieran cableadas, y a
-// una corrección ("La ferreteria eran 3800") el modelo le contestaba llamando a
-// record_movements — registrar de nuevo en vez de corregir.
 func buildToolsBlock(tools []AgentTool) string {
 	var b strings.Builder
 	for _, t := range tools {
@@ -107,24 +62,7 @@ func buildToolsBlock(tools []AgentTool) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// BuildAgentPrompt renders the unified system prompt for Run.
-//
-// tools son las que se le van a mandar al modelo en esta llamada: el bloque de
-// "cuándo usar" sale de ahí, así que el prompt nunca puede nombrar una que no
-// esté disponible.
-//
-// pendingQuestion is the open ask_user question, or "" when nothing is
-// pending — in which case the section is omitted entirely rather than left
-// empty, so the model is never told about a question that does not exist.
 func BuildAgentPrompt(today string, accounts []AccountOption, taxonomy []TaxonomyEntry, pendingQuestion string, tools []AgentTool, recentEntities string) string {
-	// La taxonomía YA NO VA. Se pagaba en cada ronda —y el loop resiente cada
-	// token: medido el 2026-08-12, un turno pide ~7.000 contra un techo de 8.000
-	// TPM. Clasificar es ahora una llamada aparte, en otro modelo y por lo tanto
-	// en otro techo (ver ClassifyCategories).
-	//
-	// El parámetro sigue en la firma porque el llamador la necesita igual para
-	// validar el par contra `known`, y pedirla dos veces serían dos queries y
-	// —peor— dos listas que pueden diferir.
 	_ = taxonomy
 	prompt := fmt.Sprintf(agentSystemPromptTemplate,
 		buildToolsBlock(tools), agentTieBreakers(tools), today,

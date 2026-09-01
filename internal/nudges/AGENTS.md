@@ -13,7 +13,7 @@ menu) needs its `sent_at` to actually advance so the cooldown re-arms, so it cal
 
 ## A tip's tap must not be eaten by an open flow
 
-`HandleCallback` runs in `handleConversationInput` **before** `engine.Handle`. A tip's button is not
+`HandleCallback` runs in the controller's `dispatch` **before** `engine.Handle`. A tip's button is not
 an option of any flow, so an open flow would otherwise swallow it as if it were one. The lookup is
 read-only and leaves the open flow untouched, which is why jumping the queue is safe here.
 
@@ -25,9 +25,4 @@ never fires, because the user learns to ignore the whole channel.
 
 Copy and thresholds are values someone tuned, not defaults. Changing one is a product decision.
 
----
-
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **Interaction principles**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **Interaction principles**.

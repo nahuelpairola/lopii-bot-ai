@@ -4,21 +4,19 @@ Every conversation flow: the 15 builders `server/flows.go` registers, their step
 movement write pipeline, the finishes, and the near-duplicate gate. **Use `codegraph_explore` for
 structure** — this file is only for what reading the code will not tell you.
 
-## Registering a flow touches three places, in three packages
+## Registering a flow touches three places, and one failure is silent
 
-Nothing enforces any of them:
+Nothing enforces any of them. The step-by-step is Recipe 2 in
+[`docs/recipes.md`](../../docs/recipes.md); what matters here is how each one fails:
 
-1. `server/flows.go` — a line in `registerFlows`
-2. `controller/messaging/controller.go` — a case in `handleFlowFinished`'s switch
-3. `controller/messaging/messages.go` — a case in `FlowResumeLabel`
+| Forgotten | What happens |
+|---|---|
+| `registerFlows` | the server fails at startup — loud, and therefore fine |
+| `handleFlowFinished`'s case | the flow completes into `msgSomethingBroke` |
+| `FlowResumeLabel`'s case | **nothing breaks for 24h**, then the resume gate offers "una conversación anterior" instead of real copy |
 
-Miss #1 and the server fails at startup (loud, fine). Miss #2 and the flow completes into
-`msgSomethingBroke`. **Miss #3 and nothing breaks until a user goes idle for 24h**, then the
-resume gate offers them "una conversación anterior" instead of real copy.
-
-Two of the three live in `messaging`, not here: the flow is *built* in this package but *finished*
-at the edge, because a finish needs the repos. That split is the reason the list is easy to
-half-do.
+Two of the three live in `messaging`, not here: a flow is *built* in this package but *finished*
+at the edge, because a finish needs the repos. That split is why the list is easy to half-do.
 
 ## `callback_data` is 64 bytes — send indices, not labels
 
@@ -44,7 +42,10 @@ methods that the edge forwards to `internal/settings`.
 ## Two pickers, and only one of them re-searches
 
 `ask_user_flow.go` is a `TextStep` with accelerator buttons: free text is the point, and an answer
-naming none of the options makes the agent loop search again (`agent_dispatch.go`).
+naming none of the options makes the agent loop search again (`agent_dispatch.go`). Its budget is
+spent **per round, not per question** — an answer can be useless ("no sé") and make the executor
+park again with a new question — so the ceiling is frozen at park time. Otherwise a growing list
+of questions raises its own ceiling.
 `movement_update_flow.go`'s `movement_update_pick` and `movement_delete_flow.go` are `ChoiceStep`s:
 there, free text lands on `InvalidChoiceMessage` and nothing is re-searched.
 
@@ -55,18 +56,26 @@ cannot keep.
 
 ## Money
 
-Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
-model) **before** editing — the write pipeline (`movement_write.go`) is where those invariants are
-enforced. Note the one deliberate exception, documented at the call site: the near-duplicate gate
-(`near_duplicate_offer.go`) writes **without** going through `movement.Normalize`, and is only safe
-because the candidate must share type, currency and account. Loosening that rule means putting the
-guard back.
+Amounts, signs or `account_id`: `AGENTS.md` § The accounting model, before editing. The write
+pipeline (`movement_write.go`) is where those invariants are enforced.
+
+**A finish re-reads its rows from the DB instead of trusting what it was handed.**
+`FinishAccountAdjust` re-reads the account so the guard compares the movement's currency against
+the database rather than against the flow's `Data`; a mismatch is rejected instead of writing a
+movement in a currency its account does not hold, which is the error that corrupts a balance in
+silence (a balance is `SUM(amount)` and never looks at each row's currency).
+`ApplyNearDuplicateChoice` re-reads both rows for the same reason: a tap can arrive late, and
+adding an amount to a row that already changed corrupts a balance from a stale screen.
+
+**The one deliberate exception to the guard** is that same `ApplyNearDuplicateChoice`, which
+writes without `movement.Normalize`. It can: both rows came out of the guard when they were
+inserted, and `nearDuplicateCandidate` requires them to share type, currency and account — so they
+share a sign, the sum can neither zero out nor invert, and neither currency nor account changes
+here. Loosening the candidate rule means putting the guard back.
+
+**A failed balance adjustment is invisible without its log line.** The finish is a void function,
+so the error never reaches `traced`.
 
 In tests `b` is nil. Use `r.SendText(...)`, which guards; a direct `b.SendMessage` panics.
 
----
-
-**Why the design is this way** — the measurements, incidents and rejected
-alternatives behind these rules live in `docs/decisions.md`, section **Conversation engine and flows**.
-Read it before changing a design choice: most were already argued there, with the
-production numbers that settled them.
+Why: `docs/decisions.md`, section **Conversation engine and flows**.

@@ -11,8 +11,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// FinishSubcategorySetup is the Telegram-facing finish of the subcategory
-// wizard: cancel → cancel metric + copy; success → insert + cache reload.
 func FinishSubcategorySetup(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeCategoryCancelled)
@@ -29,16 +27,6 @@ func FinishSubcategorySetup(ctx context.Context, r runner, chat messenger.Chat, 
 	r.SendText(ctx, chat, MsgSubcategorySetupFinished)
 }
 
-// InsertNewSubcategory does the real work (kept separate from the
-// Telegram-facing finish so it's testable without messenger.Chat, same
-// pattern as InsertAccountOpeningMovement). When category_is_new is "true",
-// the new category's icon comes from the step the user just answered
-// (category_icon); otherwise it's copied from the existing category's icon
-// (found via the same Cache lookup used for the duplicate check) — never
-// re-asked. Description comes straight from the subcategory-description
-// step's answer — this is the field orchestrator.TaxonomyEntry.Description
-// feeds to Call 2 CREATE as a classification hint, so a user-created
-// subcategory is only as useful as this description is specific.
 func InsertNewSubcategory(r runner, data conversation.Data) error {
 	userID := data.UserID()
 	category := conversation.StringOrEmpty(data[conversation.KeyCategory])
@@ -64,9 +52,6 @@ func InsertNewSubcategory(r runner, data conversation.Data) error {
 	return r.ReloadSubcategories()
 }
 
-// FinishCategoryMatchOffer handles the "ya existe algo parecido" gate result:
-// reuse the existing entry, fall through to the classic wizard to create a
-// distinct one, or cancel.
 func FinishCategoryMatchOffer(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeCategoryCancelled)
@@ -78,16 +63,12 @@ func FinishCategoryMatchOffer(ctx context.Context, r runner, chat messenger.Chat
 		r.ResolveMetric(ctx, data.UserID(), OutcomeCategoryMatchUsed)
 		r.SendText(ctx, chat, MsgCategoryMatchUse)
 	case OptionCreateNew:
-		// stays pending in intent_events; the wizard's own terminal resolves it
 		_ = r.StartFlow(ctx, chat, data.UserID(), SubcategorySetupFlowName, nil, "start subcategory_setup flow")
 	default:
 		r.SendText(ctx, chat, MsgSomethingBroke)
 	}
 }
 
-// FinishCategoryProposalConfirm handles the proposal confirmation: create it
-// as-is, drop into the classic wizard seeded with the proposal to edit, or
-// cancel.
 func FinishCategoryProposalConfirm(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeCategoryCancelled)
@@ -113,8 +94,6 @@ func FinishCategoryProposalConfirm(ctx context.Context, r runner, chat messenger
 	r.SendText(ctx, chat, MsgSubcategorySetupFinished)
 }
 
-// FinishCategoryManagePickFlow corre cuando el usuario eligió (o no) el origen.
-// Si eligió, hace el puente al flujo 2.
 func FinishCategoryManagePickFlow(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeCategoryManageCancelled)
@@ -127,9 +106,6 @@ func FinishCategoryManagePickFlow(ctx context.Context, r runner, chat messenger.
 	}
 }
 
-// ProceedToCategoryTarget es el puente entre los dos flujos: cuenta los
-// movimientos del origen y, solo si hay alguno, pide una sugerencia de destino.
-// Después arranca el flujo 2 con todo eso sembrado.
 func ProceedToCategoryTarget(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) error {
 	userID := data.UserID()
 	sourceID, err := strconv.ParseUint(conversation.StringOrEmpty(data[conversation.KeySourceSubcategoryID]), 10, 64)
@@ -160,14 +136,6 @@ func ProceedToCategoryTarget(ctx context.Context, r runner, chat messenger.Chat,
 	return r.StartFlow(ctx, chat, userID, CategoryManageTargetFlowName, seed, "start category_manage_target flow")
 }
 
-// FinishCategoryManageTargetFlow aplica lo que el confirm ya le mostró al
-// usuario. Es pura ejecución: el gate de confirmación quedó atrás, dentro del
-// flujo.
-//
-// El orden importa. Primero se mueven los movimientos, después se borra la
-// categoría. Al revés, un fallo intermedio dejaría movimientos apuntando a una
-// fila borrada. En este orden, un fallo del borrado deja la categoría vacía —
-// un estado consistente que el usuario puede reintentar.
 func FinishCategoryManageTargetFlow(ctx context.Context, r runner, chat messenger.Chat, data conversation.Data) {
 	if conversation.Flag(data, conversation.KeyCancelled) || !conversation.Flag(data, conversation.KeyConfirmed) {
 		r.ResolveMetric(ctx, data.UserID(), OutcomeCategoryManageCancelled)
@@ -196,16 +164,11 @@ func FinishCategoryManageTargetFlow(ctx context.Context, r runner, chat messenge
 		}
 	}
 
-	// Delete devuelve ErrSubcategoryNotFound cuando no borró nada (fila ajena,
-	// global o inexistente). Hay que cortar acá: decirle "listo, la saqué" a
-	// alguien cuya categoría sigue estando sería mentirle.
 	if err := r.DeleteSubcategory(userID, sourceID); err != nil {
 		slog.ErrorContext(ctx, "category manage: delete", "err", err)
 		r.SendText(ctx, chat, MsgCouldNotDelete("tu categoría"))
 		return
 	}
-	// El Cache es read-through: sin Reload la categoría borrada seguiría
-	// apareciendo hasta el próximo reinicio del server.
 	if err := r.ReloadSubcategories(); err != nil {
 		slog.ErrorContext(ctx, "category manage: cache reload", "err", err)
 	}

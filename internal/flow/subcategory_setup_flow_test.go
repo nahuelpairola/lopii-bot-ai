@@ -43,12 +43,6 @@ func (r *fakeSubcatSetupRepo) FindOwnedByUser(userID uint64) ([]subcategory.Subc
 	return r.owned, nil
 }
 
-// fakeConvStore is a minimal conversation.Engine-compatible store — Go
-// interface satisfaction is structural, so this struct (defined in the
-// messaging package) satisfies conversation's unexported stateStore
-// interface purely by matching its method set, the same way
-// internal/conversation/engine_test.go's own fakeStore does from inside
-// that package.
 type fakeConvStore struct {
 	flowName, stepName string
 	data               conversation.Data

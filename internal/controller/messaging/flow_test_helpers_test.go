@@ -9,11 +9,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// Helpers que compartían los tests de flow con los del borde. Los tests de los
-// builders se mudaron a internal/flow y se llevaron su copia; ésta es la del
-// borde, que la siguen usando los tests de los finishes (que corren a través
-// del *controller y por eso se quedan acá).
-
 var errFake = errors.New("db down")
 
 type fakeStateStore struct {
@@ -39,8 +34,6 @@ func (s *fakeStateStore) Clear(userID uint64) error {
 	return nil
 }
 
-// fakeConvStore es el mismo store con otros nombres de campo: lo pide
-// ask_user_flow_test.go, que no se mudó.
 type fakeConvStore struct {
 	flowName, stepName string
 	data               conversation.Data

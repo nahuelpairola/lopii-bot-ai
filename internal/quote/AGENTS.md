@@ -7,8 +7,8 @@ Owns two public series: `usd_quotes` (`Quote`) and `monthly_cpi` (`CPI`). Both a
 not built yet. Everything below matters to both, because all four traps produce a plausible
 wrong number rather than an error.
 
-The long "why" for the first three lives in the doc comments on `Quote` and `CPI`
-(`model.go`) — read them before touching either type. This file is the list, not a second copy.
+This file is the whole "why" for both types: `Quote` and `CPI` (`model.go`) carry no prose of
+their own.
 
 ## The four
 
@@ -44,5 +44,6 @@ that as a zero rate divides by zero; the monthly summary omits its dollar line i
 Both inserts are idempotent by PK, but for opposite reasons — `InsertQuotes` uses `DoUpdates`
 (today's live value from dolarapi is provisional and must be overwritten by argentinadatos a day
 or two later), `InsertCPI` uses `DoNothing` (a published month never changes). Swapping either
-one silently mixes two sources into one series. The rationale is at each method in
-`repository.go`; the seeding/backfill policy is the sweeper's, in `notifier/quotes.go`.
+one silently mixes two sources into one series: with `DoNothing` on quotes, the provisional
+value froze and the series ended up alternating between sources depending on whether the bot was
+alive at 20:00. The seeding/backfill policy is the sweeper's, in `notifier/quotes.go`.

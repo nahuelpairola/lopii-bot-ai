@@ -2,10 +2,6 @@ package reminder
 
 import "math/rand"
 
-// reminderMessages is the rotating pool of expense-logging nudges. Argentine,
-// mixed tone (motivador, canchero, seco, dato útil). "No siempre iguales" is
-// solved here — extend with a commit, no LLM needed. Keep each line short and
-// standalone (a push notification, no context assumed).
 var reminderMessages = []string{
 	"¿Cargaste tus gastos de hoy? Un minuto ahora te ahorra el quilombo de fin de mes 💪",
 	"Che, ¿anotamos lo de hoy antes de que se te escape? 📲",
@@ -24,7 +20,6 @@ var reminderMessages = []string{
 	"Un ratito de carga hoy y llegás a fin de mes sabiendo exactamente en qué se fue la plata 💸",
 }
 
-// PickMessage returns a random nudge from the pool.
 func PickMessage() string {
 	return reminderMessages[rand.Intn(len(reminderMessages))]
 }

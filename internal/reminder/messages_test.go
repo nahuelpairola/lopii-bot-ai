@@ -27,9 +27,6 @@ func TestReminderMessagesPoolHasVariety(t *testing.T) {
 }
 
 func TestReminderMessagesAreHTMLSafe(t *testing.T) {
-	// El notifier manda estos mensajes con ParseMode HTML (ver
-	// notifier.NewSweeper). Un <, > o & suelto hace que Telegram devuelva 400
-	// y el recordatorio no llegue.
 	for _, m := range reminderMessages {
 		if strings.ContainsAny(m, "<>&") {
 			t.Errorf("mensaje con carácter especial de HTML: %q", m)

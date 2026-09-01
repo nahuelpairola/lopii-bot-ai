@@ -6,9 +6,6 @@ import (
 	"time"
 )
 
-// Dos updates del MISMO usuario no se solapan. Sin esto, dos altas con gap de
-// categoría se pisan la fila de conversation_states (PK user_id) y la primera
-// se pierde sin que nada avise.
 func TestUserLocks_SameUserIsSerialized(t *testing.T) {
 	var locks userLocks
 	var mu sync.Mutex
@@ -42,8 +39,6 @@ func TestUserLocks_SameUserIsSerialized(t *testing.T) {
 	}
 }
 
-// Y usuarios distintos NO se bloquean entre sí: el bot atiende a muchos, y
-// serializar global lo dejaría atendiendo de a uno.
 func TestUserLocks_DifferentUsersRunInParallel(t *testing.T) {
 	var locks userLocks
 	arrancaron := make(chan struct{}, 2)
@@ -57,8 +52,6 @@ func TestUserLocks_DifferentUsersRunInParallel(t *testing.T) {
 		}(uid)
 	}
 
-	// Los dos tienen que poder entrar ANTES de que ninguno suelte. Con un
-	// candado global, el segundo no llegaría nunca y esto expira.
 	for i := 0; i < 2; i++ {
 		select {
 		case <-arrancaron:
@@ -69,8 +62,6 @@ func TestUserLocks_DifferentUsersRunInParallel(t *testing.T) {
 	close(soltar)
 }
 
-// El unlock que se devuelve es el del mutex que se tomó: dos locks seguidos del
-// mismo usuario no pueden soltar el del otro.
 func TestUserLocks_UnlockReleasesItsOwnMutex(t *testing.T) {
 	var locks userLocks
 	soltar := locks.lock(3)

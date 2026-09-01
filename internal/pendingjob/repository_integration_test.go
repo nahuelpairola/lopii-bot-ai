@@ -11,8 +11,6 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// Run with: go test -tags integration ./internal/pendingjob/
-// Requires local Postgres (docker compose up -d) with migrations applied.
 func TestRepository_InsertListDeleteCount(t *testing.T) {
 	conn := testConnection(t)
 	r := NewRepository(conn)
@@ -32,8 +30,6 @@ func TestRepository_InsertListDeleteCount(t *testing.T) {
 		t.Fatalf("want 0 jobs before insert, got count=%d err=%v", n, err)
 	}
 
-	// Sleep between inserts so created_at is strictly increasing — otherwise
-	// millisecond-resolution collisions make the FIFO order assertion flaky.
 	var ids []uint64
 	for _, text := range []string{"first", "second", "third"} {
 		job := &PendingJob{UserID: uid, Kind: "free_text", Payload: []byte(`{"text":"` + text + `"}`)}
@@ -84,7 +80,6 @@ func TestRepository_InsertListDeleteCount(t *testing.T) {
 	}
 }
 
-// testConnection connects to the local Docker Postgres instance used by integration tests.
 func testConnection(t *testing.T) *database.Connection {
 	conn, err := database.Initialize(database.Creds{
 		Host: "localhost", Port: 5432, Name: "lopiibot", User: "lopiibot", Password: "lopiibot",

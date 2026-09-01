@@ -41,9 +41,6 @@ func (fakeUsers) FindByID(id uint64) (*user.User, error) {
 	return &user.User{ID: id}, nil
 }
 
-// fakeChats es el chatResolver de los tests: siempre devuelve el mismo
-// *messenger.FakeChat, así los tests afirman sobre chat.Sent en vez de
-// interceptar el (chatID, texto) que viajaba por el viejo `send`.
 type fakeChats struct{ chat *messenger.FakeChat }
 
 func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }
@@ -60,12 +57,12 @@ func newSweeper(r *fakeReminders, m *fakeMovements, chat *messenger.FakeChat) *S
 func at(h, m int) time.Time { return time.Date(2026, 7, 9, h, m, 0, 0, time.UTC) }
 
 func TestSweep_FiresPastMidpointWhenNoActivity(t *testing.T) {
-	r := &fakeReminders{due: []reminder.Reminder{{UserID: 1, WindowStartMin: 1200, WindowEndMin: 1260}}} // 20:00-21:00, midpoint 20:30
+	r := &fakeReminders{due: []reminder.Reminder{{UserID: 1, WindowStartMin: 1200, WindowEndMin: 1260}}}
 	m := &fakeMovements{byUser: map[uint64]int{}}
 	chat := &messenger.FakeChat{}
 	s := newSweeper(r, m, chat)
 
-	s.sweepReminders(context.Background(), at(20, 30)) // exactly midpoint
+	s.sweepReminders(context.Background(), at(20, 30))
 	if len(chat.Sent) != 1 {
 		t.Fatalf("expected one send, got %v", chat.Sent)
 	}
@@ -82,7 +79,7 @@ func TestSweep_SkipsBeforeMidpoint(t *testing.T) {
 	m := &fakeMovements{byUser: map[uint64]int{}}
 	chat := &messenger.FakeChat{}
 	s := newSweeper(r, m, chat)
-	s.sweepReminders(context.Background(), at(20, 15)) // before 20:30
+	s.sweepReminders(context.Background(), at(20, 15))
 	if len(chat.Sent) != 0 {
 		t.Fatalf("expected no send before midpoint, got %v", chat.Sent)
 	}
@@ -90,7 +87,7 @@ func TestSweep_SkipsBeforeMidpoint(t *testing.T) {
 
 func TestSweep_SkipsWhenLoggedToday(t *testing.T) {
 	r := &fakeReminders{due: []reminder.Reminder{{UserID: 1, WindowStartMin: 1200, WindowEndMin: 1260}}}
-	m := &fakeMovements{byUser: map[uint64]int{1: 3}} // logged 3 today
+	m := &fakeMovements{byUser: map[uint64]int{1: 3}}
 	chat := &messenger.FakeChat{}
 	s := newSweeper(r, m, chat)
 	s.sweepReminders(context.Background(), at(20, 45))

@@ -27,9 +27,6 @@ var testTaxonomy = []TaxonomyEntry{
 	{Category: "Transporte", Subcategory: "Combustible"},
 }
 
-// UNA llamada por MENSAJE, no una por movimiento: comparten el mismo texto, y
-// separarlas multiplicaría el costo quitándole a cada una el contexto que las
-// otras aportan.
 func TestClassifyCategories_OneCallForEveryRow(t *testing.T) {
 	calls := 0
 	o := classifierStub(t, 200, `{"choices":[{"message":{"tool_calls":[{"function":{"name":"classify",
@@ -46,8 +43,6 @@ func TestClassifyCategories_OneCallForEveryRow(t *testing.T) {
 	}
 }
 
-// Una falla del modelo degrada a PREGUNTA, nunca a un dato inventado. Es el
-// mismo camino que el usuario ya ve cuando el modelo duda.
 func TestClassifyCategories_FailureDegradesToPendingReview(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -77,7 +72,6 @@ func TestClassifyCategories_FailureDegradesToPendingReview(t *testing.T) {
 	}
 }
 
-// De menos también es una falla parcial: las filas que faltan preguntan.
 func TestClassifyCategories_ShortAnswerPadsWithPendingReview(t *testing.T) {
 	calls := 0
 	o := classifierStub(t, 200, `{"choices":[{"message":{"tool_calls":[{"function":{"name":"classify",
@@ -91,7 +85,6 @@ func TestClassifyCategories_ShortAnswerPadsWithPendingReview(t *testing.T) {
 	}
 }
 
-// Sin taxonomía no hay contra qué clasificar, y no se gasta una llamada.
 func TestClassifyCategories_NoTaxonomyAsksWithoutCallingTheModel(t *testing.T) {
 	calls := 0
 	o := classifierStub(t, 200, `{}`, &calls)
@@ -106,8 +99,6 @@ func TestClassifyCategories_NoTaxonomyAsksWithoutCallingTheModel(t *testing.T) {
 	}
 }
 
-// El mensaje original va SIEMPRE: "el asado del domingo con los chicos" dice
-// mucho más que "asado", y esa es la razón de mandarlo.
 func TestRenderClassifyInput_CarriesTheOriginalMessage(t *testing.T) {
 	in := renderClassifyInput("el asado del domingo con los chicos",
 		[]ClassifyRow{{Description: "asado", Type: "expense", AccountName: "Galicia"}})

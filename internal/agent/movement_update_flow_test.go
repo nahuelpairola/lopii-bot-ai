@@ -101,10 +101,6 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	}
 }
 
-// En agent, ActionsEnabled() es SIEMPRE true (fake "siempre cableado"), así que
-// un ResolveUpdate irresuelto parkea la pregunta y la drena al ask_user — el
-// camino correcto — en vez de quedarse mudo. Lo que se asevera es que el flujo
-// de CONFIRM nunca se abre: de haberlo hecho, store.flowName lo diría.
 func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	orch := &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: false}}
 	actions := &fakeActionsRepo{}
@@ -121,10 +117,6 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	}
 }
 
-// TestUpdate_UnresolvedChangeAsksWhatToChange: "el café estaba mal" nombra bien
-// el movimiento y no dice qué cambiarle. Antes moría acá con un "no me quedó
-// claro"; ahora pregunta, que es la máquina de preguntas que la etapa 2 ya
-// construyó.
 func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	actions := &fakeActionsRepo{}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
@@ -151,10 +143,6 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	if len(qs) != 1 || qs[0].Key != questionKeyChange {
 		t.Fatalf("la pregunta abierta tiene que ser qué cambiar: %+v", qs)
 	}
-	// Botones para los campos que NO son el monto. El monto se escribe derecho,
-	// así que el caso común queda en un paso; los otros encadenan la pregunta
-	// del valor. Y ask_user acepta texto libre igual: los botones aceleran,
-	// nunca encierran.
 	if len(qs[0].Options) != len(changeFieldOptions()) {
 		t.Errorf("faltan los botones de campo: %+v", qs[0].Options)
 	}
@@ -163,7 +151,6 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 			t.Errorf("el monto no va como botón, se escribe: %q", opt)
 		}
 	}
-	// El candidato ya está elegido: encontrarlo fue la mitad cara y no se repite.
 	var payload agentPayload
 	if err := json.Unmarshal(actions.rows[0].Payload, &payload); err != nil {
 		t.Fatal(err)
@@ -173,36 +160,23 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 	}
 }
 
-// TestMsgAskWhatToChange_AsksForTheValueNotTheField: la primera versión listaba
-// "(el monto, la categoría, la fecha…)" y se leía como un menú. En la prueba
-// real el usuario contestó "El monto" — el campo, que es justo lo que no sirve:
-// ResolveUpdate necesita con qué reemplazar, y la corrección murió ahí.
 func TestMsgAskWhatToChange_AsksForTheValueNotTheField(t *testing.T) {
 	got := messages.MsgAskWhatToChange([]movement.MovementRow{{Amount: "1800", Description: "Cafe"}})
 
 	if !strings.Contains(got, "Cuánto era") {
 		t.Errorf("no pide el valor nuevo: %q", got)
 	}
-	// Y avisa que hay botones para lo que no sea el monto: sin eso el usuario no
-	// sabe que puede corregir la categoría o la fecha.
 	if !strings.Contains(got, "tocá abajo") {
 		t.Errorf("no ofrece los botones para los otros campos: %q", got)
 	}
 	if strings.Contains(got, "el monto, la categoría") {
 		t.Errorf("volvió la lista de campos en el texto, que se lee como menú: %q", got)
 	}
-	// Y nombra el movimiento, para que se sepa cuál se está tocando.
 	if !strings.Contains(got, "1800") {
 		t.Errorf("no nombra el movimiento: %q", got)
 	}
 }
 
-// TestUpdate_NoOpCorrectionAsksInsteadOfConfirming reproduce la traza 317df846:
-// "el café estaba mal" contra un movimiento de $1.800 y ResolveUpdate devolvió
-// Resolved=TRUE con el mismo $1.800. Confirmarlo haría un DELETE+INSERT para
-// dejar todo igual y contaría como update_confirmed.
-//
-// El chequeo no puede depender de que el modelo se declare incapaz.
 func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Date: "2026-08-01", Description: "Cafe"}}
@@ -216,8 +190,8 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 		accounts:      &fakeAccountRepoFull{},
 		subcategories: &fakeSubcategoryRepoFull{},
 		orch: &fakeOrchestrator{updateResult: orchestrator.UpdateResult{
-			Resolved:  true,                                                // el modelo dice que sí...
-			Movements: []orchestrator.MovementDraft{rowToDraft(before[0])}, // ...y no cambió nada
+			Resolved:  true,
+			Movements: []orchestrator.MovementDraft{rowToDraft(before[0])},
 		}},
 	}
 
@@ -241,14 +215,10 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 	}
 }
 
-// TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel: tocar "La
-// categoría" nombra el CAMPO y nada más. Preguntar el valor antes de llamar al
-// modelo ahorra la llamada entera — iba a volver sin cambiar nada.
 func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 	actions := &fakeActionsRepo{}
 	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
 	engine.Register(flow.NewAskUserFlow())
-	// orch nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
 	svc := &fakeServices{engine: engine, actions: actions, accounts: &fakeAccountRepoFull{}}
 
 	err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1,
@@ -269,23 +239,17 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 	if qs[0].Prompt != messages.MsgAskChangeValue {
 		t.Errorf("la segunda vuelta pregunta el valor, no el campo: %q", qs[0].Prompt)
 	}
-	// Y sin botones: el campo ya se eligió, ofrecerlos de nuevo confunde.
 	if len(qs[0].Options) != 0 {
 		t.Errorf("la segunda vuelta no lleva botones: %+v", qs[0].Options)
 	}
 }
 
-// TestUpdate_AmountAnswerSkipsTheModel: preguntamos "¿Cuánto era?" y contestó
-// un número. No queda nada que interpretar — movement.ParseARAmount ya lo sabe leer— así
-// que la corrección se arma del lado de la app. Mandárselo al modelo costaba
-// ~1.500 tokens para que copiara el número.
 func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS", AccountID: "46",
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Description: "Cafe"}}
 	store := &fakeConvStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
-	// orch nil: si llamara a ResolveUpdate, panichearía. Ésa ES la prueba.
 	svc := &fakeServices{engine: engine, accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{}}
 
 	err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1,
@@ -295,7 +259,6 @@ func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// El gate NO se saltea: el usuario tiene que ver el antes/después igual.
 	if store.flowName != flow.MovementUpdateConfirmFlowName {
 		t.Fatalf("tenía que abrir el confirm, abrió %q", store.flowName)
 	}
@@ -303,16 +266,11 @@ func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 	if len(after) != 1 || after[0].Amount != "2000" {
 		t.Fatalf("el monto nuevo no llegó: %+v", after)
 	}
-	// Y el resto del movimiento queda intacto — sobre todo la cuenta, que es
-	// de donde sale la plata.
 	if after[0].AccountID != "46" || after[0].Subcategory != "Salir a comer" {
 		t.Errorf("el atajo tocó algo que no era el monto: %+v", after[0])
 	}
 }
 
-// TestAmountOnlyCorrection_FallsBackWhenItIsNotJustTheAmount: las condiciones
-// del atajo son todas necesarias. Cualquiera que falte vuelve al camino con
-// modelo, que es el que sabe interpretar.
 func TestAmountOnlyCorrection_FallsBackWhenItIsNotJustTheAmount(t *testing.T) {
 	one := []movement.MovementRow{{Amount: "1800", Currency: "ARS"}}
 	two := []movement.MovementRow{{Amount: "1800"}, {Amount: "1800"}}
@@ -333,9 +291,6 @@ func TestAmountOnlyCorrection_FallsBackWhenItIsNotJustTheAmount(t *testing.T) {
 	}
 }
 
-// TestUpdate_NoOpAfterAskingGivesUp: si ya preguntamos y con la respuesta
-// TAMPOCO sale una corrección, se corta. Sin esto cada vuelta parkea una acción
-// nueva con presupuesto entero y el usuario gira para siempre.
 func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
 	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS", Description: "Cafe"}}
 	actions := &fakeActionsRepo{}
@@ -363,14 +318,11 @@ func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
 	}
 }
 
-// TestCorrectionIsNoOp_DetectsARealChange: la contracara. Un campo omitido por
-// el modelo es "no lo tocó", pero uno distinto es un cambio de verdad y tiene
-// que pasar derecho al gate.
 func TestCorrectionIsNoOp_DetectsARealChange(t *testing.T) {
 	before := []movement.MovementRow{{Type: "expense", Amount: "1800", Currency: "ARS",
 		Category: "Ocio y salidas", Subcategory: "Salir a comer", Description: "Cafe"}}
 
-	same := []orchestrator.MovementDraft{{Amount: "1800.00"}} // mismo monto, otro formato
+	same := []orchestrator.MovementDraft{{Amount: "1800.00"}}
 	if !correctionIsNoOp(before, same) {
 		t.Error("1800 y 1800.00 son el mismo monto: tiene que dar no-op")
 	}
@@ -390,9 +342,6 @@ func TestCorrectionIsNoOp_DetectsARealChange(t *testing.T) {
 	}
 }
 
-// TestApplyAnswers_ChangeAnswerIsAppended: la respuesta se suma al texto
-// original en vez de reemplazarlo. El original dice a cuál ("el café"), la
-// respuesta dice el valor nuevo ("2000"): con uno solo ResolveUpdate no cierra.
 func TestApplyAnswers_ChangeAnswerIsAppended(t *testing.T) {
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
 		Change: "el café estaba mal", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
@@ -409,7 +358,6 @@ func TestApplyAnswers_ChangeAnswerIsAppended(t *testing.T) {
 }
 
 func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
-	// orch is deliberately nil — this function must not call it.
 	store := &fakeConvStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
@@ -440,16 +388,11 @@ func TestCorrectionIsDeletion(t *testing.T) {
 		{"mixed zero and non-zero is not a deletion", []movement.MovementRow{{Amount: "0"}, {Amount: "500"}}, "poné 0 y 500", false},
 		{"unparseable amount is not a deletion", []movement.MovementRow{{Amount: ""}}, "gratis", false},
 
-		// El caso que casi borra datos: el 2026-08-10 "Editá los movimientos de
-		// lote de hoy" no dice ningún cambio, el modelo devolvió montos en 0, y
-		// esto armó un borrado que el usuario confirmó. Sólo no borró porque la
-		// escritura falló — y ese accidente ya no está.
 		{"todo cero SIN monto en el mensaje NO borra", []movement.MovementRow{{Amount: "0"}, {Amount: "0"}},
 			"Editá los movimientos de lote de hoy", false},
 		{"tampoco con un solo movimiento", []movement.MovementRow{{Amount: "0"}},
 			"editá el café", false},
 
-		// Las formas de decir "no salió nada" que no traen ningún dígito.
 		{"me lo regalaron", []movement.MovementRow{{Amount: "0"}}, "me regalaron el helado", true},
 		{"al final fue gratis", []movement.MovementRow{{Amount: "0"}}, "al final fue gratis", true},
 		{"no me cobraron nada", []movement.MovementRow{{Amount: "0"}}, "no me cobraron nada", true},
@@ -462,14 +405,7 @@ func TestCorrectionIsDeletion(t *testing.T) {
 	}
 }
 
-// El botón dice el CAMPO y el texto dice el VALOR: con los dos, la app arma la
-// corrección sola y no llama al modelo.
-//
-// Antes esta combinación iba a ResolveUpdate, que pedía re-emitir la fila
-// entera. El 2026-08-12, ante "Era pollo", devolvió las once columnas menos
-// `date`: Groq la rechazó con un 400 y la corrección se perdió completa.
 func TestApplyAnswers_ButtonPlusValueBuildsTheChange(t *testing.T) {
-	// Primera vuelta: toca el botón, que nombra el campo y nada más.
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
 		Change: "editá la panadería", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,
 	})}
@@ -484,7 +420,6 @@ func TestApplyAnswers_ButtonPlusValueBuildsTheChange(t *testing.T) {
 		t.Errorf("el botón solo no alcanza: todavía falta el valor, y hay %d cambios", len(picked.Changes))
 	}
 
-	// Segunda vuelta: escribe el valor. Ahí sí se arma el cambio.
 	action.Payload = mustJSON(t, picked)
 	resolvedPayload, resolved := applyAnswers(action, []pendingaction.OpenQuestion{
 		{Key: questionKeyChange, Answer: "Vivienda", Options: nil},
@@ -501,8 +436,6 @@ func TestApplyAnswers_ButtonPlusValueBuildsTheChange(t *testing.T) {
 	}
 }
 
-// Sin botón previo no se inventa ningún campo: un número suelto es el atajo del
-// monto (amountOnlyCorrection), no un cambio de categoría.
 func TestApplyAnswers_ValueWithoutAButtonBuildsNothing(t *testing.T) {
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
 		Change: "el café estaba mal", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}}, Chosen: 0,

@@ -26,9 +26,6 @@ func askSeed(t *testing.T, budget int, questions ...pendingaction.OpenQuestion) 
 	}
 }
 
-// TestAskUser_BothAnswersSurvive es LA regresión por la que existe OnText: un
-// paso auto-recursivo que guardara la respuesta bajo una sola DataKey se
-// pisaría a sí mismo y sólo sobreviviría la última.
 func TestAskUser_BothAnswersSurvive(t *testing.T) {
 	engine := newAskUserTestEngine(t)
 	seed := askSeed(t, 4,
@@ -75,8 +72,6 @@ func TestAskUser_BothAnswersSurvive(t *testing.T) {
 	}
 }
 
-// TestAskUser_ButtonAndFreeTextLandInTheSamePlace: los botones aceleran, no
-// encierran. Una respuesta escrita a mano vale exactamente igual que un tap.
 func TestAskUser_ButtonAndFreeTextLandInTheSamePlace(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -127,8 +122,6 @@ func TestAskUser_OffersTheOptionsAsButtonsPlusCancel(t *testing.T) {
 	if prompt.Buttons[0].Label != "Mercado Pago" || prompt.Buttons[0].Data != flow.AskOptionPrefix+"0" {
 		t.Errorf("el primer botón no es la primera opción: %+v", prompt.Buttons[0])
 	}
-	// El callback lleva el ÍNDICE, no el texto: callback_data tiene 64 bytes
-	// y un nombre de categoría largo los desborda.
 	if prompt.Buttons[1].Data != flow.AskOptionPrefix+"1" {
 		t.Errorf("el callback tiene que ser el índice: %+v", prompt.Buttons[1])
 	}
@@ -155,9 +148,6 @@ func TestAskUser_CancelMarksCancelled(t *testing.T) {
 	}
 }
 
-// TestAskUser_SkipsWhenNothingIsOpen: el seed sin preguntas abiertas no puede
-// arrancar el flujo — StartWithData falla a propósito cuando no hay nada que
-// preguntar, y ese es el contrato que el drenaje usa para no abrir un flow vacío.
 func TestAskUser_SkipsWhenNothingIsOpen(t *testing.T) {
 	engine := newAskUserTestEngine(t)
 	seed := askSeed(t, 3, pendingaction.OpenQuestion{
@@ -168,12 +158,8 @@ func TestAskUser_SkipsWhenNothingIsOpen(t *testing.T) {
 	}
 }
 
-// TestAskUser_BudgetExhaustedDiscardsWhole: pasado el techo, la acción se tira
-// ENTERA y queda la marca. Task 4 es quien le avisa al usuario qué se cayó.
 func TestAskUser_BudgetExhaustedDiscardsWhole(t *testing.T) {
 	engine := newAskUserTestEngine(t)
-	// Presupuesto 1 con 2 preguntas: la primera respuesta lo consume y la
-	// segunda ya no se llega a preguntar.
 	seed := askSeed(t, 1,
 		pendingaction.OpenQuestion{Key: "row0.account", Prompt: "¿De qué cuenta salió?"},
 		pendingaction.OpenQuestion{Key: "row0.category", Prompt: "¿En qué categoría lo pongo?"},
@@ -194,7 +180,6 @@ func TestAskUser_BudgetExhaustedDiscardsWhole(t *testing.T) {
 	if conversation.Flag(res.Data, conversation.KeyCancelled) {
 		t.Errorf("quedarse sin presupuesto NO es que el usuario cancele: %+v", res.Data)
 	}
-	// Lo que sí se contestó tiene que seguir ahí: Task 4 nombra lo que se cae.
 	got := flow.DecodeOpenQuestions(res.Data)
 	if len(got) != 2 || got[0].Answer != "Brubank" || got[1].Answer != "" {
 		t.Errorf("el estado de las preguntas no sobrevivió al descarte: %+v", got)
