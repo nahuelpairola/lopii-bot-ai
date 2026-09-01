@@ -10,26 +10,30 @@ Postgres 16 on `:5432`. Credentials: DB=`lopiibot`, user=`lopiibot`, pass=`lopii
 
 ### Configure before first run
 
-**1. Secrets in `.env` (git-ignored), copied from `.env.example`:**
 ```bash
-ENV=local
-TELEGRAM_TOKEN=<token from @BotFather>
-GROQ_APIKEY=<key from console.groq.com>
+cp .env.example .env    # completá TELEGRAM_TOKEN (@BotFather) y GROQ_APIKEY (console.groq.com)
+bash init.sh            # dice qué falta, y no arranca nada hasta que esté
 ```
-`telegram.token` and `groq.apiKey` are deliberately **empty** in `config/local.toml` — no
-secret is ever committed. Viper's `AutomaticEnv` fills them from the environment, so the
-`.env` has to be exported into the shell before `go run` (see Run below); `go run` does not
-read it on its own.
 
-**2. Tunnel host in `config/local.toml`:**
+`telegram.token` y `groq.apiKey` están deliberadamente **vacíos** en `config/local.toml` — ningún
+secreto se commitea. Viper los toma del entorno vía `AutomaticEnv`, así que el `.env` tiene que
+estar **exportado** en la shell antes de `go run`; `go run` no lo lee solo.
+
+`init.sh` chequea Postgres, el `.env` (presencia, CRLF y los tres secretos) y la migración de
+admin. **Lo que no puede chequear por vos:**
+
+**1. El host del túnel en `config/local.toml`:**
 ```toml
 [server]
-baseHost = "https://<your-tunnel>.devtunnels.ms"  # public HTTPS URL for Telegram webhook
+baseHost = "https://<your-tunnel>.devtunnels.ms"
 ```
-The DB config is already set to match Docker Compose — no changes needed.
 
-**3. Edit the admin migration (first time only):**
-`migrations/20260618230837_create_admin_user.sql` — replace `'TELEGRAM_ID'` with your numeric Telegram user ID.
+**2. El directorio de trabajo.** Tiene que ser `cmd/server/`: la ruta de config resuelve como
+`../../config/{ENV}.toml`, relativa al cwd del proceso. Desde la raíz del repo el archivo
+simplemente no está.
+
+**3. Que el túnel esté vivo.** El server arranca bien y sirve localhost, pero Telegram no llega
+al webhook y el bot no recibe nada. Una URL de devtunnel cambia cuando el túnel reinicia.
 
 ### Run
 
