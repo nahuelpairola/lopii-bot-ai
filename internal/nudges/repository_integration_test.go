@@ -11,11 +11,6 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// Run with: go test -tags integration ./internal/nudge/
-// Requires local Postgres (docker compose up -d) with migrations applied.
-//
-// Estas dos garantías viven en el SQL, no en Go: un mock del repositorio
-// probaría el mock. Por eso son un test de integración y no unitario.
 func TestRepository_MarkSentIsOnceEverButMarkSentAgainAdvances(t *testing.T) {
 	conn := testConnection(t)
 	r := NewRepository(conn)
@@ -30,8 +25,6 @@ func TestRepository_MarkSentIsOnceEverButMarkSentAgainAdvances(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	// MarkSent es once-ever: un segundo envío NO toca la fila. Es lo que hace
-	// que un tip no se repita nunca.
 	if err := r.MarkSent(uid, key); err != nil {
 		t.Fatalf("MarkSent (segunda): %v", err)
 	}
@@ -39,9 +32,6 @@ func TestRepository_MarkSentIsOnceEverButMarkSentAgainAdvances(t *testing.T) {
 		t.Errorf("MarkSent movió sent_at de %v a %v; debería ser once-ever", first, got)
 	}
 
-	// MarkSentAgain sí lo actualiza. Sin esto LastSentAt queda congelada en el
-	// primer envío, el cooldown se lee como cumplido para siempre y el tip
-	// recurrente sale en CADA mensaje.
 	if err := r.MarkSentAgain(uid, key); err != nil {
 		t.Fatalf("MarkSentAgain: %v", err)
 	}
@@ -50,7 +40,6 @@ func TestRepository_MarkSentIsOnceEverButMarkSentAgainAdvances(t *testing.T) {
 		t.Errorf("MarkSentAgain dejó sent_at en %v (era %v); tiene que avanzar", second, first)
 	}
 
-	// Y LastSentAt, que es lo que lee el cooldown, tiene que ver ese avance.
 	last, err := r.LastSentAt(uid)
 	if err != nil || last == nil {
 		t.Fatalf("LastSentAt: %v (nil=%v)", err, last == nil)
@@ -87,8 +76,6 @@ func TestRepository_MarkTappedIsSetOnce(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	// El segundo tap NO pisa el timestamp: así "% tap" mide usuarios que
-	// engancharon, no cantidad de taps.
 	if err := r.MarkTapped(uid, key); err != nil {
 		t.Fatalf("MarkTapped (segunda): %v", err)
 	}

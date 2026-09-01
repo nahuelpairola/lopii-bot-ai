@@ -67,6 +67,4 @@ Amounts come back from the DB signed; everything shown to the model and to the u
 `Abs()`, with direction carried by the movement type. See `AGENTS.md` (§ The accounting
 model) before touching anything that reads `amount`.
 
----
-
 Why: `docs/decisions.md`, section **The agent loop and QUERY**.

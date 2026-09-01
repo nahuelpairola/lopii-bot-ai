@@ -64,6 +64,4 @@ guard back.
 
 In tests `b` is nil. Use `r.SendText(...)`, which guards; a direct `b.SendMessage` panics.
 
----
-
 Why: `docs/decisions.md`, section **Conversation engine and flows**.

@@ -54,6 +54,4 @@ the field simply never fires.
 `messaging` (`engine.go`); a flow with no case in the resolver silently gets a generic
 label.
 
----
-
 Why: `docs/decisions.md`, section **Conversation engine and flows**.

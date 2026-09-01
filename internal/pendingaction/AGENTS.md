@@ -26,6 +26,4 @@ existed and left the user with no way out when the right answer was not on the l
 
 `Budget` is stored, not recomputed at drain time.
 
----
-
 Why: `docs/decisions.md`, section **Groq quota, the 429 queue and rate limits**.

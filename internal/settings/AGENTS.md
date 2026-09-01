@@ -45,6 +45,4 @@ asked for. nil means "no suggestion" and the flow falls back to the manual picke
 - **The taxonomy sent to the LLM excludes reserved categories and the source row**, or the model
   matches a row to itself.
 
----
-
 Why: `docs/decisions.md`, section **Conversation engine and flows**.

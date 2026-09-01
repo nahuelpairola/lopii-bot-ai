@@ -1,8 +1,7 @@
 # internal/movement
 
-The money guard lives here. **The accounting model is deliberately not repeated in this file** —
-it is in `AGENTS.md` (§ The accounting model) and `docs/business-rules.md`, both
-verified accurate against `guard.go`. Below is only what neither of them says.
+The money guard lives here. The accounting model itself is in `AGENTS.md` § The accounting
+model; below is only what that does not say.
 
 ## The guard protects the INSERT path, by caller convention
 
@@ -74,7 +73,5 @@ historical value, which is **not** the case the "live rows only" rule governs: t
 about *choosing* a subcategory (pickers, taxonomy resolution), where offering a deleted one
 is a real bug. Callers must still nil-check `Subcategory`; `Unscoped` shrinks the case, it
 does not remove it.
-
----
 
 Why: `docs/decisions.md`, section **The money model** and **Movements: mutation and reference resolution**.

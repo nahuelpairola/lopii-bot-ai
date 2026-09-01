@@ -25,6 +25,4 @@ never fires, because the user learns to ignore the whole channel.
 
 Copy and thresholds are values someone tuned, not defaults. Changing one is a product decision.
 
----
-
 Why: `docs/decisions.md`, section **Interaction principles**.

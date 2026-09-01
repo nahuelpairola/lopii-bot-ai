@@ -169,6 +169,4 @@ months unmapped — the focus ring and the table hairlines were pico azure and g
 **role** (`RoleExpense`/`RoleIncome`) and `colorForRole()` in `app.js` resolves it from the
 computed style. A hex crossing that boundary is a colour that stops following the theme.
 
----
-
 Why: `docs/decisions.md`, section **The money model**.

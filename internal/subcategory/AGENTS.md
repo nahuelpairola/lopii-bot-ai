@@ -32,6 +32,4 @@ no reference), but the repository methods are exported and easy to reach for by 
 `Delete` removes a subcategory regardless of live `movements` pointing at it. The "don't delete
 one that's in use" check lives in `messaging`, via `movement.CountBySubcategory`.
 
----
-
 Why: `docs/decisions.md`, section **Taxonomy**.

@@ -92,6 +92,4 @@ exactly the "never silent" invariant `pendingjob/AGENTS.md` protects. This is wh
 and pairOrLog — the unwrap helpers that used to sit in chat_bridge.go — are gone: they were the
 bug, found in Task 8's first review round.
 
----
-
 Why: `docs/decisions.md`, section **Groq quota, the 429 queue and rate limits** (the lock) and **Package layout, metrics and tooling**.

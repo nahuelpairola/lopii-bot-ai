@@ -18,40 +18,23 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// testServices es el test-double de Services para el dispatcher: campos
-// configurables para lo que cada test programa y registros (texts, markups,
-// marked, tapped, asked) para lo que aserción después. Métodos que un test no
-// programa devuelven cero con nil-error, espejando los fakes de messaging que
-// usaba el cluster.
 type testServices struct {
-	counts    int64
-	dayCounts []movement.DayCount
-	// sumRows: SumForUser del repo. Sin programar, devuelve cero filas.
-	sumRows func(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
-	// accountsBy: FindByUserID del repo.
-	accountsBy []account.Account
-	// remindersBy: FindByUserID del repo, indexado por userID.
-	remindersBy map[uint64]*reminder.Reminder
-	// usersBy: FindByID del repo, indexado por userID.
-	usersBy map[uint64]*user.User
-	// engineActive simula un flow en curso en el engine.
+	counts       int64
+	dayCounts    []movement.DayCount
+	sumRows      func(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
+	accountsBy   []account.Account
+	remindersBy  map[uint64]*reminder.Reminder
+	usersBy      map[uint64]*user.User
 	engineActive bool
-	// available gobierna NudgesAvailable. Por defecto (nil) el storage de
-	// nudges está cableado, como en los tests de messaging que usaba el cluster.
-	available *bool
-	// sentKeys: las keys ya enviadas. NudgesMarkSent las marca acá.
-	sentKeys map[string]bool
-	// lastSentAt: el timestamp del último nudge, por userID.
-	lastSentAt map[uint64]time.Time
-	marked     []string
-	tapped     []string
-	// asked: el texto que HandleQuery recibió.
-	asked string
-	// queryAnswer: vestigial del stubQueryOrchestrator — el loop de QUERY
-	// siempre contestaba con answered=true.
-	queryAnswer string
-	texts       []string
-	markups     []string
+	available    *bool
+	sentKeys     map[string]bool
+	lastSentAt   map[uint64]time.Time
+	marked       []string
+	tapped       []string
+	asked        string
+	queryAnswer  string
+	texts        []string
+	markups      []string
 }
 
 func (t *testServices) EngineInProgress(userID uint64) (bool, error) {
@@ -147,9 +130,6 @@ func (t *testServices) SendText(ctx context.Context, chat messenger.Chat, text s
 	t.texts = append(t.texts, text)
 }
 
-// SendPrompt replica el render de recordingTransport (movement_create_flow_test):
-// cada botón como "label data", así los tests pueden hacer strings.Contains sobre
-// el label Y el callback data.
 func (t *testServices) SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
 	t.texts = append(t.texts, prompt.Text)
 	rows := make([]string, 0, len(prompt.Buttons))
@@ -200,9 +180,6 @@ func TestMaybeNudge_OnceEver(t *testing.T) {
 	}
 }
 
-// Un tip con question sale con un botón cuyo callback_data es el prefijo + la
-// key, y cuyo label ES la pregunta: así el usuario aprende la frase que
-// después puede escribir solo.
 func TestMaybeNudge_QuestionTipCarriesButton(t *testing.T) {
 	svc := &testServices{counts: 1}
 
@@ -229,8 +206,6 @@ func TestMaybeNudge_QuestionTipCarriesButton(t *testing.T) {
 	}
 }
 
-// Telegram trunca callback_data pasados los 64 bytes y el botón deja de
-// matchear en silencio.
 func TestNudgeCallbackDataFitsTelegramLimit(t *testing.T) {
 	for _, n := range nudges {
 		if n.question == "" {

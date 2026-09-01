@@ -114,6 +114,4 @@ the model breaks for free. `correct_movement`'s `op` is nullable in the schema f
 reason: it was required, the model omitted it, and every such turn died as a hard 400 with the
 user's correction lost.
 
----
-
 Why: `docs/decisions.md`, section **The agent loop and QUERY** and **Groq quota, the 429 queue and rate limits**.

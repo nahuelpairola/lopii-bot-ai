@@ -98,11 +98,6 @@ The wizards themselves are not here — the ones reachable from `manage_settings
 
 ## Money
 
-Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
-model) **before** editing. The app owns the sign and the arithmetic; a correction arrives as a
-structured diff (`field`/`op`/`value`) and the app computes the result — the model never sends a
-number it worked out itself.
-
----
+Amounts, signs or `account_id`: `AGENTS.md` § The accounting model, before editing.
 
 Why: `docs/decisions.md`, section **The agent loop and QUERY**.
