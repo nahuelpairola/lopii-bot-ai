@@ -102,7 +102,6 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 		return conversation.Prompt{}, err
 	}
 	sb.WriteString(fold)
-	sb.WriteString(msgMonthlyNote)
 
 	return conversation.Prompt{
 		Text: sb.String(),

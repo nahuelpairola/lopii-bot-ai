@@ -40,7 +40,6 @@ const (
 	msgMonthlyFoldShare = "%s %s — %s de todo lo que gastaste\n"
 	msgMonthlyFoldTop   = "Lo más caro del mes: %s, %s."
 	msgMonthlyFoldClose = "</blockquote>"
-	msgMonthlyNote      = "\n<blockquote>📩 El resumen del mes va siempre, cada día 3. El de los lunes sí lo podés cortar: escribime «no quiero más los resúmenes».</blockquote>"
 	msgMonthlyButton    = "📈 Ver %s en la app"
 
 	monthlyButtonQuery = "?p=month&m="
