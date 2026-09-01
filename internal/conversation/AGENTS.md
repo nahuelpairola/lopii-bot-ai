@@ -28,10 +28,11 @@ collision.
 ## `NewFlow`'s graph validation is narrower than it looks
 
 `PossibleNextSteps()` is a **static, self-reported declaration**, not a derived fact
-(`flow.go`). `NewFlow` validates only what each `Step` chose to list. In particular,
-`TextStep.EscapeOptionsFunc` buttons **must** target `NextStep` or `Finish`
-(`text_step.go`) — `PossibleNextSteps()` never inspects them, so a violating button jumps
-to an undeclared step with startup validation having given false confidence.
+(`flow.go`). `NewFlow` validates only what each `Step` chose to list, so anything computed at
+runtime has to declare its destinations by hand: a `ChoiceStep` using `OptionsFunc` **must** set
+`DeclaredNextSteps`, and `TextStep.EscapeOptionsFunc` buttons **must** target `NextStep` or
+`Finish` (`text_step.go`). Neither is inspected, so a violating button jumps to an undeclared
+step with startup validation having given false confidence.
 
 ## A `Button` carries either `Data` or `WebAppPath`, never both
 

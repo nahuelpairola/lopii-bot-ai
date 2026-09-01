@@ -15,18 +15,15 @@ func TestTextStep_EscapeOptionsFunc_RendersAndProcesses(t *testing.T) {
 		},
 	}
 
-	// Not seeded → no extra button.
 	if got := step.Prompt(Data{}); len(got.Buttons) != 0 {
 		t.Fatalf("unseeded prompt: got %d buttons, want 0", len(got.Buttons))
 	}
 
-	// Seeded → one confirm button.
 	seeded := Data{"balance": "1000"}
 	if got := step.Prompt(seeded); len(got.Buttons) != 1 || got.Buttons[0].Data != "confirm_seed" {
 		t.Fatalf("seeded prompt buttons = %+v, want one confirm_seed", got.Buttons)
 	}
 
-	// Tapping the func-provided button advances to NextStep and keeps the seed.
 	tr := step.Process(Input{CallbackData: "confirm_seed"}, seeded)
 	if tr.kind != outcomeAdvance || tr.nextStep != "confirm" {
 		t.Fatalf("process(confirm_seed) = %+v, want advance→confirm", tr)
@@ -36,10 +33,6 @@ func TestTextStep_EscapeOptionsFunc_RendersAndProcesses(t *testing.T) {
 	}
 }
 
-// TestTextStep_OnTextTransformsDataAfterTheAnswer covers what ask_user's
-// self-looping step needs: a text answer that is consumed, not just stored.
-// Without the hook every round overwrites DataKey and only the last answer
-// survives, so a flow asking two questions loses the first.
 func TestTextStep_OnTextTransformsDataAfterTheAnswer(t *testing.T) {
 	step := TextStep{
 		PromptText: func(Data) string { return "¿en qué categoría?" },
@@ -50,8 +43,6 @@ func TestTextStep_OnTextTransformsDataAfterTheAnswer(t *testing.T) {
 			for k, v := range data {
 				next[k] = v
 			}
-			// What ask_user really does: file the answer against the question
-			// it belongs to, and drop the raw scratch key.
 			next["answered_"+stringOrEmptyForTest(data["pending"])] = text
 			delete(next, "answer")
 			return next
@@ -71,8 +62,6 @@ func TestTextStep_OnTextTransformsDataAfterTheAnswer(t *testing.T) {
 	}
 }
 
-// TestTextStep_NoOnTextKeepsTodaysBehaviour is the guard: every existing
-// TextStep leaves OnText nil and must be unaffected.
 func TestTextStep_NoOnTextKeepsTodaysBehaviour(t *testing.T) {
 	step := TextStep{
 		PromptText: func(Data) string { return "¿nombre?" },

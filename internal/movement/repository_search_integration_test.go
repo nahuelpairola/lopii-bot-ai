@@ -14,21 +14,11 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// Run with: go test -tags integration ./internal/movement/
-// Requires local Postgres (docker compose up -d) with migrations applied.
-//
-// Tres movimientos que matchean por VÍAS DISTINTAS, y uno que no matchea por
-// ninguna. Es la única forma de probar que el OR de tres patas está entero: un
-// fake devuelve lo que le pongas y nunca ejerce el SQL.
-//
-// Los acentos y las mayúsculas están mezclados a propósito. El término de
-// búsqueda va sin tilde y en minúscula, que es como lo escribe un usuario:
-// ninguna de las tres filas matchearía con el `=` exacto y el `ILIKE` de antes.
 func TestMovementQuery_Search_MatchesAllThreeLegs(t *testing.T) {
 	conn := testConnection(t)
 	r := InitRepository(conn)
 	accRepo := account.NewRepository(conn)
-	userID := uint64(1) // test admin user que ya existe en la DB
+	userID := uint64(1)
 
 	acc := &account.Account{UserID: userID, Name: "Search_" + uuid.NewString()[:8], Currency: currency.ARS}
 	if err := accRepo.Insert(acc); err != nil {
@@ -36,13 +26,11 @@ func TestMovementQuery_Search_MatchesAllThreeLegs(t *testing.T) {
 	}
 	accID := uint64(acc.ID)
 
-	// Taxonomía propia del test: los nombres llevan tilde, el término no.
 	byCategory := ownSubcategory(t, conn, userID, "Panadería", "Facturas")
 	bySubcategory := ownSubcategory(t, conn, userID, "Comida", "Panadería")
 	byDescription := ownSubcategory(t, conn, userID, "Comida", "Super")
 	noMatch := ownSubcategory(t, conn, userID, "Transporte", "Nafta")
 
-	// Fecha fija propia, para no pisar movimientos reales del usuario de prueba.
 	day := time.Date(2032, 5, 10, 0, 0, 0, 0, time.UTC)
 	algo, delaEsquina, nafta := "algo", "pan de la PANADERÍA de la esquina", "nafta"
 	if err := r.InsertBatch([]Movement{
@@ -54,7 +42,7 @@ func TestMovementQuery_Search_MatchesAllThreeLegs(t *testing.T) {
 		t.Fatalf("insert movements: %v", err)
 	}
 
-	term := "panaderia" // sin tilde y en minúscula
+	term := "panaderia"
 	q := MovementQuery{
 		UserID:    userID,
 		From:      day.AddDate(0, 0, -1),
@@ -73,8 +61,6 @@ func TestMovementQuery_Search_MatchesAllThreeLegs(t *testing.T) {
 	}
 }
 
-// ownSubcategory crea una subcategoría del usuario y devuelve su id. Son del
-// usuario y no globales para no ensuciar la taxonomía compartida.
 func ownSubcategory(t *testing.T, conn *database.Connection, userID uint64, category, sub string) uint64 {
 	t.Helper()
 	s := subcategory.Subcategory{UserID: &userID, Category: category, Subcategory: sub + "_" + uuid.NewString()[:6]}

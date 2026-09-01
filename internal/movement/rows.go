@@ -6,12 +6,6 @@ import (
 	"lopiibot.com/internal/conversation"
 )
 
-// MovementRow is the JSON-safe, per-row shape carried inside
-// conversation.Data during CREATE's gap-fill flow. Every field is a
-// string: conversation.Data round-trips through Postgres JSONB, and
-// only strings/bools/slices/maps of those survive that round-trip
-// without corruption (numbers decode back as float64 — see
-// conversation.Data.UserID's own float64 fallback for why).
 type MovementRow struct {
 	Type             string
 	Amount           string
@@ -26,21 +20,11 @@ type MovementRow struct {
 	Date             string
 	Icon             string
 	Group            string
-	// TransferOut marca la pata que SALE de una transferencia. La lleva la app,
-	// nunca el modelo: Amount es siempre el valor absoluto (el signo guardado no
-	// sale de storage), así que sin esta marca una transferencia reescrita vuelve
-	// con las dos patas en positivo y validateTransferGroups rechaza el grupo.
-	TransferOut string
+	TransferOut      string
 }
 
-// TransferOutMark es el único valor con significado en MovementRow.TransferOut.
-// Es un string porque toda la fila lo es: Data va y vuelve de una columna JSONB.
 const TransferOutMark = "true"
 
-// RowAmount lee el monto de una fila y le devuelve el signo contable que la app
-// posee. Sólo hace falta para la pata que SALE de una transferencia reescrita:
-// el resto de los tipos los firma Normalize, y una fila de CREATE trae el signo
-// que clasificó el modelo.
 func RowAmount(row MovementRow) (decimal.Decimal, error) {
 	amount, err := ParseARAmount(row.Amount)
 	if err != nil {
@@ -52,17 +36,10 @@ func RowAmount(row MovementRow) (decimal.Decimal, error) {
 	return amount, nil
 }
 
-// MovementGapDescriptor names a MovementRow for the gap-fill ask-prompts, so
-// a compound message with several pending rows never asks two identical
-// questions in a row. La description es un campo requerido del Call 2 CREATE
-// —siempre viene poblada, ver orchestrator.MovementDraft—, así que desde el
-// fold de merchant es la única fuente y no hace falta fallback.
 func MovementGapDescriptor(row MovementRow) string {
 	return "$" + row.Amount + " · " + row.Description
 }
 
-// DecodeMovementRows read the "movements" key of Data, which was stored as
-// []interface{} of map[string]interface{} (the JSONB shape), back into rows.
 func DecodeMovementRows(data conversation.Data) []MovementRow {
 	raw, _ := data[conversation.KeyMovements].([]interface{})
 	rows := make([]MovementRow, 0, len(raw))
@@ -88,8 +65,6 @@ func DecodeMovementRows(data conversation.Data) []MovementRow {
 	return rows
 }
 
-// EncodeMovementRows stores rows as the []interface{} of map[string]interface{}
-// shape that survives the JSONB round-trip.
 func EncodeMovementRows(rows []MovementRow) []interface{} {
 	encoded := make([]interface{}, 0, len(rows))
 	for _, r := range rows {

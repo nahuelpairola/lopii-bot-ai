@@ -25,9 +25,6 @@ func (s *fakeStore) Clear(userID uint64) error {
 	return nil
 }
 
-// gapFlow models a 2-gap CREATE-shaped flow: step "a" is skippable once
-// data["a"] is set, step "b" is skippable once data["b"] is set, and
-// once both are set the flow completes with no further step to show.
 func gapFlow() *Flow {
 	steps := map[string]Step{
 		"a": fakeStep{
@@ -84,14 +81,6 @@ func TestStartWithData_NoGaps_ErrorsInsteadOfPromptingNothing(t *testing.T) {
 }
 
 func TestHandle_ChainsThroughMultipleResolvedGapsAfterAdvance(t *testing.T) {
-	// Dedicated flow (not gapFlow): step "a"'s process actually writes
-	// both data["a"] and data["b"] before advancing to "b" — simulating,
-	// e.g., an account-creation confirmation that clears two gap rows in
-	// one Advance. This proves Handle re-evaluates skippability on "b"
-	// after the advance (data["b"] is now present, so "b" is skippable
-	// and the flow reaches completion) rather than just showing "b"'s
-	// Prompt, which is what would happen without the post-advance
-	// advanceThroughSkips walk this task adds.
 	steps := map[string]Step{
 		"a": fakeStep{
 			nextStep: "b",
@@ -130,7 +119,6 @@ func TestHandle_ChainsThroughMultipleResolvedGapsAfterAdvance(t *testing.T) {
 	engine := NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow)
 
-	// Start with nothing resolved; land on step "a".
 	if _, err := engine.StartWithData(1, "chain_flow", Data{}); err != nil {
 		t.Fatalf("StartWithData: %v", err)
 	}
@@ -145,10 +133,6 @@ func TestHandle_ChainsThroughMultipleResolvedGapsAfterAdvance(t *testing.T) {
 }
 
 func TestFlow_AdvanceThroughSkips_Reentry(t *testing.T) {
-	// Regression coverage for the actual CREATE shape: resolving a gap
-	// advances to a fixed "detail" step, which then loops back to the
-	// gap-queue step — advanceThroughSkips must re-evaluate skippability
-	// each time it's re-entered, not just once.
 	calls := 0
 	steps := map[string]Step{
 		"queue": fakeStep{
@@ -156,7 +140,7 @@ func TestFlow_AdvanceThroughSkips_Reentry(t *testing.T) {
 			skip: func(data Data) (string, bool) {
 				calls++
 				if calls > 1 {
-					return "", true // second time through, queue is empty
+					return "", true
 				}
 				return "", false
 			},
@@ -168,8 +152,6 @@ func TestFlow_AdvanceThroughSkips_Reentry(t *testing.T) {
 		t.Fatalf("NewFlow: %v", err)
 	}
 
-	// First entry into "queue": not empty yet (calls becomes 1), so the
-	// walk stops there instead of moving on.
 	resolved, err := flow.advanceThroughSkips("queue", Data{})
 	if err != nil {
 		t.Fatalf("advanceThroughSkips: %v", err)
@@ -178,9 +160,6 @@ func TestFlow_AdvanceThroughSkips_Reentry(t *testing.T) {
 		t.Fatalf("first entry: resolved = %q, want %q", resolved, "queue")
 	}
 
-	// Re-entry into "queue" (simulating the round-trip through "detail"
-	// and back): the walk must re-evaluate Skip from scratch rather than
-	// reuse a cached result from the first call above.
 	resolved, err = flow.advanceThroughSkips("queue", Data{})
 	if err != nil {
 		t.Fatalf("advanceThroughSkips: %v", err)
