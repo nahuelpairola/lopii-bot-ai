@@ -42,7 +42,7 @@ is business data with its own retention.
 - One `transaction_id` (UUID) groups N movements of a single financial event (a USD purchase is
   2 movements).
 - **Every movement is attributed to a real account and carries a signed amount** — see
-  [business-rules.md](business-rules.md#the-accounting-model). `expense` negative on its source,
+  [business-rules.md](business-rules.md#the-accounting-model-money-precision--read-this-before-touching-any-money-path). `expense` negative on its source,
   `income` positive on its destination, `transfer` legs signed out/in. The sign never escapes
   storage: user and LLM both see `abs`.
 - **Account balance is always computed** — there is no `balance` column:

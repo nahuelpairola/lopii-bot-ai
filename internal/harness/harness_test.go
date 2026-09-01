@@ -382,3 +382,110 @@ func TestAlwaysLoadedContextBudget(t *testing.T) {
 			total, alwaysLoadedLineBudget, strings.Join(report, "\n"))
 	}
 }
+
+var (
+	markdownLink   = regexp.MustCompile(`\[[^\]]*\]\(([^)]+)\)`)
+	nonSlugRunes   = regexp.MustCompile(`[^\w\s-]`)
+	spaceRune      = regexp.MustCompile(`\s`)
+)
+
+func headingSlug(heading string) string {
+	s := strings.ToLower(strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(heading), "#")))
+	s = nonSlugRunes.ReplaceAllString(s, "")
+	return strings.Trim(spaceRune.ReplaceAllString(s, "-"), "-")
+}
+
+func harnessAndDocsMarkdown(t *testing.T, root string) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	var out []string
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	for _, name := range []string{"AGENTS.md", "CLAUDE.md", "PRODUCT.md", "DESIGN.md"} {
+		p := filepath.Join(root, name)
+		if _, err := os.Stat(p); err == nil {
+			add(p)
+		}
+	}
+	for _, dir := range []string{"internal", "docs"} {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() && d.Name() == "superpowers" {
+				return filepath.SkipDir
+			}
+			if !d.IsDir() && strings.HasSuffix(path, ".md") {
+				add(path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("no se pudieron listar los .md de %s: %v", dir, err)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func headingsOf(t *testing.T, path string) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("no se pudo leer %s: %v", path, err)
+	}
+	slugs := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(line, "#") {
+			slugs[headingSlug(line)] = true
+		}
+	}
+	return slugs
+}
+
+func TestHarnessLinksResolve(t *testing.T) {
+	root := repoRoot(t)
+	files := harnessAndDocsMarkdown(t, root)
+
+	slugs := map[string]map[string]bool{}
+	for _, path := range files {
+		slugs[path] = headingsOf(t, path)
+	}
+
+	for _, path := range files {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("no se pudo leer %s: %v", path, err)
+		}
+		rel, _ := filepath.Rel(root, path)
+		scanner := bufio.NewScanner(strings.NewReader(string(raw)))
+		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+		line := 0
+		for scanner.Scan() {
+			line++
+			for _, match := range markdownLink.FindAllStringSubmatch(scanner.Text(), -1) {
+				target := match[1]
+				if strings.HasPrefix(target, "http") || strings.HasPrefix(target, "mailto") || strings.HasPrefix(target, "#") {
+					continue
+				}
+				filePart, fragment, _ := strings.Cut(target, "#")
+				dest := filepath.Join(filepath.Dir(path), filepath.FromSlash(filePart))
+				if _, err := os.Stat(dest); err != nil {
+					t.Errorf("%s:%d enlaza a %q y ese archivo no existe.", filepath.ToSlash(rel), line, target)
+					continue
+				}
+				known, tracked := slugs[dest]
+				if fragment == "" || !tracked {
+					continue
+				}
+				if !known[headingSlug(fragment)] {
+					t.Errorf("%s:%d enlaza a %q y ese encabezado no existe. Un ancla se pudre igual que un número de línea.", filepath.ToSlash(rel), line, target)
+				}
+			}
+		}
+	}
+}
