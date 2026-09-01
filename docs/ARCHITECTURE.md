@@ -9,7 +9,7 @@
 - **[decisions.md](decisions.md)** — key design decisions and their rationale.
 - **[business-rules.md](business-rules.md)** — currencies, the accounting/money model (full), grouping, taxonomy, reminders.
 - **[recipes.md](recipes.md)** — how to add a migration, flow, LLM intent, scheduled notification, admin command.
-- **[dev-setup.md](dev-setup.md)** — local Postgres, config, run, migrations.
+- **[dev-setup.md](dev-setup.md)** — local Postgres, config, run, migrations, and the four build-tag test suites.
 - **[grafana/README.md](grafana/README.md)** — admin dashboard: how to import it, how to read it, and the manual verification checklist.
 
 ## Per-package `AGENTS.md`

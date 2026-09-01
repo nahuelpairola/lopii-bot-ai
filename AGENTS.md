@@ -74,6 +74,9 @@ derivable is a future lie with a timer on it.
 bash check.sh        # build + vet + errcheck + the default test suite
 ```
 
+Four build tags gate the suites `check.sh` does not run, and `errcheck` is information rather
+than a gate: [docs/dev-setup.md](docs/dev-setup.md#tests).
+
 Two expected reds, both deliberate — do not "fix" either:
 
 - `TestEveryConfigFile_HasNoSameTurnModelCollision`, red by decision since 2026-08-17: Groq left
