@@ -94,6 +94,29 @@ this file is not. Implementing something includes updating the harness in the sa
 
 ---
 
+## Where to look when something breaks in production
+
+Three trace tables, joined by `trace_id`, kept 90 days by the sweeper (`retentionDays`):
+
+| Question | Table | Columns that answer it |
+|---|---|---|
+| Did the message arrive, how long did it take, did it error? | `request_traces` | `update_type`, `latency_ms`, `error` |
+| Which model, how many tokens, which 429/400? | `llm_calls` | `call_type`, `model`, `prompt_tokens`, `completion_tokens`, `http_status`, `attempts`, `ratelimit_remaining_tokens` |
+| Which tools did the model ask for in that round? | `llm_calls` | `tool_calls` (jsonb) |
+| What did the user want, and how did it end? | `intent_events` | `raw_message`, `intent`, `outcome`, `resolved_at` |
+| All three for one turn | any of them | `trace_id` |
+
+`update_type = replay` marks a job the 429 drain replayed, not a message the user typed again —
+the queue's latency does not mix into real traffic.
+
+**Never read these three tables for feature logic.** They are telemetry: rows vanish after 90
+days, so a product question asked of them returns an incomplete answer *without failing*. Domain
+tables are what answer questions about a user's money.
+
+The admin dashboard over these tables is [grafana/README.md](grafana/README.md).
+
+---
+
 ## Technical debt
 
 Only what no package owns. Anything package-scoped lives in that package's `AGENTS.md`; the
