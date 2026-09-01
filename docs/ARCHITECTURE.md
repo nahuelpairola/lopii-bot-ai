@@ -14,7 +14,7 @@
 
 ## Per-package `AGENTS.md`
 
-Fourteen packages carry their own file. They split into two classes, and the split is a criterion,
+Fifteen packages carry their own file. They split into two classes, and the split is a criterion,
 not a taste: **a package loads at launch when ignoring its file records money wrong and nothing
 warns you.** That is `movement` (a movement's sign and account), `conversation` (the JSONB
 round-trip that turns a number back into `float64`), `agent` (a turn that wrote being
@@ -22,11 +22,11 @@ re-enqueued) and `pendingjob` (a job replayed twice). The root `CLAUDE.md` impor
 they are in context before anyone types anything. The list lives in those imports — the only
 place it cannot go stale.
 
-The other ten load **on demand**, and on demand is weaker than it sounds: it fires only when an
+The other eleven load **on demand**, and on demand is weaker than it sounds: it fires only when an
 agent reads a file in that subtree, and `codegraph_explore` does not count as reading. Open them
 deliberately before editing there.
 
-Each of the ten also has a one-line `CLAUDE.md` next to it that imports it (Claude Code reads
+Each of the eleven also has a one-line `CLAUDE.md` next to it that imports it (Claude Code reads
 `CLAUDE.md`, not `AGENTS.md`; every other agent reads the nearest `AGENTS.md`). The content lives
 in the `AGENTS.md` and only there — the `CLAUDE.md` is a pointer, never a copy. The four
 always-loaded packages have **no** bridge file on purpose: the root import already carries them,
@@ -83,25 +83,27 @@ For conventions and the money model, see [AGENTS.md](../AGENTS.md) (loaded every
 
 ---
 
-## Update Contract
+## Update contract
 
-**Before closing any session that adds or changes something, update the right doc.**
+It lives in [AGENTS.md](../AGENTS.md#the-update-contract), which is loaded every session —
+this file is not. Implementing something includes updating the harness in the same commit.
 
-| If you added or changed... | Update |
-|---------------------------|--------|
-| A new DB table or migration | `docs/data-model.md` |
-| A new architectural decision | `docs/decisions.md` |
-| A new anti-pattern identified | `docs/ARCHITECTURE.md` (Anti-patterns, above) |
-| A new recipe (flow type, step type, intent) | `docs/recipes.md` |
-| A new business rule | `docs/business-rules.md` |
-| A new dependency added to `go.mod` | `AGENTS.md` → Stack |
-| A rule that compiles fine and then behaves wrong | that package's `AGENTS.md` — **not** here |
-| A value reused across files or packages | define a constant scoped per the no-duplicated-literal rule (`internal/constants` if cross-package) |
+---
 
-**A new package needs no doc entry.** There is no package map any more: `codegraph_explore`
-answers "what does this package own" in one call and never goes stale. The map that used to
-live in `docs/package-map.md` was deleted for exactly that reason — nobody re-derived it, so it
-drifted into naming a package that no longer existed.
+## Technical debt
 
-**Nothing is added to a doc that merely restates the code.** A file that is accurate but
-derivable is a future lie with a timer on it.
+Only what no package owns. Anything package-scoped lives in that package's `AGENTS.md`; the
+reasoning behind a design choice lives in [decisions.md](decisions.md).
+
+- `accounts` has a `type DEFAULT 'standard'` column from a prior design — drop with a migration.
+- Migration `20260618230837_create_admin_user.sql` has a literal `telegram_id = 'TELEGRAM_ID'` —
+  edit by hand before each new-environment deploy.
+- **`middleware.RequireAdmin` authenticates nothing**: it sets `user_id = 1` and calls `Next()`.
+  Its one caller, `POST /admin/users/:telegramID/reset`, is open to anyone who knows the URL. The
+  Mini App does **not** use it — `/app/*` validates Telegram-signed initData and gates admin views
+  on `users.is_admin`.
+- `intent_events.needs_confirmation` (NOT NULL) is vestigial — always written `false`.
+- Two in-memory ceilings that both hold for **one process only**: `messaging.userLocks` and
+  `pendingjob`'s drain gate. A second instance needs Postgres for both.
+- `ClassifyCreate` and `ResolveDelete` survive only as methods on test fakes; stage 5 removed
+  every production caller.
