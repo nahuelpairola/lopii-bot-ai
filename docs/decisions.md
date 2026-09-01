@@ -224,3 +224,14 @@ message. The helper is shared with `GuessNamesOwnAccount` and reference resoluti
 - **`internal/controller/messaging` was split by cluster, one package per reason to change.** It had grown to ~10k non-test lines across 52 files — 4× the next package — and go.dev's module-layout guidance says the answer is to split off supporting packages under `internal/`, not to document around it. Done in stages, each a pure move verified by the full test protocol: copy→`messages`, flows→`flow`, the unified loop→`agent`, free-text reads→`query`, contextual tips→`nudges`, the 429 queue→`pendingjob`, the configuration wizards→`settings`. The edge kept 1.6k lines across 20 files: webhook handlers, `/start`, the bridges, `userLocks`, tracing, metric outcomes.
   The seam that made it work is the **consumer-defined interface**: each cluster declares the narrow set of methods it needs (`flow.runner`, `agent`'s `agentServices`, `settings.Services`, …) and `*controller` implements all of them structurally through one-line bridge files. No cluster imports a repository, and none imports another cluster's internals. The methods are exported although most interfaces are not — an interface with unexported methods can only be satisfied from inside its own package, and the implementation is at the edge.
   Two things were deliberately *not* moved. The wizard **starts** stay out of `flow` because they call the LLM and `flow` must not import `orchestrator` — they went to `settings`, which `flow` reaches back through two runner methods. And the tests that exercise a finish through the `*controller` stayed at the edge: they test webhook→engine→finish, which is the edge's job. Using `flow` does not make a test a `flow` test — only the builder/step tests moved.
+
+### Why `ArgentinaZone` is a fixed offset and not `time.LoadLocation` (2026-08-31)
+
+`constants.ArgentinaZone` is `time.FixedZone("ART", -3*60*60)`. `time.LoadLocation` would read
+the IANA tz database from the host, and the Alpine/scratch images this deploys to ship without
+it — the lookup fails at runtime, not at build. Argentina observes no DST, so a fixed offset
+loses nothing. If DST ever comes back, the switch is `time.LoadLocation` **plus** an embedded
+`time/tzdata` import, not `LoadLocation` alone.
+
+`TestArgentinaZone_IsUTCMinus3` is what keeps the offset honest.
+

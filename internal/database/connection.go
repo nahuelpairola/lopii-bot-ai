@@ -27,12 +27,6 @@ type Connection struct {
 
 var conn = &Connection{}
 
-// Initialize opens the GORM connection. debug gates GORM's own SQL logger —
-// independent of internal/logging — which otherwise prints every slow query
-// (default threshold 200ms) with its fully-interpolated values (raw text,
-// amounts, descriptions) straight to stdout regardless of the app's configured
-// log level. debug=false silences it to real errors only; debug=true (local
-// dev) shows every statement.
 func Initialize(c Creds, debug bool) (*Connection, error) {
 	if conn.DB != nil {
 		return conn, nil

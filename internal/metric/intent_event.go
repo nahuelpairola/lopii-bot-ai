@@ -9,9 +9,6 @@ import (
 	"lopiibot.com/internal/database"
 )
 
-// int64Array implements driver.Valuer so GORM binds it as one bigint[] arg
-// instead of exploding it into an IN-list placeholder (its default behavior
-// for any plain Go slice) — see Resolve.
 type int64Array []int64
 
 func (a int64Array) Value() (driver.Value, error) {
@@ -25,9 +22,6 @@ func (a int64Array) Value() (driver.Value, error) {
 	return "{" + strings.Join(strs, ",") + "}", nil
 }
 
-// IntentEvent es una fila de intent_events: un mensaje clasificado por el
-// router y su resultado end-to-end. CreatedAt lo autopopula GORM (campo
-// llamado CreatedAt → autoCreateTime). ResolvedAt/WasCorrect son nullable.
 type IntentEvent struct {
 	ID                uint64     `gorm:"primaryKey"`
 	CreatedAt         time.Time  `gorm:"column:created_at"`
@@ -53,19 +47,6 @@ func InitRepository(conn *database.Connection) *repository {
 	return &repository{db: conn}
 }
 
-// Log inserta un evento nuevo. Los intents de movimiento entran con
-// outcome="pending" y se resuelven después vía Resolve; el resto entra ya
-// terminal.
-//
-// Antes de insertar, cierra como "abandoned" cualquier pending viejo del
-// usuario: Log solo se llama en un mensaje libre sin flow activo (si hubiera
-// flow, el engine lo maneja y no pasa por acá), así que un pending todavía
-// abierto es huérfano — su flow murió sin llegar a un terminal. Sin esto,
-// "último pending" (WIP=1) correlacionaría el próximo mensaje contra esa fila
-// zombie en vez de la nueva.
-// ponytail: dos statements, no una tx — una fila de métrica es fire-and-forget;
-// una caída entre medio a lo sumo desetiqueta una fila de analítica, nunca
-// datos del usuario.
 func (r *repository) Log(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error {
 	r.db.DB.Model(&IntentEvent{}).
 		Where("user_id = ? AND outcome = ?", userID, "pending").
@@ -80,17 +61,6 @@ func (r *repository) Log(userID uint64, traceID, rawMessage, intent string, need
 	}).Error
 }
 
-// SetIntentIfQueued corrige el intent del pendiente más reciente, y SÓLO si
-// quedó en QUEUED.
-//
-// Un turno que se topa con el cupo se registra antes de que el modelo elija
-// ninguna herramienta: ahí el intent no se sabe, y escribir UNCLEAR sería
-// mentir — eso significa "no te entendí". Se escribe QUEUED, y cuando el
-// drenaje replaya el mensaje con éxito, ESE turno sí sabe qué era.
-//
-// La guarda `intent = 'QUEUED'` es lo que evita pisar un turno que se resolvió
-// bien en su momento. Sin ella, un replay tardío podría reescribir el intent de
-// otra cosa.
 func (r *repository) SetIntentIfQueued(userID uint64, intent string) error {
 	sub := r.db.DB.Model(&IntentEvent{}).
 		Select("id").
@@ -102,13 +72,6 @@ func (r *repository) SetIntentIfQueued(userID uint64, intent string) error {
 		Update("intent", intent).Error
 }
 
-// Resolve mueve el pending más reciente del usuario a un outcome terminal.
-// "Más reciente" = mayor id (monotónico). Si no hay pending, es no-op sin
-// error (0 filas afectadas). La invariante WIP=1 del engine garantiza que
-// ese pending es la operación que está terminando ahora.
-//
-// ponytail: sin índice; agregar parcial (user_id, id) where outcome='pending'
-// si la tabla crece.
 func (r *repository) Resolve(userID uint64, outcome string, movementIDs []uint) error {
 	now := time.Now()
 	sub := r.db.DB.Model(&IntentEvent{}).
@@ -118,9 +81,6 @@ func (r *repository) Resolve(userID uint64, outcome string, movementIDs []uint) 
 		Limit(1)
 	updates := map[string]interface{}{"outcome": outcome, "resolved_at": now}
 	if len(movementIDs) > 0 {
-		// int64Array (driver.Valuer) so GORM binds one bigint[] arg instead of
-		// exploding a plain slice into an IN-list. Omitted when empty so
-		// cancelled/no-candidate rows keep movement_ids NULL.
 		ids := make(int64Array, len(movementIDs))
 		for i, id := range movementIDs {
 			ids[i] = int64(id)

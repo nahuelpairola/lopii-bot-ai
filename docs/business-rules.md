@@ -179,3 +179,20 @@ unremarkable week gets no line at all.
 
 `daysBlock` is the honesty valve: the money lines say "gastaste $X" as though it were the whole
 week, so the message states how many of the seven days were actually logged.
+
+## Currency in user-facing copy
+
+**A currency reaches the user as a word, never as its ISO code.** `currency.Label()` renders
+"pesos" / "dólares"; "ARS" is accounting jargon the user does not read. The code is what the
+model and the DB carry, so a message handed a code still has to label it before rendering.
+
+Amount examples in copy use the **decimal comma**, the Argentine convention `parseARAmount`
+accepts. That is also what teaches why `30k` is rejected.
+
+## Buttons accelerate, they never trap
+
+Wherever the bot offers options, **free text remains accepted**. Buttons are a shortcut for the
+common answer, never the set of allowed answers. The rule exists because the old picker could
+only offer what already existed, so a user whose right answer was not on the list had no way
+forward.
+

@@ -22,9 +22,6 @@ type fakeEngine struct{ cleared uint64 }
 
 func (f *fakeEngine) Clear(id uint64) error { f.cleared = id; return nil }
 
-// fakeChats es el chatResolver de los tests: siempre devuelve el mismo
-// *messenger.FakeChat, así los tests afirman sobre chat.Sent en vez de un
-// bot concreto de Telegram.
 type fakeChats struct{ chat *messenger.FakeChat }
 
 func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }

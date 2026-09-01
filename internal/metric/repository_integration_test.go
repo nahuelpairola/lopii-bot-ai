@@ -11,8 +11,6 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// Run with: go test -tags integration ./internal/metric/
-// Requires local Postgres (docker compose up -d) with migrations applied.
 func TestDeleteOlderThan_PurgesLLMCallsRequestTracesAndIntentEvents(t *testing.T) {
 	conn := testConnection(t)
 	r := InitRepository(conn)
@@ -56,8 +54,6 @@ func TestDeleteOlderThan_PurgesLLMCallsRequestTracesAndIntentEvents(t *testing.T
 		t.Fatalf("insert recent intent_event: %v", err)
 	}
 
-	// Backdate the "old" rows directly — CreatedAt is autopopulated on Create,
-	// so ages have to be forced with a raw update after the fact.
 	if err := conn.DB.Model(&LLMCall{}).Where("id = ?", oldCall.ID).Update("created_at", old).Error; err != nil {
 		t.Fatalf("backdate llm_call: %v", err)
 	}
@@ -113,7 +109,6 @@ func TestDeleteOlderThan_PurgesLLMCallsRequestTracesAndIntentEvents(t *testing.T
 	}
 }
 
-// testConnection connects to the local Docker Postgres instance used by integration tests.
 func testConnection(t *testing.T) *database.Connection {
 	conn, err := database.Initialize(database.Creds{
 		Host: "localhost", Port: 5432, Name: "lopiibot", User: "lopiibot", Password: "lopiibot",

@@ -10,12 +10,6 @@ import (
 	"lopiibot.com/internal/database"
 )
 
-// Run with: go test -tags integration ./internal/reminder/
-// Requires local Postgres (docker compose up -d) with migrations applied.
-//
-// ListMonthlyDue reads users, not reminders: the monthly summary cannot be
-// turned off. A fake would prove the fake — the rule is the LEFT JOIN.
-
 func testRepo(t *testing.T) *repository {
 	t.Helper()
 	conn, err := database.Initialize(database.Creds{
