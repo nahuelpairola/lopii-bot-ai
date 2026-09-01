@@ -26,6 +26,9 @@ that rationalization is what each skill already warns about.
 `bash check.sh` is the completion evidence, and **`check: OK` is the only green that counts** —
 never your own reading of your own diff.
 
+A session closes leaving the tree in a state the next one can start from without archaeology.
+Whatever is half-done is said **in the commit**, not remembered.
+
 ## No comments in Go source
 
 **The code is the truth. A comment that lies is worse than no comment**, because an agent believes
@@ -71,25 +74,6 @@ derivable is a future lie with a timer on it.
 bash check.sh        # build + vet + errcheck + the default test suite
 ```
 
-`errcheck` runs inside it as **information, not a gate**: the tree carries ~215 pre-existing
-findings (~38 outside tests, nearly all unchecked `bot.SendMessage`). Read the ones in your own
-diff, ignore the rest.
-
-Four build tags gate the suites needing something the default run lacks. **None run in CI — there
-is no CI.** They run when someone runs them.
-
-| Tag | Needs | Notes |
-|---|---|---|
-| `integration` | local Postgres (`docker compose up -d`) | 11 files. Drains and writes real rows |
-| `conv_test` | nothing | 3 files |
-| `llm_eval` | `GROQ_APIKEY` | 3 files, `internal/orchestrator` |
-| `query_eval` | `GROQ_APIKEY` **and** Postgres | 1 file |
-
-Both eval suites **fail loudly when `GROQ_APIKEY` is unset** rather than skipping in silence: the
-tag is asked for by hand, so a skip was a green that proved nothing. They spend real Groq quota,
-shared with production. `GROQ_APIKEY` is the only name that works — `GROQ_API_KEY` is exported by
-nothing, which is why the evals had never once run.
-
 Two expected reds, both deliberate — do not "fix" either:
 
 - `TestEveryConfigFile_HasNoSameTurnModelCollision`, red by decision since 2026-08-17: Groq left
@@ -126,6 +110,11 @@ access goes through `conversation.Engine`.
 to its reach: unexported in the package, `internal/constants` when cross-package, **exported** in
 the producing package when one package owns it and another reads it. One const per distinct value,
 and one per distinct *meaning* even when the strings collide. Single-use literals stay inline.
+
+**No duplicated knowledge.** Before adding anything to the harness, look for where it already
+is. A rationale lives in exactly one place; finding it in two means one is already rotten — fix
+that one, do not add a third. And before creating a file, ask whether something **executable**
+can do the same job: a script that fails beats a paragraph that rots.
 
 ## The accounting model — read before touching any money path
 

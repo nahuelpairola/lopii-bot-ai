@@ -76,6 +76,21 @@ bash check.sh    # build + vet + errcheck + the default suite
 ```
 
 Unit tests mock the package's own local interfaces — no real Postgres outside the `integration`
-tag. Four build tags gate the suites that need Postgres or a Groq key, and one test is red on
-purpose: the table and the reasoning are in [AGENTS.md](../AGENTS.md#build-test-lint), not
-repeated here.
+tag. Four build tags gate the suites that need Postgres or a Groq key. **None run in CI — there
+is no CI.** They run when someone runs them.
+
+| Tag | Needs | Notes |
+|---|---|---|
+| `integration` | local Postgres (`docker compose up -d`) | 11 files. Drains and writes real rows |
+| `conv_test` | nothing | 3 files |
+| `llm_eval` | `GROQ_APIKEY` | 3 files, `internal/orchestrator` |
+| `query_eval` | `GROQ_APIKEY` **and** Postgres | 1 file |
+
+Both eval suites **fail loudly when `GROQ_APIKEY` is unset** rather than skipping in silence: the
+tag is asked for by hand, so a skip was a green that proved nothing. They spend real Groq quota,
+shared with production. `GROQ_APIKEY` is the only name that works — `GROQ_API_KEY` is exported by
+nothing, which is why the evals had never once run.
+
+`errcheck` runs inside `check.sh` as **information, not a gate**: the tree carries ~215 pre-existing
+findings (~38 outside tests, nearly all unchecked `bot.SendMessage`). Read the ones in your own
+diff, ignore the rest.

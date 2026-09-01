@@ -114,3 +114,9 @@ The wizards themselves are not here — the ones reachable from `manage_settings
 Amounts, signs or `account_id`: `AGENTS.md` § The accounting model, before editing.
 
 Why: `docs/decisions.md`, section **The agent loop and QUERY**.
+
+## What is not this package's business
+
+`agent` decides **what** to do; `orchestrator` knows **how to talk to Groq**. Model choice,
+fallback chains, TPM ceilings and tool schemas are not decisions this package makes — see
+`orchestrator/AGENTS.md` before changing any of them here.
