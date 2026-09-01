@@ -11,29 +11,32 @@ Postgres 16 on `:5432`. Credentials: DB=`lopiibot`, user=`lopiibot`, pass=`lopii
 ### Configure before first run
 
 ```bash
-cp .env.example .env    # completá TELEGRAM_TOKEN (@BotFather) y GROQ_APIKEY (console.groq.com)
-bash init.sh            # dice qué falta, y no arranca nada hasta que esté
+cp .env.example .env    # fill in TELEGRAM_TOKEN (@BotFather) and GROQ_APIKEY (console.groq.com)
+bash init.sh            # says what is missing, and starts nothing until it is not
 ```
 
-`telegram.token` y `groq.apiKey` están deliberadamente **vacíos** en `config/local.toml` — ningún
-secreto se commitea. Viper los toma del entorno vía `AutomaticEnv`, así que el `.env` tiene que
-estar **exportado** en la shell antes de `go run`; `go run` no lo lee solo.
+The `.env` carries **three** variables and no more: `config/local.toml` already holds the whole
+`[database]` block matching Docker Compose. What the toml deliberately leaves **empty** is
+`telegram.token` and `groq.apiKey` — no secret is ever committed. Viper fills them from the
+environment via `AutomaticEnv`, so the `.env` has to be **exported** into the shell before
+`go run`; `go run` does not read it on its own.
 
-`init.sh` chequea Postgres, el `.env` (presencia, CRLF y los tres secretos) y la migración de
-admin. **Lo que no puede chequear por vos:**
+`init.sh` checks Postgres, the `.env` (presence, CRLF and the three secrets) and the admin
+migration. **What it cannot check for you:**
 
-**1. El host del túnel en `config/local.toml`:**
+**1. The tunnel host in `config/local.toml`:**
 ```toml
 [server]
 baseHost = "https://<your-tunnel>.devtunnels.ms"
 ```
 
-**2. El directorio de trabajo.** Tiene que ser `cmd/server/`: la ruta de config resuelve como
-`../../config/{ENV}.toml`, relativa al cwd del proceso. Desde la raíz del repo el archivo
-simplemente no está.
+**2. The working directory.** It has to be `cmd/server/`: the config path resolves as
+`../../config/{ENV}.toml`, relative to the process's cwd. From the repo root the file is simply
+not there.
 
-**3. Que el túnel esté vivo.** El server arranca bien y sirve localhost, pero Telegram no llega
-al webhook y el bot no recibe nada. Una URL de devtunnel cambia cuando el túnel reinicia.
+**3. That the tunnel is alive.** The server starts fine and serves localhost, but Telegram never
+reaches the webhook and the bot receives nothing. A devtunnel URL changes when the tunnel
+restarts.
 
 ### Run
 

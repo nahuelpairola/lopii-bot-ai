@@ -75,7 +75,7 @@ func NewAccountSetupFlow() *conversation.Flow {
 ```
 
 **3. Wire it in three places.** Nothing enforces any of them, and forgetting each one fails
-differently — one of the three fails *silently*. Qué se rompe en cada caso:
+differently — one of the three fails *silently*. What each one breaks:
 [`internal/flow/AGENTS.md`](../internal/flow/AGENTS.md).
 
 | Where | What |
