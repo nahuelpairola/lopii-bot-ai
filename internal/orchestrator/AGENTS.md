@@ -65,6 +65,34 @@ that reaches a prompt const has to be written `%%`.
 2026-08-08 fix had to be pasted into both by hand. It is two consts, not one, because
 `REGLA DE FECHA` sits between them and genuinely differs.
 
+## Round 0 forces a tool call, and both halves of that are load-bearing
+
+`Run` opens with `tool_choice: "required"`. Opening in `"auto"` risks the worst failure this loop
+has: the model replying *"listo, anoté tus $5.000"* without ever calling `record_movements` —
+**silent data loss**, indistinguishable from success to the user. `reply_help` and `ask_rewrite`
+exist so that every message has something legitimate to call.
+
+The cost is the other half: under `required` the model can refuse to emit anything at all, and
+Groq turns that into a **hard 400**. Observed on real correction messages ("Le erre eran 1500") —
+with 15 tools and a short, referent-less message, gpt-oss-20b emits nothing.
+
+`maxAgentIterations` is higher than `AnswerQuery`'s 3 because a compound message legitimately
+reads, writes and parks in one turn. It is still a runaway guard: the common turn is one round.
+
+## A failing round is invisible unless it is logged
+
+When a tool call errors, the error goes back to the **model** as text and the turn continues. In
+production that shows up only as an extra round of ~4.200 prompt tokens with nothing saying why.
+That is exactly what happened on 2026-08-08 with two-leg transfers: the guard kept rejecting them
+and the loop kept going. The log line at the round is the only thing that makes it visible.
+
+`ErrAgentTurnDone` is the executor saying "do not narrate this": the app already parked the
+action, or already has the reply it will send. Without it the turn costs **two** Groq calls — one
+to pick the tool, one to narrate something the app was going to overwrite anyway.
+
+The cut is checked **after** executing, so the writes and parkings the model asked for still
+happen when it narrates and acts in the same message.
+
 ## `Run` and `AnswerQuery` are two near-identical loops, kept apart on purpose
 
 `Run` (`agent.go`) is the unified agent loop and, since stage 5, the **only** path a free-text

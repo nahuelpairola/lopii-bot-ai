@@ -9,13 +9,6 @@ import (
 	"testing"
 )
 
-// El guard de la regla de formato numérico, mudado del prompt de create (que la
-// etapa 5 borró) al del agente, que es donde vive ahora.
-//
-// Lo que ataja no es que la regla exista: es que no rompa el Sprintf. Se
-// concatena en plantillas con %-verbs, así que un '%' literal sin escapar sale
-// como "%!" en el prompt renderizado — sin panic, sin error, y el modelo recibe
-// una instrucción corrupta.
 func TestAgentPrompt_ContainsNumberFormatRule(t *testing.T) {
 	prompt := BuildAgentPrompt("2026-08-12",
 		[]AccountOption{{ID: 1, Name: "Mercado Pago", Currency: "ARS"}},

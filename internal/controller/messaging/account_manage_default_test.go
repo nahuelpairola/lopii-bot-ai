@@ -21,7 +21,6 @@ func defaultData() conversation.Data {
 	}
 }
 
-// prevAccount builds the old default of ARS with the given id/name.
 func prevAccount(id uint64, name string) *account.Account {
 	a := acct(id, currency.ARS, true)
 	a.Name = name
@@ -42,9 +41,6 @@ func newDefaultController(prev *account.Account, prevBalance string) (*controlle
 	return c, accRepo, movRepo, store
 }
 
-// (a) + (g) prev is another account with balance ≠ 0 → Unset+Set applied,
-// default_set resolved, move offer started. The offer starting at all proves
-// prev was captured BEFORE UnsetDefault (the fake clears byCurrency on unset).
 func TestFinishAccountDefault_OffersMove(t *testing.T) {
 	c, accRepo, _, store := newDefaultController(prevAccount(3, "Wallet"), "12000")
 	c.finishAccountDefault(context.Background(), &messenger.FakeChat{}, defaultData())
@@ -63,7 +59,6 @@ func TestFinishAccountDefault_OffersMove(t *testing.T) {
 	}
 }
 
-// (b) no previous default → apply, no offer.
 func TestFinishAccountDefault_NoPrev_NoOffer(t *testing.T) {
 	c, accRepo, _, store := newDefaultController(nil, "")
 	c.finishAccountDefault(context.Background(), &messenger.FakeChat{}, defaultData())
@@ -76,7 +71,6 @@ func TestFinishAccountDefault_NoPrev_NoOffer(t *testing.T) {
 	}
 }
 
-// (c) previous default is the same account → apply (idempotent), no offer.
 func TestFinishAccountDefault_PrevSameAccount_NoOffer(t *testing.T) {
 	c, _, _, store := newDefaultController(prevAccount(7, "Galicia"), "12000")
 	c.finishAccountDefault(context.Background(), &messenger.FakeChat{}, defaultData())
@@ -86,7 +80,6 @@ func TestFinishAccountDefault_PrevSameAccount_NoOffer(t *testing.T) {
 	}
 }
 
-// (d) previous default distinct but with balance 0 → apply, no offer.
 func TestFinishAccountDefault_PrevZeroBalance_NoOffer(t *testing.T) {
 	c, _, _, store := newDefaultController(prevAccount(3, "Wallet"), "0")
 	c.finishAccountDefault(context.Background(), &messenger.FakeChat{}, defaultData())
@@ -96,7 +89,6 @@ func TestFinishAccountDefault_PrevZeroBalance_NoOffer(t *testing.T) {
 	}
 }
 
-// (e) move choice → ReassignAccount called exactly once with from/to.
 func TestFinishAccountMoveOffer_Move(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{movements: movRepo}
@@ -115,7 +107,6 @@ func TestFinishAccountMoveOffer_Move(t *testing.T) {
 	}
 }
 
-// (f) keep choice → ReassignAccount never called.
 func TestFinishAccountMoveOffer_Keep(t *testing.T) {
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{movements: movRepo}

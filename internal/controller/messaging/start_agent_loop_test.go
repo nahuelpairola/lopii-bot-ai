@@ -28,10 +28,6 @@ func newLoopController(t *testing.T, orch *fakeFullOrchestrator, repo *fakeActio
 	}
 }
 
-// TestRouting_EverythingGoesThroughTheLoop: desde la etapa 5 no hay router, así
-// que CUALQUIER mensaje sin flow abierto va al loop. Antes esto valía sólo para
-// UPDATE y DELETE, y el resto se repartía en un switch de diez ramas — que es
-// donde el mismo pedido moría de seis formas distintas.
 func TestRouting_EverythingGoesThroughTheLoop(t *testing.T) {
 	for _, msg := range []string{"Cafe 12700", "¿cuánto gasté en julio?", "editá los del lote", "renombrá Galicia", "hola", "asdkjhasd"} {
 		t.Run(msg, func(t *testing.T) {

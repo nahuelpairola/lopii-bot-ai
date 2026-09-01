@@ -5,14 +5,7 @@ import (
 	"testing"
 )
 
-// TestToolSchemas_OptionalFieldsAllowNull locks the invariant that every
-// property NOT listed in its object's `required` must accept JSON null in its
-// `type` (a union containing "null"). Groq validates the model's tool-call
-// against the schema we send; a bare-scalar optional 400s the moment the model
-// emits null for it (as gpt-oss-20b does for an absent merchant). This test
-// fails on any schema — present or future — that forgets the null-union.
 func TestToolSchemas_OptionalFieldsAllowNull(t *testing.T) {
-	// Las de un solo tiro. createTool y deleteTool salieron con la etapa 5.
 	params := map[string]json.RawMessage{
 		"updateTool":         updateTool.Parameters,
 		"onboardingTool":     onboardingTool.Parameters,
@@ -20,9 +13,6 @@ func TestToolSchemas_OptionalFieldsAllowNull(t *testing.T) {
 		"categoryCreateTool": categoryCreateTool.Parameters,
 		"classifierTool":     classifierTool.Parameters,
 	}
-	// Y TODAS las del loop, que antes no se revisaban. Es donde más duele: el
-	// 2026-08-12 un campo mal declarado en correct_movement devolvió un 400 duro
-	// y se comió el turno entero, sin que la app llegara a ver nada.
 	for _, tool := range AgentTools() {
 		params["agent:"+tool.Name] = tool.Parameters
 	}
@@ -43,9 +33,6 @@ type nullViolation struct {
 	typ  any
 }
 
-// walkOptionalScalars returns every property, at any depth, that is not in its
-// object's `required` yet whose `type` does not permit null. Recurses into
-// nested objects and array `items`.
 func walkOptionalScalars(schema map[string]any, path string) []nullViolation {
 	var out []nullViolation
 
@@ -68,7 +55,6 @@ func walkOptionalScalars(schema map[string]any, path string) []nullViolation {
 		if !required[pname] && !typeAllowsNull(p["type"]) {
 			out = append(out, nullViolation{path: child, typ: p["type"]})
 		}
-		// Recurse: nested object, or array of objects.
 		if items, ok := p["items"].(map[string]any); ok {
 			out = append(out, walkOptionalScalars(items, child+"[]")...)
 		}
@@ -79,8 +65,6 @@ func walkOptionalScalars(schema map[string]any, path string) []nullViolation {
 	return out
 }
 
-// typeAllowsNull reports whether a JSON-schema `type` value permits null: a
-// union array containing "null". A bare string type ("string") never does.
 func typeAllowsNull(t any) bool {
 	arr, ok := t.([]any)
 	if !ok {

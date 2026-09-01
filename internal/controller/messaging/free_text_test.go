@@ -19,8 +19,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// stubChatHistory is a no-op chatHistoryRepository for tests that exercise
-// handleQuery but don't care about the conversation thread itself.
 type stubChatHistory struct{}
 
 func (stubChatHistory) Recent(userID uint64) ([]chathistory.Turn, error)    { return nil, nil }
@@ -41,14 +39,8 @@ type fakeFullOrchestrator struct {
 	classifyPairs       []orchestrator.Pair
 	runFn               func(execute func(string, json.RawMessage) (string, error)) (string, error)
 	runCalled           bool
-	// updateCalled marca que se llegó a ResolveUpdate. Es una aserción NEGATIVA:
-	// el camino estructurado existe para no hacer esa segunda llamada.
-	updateCalled bool
-	// queryRunFn deja que el test maneje el loop de QUERY igual que runFn maneja
-	// el unificado: recibe el executor REAL, así que las tools de lectura corren
-	// contra la base. Sin esto, AnswerQuery devuelve una respuesta fija y el test
-	// no toca ni un dato.
-	queryRunFn func(execute func(string, json.RawMessage) (string, error)) (string, error)
+	updateCalled        bool
+	queryRunFn          func(execute func(string, json.RawMessage) (string, error)) (string, error)
 }
 
 func (o *fakeFullOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
@@ -71,9 +63,6 @@ func (o *fakeFullOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, us
 	return o.queryAnswer, o.queryErr
 }
 
-// Run falla fuerte salvo que el test lo programe: sólo UPDATE y DELETE van por
-// el loop en la etapa 2, así que llegar acá sin quererlo es haber migrado un
-// camino antes de tiempo.
 func (o *fakeFullOrchestrator) Run(_ context.Context, _, _ string, _ []orchestrator.QueryTurn, _ []orchestrator.AgentTool, execute func(string, json.RawMessage) (string, error)) (string, error) {
 	o.runCalled = true
 	if o.runFn == nil {
@@ -88,17 +77,12 @@ func (o *fakeFullOrchestrator) ResolveAccountManage(ctx context.Context, text st
 	return o.accountManageResult, o.accountManageErr
 }
 
-// newCreateCategoryController wires a controller + engine with all three
-// category flows registered, for the CREATE_CATEGORY dispatch tests.
 func newCreateCategoryController(orch *fakeFullOrchestrator, subs *fakeSubcategoryRepoFull) (*controller, *fakeStoreForController) {
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewSubcategorySetupFlow(subs))
 	engine.Register(flow.NewCategoryMatchOfferFlow())
 	engine.Register(flow.NewCategoryProposalConfirmFlow())
-	// Desde que no hay router, TODO mensaje pasa por el loop, y el loop arma el
-	// prompt con cuentas y taxonomía: un controller sin esas repos ahora es un
-	// nil deref, no un test más chico.
 	return &controller{
 		orchestrator: orch, engine: engine, subcategories: subs,
 		accounts:    &fakeAccountRepoFull{},
@@ -107,9 +91,6 @@ func newCreateCategoryController(orch *fakeFullOrchestrator, subs *fakeSubcatego
 	}, store
 }
 
-// manageSettingsRun programa un loop que abre la configuración del área dada.
-// Sin router, ese es el único camino a los wizards de cuentas, categorías y
-// recordatorio.
 func manageSettingsRun(area string) func(func(string, json.RawMessage) (string, error)) (string, error) {
 	return func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 		_, err := execute(orchestrator.ToolManageSettings, json.RawMessage(`{"area":"`+area+`"}`))
@@ -200,7 +181,6 @@ func newManageDispatchEngine() (*conversation.Engine, *fakeStoreForController) {
 	return engine, store
 }
 
-// (a) wants_new → the create flow (prefill-seeded).
 func TestHandleFreeText_AccountManage_WantsNew_StartsCreate(t *testing.T) {
 	orch := &fakeFullOrchestrator{
 		runFn:               manageSettingsRun(agent.SettingsAreaAccount),
@@ -218,7 +198,6 @@ func TestHandleFreeText_AccountManage_WantsNew_StartsCreate(t *testing.T) {
 	}
 }
 
-// (b) matched to an existing account → manage flow, lands on the menu.
 func TestHandleFreeText_AccountManage_Matched_StartsMenu(t *testing.T) {
 	id := uint64(2)
 	orch := &fakeFullOrchestrator{
@@ -240,9 +219,8 @@ func TestHandleFreeText_AccountManage_Matched_StartsMenu(t *testing.T) {
 	}
 }
 
-// (c) no match → manage flow at the candidate picker.
 func TestHandleFreeText_AccountManage_NoMatch_StartsPick(t *testing.T) {
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaAccount)} // zero result: nil id, no wants_new
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaAccount)}
 	engine, store := newManageDispatchEngine()
 	accs := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(2, currency.ARS, false)}}
 	c := &controller{orchestrator: orch, engine: engine, accounts: accs,
@@ -255,7 +233,6 @@ func TestHandleFreeText_AccountManage_NoMatch_StartsPick(t *testing.T) {
 	}
 }
 
-// (d) a hallucinated id (not in the user's list) is never trusted → pick.
 func TestHandleFreeText_AccountManage_HallucinatedID_StartsPick(t *testing.T) {
 	id := uint64(999)
 	orch := &fakeFullOrchestrator{
@@ -274,7 +251,6 @@ func TestHandleFreeText_AccountManage_HallucinatedID_StartsPick(t *testing.T) {
 	}
 }
 
-// (e) a user with no accounts skips Call 2 and goes straight to create.
 func TestHandleFreeText_AccountManage_NoAccounts_StartsCreate(t *testing.T) {
 	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaAccount)}
 	engine, store := newManageDispatchEngine()
@@ -289,11 +265,9 @@ func TestHandleFreeText_AccountManage_NoAccounts_StartsCreate(t *testing.T) {
 	}
 }
 
-// When the LLM returns nothing usable (no match, no proposal), CREATE_CATEGORY
-// falls back to the classic wizard rather than a dead end.
 func TestHandleFreeText_CreateCategory_FallsBackToWizard(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{}
-	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory)} // empty categoryResult
+	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory)}
 
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
@@ -315,7 +289,6 @@ func TestHandleFreeText_CreateCategory_FallsBackToWizard(t *testing.T) {
 
 func TestHandleFreeText_Help(t *testing.T) {
 	metrics := &fakeMetricRepo{}
-	// Sin router, "ayuda" llega al loop y el loop llama reply_help.
 	orch := &fakeFullOrchestrator{runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 		_, err := execute(orchestrator.ToolReplyHelp, json.RawMessage(`{}`))
 		return "", err
@@ -345,8 +318,6 @@ func TestStartAccountManage_RepoFailure_IsReported(t *testing.T) {
 }
 
 func TestStartSubcategorySetup_RepoAndWizardFailure_IsReported(t *testing.T) {
-	// FindAllForUser fails -> falls back to the wizard; the wizard flow isn't
-	// registered either, so both layers fail and the error must surface.
 	subs := &fakeSubcategoryRepoFull{allErr: context.DeadlineExceeded}
 	store := &fakeStoreForController{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
@@ -361,7 +332,7 @@ func TestStartSubcategorySetup_RepoAndWizardFailure_IsReported(t *testing.T) {
 
 func TestStartAccountCreate_FlowNotRegistered_IsReported(t *testing.T) {
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store, func(string) string { return "algo" }) // account_create not registered
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{orchestrator: &fakeFullOrchestrator{}, engine: engine}
 
 	err := settings.StartAccountCreate(context.Background(), c, &messenger.FakeChat{}, 1, "nueva cuenta")
@@ -373,7 +344,7 @@ func TestStartAccountCreate_FlowNotRegistered_IsReported(t *testing.T) {
 
 func TestStartReminderSetup_FlowNotRegistered_IsReported(t *testing.T) {
 	store := &fakeStoreForController{}
-	engine := conversation.NewEngine(store, func(string) string { return "algo" }) // reminder_setup not registered
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{engine: engine, reminders: &fakeReminderRepo{}}
 
 	err := settings.StartReminderSetup(context.Background(), c, &messenger.FakeChat{}, 1)
@@ -422,7 +393,6 @@ func TestFinishMovementUpdateConfirmFlow_Error_NilBotNoPanic(t *testing.T) {
 		"old_movement_ids": conversation.EncodeStringSlice([]string{"42"}),
 	}
 
-	// Must not panic with b == nil, even though flow.ResolveAndInsertMovements fails
 	c.finishMovementUpdateConfirmFlow(context.Background(), &messenger.FakeChat{}, data)
 }
 
@@ -443,7 +413,6 @@ func TestFinishMovementUpdateConfirmFlow_Success_NilBotNoPanic(t *testing.T) {
 		"old_movement_ids": conversation.EncodeStringSlice([]string{"42"}),
 	}
 
-	// Must not panic with b == nil, even though flow.ResolveAndInsertMovements succeeds and tries to send a message
 	c.finishMovementUpdateConfirmFlow(context.Background(), &messenger.FakeChat{}, data)
 }
 
@@ -541,8 +510,6 @@ func TestStartAccountCreate_GarbageBalance_SeedsNameOnly(t *testing.T) {
 	}
 }
 
-// classifyPairs es lo que devuelve el clasificador fake. Vacío = PENDING_REVIEW
-// en todas las filas, que es exactamente lo que hace el real cuando falla.
 func (o *fakeFullOrchestrator) ClassifyCategories(_ context.Context, _ string, rows []orchestrator.ClassifyRow, _ []orchestrator.TaxonomyEntry) []orchestrator.Pair {
 	if o.classifyPairs != nil {
 		return o.classifyPairs
@@ -553,9 +520,3 @@ func (o *fakeFullOrchestrator) ClassifyCategories(_ context.Context, _ string, r
 	}
 	return out
 }
-
-// Los tests de ruteo se borraron con el router. Su sujeto —"el intent X abre el
-// flow Y"— dejo de existir: handleFreeText ya no decide nada, llama al loop y
-// el loop elige una tool. Lo que aquellos tests cubrian ahora lo cubren, mejor,
-// los escenarios multi-turno de conversation_harness_test.go, que asertan sobre
-// la BASE y no sobre a que funcion se llamo.

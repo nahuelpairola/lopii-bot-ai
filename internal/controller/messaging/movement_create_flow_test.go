@@ -82,9 +82,6 @@ func (r *fakeAccountRepoFull) Insert(a *account.Account) error {
 	}
 	a.ID = uint(len(r.inserted) + 100)
 	r.inserted = append(r.inserted, *a)
-	// Igual que el repo real: una cuenta recién insertada la devuelve
-	// FindByUserID. Sin esto, un segundo loadAccountIndex no la ve y todo
-	// movimiento que la apunte falla con ErrCurrencyAccountMismatch.
 	r.byUserID = append(r.byUserID, *a)
 	return nil
 }
@@ -125,7 +122,7 @@ func (r *fakeAccountRepoFull) Rename(accountID uint64, name string) error {
 }
 func (r *fakeAccountRepoFull) UnsetDefault(userID uint64, cur currency.Currency) error {
 	r.unsetCalls = append(r.unsetCalls, cur)
-	delete(r.byCurrency, cur) // mirror the real repo: after unset, no default of this currency
+	delete(r.byCurrency, cur)
 	return nil
 }
 func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
@@ -135,7 +132,7 @@ func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
 
 type fakeMovementRepoFull struct {
 	inserted           []movement.Movement
-	batches            [][]movement.Movement // every InsertBatch call, in order (inserted only tracks the last)
+	batches            [][]movement.Movement
 	balances           map[uint64]string
 	replacedOldIDs     []uint
 	replaced           []movement.Movement
@@ -276,9 +273,6 @@ func TestResolveAndInsertMovements_FirstAccount_WithBalance(t *testing.T) {
 		"Sistema|Saldo inicial":     openingSub,
 	}}
 	accRepo := &fakeAccountRepoFull{}
-	// fakeAccountRepoFull.Insert assigns the first created account id 100;
-	// preset its post-opening balance so the insufficient-funds gate sees it.
-	// opening = stated (99500) - netDelta (-500) = 100000
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{100: "100000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
@@ -319,7 +313,7 @@ func TestResolveAndInsertMovements_FirstAccount_SkipBalance(t *testing.T) {
 		"Alimentación|Supermercado": sub,
 	}}
 	accRepo := &fakeAccountRepoFull{}
-	movRepo := &fakeMovementRepoFull{} // no balance preset: fresh account starts at 0
+	movRepo := &fakeMovementRepoFull{}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movement.MovementRow{
@@ -331,7 +325,6 @@ func TestResolveAndInsertMovements_FirstAccount_SkipBalance(t *testing.T) {
 		"pending_category_gaps":          conversation.EncodeStringSlice(nil),
 		"pending_account_gaps":           conversation.EncodeStringSlice(nil),
 		conversation.KeyFirstAccountName: "Galicia",
-		// conversation.KeyFirstAccountBalance left unset — the user answered "después".
 	}
 
 	inserted, err := flow.ResolveAndInsertMovements(c, data)
@@ -353,11 +346,11 @@ func TestResolveAndInsertMovements_FCIRedemption_GainAboveBalance(t *testing.T) 
 	}}
 	accRepo := &fakeAccountRepoFull{
 		byID: map[uint64]*account.Account{
-			7: {IsDefault: false}, // dedicated FCI account, not the everyday wallet — a redemption candidate
+			7: {IsDefault: false},
 		},
 		byUserID: []account.Account{acct(7, currency.ARS, false), acct(10, currency.ARS, false)},
 	}
-	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}} // fund has 80000 in it
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movement.MovementRow{
@@ -391,22 +384,17 @@ func TestResolveAndInsertMovements_FCIRedemption_GainAboveBalance(t *testing.T) 
 }
 
 func TestResolveAndInsertMovements_FCISubscription_DefaultAccount_NoGain(t *testing.T) {
-	// Regression test: a subscription's negative leg has the exact same
-	// shape as a redemption's (Transfer, negative amount, Inversiones|FCI)
-	// — the old logic would have computed a bogus gain here (120000
-	// "redeemed" against an 80000 balance). Marking the account as the
-	// user's default (everyday wallet) must suppress the gain entirely.
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Inversiones|FCI":               newSubForTest(3, "Inversiones", "FCI"),
 		"Sistema|Rendimiento inversión": newSubForTest(9, "Sistema", "Rendimiento inversión"),
 	}}
 	accRepo := &fakeAccountRepoFull{
 		byID: map[uint64]*account.Account{
-			7: {IsDefault: true}, // the everyday wallet — this is a subscription, not a redemption
+			7: {IsDefault: true},
 		},
 		byUserID: []account.Account{acct(7, currency.ARS, true), acct(10, currency.ARS, false)},
 	}
-	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}} // would trigger a false gain under the old logic
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "80000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movement.MovementRow{
@@ -420,7 +408,7 @@ func TestResolveAndInsertMovements_FCISubscription_DefaultAccount_NoGain(t *test
 		"movements":             movement.EncodeMovementRows(rows),
 		"pending_category_gaps": conversation.EncodeStringSlice(nil),
 		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
-		"_skip_balance_check":   "true", // out of scope here: this test is about gain suppression, not the insufficient-funds gate
+		"_skip_balance_check":   "true",
 	}
 
 	inserted, err := flow.ResolveAndInsertMovements(c, data)
@@ -442,7 +430,7 @@ func TestResolveAndInsertMovements_FCIRedemption_PartialNoGain(t *testing.T) {
 		},
 		byUserID: []account.Account{acct(7, currency.ARS, false), acct(10, currency.ARS, false)},
 	}
-	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "500000"}} // much more than being withdrawn
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{7: "500000"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	rows := []movement.MovementRow{
@@ -498,9 +486,6 @@ func TestResolveAndInsertMovements_InvalidDate_ReturnsError(t *testing.T) {
 func TestResolveAndInsertMovements_FCIRedemption_MissingGainSubcategory_ReturnsError(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Inversiones|FCI": newSubForTest(3, "Inversiones", "FCI"),
-		// "Sistema|Rendimiento inversión" deliberately absent — a
-		// misconfigured/missing reserved subcategory should surface as
-		// an error, never be swallowed into "no gain".
 	}}
 	accRepo := &fakeAccountRepoFull{byID: map[uint64]*account.Account{
 		7: {IsDefault: false},
@@ -616,7 +601,7 @@ func TestResolveAndInsertMovements_CreatesBothPendingAccounts(t *testing.T) {
 		"movements":             movement.EncodeMovementRows(rows),
 		"pending_category_gaps": conversation.EncodeStringSlice(nil),
 		"pending_account_gaps":  conversation.EncodeStringSlice([]string{"0", "1"}),
-		"_skip_balance_check":   "true", // brand-new accounts have no meaningful prior balance to test against
+		"_skip_balance_check":   "true",
 	}
 
 	inserted, err := flow.ResolveAndInsertMovements(c, data)
@@ -709,10 +694,6 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 	movs := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
 	c := &controller{subcategories: subs, accounts: accts, movements: movs}
 
-	// expense carrying an account_name_guess ("Pablo") + no AccountID.
-	// Desde el fold de merchant la contraparte vive DENTRO de la description
-	// ("pizza con Pablo"), que es la señal que lee guessNamesOwnAccount: el
-	// nombre es parte de qué pasó, así que no es una cuenta.
 	rows := []movement.MovementRow{{Type: "expense", Amount: "100000", Currency: "ARS",
 		Category: "Ocio y salidas", Subcategory: "Restaurante",
 		Description:      "pizza con Pablo",
@@ -730,17 +711,6 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 	}
 }
 
-// TestResolveAndInsert_NonTransferCreatesNamedOwnAccount es la otra punta de
-// TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount: cuando la cuenta
-// nombrada NO aparece en la description ("me pagaron en Brubank"), el usuario tocó
-// "➕ Crear cuenta Brubank" en el gap-fill y hay que crearla. Sin esto el bot
-// pregunta, ofrece crearla y después tira la respuesta: el movimiento cae en la
-// default igual, que es peor que no haber preguntado.
-//
-// Es un income y no un gasto a propósito: una cuenta recién creada arranca en 0,
-// así que un gasto contra ella chocaría contra el guard de saldos y el test
-// estaría midiendo eso en vez de la creación. El camino que se ejercita —no es
-// transferencia, el guess no está en la description— es el mismo.
 func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Ingresos|Sueldo": newSubForTest(7, "Ingresos", "Sueldo"),
@@ -751,7 +721,7 @@ func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 
 	rows := []movement.MovementRow{{Type: "income", Amount: "200000", Currency: "ARS",
 		Category: "Ingresos", Subcategory: "Sueldo",
-		Description:      "sueldo de julio", // Brubank NO aparece acá: es una cuenta
+		Description:      "sueldo de julio",
 		AccountNameGuess: "Brubank", AccountID: flow.AccountPendingCreate, Date: "2026-07-07"}}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
@@ -797,8 +767,6 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	for i, p := range chat.Sent {
 		texts[i] = p.Text
 	}
-	// La moneda tiene que estar nombrada: el default de cuenta es POR MONEDA, y
-	// sin decirla el mensaje es ambiguo con dos cuentas y falso con dos monedas.
 	want := msgFirstAccountDefault("Galicia", []string{"ARS"})
 	if texts[1] != want {
 		t.Errorf("R1 = %q, want %q", texts[1], want)
@@ -806,7 +774,6 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	if !strings.Contains(texts[1], "pesos") {
 		t.Errorf("R1 no nombra la moneda: %q", texts[1])
 	}
-	// Y la nombra hablado, no en jerga: "ARS" no lo lee nadie.
 	if strings.Contains(texts[1], "ARS") {
 		t.Errorf("R1 muestra el código ISO en vez del nombre: %q", texts[1])
 	}
@@ -815,10 +782,6 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	}
 }
 
-// TestMsgFirstAccountDefault_NamesEveryCurrency: createFirstAccount crea UNA
-// CUENTA POR MONEDA con el mismo nombre, así que un mensaje con filas en dos
-// monedas abre dos cuentas. Decir "tu cuenta principal" ahí no es sólo vago:
-// el default es por moneda, y la de dólares no recibe ningún movimiento en pesos.
 func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
 	one := msgFirstAccountDefault("Galicia", []string{"USD"})
 	if !strings.Contains(one, "dólares") {
@@ -831,29 +794,18 @@ func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
 			t.Errorf("dos monedas: falta %s: %q", label, two)
 		}
 	}
-	// Ninguna de las dos formas muestra el código ISO: es jerga contable.
 	for _, msg := range []string{one, two} {
 		if strings.Contains(msg, "ARS") || strings.Contains(msg, "USD") {
 			t.Errorf("quedó el código ISO en la copy: %q", msg)
 		}
 	}
 
-	// Sin monedas (no debería pasar) se cae a la redacción vieja, nunca a un
-	// mensaje roto tipo "tu cuenta en  por defecto".
 	none := msgFirstAccountDefault("Galicia", nil)
 	if strings.Contains(none, "  ") || none == "" {
 		t.Errorf("sin monedas quedó un mensaje roto: %q", none)
 	}
 }
 
-// TestFirstAccountNetDelta cubre la aritmética que compensa el saldo de
-// apertura. El usuario responde con el saldo que tiene AHORA, que ya incluye
-// los movimientos de este mismo mensaje, así que apertura = declarado - netDelta.
-// Un signo invertido acá deja la cuenta abierta con el saldo equivocado, y como
-// el balance se computa sumando movimientos, el error no se corrige nunca solo.
-//
-// El camino de resolveAndInsertMovements solo ejercita una fila de gasto, así
-// que las ramas de income, transfer y fila-ya-asignada no tenían assert propio.
 func TestFirstAccountNetDelta(t *testing.T) {
 	tests := []struct {
 		name string
@@ -911,9 +863,6 @@ func TestFirstAccountNetDelta(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Las filas de esta tabla no llevan moneda, así que "" es el filtro
-			// que las matchea: acá se prueba la aritmética, no el filtrado por
-			// moneda (eso es TestFirstAccountNetDelta_IgnoresOtherCurrencies).
 			got := flow.FirstAccountNetDelta(tt.rows, "")
 			if !got.Equal(decimal.RequireFromString(tt.want)) {
 				t.Errorf("flow.FirstAccountNetDelta() = %s, want %s", got, tt.want)

@@ -12,17 +12,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// El alta lazy de la primera cuenta pregunta por UNA moneda —
-// flow.FirstAccountCurrency decide cuál— pero opera sobre TODAS las filas del
-// mensaje. Estos tests fijan que lo que se crea y el saldo que se le pone
-// correspondan a la moneda que se preguntó, y no a la primera fila que pase.
-//
-// El bug que cubren no era cosmético: el saldo de apertura es un movimiento
-// real, y como el balance de una cuenta es la suma de sus movimientos, una
-// apertura mal calculada no se corrige nunca sola.
-
-// openingSubRepo devuelve el repo de subcategorías mínimo que
-// insertOpeningMovement necesita (Sistema | Saldo inicial).
 func openingSubRepo() *fakeSubcategoryRepoFull {
 	return &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		subcategory.CategorySystem + "|" + subcategory.SubOpeningBalance: newSubForTest(7,
@@ -30,8 +19,6 @@ func openingSubRepo() *fakeSubcategoryRepoFull {
 	}}
 }
 
-// firstAccountData arma el Data que createFirstAccount lee: las filas, el
-// nombre que tipeó el usuario y el saldo que declaró.
 func firstAccountData(rows []movement.MovementRow, name, balance string) conversation.Data {
 	data := conversation.Data{
 		conversation.UserIDKey:           uint64(1),
@@ -44,12 +31,6 @@ func firstAccountData(rows []movement.MovementRow, name, balance string) convers
 	return data
 }
 
-// Un mensaje con una fila en pesos y una en dólares, de alguien que YA tiene
-// cuenta en pesos. La pregunta fue por la de dólares, así que la de pesos no
-// se toca: su gasto cae en la default que ya existe.
-//
-// Antes se creaba una segunda cuenta en pesos con el mismo nombre, vacía, y el
-// gasto en pesos iba a parar ahí en vez de a la cuenta real del usuario.
 func TestCreateFirstAccount_SkipsCurrenciesThatAlreadyHaveADefault(t *testing.T) {
 	existing := acct(1, currency.ARS, true)
 	accRepo := &fakeAccountRepoFull{
@@ -91,9 +72,6 @@ func TestCreateFirstAccount_SkipsCurrenciesThatAlreadyHaveADefault(t *testing.T)
 		t.Error("la fila en dólares quedó sin cuenta")
 	}
 
-	// El saldo declarado (500) es el de la cuenta en dólares, y ya incluye el
-	// ingreso de 200 de este mismo mensaje: apertura = 500 - 200. El gasto en
-	// pesos NO entra en esa cuenta.
 	if len(movRepo.batches) != 1 {
 		t.Fatalf("aperturas insertadas = %d, want 1", len(movRepo.batches))
 	}
@@ -109,7 +87,6 @@ func TestCreateFirstAccount_SkipsCurrenciesThatAlreadyHaveADefault(t *testing.T)
 	}
 }
 
-// Dos filas de la MISMA moneda abren UNA cuenta, no una por fila.
 func TestCreateFirstAccount_SameCurrencyTwiceCreatesOneAccount(t *testing.T) {
 	accRepo := &fakeAccountRepoFull{}
 	movRepo := &fakeMovementRepoFull{}
@@ -135,17 +112,12 @@ func TestCreateFirstAccount_SameCurrencyTwiceCreatesOneAccount(t *testing.T) {
 	if rows[0].AccountID != rows[1].AccountID || rows[0].AccountID == "" {
 		t.Errorf("las dos filas tienen que ir a la misma cuenta: %q y %q", rows[0].AccountID, rows[1].AccountID)
 	}
-	// apertura = 1000 declarado - (-800 de los dos gastos) = 1800
 	opening := movRepo.batches[0][0]
 	if !opening.Amount.Equal(decimal.RequireFromString("1800")) {
 		t.Errorf("apertura = %s, want 1800 (1000 declarado - (-800))", opening.Amount)
 	}
 }
 
-// Usuario sin ninguna cuenta y un mensaje en dos monedas: se abre una por
-// moneda (el default es por moneda, y sin las dos el lote no se puede
-// insertar), pero el saldo declarado se aplica SOLO a la moneda por la que se
-// preguntó. La otra abre en cero — nadie declaró un saldo para ella.
 func TestCreateFirstAccount_ZeroAccountsMixed_BalanceOnlyToTheAskedCurrency(t *testing.T) {
 	accRepo := &fakeAccountRepoFull{}
 	movRepo := &fakeMovementRepoFull{}
@@ -185,8 +157,6 @@ func TestCreateFirstAccount_ZeroAccountsMixed_BalanceOnlyToTheAskedCurrency(t *t
 	if opening.Currency != currency.ARS {
 		t.Errorf("la apertura fue a %s; el saldo declarado era el de la cuenta en pesos", opening.Currency)
 	}
-	// apertura = 20000 declarado - (-5000 del gasto en pesos) = 25000.
-	// El ingreso de 200 dólares NO entra: es otra cuenta y otra moneda.
 	if !opening.Amount.Equal(decimal.RequireFromString("25000")) {
 		t.Errorf("apertura = %s, want 25000 (20000 - (-5000)); los 200 USD no se mezclan", opening.Amount)
 	}
@@ -195,16 +165,10 @@ func TestCreateFirstAccount_ZeroAccountsMixed_BalanceOnlyToTheAskedCurrency(t *t
 	}
 }
 
-// resolveAndInsertMovements se REINTENTA sobre el mismo Data cuando el gate de
-// saldo insuficiente parkea y el usuario confirma. El segundo paso no puede
-// volver a crear la cuenta ni su apertura: serían una cuenta duplicada y plata
-// contada dos veces.
 func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testing.T) {
 	subRepo := openingSubRepo()
 	subRepo.byCategoryAndSub["Alimentación|Supermercado"] = newSubForTest(1, "Alimentación", "Supermercado")
 	accRepo := &fakeAccountRepoFull{}
-	// La cuenta nueva toma el id 100 en el fake; se le presetea el saldo
-	// post-apertura para que el gate de saldo no se meta en este test.
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{100: "10500"}}
 	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
@@ -228,7 +192,6 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 	}
 	openings := len(movRepo.batches)
 
-	// Segunda pasada sobre el MISMO data, como hace el gate al confirmar.
 	conversation.SetFlag(data, conversation.KeySkipBalanceCheck)
 	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
 		t.Fatalf("reintento: %v", err)
@@ -237,12 +200,10 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 	if len(accRepo.inserted) != 1 {
 		t.Errorf("el reintento creó una cuenta de más: %d en total, want 1", len(accRepo.inserted))
 	}
-	// El reintento inserta los movimientos otra vez (eso lo decide el gate),
-	// pero NO una segunda apertura: sería saldo inventado.
 	secondOpenings := 0
 	for _, batch := range movRepo.batches[openings:] {
 		for _, m := range batch {
-			if m.SubcategoryID == 7 { // Sistema | Saldo inicial
+			if m.SubcategoryID == 7 {
 				secondOpenings++
 			}
 		}
@@ -252,9 +213,6 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 	}
 }
 
-// La moneda es parte del neteo: un monto en otra moneda no compensa el saldo
-// declarado de ésta. Sumarlos es el bug que abría la cuenta en dólares con el
-// valor de un gasto en pesos.
 func TestFirstAccountNetDelta_IgnoresOtherCurrencies(t *testing.T) {
 	rows := []movement.MovementRow{
 		{Type: "expense", Amount: "5000", Currency: "ARS"},

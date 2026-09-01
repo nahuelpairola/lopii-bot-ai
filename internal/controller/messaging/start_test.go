@@ -12,10 +12,9 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// fakeUserRepository mocks the userRepository interface for start_test.
 type fakeUserRepository struct {
 	byChannelUserID map[string]*user.User
-	linked          map[string]uint64 // channelUserID -> userID, set by LinkChannel
+	linked          map[string]uint64
 	inserted        []*user.User
 	insertErr       error
 }
@@ -40,7 +39,7 @@ func (r *fakeUserRepository) Insert(u *user.User) error {
 	if r.insertErr != nil {
 		return r.insertErr
 	}
-	u.ID = uint64(len(r.inserted) + 1) // assign a fake ID
+	u.ID = uint64(len(r.inserted) + 1)
 	r.inserted = append(r.inserted, u)
 	return nil
 }
@@ -69,10 +68,9 @@ func (r *fakeUserRepository) FindChannelID(userID uint64, channel string) (strin
 	return "", gorm.ErrRecordNotFound
 }
 
-// fakeInvitationRepository mocks the invitationRepository interface for start_test.
 type fakeInvitationRepository struct {
 	byCode       map[string]*invitation.Invitation
-	markedAsUsed map[uint64]uint64 // invitation ID -> user ID who used it
+	markedAsUsed map[uint64]uint64
 	markErr      error
 }
 
@@ -94,9 +92,6 @@ func (r *fakeInvitationRepository) MarkAsUsed(id uint64, userID uint64) error {
 	return nil
 }
 
-// TestHandleStart_ValueFirst_NoOnboardingFlow verifies the value-first /start:
-// a new user gets created and greeted with msgWelcome, with NO flow started
-// (no bulk-collect barrage) and no account fabricated.
 func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 	const telegramID = "123456789"
 	const validCode = "ABC123"
@@ -125,11 +120,10 @@ func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 		engine:      engine,
 	}
 
-	// Construct a fake Telegram /start message with the invitation code
 	update := &models.Update{
 		Message: &models.Message{
 			From: &models.User{
-				ID:       123456789, // matches the telegramID string numerically
+				ID:       123456789,
 				Username: "testuser",
 			},
 			Chat: models.Chat{ID: 111111},
@@ -137,10 +131,8 @@ func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 		},
 	}
 
-	// Call HandleStart with nil bot (sendPrompt and reply guard against nil)
 	c.HandleStart(context.Background(), nil, update)
 
-	// Verify: userRepository.Insert was called exactly once
 	if len(userRepo.inserted) != 1 {
 		t.Fatalf("expected 1 user inserted, got %d", len(userRepo.inserted))
 	}
@@ -148,17 +140,14 @@ func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 		t.Errorf("linked channel_user_id = %q (err=%v), want %q", got, err, telegramID)
 	}
 
-	// Verify: accountRepository.Insert was NOT called — value-first, no fabricated account.
 	if len(accountRepo.inserted) != 0 {
 		t.Errorf("accountRepository.Insert should not be called, but was called %d times", len(accountRepo.inserted))
 	}
 
-	// Verify: NO flow was started — value-first /start is a single greeting.
 	if store.found {
 		t.Errorf("expected no flow to be started, but got found=%v flowName=%q", store.found, store.flowName)
 	}
 
-	// Verify: invitation was marked as used
 	if userID, ok := invRepo.markedAsUsed[1]; !ok {
 		t.Error("invitation was not marked as used")
 	} else if userID != userRepo.inserted[0].ID {
@@ -166,8 +155,6 @@ func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 	}
 }
 
-// TestHandleStart_ExistingUser_DoesNotRestart verifies that if a user already
-// exists, /start does not create a duplicate and does not start any flow.
 func TestHandleStart_ExistingUser_DoesNotRestart(t *testing.T) {
 	const telegramID = "123456789"
 	const validCode = "ABC123"
@@ -203,7 +190,7 @@ func TestHandleStart_ExistingUser_DoesNotRestart(t *testing.T) {
 	update := &models.Update{
 		Message: &models.Message{
 			From: &models.User{
-				ID:       123456789, // matches the telegramID string numerically
+				ID:       123456789,
 				Username: "testuser",
 			},
 			Chat: models.Chat{ID: 111111},
@@ -213,17 +200,14 @@ func TestHandleStart_ExistingUser_DoesNotRestart(t *testing.T) {
 
 	c.HandleStart(context.Background(), nil, update)
 
-	// Verify: no new user was inserted
 	if len(userRepo.inserted) != 0 {
 		t.Errorf("no new user should be inserted for an existing user, but %d were", len(userRepo.inserted))
 	}
 
-	// Verify: no flow was started
 	if store.found {
 		t.Errorf("no flow should be started for an existing user, but %q was started", store.flowName)
 	}
 
-	// Verify: invitation was not marked as used
 	if len(invRepo.markedAsUsed) != 0 {
 		t.Error("invitation should not be marked as used for an existing user")
 	}

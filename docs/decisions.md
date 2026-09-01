@@ -160,6 +160,13 @@ both directions with one rule.
 message. The helper is shared with `GuessNamesOwnAccount` and reference resolution; all 8 measured
 `FCI` rows are transfers, which are exempt. The limitation is documented instead.
 
+- **An eval can be impossible by construction, and look merely red (2026-08-12).** Nine cases of
+  the agent-loop eval expected `find_movements_to_correct`, which is *only a constant* — it was
+  never in `AgentTools()`, so it is never sent to the model. Those nine could not pass no matter
+  what the model did, and nobody noticed because a red eval reads like a model problem. Before
+  tuning a prompt against a failing case, check that the tool the case expects is actually one
+  the model was offered.
+
 ## Groq quota, the 429 queue and rate limits
 
 - **A terminal Groq 429 is a typed error (`orchestrator.RateLimitedError`), not a string to re-parse.** `Client.send`'s existing retry loop already computes the best available wait (header priority over body-parsed text); wrapping that wait in a struct returned via `errors.As` means the pending-jobs queue (and any future consumer) never re-derives or re-parses anything Groq said — it reads `RetryAfter` off the error itself. The alternative (checking `errors.Is(err, someSentinel)` and separately re-parsing the body for the wait) would duplicate parsing logic `send` already did.

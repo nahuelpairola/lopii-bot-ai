@@ -80,30 +80,19 @@ type subcategoryRepository interface {
 	FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error)
 }
 
-// movementOrchestrator is the local interface for orchestrator.Orchestrator
-// — only the methods this package's flows need.
 type movementOrchestrator interface {
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error)
 	ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error)
 	ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error)
 	ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error)
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
-	// ClassifyCategories asigna el par (categoría, subcategoría). Sale del loop
-	// en la etapa 5: el techo de TPM de Groq es POR MODELO, así que esta llamada
-	// en otro modelo no le come nada al loop.
 	ClassifyCategories(ctx context.Context, message string, rows []orchestrator.ClassifyRow, taxonomy []orchestrator.TaxonomyEntry) []orchestrator.Pair
-	// Run is the unified agent loop. Added in stage 1 and called by nothing
-	// yet: stage 2 routes UPDATE/DELETE through it. The interface deliberately
-	// grows before it shrinks (9 → 3 in stage 5) — that is what lets each
-	// stage be bisected on its own.
 	Run(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 }
 
 type metricRepository interface {
 	Log(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error
 	Resolve(userID uint64, outcome string, movementIDs []uint) error
-	// SetIntentIfQueued corrige el intent que quedó en QUEUED cuando el turno
-	// original se topó con el cupo. Sólo lo llama el drenaje.
 	SetIntentIfQueued(userID uint64, intent string) error
 }
 
@@ -123,8 +112,6 @@ type traceRepository interface {
 	InsertRequestTrace(traceID string, userID *uint64, updateType string, receivedAt time.Time, latencyMs int, errMsg string) error
 }
 
-// nudgeRepository is the once-ever/cooldown storage for contextual nudges
-// (internal/nudge). Local interface — see nudges_services.go.
 type nudgeRepository interface {
 	SentKeys(userID uint64) ([]string, error)
 	MarkSent(userID uint64, key string) error
@@ -133,8 +120,6 @@ type nudgeRepository interface {
 	LastSentAt(userID uint64) (*time.Time, error)
 }
 
-// actionsRepository is the pending_actions storage (internal/pendingaction) —
-// the durable queue of agent-loop actions waiting on an answer from the user.
 type actionsRepository interface {
 	Insert(action *pendingaction.PendingAction) error
 	NextForUser(userID uint64) (*pendingaction.PendingAction, error)
@@ -158,8 +143,7 @@ type controller struct {
 	nudges        nudgeRepository
 	jobs          pendingjob.Repository
 	actions       actionsRepository
-	// locks serializa los updates de un mismo usuario. Ver user_lock.go.
-	locks userLocks
+	locks         userLocks
 }
 
 func NewController(
@@ -196,11 +180,6 @@ func NewController(
 	}
 }
 
-// Los métodos de abajo implementan flow.runner: el pipeline de escritura de
-// movimientos (flow/movement_write.go) corre en flow y solo necesita estas
-// lecturas/escrituras mínimas sobre los repos del borde. Ver flow/runner.go.
-// Exportados porque una interfaz con métodos unexported solo la implementan
-// tipos del mismo paquete que la interfaz.
 func (c *controller) FindUserAccounts(userID uint64) ([]account.Account, error) {
 	return c.accounts.FindByUserID(userID)
 }
@@ -229,8 +208,6 @@ func (c *controller) FindSubcategory(userID uint64, category, subcategory string
 	return c.subcategories.FindByCategoryAndSubcategory(userID, category, subcategory)
 }
 
-// Handle es EL punto de entrada neutro: satisface messenger.Handler. No sabe
-// por qué canal llegó el mensaje y no ramifica sobre in.Channel.
 func (c *controller) Handle(ctx context.Context, in messenger.Incoming) {
 	c.traced(ctx, kindOf(in), rawOf(in), func(ctx context.Context) (*uint64, error) {
 		u, err := c.users.FindByChannel(in.Channel, in.ChannelUserID)
@@ -239,35 +216,20 @@ func (c *controller) Handle(ctx context.Context, in messenger.Incoming) {
 		}
 		uid := u.ID
 
-		// De acá para abajo, un update por vez POR USUARIO. Todo el estado está
-		// cuñado por user_id y asume un mensaje en vuelo: la fila única de
-		// conversation_states, el drenaje de pending_actions, y el "pendiente más
-		// reciente" que cierra intent_events. Ver user_lock.go.
-		//
-		// Se espera lo que tarde el turno de adelante (~1-3 s), no lo que tardaba
-		// la cola: para eso está la cadena de modelos de respaldo.
 		defer c.locks.lock(uid)()
 
 		return c.dispatch(ctx, in, u)
 	})
 }
 
-// dispatch es el resto de lo que antes era handleConversationInput, desde el
-// chequeo de callbacks que no pasan por el engine. El ack del callback ya lo
-// hizo el adapter (telegram.Transport.Serve) antes de llamar a Handle.
 func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *user.User) (*uint64, error) {
 	uid := u.ID
 	chat := in.Chat
 	input := in.Input
 
-	// El tap del botón de un tip no pasa por el engine ni por el router.
-	// Va acá arriba para que un flow abierto no se coma el callback como si
-	// fuera una opción suya; la consulta es read-only y lo deja intacto.
 	if nudges.HandleCallback(ctx, c, chat, u.ID, input.CallbackData) {
 		return &uid, nil
 	}
-	// Mismo motivo que el de arriba: el tap del gate de casi-duplicado no es
-	// una opción de ningún flow, y un flow abierto no puede comérselo.
 	if flow.HandleNearDuplicateChoice(ctx, c, chat, u.ID, input.CallbackData) {
 		return &uid, nil
 	}
@@ -297,19 +259,12 @@ func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *use
 	return &uid, nil
 }
 
-// handleFlowFinished ejecuta la acción real correspondiente a un flow que
-// acaba de terminar (crear cuenta, insertar movimiento, etc.), según su
-// nombre. Agregar un flow nuevo implica agregar un case acá.
 func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat, result conversation.Result) {
 	slog.InfoContext(ctx, "flow finished", "flow", result.FlowName)
 	if conversation.StringOrEmpty(result.Data[conversation.ResumeCancelledKey]) == "true" {
 		c.sendText(ctx, chat, msgResumeCancelled)
 		return
 	}
-	// ask_user se maneja aparte porque él mismo decide qué sigue (retomar la
-	// acción, volver a preguntar, o descartarla). Los demás flujos terminales
-	// destapan la cola: es el único momento en que se sabe que no hay nada
-	// abierto, y por eso el WIP=1 se sostiene solo.
 	if result.FlowName == flow.AskUserFlowName {
 		agent.FinishAskUser(ctx, c, chat, result.Data)
 		return
@@ -354,36 +309,16 @@ func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat
 	}
 }
 
-// finishMovementUpdateConfirmFlow es el puente al finish que ahora vive en flow
-// (FinishMovementUpdateConfirm). Los tests del borde lo llaman por este nombre;
-// el puente se borra al cerrar la costura.
 func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, chat messenger.Chat, data conversation.Data) {
 	flow.FinishMovementUpdateConfirm(ctx, c, chat, data)
 }
 
-// sendPrompt manda un conversation.Prompt (texto + botones) por el chat ya
-// resuelto — el chat real (telegram.chat, vía Chat.Send) hace su propia
-// traducción a botones inline (chunkButtons/rowWidth viven ahora en
-// internal/messenger/telegram, probados ahí). Fix round 1 de la Task 8: antes
-// desenvolvía (bot, chatID) con pairOrLog, que sólo reconocía un edgeChat.
 func (c *controller) sendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
 	if err := chat.Send(ctx, prompt); err != nil {
 		slog.ErrorContext(ctx, "controller: send prompt failed", "err", err)
 	}
 }
 
-// startFlow arranca un flow sembrado y manda su primer prompt. Absorbe el bloque
-// que se repetía en los sitios que resuelven un fallo de arranque de la misma
-// forma: avisarle al usuario y devolver el error envuelto.
-//
-// errCtx es el prefijo del error. No es cosmético: ese string sube hasta
-// traced y termina en la columna request_traces.error, así que es lo único
-// que distingue "no arrancó el flujo de cuentas" de "no arrancó el de
-// movimientos" cuando se mira la traza después.
-//
-// Los call sites que fallan distinto (los que caen al wizard, los que no
-// devuelven error, los que no le avisan al usuario) NO usan este helper — meter
-// esas variantes acá pediría un callback por caso y sería más código, no menos.
 func (c *controller) startFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
 	prompt, err := c.engine.StartWithData(userID, flowName, seed)
 	if err != nil {
@@ -394,21 +329,10 @@ func (c *controller) startFlow(ctx context.Context, chat messenger.Chat, userID 
 	return nil
 }
 
-// Implementación de runner para los finishes migrados a flow (movement_finish.go).
-// El contrato (runner) vive en flow/runner.go: métodos exportados, pero el tipo
-// es unexported. Son puentes de una línea al nombre interno — el borde conserva
-// su nomenclatura y flow solo ve la interfaz angosta.
 func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint) {
 	c.resolveMetric(ctx, userID, outcome, movementIDs...)
 }
 
-// SendText implementa flow.runner/agentServices/nudges.Services/
-// settings.Services/pendingjob.Services. Va directo por messenger.SendText,
-// como QuerySendText (query_services.go) desde la Task 7 — no por pairOrLog,
-// el unwrap que asumía un solo tipo concreto de chat y por eso fallaba en
-// silencio para un chat resuelto por chatResolver.ChatFor (el sweeper, el
-// drenaje de 429). pairOrLog y el tipo que envolvía (edgeChat) se borraron
-// en la Task 6: hoy no hay nada que desenvolver.
 func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text string) {
 	if err := messenger.SendText(ctx, chat, text); err != nil {
 		slog.ErrorContext(ctx, "controller: send text failed", "err", err)

@@ -15,11 +15,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// Los métodos de este archivo implementan query.services: lo que el loop de
-// QUERY necesita del mundo, con el *controller* como implementación. Puentes
-// de una línea, como en agent_services.go — el loop no importa los repos del
-// borde. handleQuery, abajo, es el delegado del controller hacia query.Run.
-
 func (c *controller) QueryAccountsByUserID(userID uint64) ([]account.Account, error) {
 	return c.accounts.FindByUserID(userID)
 }
@@ -54,11 +49,6 @@ func (c *controller) AnswerQuery(ctx context.Context, systemPrompt, userText str
 	return c.orchestrator.AnswerQuery(ctx, systemPrompt, userText, history, tools, execute)
 }
 
-// handleQuery entrega la consulta al loop de QUERY. Conserva el contrato de
-// siempre (answered, err) — finishAnswerQuery y nudge dependen de ambos.
-// *controller implementa la interfaz no exportada query.services
-// directamente desde la Task 7 — QuerySendText ya sólo pide messenger.Chat,
-// así que no hace falta un puente.
 func (c *controller) handleQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error) {
 	return query.Run(ctx, c, chat, userID, text)
 }

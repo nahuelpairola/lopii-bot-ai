@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-// capturingRecorder guarda el último LLMCall emitido. Record corre desde send()
-// de forma síncrona, pero el mutex evita depender de eso.
 type capturingRecorder struct {
 	mu   sync.Mutex
 	last LLMCall
@@ -39,9 +37,6 @@ func groqStub(t *testing.T, body string) *httptest.Server {
 	return srv
 }
 
-// El corpus del eval de la etapa 5 promete medir "selección Y argumentos". Sin
-// esto llm_calls sólo puede reconstruir la selección, y la mitad de argumentos
-// vuelve a casos inventados a mano — justo lo que el corpus real reemplaza.
 func TestRecord_CapturesToolCallArguments(t *testing.T) {
 	rec := &capturingRecorder{}
 	srv := groqStub(t, `{"choices":[{"message":{"tool_calls":[
@@ -62,8 +57,6 @@ func TestRecord_CapturesToolCallArguments(t *testing.T) {
 	}
 }
 
-// Vacío y no "[]": server lo mapea a NULL, así que `WHERE tool_calls IS NOT
-// NULL` significa "el modelo llamó algo".
 func TestRecord_NoToolCallsLeavesTheFieldEmpty(t *testing.T) {
 	for _, tc := range []struct{ name, body string }{
 		{"narración sin tools", `{"choices":[{"message":{"content":"hola"}}]}`},

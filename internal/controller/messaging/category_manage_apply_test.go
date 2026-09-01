@@ -12,8 +12,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// applyData arma el estado con el que el flujo 2 llega al finish. targetID
-// vacío = la rama de borrado simple (la categoría no tenía movimientos).
 func applyData(count, targetID string, confirmed bool) conversation.Data {
 	data := conversation.Data{
 		conversation.UserIDKey:              uint64(1),
@@ -64,8 +62,6 @@ func TestFinishCategoryManage_WithTarget_ReassignsThenDeletes(t *testing.T) {
 	}
 }
 
-// Sin movimientos no hay nada que reasignar. Llamar a reassign igual sería un
-// UPDATE sobre cero filas que esconde bugs de la rama equivocada.
 func TestFinishCategoryManage_NoTarget_DeletesWithoutReassign(t *testing.T) {
 	c, movs, subs := newApplyController()
 
@@ -91,8 +87,6 @@ func TestFinishCategoryManage_Cancelled_WritesNothing(t *testing.T) {
 	}
 }
 
-// Sin conversation.KeyConfirmed tampoco se escribe: un flujo que termina por cualquier otra
-// vía no puede borrar nada.
 func TestFinishCategoryManage_NotConfirmed_WritesNothing(t *testing.T) {
 	c, movs, subs := newApplyController()
 
@@ -103,8 +97,6 @@ func TestFinishCategoryManage_NotConfirmed_WritesNothing(t *testing.T) {
 	}
 }
 
-// Si la reasignación falla NO se borra la categoría: borrarla dejaría los
-// movimientos apuntando a una fila muerta sin haberlos movido.
 func TestFinishCategoryManage_ReassignFails_DoesNotDelete(t *testing.T) {
 	c, movs, subs := newApplyController()
 	movs.reassignSubErr = errFake
@@ -116,8 +108,6 @@ func TestFinishCategoryManage_ReassignFails_DoesNotDelete(t *testing.T) {
 	}
 }
 
-// Delete devuelve ErrSubcategoryNotFound cuando no borró nada. No se puede
-// reportar éxito ni recargar el cache: no pasó nada que recargar.
 func TestFinishCategoryManage_DeleteFindsNothing_DoesNotReportSuccess(t *testing.T) {
 	c, _, subs := newApplyController()
 	subs.deleteErr = subcategory.ErrSubcategoryNotFound
@@ -153,15 +143,12 @@ func TestFinishCategoryManage_BadTargetID_WritesNothing(t *testing.T) {
 	}
 }
 
-// El dispatcher tiene que conocer los dos flujos nuevos: si faltara un case,
-// el flujo terminaría en el default y no escribiría nunca.
 func TestHandleFlowFinished_KnowsCategoryManageFlows(t *testing.T) {
 	for _, name := range []string{flow.CategoryManagePickFlowName, flow.CategoryManageTargetFlowName} {
 		if name == "" {
 			t.Fatal("nombre de flujo vacío")
 		}
 	}
-	// NewFlow valida el grafo al construir: si un NextStep colgara, esto explota.
 	if f := flow.NewCategoryManagePickFlow(fakeOwnedLister{}); f.Name != flow.CategoryManagePickFlowName {
 		t.Errorf("pick flow Name = %q", f.Name)
 	}
@@ -170,11 +157,6 @@ func TestHandleFlowFinished_KnowsCategoryManageFlows(t *testing.T) {
 	}
 }
 
-// --- integración: los dos flujos encadenados con el traspaso real ---
-
-// newCategoryManageE2E arma un controller con AMBOS flujos registrados y los
-// repos mockeados, para recorrer el camino completo: elegir origen → traspaso
-// (conteo + sugerencia) → flujo 2 → confirmar → escrituras.
 func newCategoryManageE2E(count int64, match *orchestrator.CategoryMatch) (*controller, *fakeMovementRepoFull, *fakeSubcategoryRepoFull) {
 	catalog := []subcategory.Subcategory{
 		ownedSub(7, "Comida", "Delivery", "🍕"),
@@ -206,8 +188,6 @@ func newCategoryManageE2E(count int64, match *orchestrator.CategoryMatch) (*cont
 	return c, movs, subs
 }
 
-// Camino completo con movimientos: elegir origen → sugerencia → aceptar →
-// confirmar → reasigna y borra.
 func TestCategoryManageE2E_MergePath(t *testing.T) {
 	match := &orchestrator.CategoryMatch{Category: "Alimentos", Subcategory: "Delivery"}
 	c, movs, subs := newCategoryManageE2E(3, match)
@@ -217,16 +197,13 @@ func TestCategoryManageE2E_MergePath(t *testing.T) {
 		t.Fatalf("Start flujo 1: %v", err)
 	}
 
-	// el usuario elige "Comida › Delivery" (id 7): el flujo 1 termina
 	res1, _, err := c.engine.Handle(userID, conversation.Input{CallbackData: "7"})
 	if err != nil || !res1.Finished {
 		t.Fatalf("elegir origen: finished=%v err=%v", res1.Finished, err)
 	}
 
-	// el traspaso arranca el flujo 2 (esto es lo que hace handleFlowFinished)
 	c.finishCategoryManagePickFlow(context.Background(), &messenger.FakeChat{}, res1.Data)
 
-	// el flujo 2 tiene que estar mostrando la sugerencia
 	res2, found, err := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionAcceptSuggestion})
 	if err != nil || !found {
 		t.Fatalf("aceptar sugerencia: found=%v err=%v (¿arrancó el flujo 2?)", found, err)
@@ -251,8 +228,6 @@ func TestCategoryManageE2E_MergePath(t *testing.T) {
 	}
 }
 
-// Camino completo sin movimientos: elegir origen → salta directo al confirm de
-// borrado → confirmar → borra sin reasignar.
 func TestCategoryManageE2E_EmptyDeletePath(t *testing.T) {
 	c, movs, subs := newCategoryManageE2E(0, nil)
 	const userID = uint64(1)
@@ -264,7 +239,6 @@ func TestCategoryManageE2E_EmptyDeletePath(t *testing.T) {
 	}
 	c.finishCategoryManagePickFlow(context.Background(), &messenger.FakeChat{}, res1.Data)
 
-	// sin movimientos no se le pregunta nada al LLM ni se ofrece destino
 	res2, found, err := c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionConfirm})
 	if err != nil || !found {
 		t.Fatalf("confirmar borrado: found=%v err=%v", found, err)
@@ -283,8 +257,6 @@ func TestCategoryManageE2E_EmptyDeletePath(t *testing.T) {
 	}
 }
 
-// Camino manual completo: rechazar la sugerencia, elegir a mano, y que el
-// confirm muestre el nombre del destino (no un «Alimentos › » vacío).
 func TestCategoryManageE2E_ManualPath_ConfirmShowsTargetName(t *testing.T) {
 	match := &orchestrator.CategoryMatch{Category: "Alimentos", Subcategory: "Delivery"}
 	c, movs, _ := newCategoryManageE2E(3, match)
@@ -296,7 +268,7 @@ func TestCategoryManageE2E_ManualPath_ConfirmShowsTargetName(t *testing.T) {
 
 	c.engine.Handle(userID, conversation.Input{CallbackData: flow.OptionChooseOther})
 	c.engine.Handle(userID, conversation.Input{CallbackData: "Alimentos"})
-	res, _, err := c.engine.Handle(userID, conversation.Input{CallbackData: "4"}) // Supermercado
+	res, _, err := c.engine.Handle(userID, conversation.Input{CallbackData: "4"})
 	if err != nil {
 		t.Fatalf("elegir subcategoría destino: %v", err)
 	}

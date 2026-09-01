@@ -9,15 +9,12 @@ import (
 	"lopiibot.com/internal/constants"
 )
 
-// ClassifyRow es una fila ya extraída, lista para clasificar. Sin merchant: la
-// columna murió en el fold.
 type ClassifyRow struct {
 	Description string
 	Type        string
 	AccountName string
 }
 
-// Pair es un par (categoría, subcategoría) resuelto.
 type Pair struct {
 	Category    string `json:"category"`
 	Subcategory string `json:"subcategory"`
@@ -57,22 +54,11 @@ var classifierTool = toolSchema{
 	}`),
 }
 
-// ClassifyCategories clasifica TODOS los movimientos de un mensaje en UNA
-// llamada.
-//
-// Una por mensaje y no una por movimiento: comparten el mismo texto, así que
-// separarlas multiplicaría el costo y le sacaría a cada una el contexto que las
-// otras aportan.
-//
-// Nunca devuelve error al llamador por una falla del modelo: degrada a
-// PENDING_REVIEW en todas las filas, que abre el picker que ya existe. Degradar
-// a una pregunta es correcto; degradar a un dato inventado no.
 func (o *Orchestrator) ClassifyCategories(ctx context.Context, message string, rows []ClassifyRow, taxonomy []TaxonomyEntry) []Pair {
 	if len(rows) == 0 {
 		return nil
 	}
 	if len(taxonomy) == 0 {
-		// Sin taxonomía no hay contra qué clasificar; preguntar es lo único honesto.
 		return pendingPairs(len(rows))
 	}
 
@@ -92,8 +78,6 @@ func (o *Orchestrator) ClassifyCategories(ctx context.Context, message string, r
 		return pendingPairs(len(rows))
 	}
 
-	// Un par por fila, en orden. Si el modelo devolvió de menos, el resto va a
-	// preguntar; si devolvió de más, sobra y se descarta.
 	pairs := make([]Pair, len(rows))
 	for i := range pairs {
 		if i < len(out.Pairs) && out.Pairs[i].Category != "" {
@@ -113,8 +97,6 @@ func pendingPairs(n int) []Pair {
 	return out
 }
 
-// renderClassifyInput arma el user message: el texto original primero, porque
-// es el que trae el contexto, y las filas numeradas para fijar el orden.
 func renderClassifyInput(message string, rows []ClassifyRow) string {
 	var b strings.Builder
 	b.WriteString("MENSAJE DEL USUARIO:\n")

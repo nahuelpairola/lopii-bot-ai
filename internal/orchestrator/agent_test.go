@@ -12,7 +12,6 @@ import (
 
 var errBoom = errors.New("boom")
 
-// agentToolsForTest is one tool of each class, so a test can assert ordering.
 func agentToolsForTest() []AgentTool {
 	return []AgentTool{
 		{Name: "sum_movements", Kind: KindRead, Parameters: json.RawMessage(`{"type":"object"}`)},
@@ -21,8 +20,6 @@ func agentToolsForTest() []AgentTool {
 	}
 }
 
-// loopServer replies with the given canned response bodies, one per request,
-// and records every request it received.
 func loopServer(t *testing.T, bodies ...string) (*httptest.Server, *[]loopRequest) {
 	t.Helper()
 	var got []loopRequest
@@ -43,8 +40,6 @@ func loopServer(t *testing.T, bodies ...string) (*httptest.Server, *[]loopReques
 }
 
 func TestRun_CutsWhenAssistantSendsContentWithToolCalls(t *testing.T) {
-	// The turn cut: content alongside tool_calls means the model already
-	// narrated. Execute the calls, send the narration, spend no extra round.
 	srv, reqs := loopServer(t, `{"choices":[{"message":{"content":"Listo, anoté 2.","tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"record_movements","arguments":"{}"}}]}}]}`)
 	defer srv.Close()
@@ -71,8 +66,6 @@ func TestRun_CutsWhenAssistantSendsContentWithToolCalls(t *testing.T) {
 }
 
 func TestRun_NoContentMeansAnotherRound(t *testing.T) {
-	// tool_calls with no content: the model has not narrated, so the loop
-	// must feed the results back and go again.
 	srv, reqs := loopServer(t,
 		`{"choices":[{"message":{"tool_calls":[
 			{"id":"c1","type":"function","function":{"name":"sum_movements","arguments":"{}"}}]}}]}`,
@@ -91,7 +84,6 @@ func TestRun_NoContentMeansAnotherRound(t *testing.T) {
 	if len(*reqs) != 2 {
 		t.Fatalf("%d rounds, want 2", len(*reqs))
 	}
-	// The tool result must be fed back with its call id.
 	var sawToolResult bool
 	for _, m := range (*reqs)[1].Messages {
 		if m.Role == "tool" && m.ToolCallID == "c1" && m.Content == "5000" {
@@ -104,14 +96,6 @@ func TestRun_NoContentMeansAnotherRound(t *testing.T) {
 }
 
 func TestRun_TurnDoneEndsTheTurnWithoutANarrationRound(t *testing.T) {
-	// La regresión que esto tapa costó plata real: el ejecutor parkeaba la
-	// acción y el loop igual volvía al modelo a que narrara, replicando el
-	// prompt entero. Medido en producción: 4.816 + 4.916 tokens contra un TPM de
-	// 8.000, así que la segunda llamada se comía un 429 y la corrección del
-	// usuario no llegaba nunca al gate.
-	//
-	// Dos calls a propósito: la vuelta se termina de ejecutar igual, porque el
-	// modelo las eligió todas antes de ver un solo resultado.
 	srv, reqs := loopServer(t, `{"choices":[{"message":{"tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"record_movements","arguments":"{}"}},
 		{"id":"c2","type":"function","function":{"name":"correct_movement","arguments":"{}"}}]}}]}`)
@@ -140,14 +124,8 @@ func TestRun_TurnDoneEndsTheTurnWithoutANarrationRound(t *testing.T) {
 		t.Errorf("%d rounds, want 1 — la segunda vuelta es la que revienta el TPM", len(*reqs))
 	}
 }
-// El test que fijaba "escrituras antes que lecturas" se borro con
-// orderCallsByKind: este toolbox no tiene tools de lectura, asi que ordenaba un
-// conjunto cuyos elementos comparten rango. Ver el comentario en agent.go.
-
 
 func TestRun_ToolErrorIsFedBackNotFatal(t *testing.T) {
-	// A failing executor must reach the model as text so it can recover or
-	// explain, exactly as AnswerQuery does today.
 	srv, reqs := loopServer(t,
 		`{"choices":[{"message":{"tool_calls":[
 			{"id":"c1","type":"function","function":{"name":"sum_movements","arguments":"{}"}}]}}]}`,
@@ -168,8 +146,6 @@ func TestRun_ToolErrorIsFedBackNotFatal(t *testing.T) {
 }
 
 func TestRun_FirstRoundForcesAToolCall(t *testing.T) {
-	// tool_choice:"required" on round 0 — without it the model can reply
-	// "listo, anoté tus $5.000" having called nothing: silent data loss.
 	srv, reqs := loopServer(t, `{"choices":[{"message":{"content":"ok","tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"sum_movements","arguments":"{}"}}]}}]}`)
 	defer srv.Close()
@@ -205,11 +181,6 @@ func TestRun_HistoryIsReplayedBeforeTheUserMessage(t *testing.T) {
 	}
 }
 
-// TestRun_ToolUseFailedFallsBackToAuto covers what the real eval hit on the
-// very first correction message: with 15 tools and tool_choice:"required",
-// gpt-oss-20b answered "Le erre eran 1500" by calling nothing, and Groq turns
-// that into a hard 400 (tool_use_failed). Failing the turn there is wrong — a
-// turn may legitimately end in a narrated question.
 func TestRun_ToolUseFailedFallsBackToAuto(t *testing.T) {
 	var choices []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -239,11 +210,6 @@ func TestRun_ToolUseFailedFallsBackToAuto(t *testing.T) {
 	}
 }
 
-// TestCompletionCapsAreSeparate fija el invariante que la etapa 1 promete:
-// cero cambio de comportamiento en el camino vivo. Run y AnswerQuery comparten
-// chatCompletionLoop, así que subir un cap compartido para darle aire al loop
-// habría duplicado el techo de respuesta de las consultas EN PRODUCCIÓN — más
-// largas y más caras, sin que nadie lo pidiera.
 func TestCompletionCapsAreSeparate(t *testing.T) {
 	if maxQueryCompletionTokens != 1024 {
 		t.Errorf("el cap de AnswerQuery = %d, want 1024: es el camino vivo y no se toca en esta etapa", maxQueryCompletionTokens)
@@ -254,8 +220,6 @@ func TestCompletionCapsAreSeparate(t *testing.T) {
 	}
 }
 
-// TestRun_SendsItsOwnCompletionCap comprueba que el cap del loop llega al
-// request, no solo que la constante exista.
 func TestRun_SendsItsOwnCompletionCap(t *testing.T) {
 	srv, reqs := loopServer(t, `{"choices":[{"message":{"content":"ok","tool_calls":[
 		{"id":"c1","type":"function","function":{"name":"sum_movements","arguments":"{}"}}]}}]}`)
@@ -271,8 +235,6 @@ func TestRun_SendsItsOwnCompletionCap(t *testing.T) {
 	}
 }
 
-// La cadena de fallback: un 429 en el modelo principal se reintenta en el
-// siguiente, porque los techos de Groq son POR MODELO.
 func TestAgentRound_FallsBackToTheNextModelOnRateLimit(t *testing.T) {
 	var usados []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -299,15 +261,11 @@ func TestAgentRound_FallsBackToTheNextModelOnRateLimit(t *testing.T) {
 	if msg.Content != "listo" {
 		t.Errorf("content = %q, want la respuesta del suplente", msg.Content)
 	}
-	// El principal se prueba PRIMERO y el suplente sólo después: si se
-	// invirtiera, el tráfico normal se iría al modelo caro.
 	if len(usados) < 2 || usados[0] != "principal" || usados[len(usados)-1] != "suplente" {
 		t.Errorf("orden de modelos = %v, want principal y después suplente", usados)
 	}
 }
 
-// Un 400 NO se reintenta: es un error nuestro y sale igual en cualquier modelo.
-// Reintentarlo gastaría el cupo de los suplentes para obtener el mismo error.
 func TestAgentRound_DoesNotFallBackOnABadRequest(t *testing.T) {
 	var usados []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

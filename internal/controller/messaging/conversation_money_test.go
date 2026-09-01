@@ -13,19 +13,6 @@ import (
 	"lopiibot.com/internal/orchestrator"
 )
 
-// El modelo de plata, de punta a punta. Es el único lugar del código donde un
-// error chico es un bug contable y no una molestia: no hay columna de saldo, el
-// saldo ES la suma de los movimientos, así que un signo invertido no se nota
-// hasta que alguien suma.
-//
-// Todo lo de acá corre sin gastar cupo de Groq: lo que se prueba es lo que pasa
-// DESPUÉS de la tool call, que es donde vive el riesgo.
-
-// Un ingreso se guarda POSITIVO — y lo decide LA APP, no el modelo.
-//
-// Por eso el modelo emite acá un monto NEGATIVO a propósito: si el test le
-// pasara uno ya positivo, sólo probaría que la app no lo rompe, que es medir el
-// fixture. Lo que se exige es que Normalize lo re-firme.
 func TestMoney_IncomeIsStoredPositive(t *testing.T) {
 	h := newConversationHarness(t)
 	h.ScriptCategory(orchestrator.Pair{Category: "Ingresos", Subcategory: "Sueldo"})
@@ -51,9 +38,6 @@ func TestMoney_IncomeIsStoredPositive(t *testing.T) {
 	}
 }
 
-// Una transferencia son DOS patas que se sostienen entre sí: mismo
-// transaction_id y suma exactamente cero. Si una entra y la otra no, los dos
-// saldos quedan mal y nada lo avisa.
 func TestMoney_TransferHasTwoLegsSummingZero(t *testing.T) {
 	h := newConversationHarness(t)
 	destino := h.SeedAccount("Galicia Test", currency.ARS, "0")
@@ -80,14 +64,11 @@ func TestMoney_TransferHasTwoLegsSummingZero(t *testing.T) {
 	if suma := movs[0].Amount.Add(movs[1].Amount); !suma.IsZero() {
 		t.Errorf("las dos patas suman %s, want 0 — el invariante de transferencia", suma)
 	}
-	// Y los saldos se movieron en direcciones opuestas, por el mismo monto.
 	if got := h.Balance("Galicia Test"); !got.Equal(mustDec(t, "50000")) {
 		t.Errorf("destino = %s, want 50000", got)
 	}
 }
 
-// ARS y USD son mundos separados: una compra de dólares mueve DOS cuentas en
-// DOS monedas, y ningún total los mezcla.
 func TestMoney_UsdAndArsNeverMix(t *testing.T) {
 	h := newConversationHarness(t)
 	usd := h.SeedAccount("Balala Test", currency.USD, "0")
@@ -106,8 +87,6 @@ func TestMoney_UsdAndArsNeverMix(t *testing.T) {
 	if len(movs) != 2 {
 		t.Fatalf("patas = %d, want 2. Copia: %v", len(movs), h.Messages())
 	}
-	// Acá la suma NO da cero, y está bien: son monedas distintas. Lo que tiene
-	// que dar es cada saldo por su lado.
 	if got := h.Balance("Balala Test"); !got.Equal(mustDec(t, "100")) {
 		t.Errorf("saldo USD = %s, want 100", got)
 	}
@@ -116,8 +95,6 @@ func TestMoney_UsdAndArsNeverMix(t *testing.T) {
 	}
 }
 
-// Cancelar una corrección no puede escribir NADA. Sin este caso, un flujo que
-// escribiera siempre pasaría el test de la rama que confirma.
 func TestMoney_CancelledCorrectionWritesNothing(t *testing.T) {
 	h := newConversationHarness(t)
 	super := h.subID("Alimentación", "Supermercado")
@@ -142,17 +119,8 @@ func TestMoney_CancelledCorrectionWritesNothing(t *testing.T) {
 	}
 }
 
-// itoa: los account_id viajan en el JSON de la tool call, que es un string.
 func itoa(id uint64) string { return strconv.FormatUint(id, 10) }
 
-// Cambiar un movimiento de cuenta mueve DOS saldos: el de origen sube, el de
-// destino baja. No hay columna de saldo — es la suma de los movimientos — así
-// que si sólo se moviera uno, aparecería plata de la nada.
-//
-// Medido en vivo el 2026-08-12, donde falló por DOS bugs encadenados: la guarda
-// de no-op no comparaba AccountNameGuess (cambiar de cuenta pone el nombre y
-// VACÍA el id, y el vacío se leía como "no lo tocó"), y conversation.KeyPendingAccountGaps
-// iba hardcodeado en nil — el mismo bug que ya había tenido la categoría.
 func TestMoney_ChangingTheAccountMovesBothBalances(t *testing.T) {
 	h := newConversationHarness(t)
 	h.SeedAccount("Galicia Test", currency.ARS, "0")
@@ -174,7 +142,6 @@ func TestMoney_ChangingTheAccountMovesBothBalances(t *testing.T) {
 	if movs[0].AccountID == nil || *movs[0].AccountID != h.accounts["Galicia Test"] {
 		t.Fatalf("el movimiento no se mudó de cuenta: %s", describeRows(movs))
 	}
-	// Y los dos saldos, que es lo que de verdad importa.
 	if got := h.Balance("Banco Test").Sub(origenAntes); !got.Equal(mustDec(t, "2500")) {
 		t.Errorf("el origen se movió %s, want +2500 (el gasto se fue)", got)
 	}

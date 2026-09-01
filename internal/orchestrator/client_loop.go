@@ -7,8 +7,6 @@ import (
 	"strings"
 )
 
-// loopToolCall is one tool call inside an assistant message during the
-// multi-tool agent loop.
 type loopToolCall struct {
 	ID       string           `json:"id"`
 	Type     string           `json:"type"`
@@ -20,11 +18,6 @@ type loopToolCallFunc struct {
 	Arguments string `json:"arguments"`
 }
 
-// loopMessage is a chat message for the agent loop. Unlike chatMessage
-// (single-shot, system+user only), it also carries an assistant message's
-// tool_calls and a tool-result message's tool_call_id, so the full history
-// can be replayed to the model each turn. Empty fields are omitted so a
-// plain system/user/assistant/tool message serializes cleanly.
 type loopMessage struct {
 	Role       string         `json:"role"`
 	Content    string         `json:"content,omitempty"`
@@ -42,20 +35,6 @@ type loopRequest struct {
 	ReasoningEffort     string        `json:"reasoning_effort,omitempty"`
 }
 
-// lowReasoningEffort devuelve el valor de reasoning_effort para la narración
-// forzada de este modelo, o "" si no hay que mandarlo.
-//
-// Los gpt-oss cobran el razonamiento como completion_tokens, así que en la
-// llamada forzada —donde el modelo YA tiene los datos y sólo redacta— el
-// razonamiento se come el cap y la respuesta vuelve vacía. Medido contra Groq
-// real el 2026-08-21 narrando la misma respuesta: 318 tokens sin effort contra
-// un techo de 400, y 78 con "low".
-//
-// Es por FAMILIA y no para todos porque el valor no es universal: qwen contesta
-// 400 "`reasoning_effort` must be one of `none` or `default`", y un 400 no lo
-// reintenta nadie — mandárselo mata el turno en vez de salvarlo. Un modelo nuevo
-// en la cadena no manda nada hasta que se verifique qué acepta, que es la
-// degradación segura.
 func lowReasoningEffort(model string) string {
 	if strings.HasPrefix(model, "openai/gpt-oss") {
 		return "low"
@@ -63,75 +42,12 @@ func lowReasoningEffort(model string) string {
 	return ""
 }
 
-// EL MODELO DE COSTO DE GROQ, que gobierna las dos constantes de abajo y el cap de
-// iteraciones de cada loop (maxQueryIterations en query.go, maxAgentIterations en
-// agent.go). Leerlo antes de tocar cualquiera de esos números.
-//
-// Groq NO cobra contra el TPM lo que el modelo escribe: cobra
-//
-//	Requested = prompt_tokens + max_completion_tokens
-//
-// reservado por adelantado, se use o no. Un cap de 1.024 que en la práctica narra
-// 176 tokens igual descuenta 1.024 del cupo del minuto. Por eso el costo real de un
-// loop es (cantidad de llamadas) × (prompt + cap), y no lo que se lee en
-// llm_calls.total_tokens, que mide el uso y no la reserva.
-//
-// Las dos veces que esto explotó en producción fue por no tener la cuenta a mano:
-// el 2026-08-08 con el agent loop (cap 4096 → 8.286 > 8.000, TODAS las llamadas
-// 429eaban) y el 2026-08-10 con el loop de query (4 llamadas × ~2.300 = ~9.200, con
-// el bucket lleno y un solo usuario). El techo era 8.000 TPM por modelo en las dos.
-//
-// La cuenta se hace contra prompt_tokens REAL de la tabla llm_calls, por call_type,
-// no contra una estimación.
-
-// maxFirstRoundCompletionTokens capea SÓLO la primera ronda del loop de query, que
-// corre con tool_choice:"required" y por lo tanto NO PUEDE narrar: está obligada a
-// devolver una llamada a herramienta. Ahí no hay prosa que truncar, que es exactamente
-// lo que impedía bajar maxQueryCompletionTokens.
-//
-// Medido sobre llm_calls (30 rondas de herramientas con HTTP 200): el máximo de
-// completion fue 417 y ninguna pasó de 512. 640 deja 223 de margen sobre el peor caso
-// observado, que además incluye los tokens de razonamiento de los gpt-oss.
 const maxFirstRoundCompletionTokens = 640
 
-// maxQueryCompletionTokens caps narration length in AnswerQuery. Se queda en 1.024:
-// la que aprieta el TPM del loop de query es la cantidad de llamadas
-// (maxQueryIterations), no este cap — bajarlo trunca respuestas reales, porque la
-// narración normal sale de una ronda y no de la llamada final forzada.
-//
-// Aplica a las rondas 1+ y a la narración de la puerta 1. La ronda 0 va por
-// maxFirstRoundCompletionTokens: es la única que no puede narrar.
 const maxQueryCompletionTokens = 1024
 
-// maxNarrationCompletionTokens capea la NARRACIÓN FORZADA, que es más barata que una
-// ronda: el modelo ya tiene los datos y sólo redacta.
-//
-// Groq reserva prompt + max_completion_tokens contra el TPM aunque la respuesta no los
-// use, así que un cap grande de más es cupo que se le saca a la consulta siguiente.
-// Medido el 2026-08-13 contra Groq real, narrando la misma respuesta: 35-61 tokens en
-// llama-3.3-70b —que era el modelo de narración entonces; Groq lo dio de baja el
-// 2026-08-17 y hoy narra gpt-oss-20b, sin volver a medir— y 174-376 en los razonadores.
-// 400 deja ~6 veces de margen sobre el caso medido.
-//
-// 2026-08-21: ese margen NO existía. Con gpt-oss-20b narrando la misma respuesta
-// el completion medido fue 318 de 400 —el razonamiento entra en la cuenta— y en
-// producción se comió los 400 enteros sin escribir nada: el turno murió con
-// ErrQueryMaxIterations, que nombra una causa que no era. Por eso la llamada
-// forzada ahora pide reasoning_effort "low" (ver lowReasoningEffort), que baja
-// el mismo caso a 78. El cap se queda en 400 porque con el effort bajo sobra;
-// subirlo es cupo que se le saca a la consulta siguiente.
 const maxNarrationCompletionTokens = 400
 
-// maxAgentCompletionTokens: techo de completion de Run. Groq cobra
-// prompt+max_completion contra el cupo, se use o no, así que este número es
-// cupo gastado en cada llamada.
-//
-// 1500 sale del peor lote real medido, con margen para 8-9 movimientos. Por qué
-// NO 1.000 —y las mediciones que fijaron el número—:
-// docs/decisions.md § Groq quota, the 429 queue and rate limits.
-//
-// Revisar si aparece un mensaje de más de 8 movimientos: ahí vuelve el 400 con
-// el JSON cortado.
 const maxAgentCompletionTokens = 1500
 
 type loopResponse struct {
@@ -140,12 +56,6 @@ type loopResponse struct {
 	} `json:"choices"`
 }
 
-// chatCompletionLoop sends one Groq request with the given tool_choice and the
-// full message history, and returns the assistant message — which carries
-// either tool_calls (the loop must execute and feed back) or final content.
-// toolChoice is "auto" for normal rounds and "none" on a forced-narration
-// final call (Groq's documented way to make the model emit text instead of
-// another tool round).
 func (c *Client) chatCompletionLoop(ctx context.Context, callType, model string, messages []loopMessage, tools []toolDef, toolChoice string, maxTokens int) (loopMessage, error) {
 	reqBody := loopRequest{
 		Model:               model,
@@ -155,8 +65,6 @@ func (c *Client) chatCompletionLoop(ctx context.Context, callType, model string,
 		Temperature:         0.1,
 		MaxCompletionTokens: maxTokens,
 	}
-	// tool_choice "none" ES la narración forzada, acá y en el loop del agente:
-	// no hace falta un parámetro más para distinguirla.
 	if toolChoice == "none" {
 		reqBody.ReasoningEffort = lowReasoningEffort(model)
 	}

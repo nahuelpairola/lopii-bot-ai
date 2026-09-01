@@ -26,55 +26,22 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-// El nivel 2 del sistema de tests: conversación MULTI-TURNO con el modelo
-// scripteado y todo lo demás real — engine, cola de parking, flows, Postgres.
-//
-// Es el nivel que faltaba, y no es un detalle: la tesis de la etapa 5 es que la
-// corrección funciona porque el loop puede recordar, parkear una pregunta y
-// retomar la respuesta. Todo lo que había era de un solo turno o función pura,
-// y el arnés de eval usa un executor falso que NO puede llegar a
-// park → callback → resume, que es exactamente donde murieron los dos intentos
-// del 2026-08-10.
-//
-// LA REGLA DE ORO DE ESTE ARCHIVO: un escenario pasa cuando la BASE cambió,
-// nunca cuando se ofreció una confirmación. Asertar el ofrecimiento es
-// precisamente el error que escondió aquel bug durante dos días.
-//
-// Corre con:
-//
-//	go test -tags conv_test ./internal/controller/messaging/ -v
-//
-// Necesita el Postgres local (docker compose up -d) y NO necesita API key: para
-// eso el modelo está scripteado.
-
 type convHarness struct {
 	t    *testing.T
 	c    *controller
 	chat *messenger.FakeChat
 	orc  *fakeFullOrchestrator
 
-	conn *database.Connection
-	// userID es users.id — el que toma handleFreeText.
-	userID uint64
-	// telegramID es el channel_user_id en user_channels — el que viaja en el
-	// Update de un callback, que lo resuelve por FindByChannel. Son DOS
-	// espacios de ids distintos y confundirlos hace que el botón opere sobre
-	// otro usuario que el texto.
+	conn        *database.Connection
+	userID      uint64
 	telegramID  string
 	telegramNum int64
 	chatID      int64
 
 	accounts map[string]uint64
-	// cache es el mismo que usa el controller. Un escenario que siembre
-	// taxonomía tiene que pasar por acá: el cache se arma al arrancar, así que
-	// un INSERT crudo a subcategories no lo ve hasta un Reload.
-	cache *subcategory.Cache
+	cache    *subcategory.Cache
 }
 
-// SeedAccount agrega una cuenta con su apertura, por el camino real
-// (InsertAccountsWithOpenings). El saldo inicial importa: una cuenta en cero
-// hace que cualquier gasto dispare el gate de saldo insuficiente y el escenario
-// termine midiendo eso en vez de lo suyo.
 func (h *convHarness) SeedAccount(name string, cur currency.Currency, opening string) uint64 {
 	h.t.Helper()
 	acc := &account.Account{UserID: h.userID, Name: name, Type: account.StandardType, Currency: cur}
@@ -91,9 +58,6 @@ func (h *convHarness) SeedAccount(name string, cur currency.Currency, opening st
 	return uint64(acc.ID)
 }
 
-// Balance es la suma de los movimientos de una cuenta — que ES el saldo: no hay
-// columna de balance, y por eso un signo mal escrito no se nota hasta que
-// alguien suma.
 func (h *convHarness) Balance(name string) decimal.Decimal {
 	h.t.Helper()
 	var total decimal.Decimal
@@ -106,8 +70,6 @@ func (h *convHarness) Balance(name string) decimal.Decimal {
 	return total
 }
 
-// SeedOwnCategory crea una categoría PROPIA del usuario por el camino real
-// (Cache.Insert), que es el único que deja el cache al día.
 func (h *convHarness) SeedOwnCategory(category, sub, description, icon string) uint64 {
 	h.t.Helper()
 	s := &subcategory.Subcategory{
@@ -142,9 +104,6 @@ func newConversationHarness(t *testing.T) *convHarness {
 		t.Fatalf("subcategory cache: %v", err)
 	}
 
-	// El telegram id tiene que ser NUMÉRICO: viaja como int64 en el Update del
-	// callback y el handler lo pasa a string para FindByChannel. Con un prefijo
-	// de texto el round-trip no cierra y el botón no encuentra al usuario.
 	tgNum := time.Now().UnixNano() % 1_000_000_000
 	tgID := fmt.Sprintf("%d", tgNum)
 	u := &user.User{}
@@ -166,8 +125,6 @@ func newConversationHarness(t *testing.T) *convHarness {
 		conn.DB.Unscoped().Where("id = ?", uid).Delete(&user.User{})
 	})
 
-	// Con apertura: una cuenta en cero hace que CUALQUIER gasto dispare el gate
-	// de saldo insuficiente, y todos los escenarios medirían eso en vez de lo suyo.
 	banco := &account.Account{UserID: uid, Name: "Banco Test", Type: account.StandardType, Currency: currency.ARS, IsDefault: true}
 	if err := movRepo.InsertAccountsWithOpenings([]movement.AccountOpening{{
 		Account: banco,
@@ -181,12 +138,7 @@ func newConversationHarness(t *testing.T) *convHarness {
 
 	chat := &messenger.FakeChat{}
 
-	// Store REAL: el estado de la conversación tiene que sobrevivir entre turnos,
-	// que es todo el punto del nivel.
 	engine := conversation.NewEngine(conversation.NewRepository(conn), FlowResumeLabel)
-	// Los mismos que registra server.go: parkear a un flow no registrado es un
-	// error de arranque, y un escenario que lo toque muere con un mensaje que no
-	// habla de lo que el escenario prueba.
 	engine.Register(flow.NewMovementCreateFlow(cache, accRepo))
 	engine.Register(flow.NewMovementUpdatePickFlow())
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
@@ -203,10 +155,6 @@ func newConversationHarness(t *testing.T) *convHarness {
 	engine.Register(flow.NewReminderSetupFlow())
 	engine.Register(flow.NewAskUserFlow())
 
-	// El clasificador va scripteado con un par válido por default: desde que la
-	// clasificación salió del loop, sin par TODA fila cae en PENDING_REVIEW y
-	// abre el picker — y cada escenario mediría el gap-fill en vez de lo suyo.
-	// ScriptCategory lo pisa donde el escenario necesite otra cosa.
 	orc := &fakeFullOrchestrator{
 		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
 	}
@@ -231,17 +179,10 @@ func newConversationHarness(t *testing.T) *convHarness {
 	}
 }
 
-// ScriptIntent quedó sin efecto: la etapa 5 borró el router, así que ya no hay
-// intent que fijar. Se conserva como no-op para no reescribir cada escenario, y
-// como recordatorio de que el mensaje ya no se clasifica antes del loop.
 func (h *convHarness) ScriptIntent(orchestrator.Intent) {}
 
-// ScriptCategory fija el par que devuelve el clasificador.
 func (h *convHarness) ScriptCategory(pairs ...orchestrator.Pair) { h.orc.classifyPairs = pairs }
 
-// ScriptToolCalls encola lo que el loop "emite": una ronda por llamada. El
-// executor es el REAL, así que lo que pasa después de la tool call es
-// producción.
 func (h *convHarness) ScriptToolCalls(calls ...scriptedCall) {
 	remaining := calls
 	h.orc.runFn = func(execute func(string, json.RawMessage) (string, error)) (string, error) {
@@ -270,7 +211,6 @@ func deleteMovementsCall(args string) scriptedCall {
 	return scriptedCall{orchestrator.ToolDeleteMovements, args}
 }
 
-// SendText simula un mensaje de texto del usuario. Toma users.id.
 func (h *convHarness) SendText(text string) {
 	h.t.Helper()
 	if err := h.c.handleFreeText(context.Background(), h.chat, h.userID, text); err != nil {
@@ -278,8 +218,6 @@ func (h *convHarness) SendText(text string) {
 	}
 }
 
-// TapButton simula tocar un botón. Handle es el punto de entrada neutro y
-// resuelve el usuario por TELEGRAM id (ChannelUserID), no por users.id.
 func (h *convHarness) TapButton(data string) {
 	h.t.Helper()
 	h.c.Handle(context.Background(), messenger.Incoming{
@@ -290,26 +228,18 @@ func (h *convHarness) TapButton(data string) {
 	})
 }
 
-// Movements es la superficie de aserción: lo que quedó EN LA BASE, sin la
-// apertura de la cuenta.
-//
-// La apertura se filtra por la misma razón por la que MovementQuery filtra las
-// categorías reservadas: es plomería del modelo, no plata que el usuario movió,
-// y si apareciera cada escenario tendría que descontarla a mano. AllMovements
-// la trae para el escenario al que le importe.
 func (h *convHarness) Movements() []movement.Movement {
 	h.t.Helper()
 	var out []movement.Movement
 	for _, m := range h.AllMovements() {
 		if m.Type == movement.Transfer && m.TransactionID == nil {
-			continue // apertura: pata suelta tipada transfer, sin contraparte
+			continue
 		}
 		out = append(out, m)
 	}
 	return out
 }
 
-// AllMovements trae todo, apertura incluida.
 func (h *convHarness) AllMovements() []movement.Movement {
 	h.t.Helper()
 	var out []movement.Movement
@@ -319,7 +249,6 @@ func (h *convHarness) AllMovements() []movement.Movement {
 	return out
 }
 
-// Messages es la copia que salió, en orden.
 func (h *convHarness) Messages() []string {
 	out := make([]string, len(h.chat.Sent))
 	for i, p := range h.chat.Sent {
@@ -328,13 +257,10 @@ func (h *convHarness) Messages() []string {
 	return out
 }
 
-// LastMessage es la última copia que salió.
 func (h *convHarness) LastMessage() string {
 	return h.chat.LastText()
 }
 
-// SeedMovement inserta un movimiento ya existente, para los escenarios que
-// arrancan con historia.
 func (h *convHarness) SeedMovement(description, amount string, subcategoryID uint64) uint {
 	h.t.Helper()
 	accID := h.accounts["Banco Test"]
@@ -359,9 +285,6 @@ func mustDec(t *testing.T, s string) decimal.Decimal {
 	return d
 }
 
-// El arnés tiene que probarse a sí mismo antes de que alguien lo use para
-// probar otra cosa: un turno, una tool call, una fila en la base con el signo
-// contable correcto.
 func TestHarness_CreateWritesToTheDatabase(t *testing.T) {
 	h := newConversationHarness(t)
 	h.ScriptIntent(orchestrator.IntentCreate)
@@ -380,9 +303,6 @@ func TestHarness_CreateWritesToTheDatabase(t *testing.T) {
 	}
 }
 
-// El primer escenario multi-turno de verdad: texto → parkeo → BOTÓN → escritura.
-// Es el camino que ningún test tocaba y donde murieron los dos intentos del
-// 2026-08-10, y la aserción es sobre la BASE, no sobre la copia ofrecida.
 func TestConversation_DeleteConfirmedActuallyDeletes(t *testing.T) {
 	h := newConversationHarness(t)
 	id := h.SeedMovement("Café", "-12700", 1)
@@ -395,9 +315,6 @@ func TestConversation_DeleteConfirmedActuallyDeletes(t *testing.T) {
 		t.Fatalf("todavía no se confirmó nada: el movimiento tiene que seguir. Copia: %v", h.Messages())
 	}
 
-	// Con UN candidato el loop siembra resolved_index y el picker se saltea, así
-	// que el primer botón que ve el usuario ya es el de confirmar. (Cuando hay
-	// varios, el picker manda ÍNDICES y no etiquetas: callback_data son 64 bytes.)
 	h.TapButton(flow.OptionConfirm)
 
 	movs := h.Movements()
@@ -406,8 +323,6 @@ func TestConversation_DeleteConfirmedActuallyDeletes(t *testing.T) {
 	}
 }
 
-// La otra dirección: cancelar NO borra. Sin este caso, un flujo que borrara
-// siempre pasaría el test de arriba.
 func TestConversation_DeleteCancelledKeepsTheMovement(t *testing.T) {
 	h := newConversationHarness(t)
 	h.SeedMovement("Café", "-12700", 1)
@@ -422,30 +337,19 @@ func TestConversation_DeleteCancelledKeepsTheMovement(t *testing.T) {
 	}
 }
 
-// ScriptUpdateResult fija lo que devuelve la Call 2 de UPDATE (ResolveUpdate).
 func (h *convHarness) ScriptUpdateResult(r orchestrator.UpdateResult) { h.orc.updateResult = r }
 
-// El bug vivo, probado de punta a punta: una corrección que nombra una
-// categoría que NO existe en la taxonomía del usuario.
-//
-// Hasta el 2026-08-12, seedAndStartUpdateConfirm escribía los gaps en nil
-// hardcodeado, así que el par inventado no marcaba nada, el flujo insertaba
-// derecho, FindByCategoryAndSubcategory fallaba y EL MOVIMIENTO SE PERDÍA con
-// un error genérico. Lo que importa acá no es que aparezca el picker: es que el
-// movimiento SIGA EXISTIENDO.
 func TestConversation_CorrectionWithUnknownCategoryKeepsTheMovement(t *testing.T) {
 	h := newConversationHarness(t)
 	id := h.SeedMovement("Café", "-12700", 1)
 
 	h.ScriptIntent(orchestrator.IntentUpdate)
-	// El par que nombra el usuario NO existe en la taxonomía. Va por el camino
-	// estructurado, que es el único desde que `changes` es requerido.
 	h.ScriptToolCalls(correctMovementCall(`{
 		"change":"ponelo en proyecto hogar",
 		"changes":[{"field":"category","op":"set","value":"proyecto hogar"}]}`))
 
 	h.SendText("el café ponelo en proyecto hogar")
-	h.TapButton(flow.OptionConfirm) // resuelve el picker de candidatos
+	h.TapButton(flow.OptionConfirm)
 
 	if got := h.Movements(); len(got) != 1 || got[0].ID != id {
 		t.Fatalf("el movimiento %d se perdió — este es EL bug. Quedó: %+v. Copia: %v", id, got, h.Messages())
@@ -464,14 +368,6 @@ func containsAny(msgs []string, want string) bool {
 	return false
 }
 
-// EL caso guía del 2026-08-10, modelado como pasó de verdad: "Editá los
-// movimientos de lote de hoy" nombra el destino y NO el cambio, y el modelo
-// devolvió filas con el monto en CERO. correctionIsDeletion leyó eso como
-// "regalo/gratis total", armó un BORRADO, y el usuario lo confirmó — sólo no se
-// borró porque la escritura falló (dos de dos, intent_events 386 y 388).
-//
-// Ese accidente ya no está: SoftDeleteByIDs dejó de fallar. Así que la guarda
-// tiene que sostenerlo sola.
 func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t *testing.T) {
 	h := newConversationHarness(t)
 	id := h.SeedMovement("lote", "-80000", 1)
@@ -486,7 +382,6 @@ func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t
 
 	h.SendText("Editá los movimientos de lote de hoy")
 
-	// Nada de "borrar" en la copia: el usuario pidió EDITAR.
 	for _, m := range h.Messages() {
 		low := strings.ToLower(m)
 		if strings.Contains(low, "borr") || strings.Contains(low, "elimin") {
@@ -494,7 +389,6 @@ func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t
 		}
 	}
 
-	// Y aunque confirme lo que sea que se le ofreció, el movimiento sigue.
 	h.TapButton(flow.OptionConfirm)
 	movs := h.Movements()
 	if len(movs) != 1 || movs[0].ID != id {
@@ -505,12 +399,6 @@ func TestConversation_ZeroAmountsWithoutTheUserNamingMoney_NeverOffersDeletion(t
 	}
 }
 
-// La capa 2 de punta a punta: el caso de las 22:27 del 2026-08-11. El usuario
-// escribió "Al café de hoy sumale 1070" cuatro veces y se llevó cuatro
-// movimientos nuevos. El gate no arregla al modelo — caza la FORMA del daño.
-//
-// Un helper por botón, porque lo que hay que probar es el estado final de la
-// BASE en cada rama, no que el botón exista.
 func (h *convHarness) insertCoffeeThenCorrection(t *testing.T) {
 	t.Helper()
 	h.ScriptIntent(orchestrator.IntentCreate)
@@ -524,15 +412,11 @@ func (h *convHarness) insertCoffeeThenCorrection(t *testing.T) {
 		 "subcategory":"Supermercado","description":"Café","date":"2026-08-12"}]}`))
 	h.SendText("Al café de hoy sumale 1070")
 
-	// Sin esto los tests de abajo serían vacíos: arman el callback a mano, así
-	// que pasarían aunque el gate no hubiera marcado nada. Lo que se exige acá
-	// es que el RECIBO haya salido con los botones puestos.
 	if !h.lastMarkupHas(flow.NearDupPrefix) {
 		t.Fatalf("el recibo salió sin los botones del gate. Sent: %+v", h.chat.Sent)
 	}
 }
 
-// lastMarkupHas dice si algún botón emitido lleva el fragmento en su Data.
 func (h *convHarness) lastMarkupHas(want string) bool {
 	for _, p := range h.chat.Sent {
 		for _, btn := range p.Buttons {
@@ -544,7 +428,6 @@ func (h *convHarness) lastMarkupHas(want string) bool {
 	return false
 }
 
-// nearDupButton arma el callback del botón tal como lo emitió el recibo.
 func (h *convHarness) nearDupButton(t *testing.T, action string) string {
 	t.Helper()
 	movs := h.Movements()
@@ -586,14 +469,10 @@ func TestNearDuplicate_Reemplazalo_KeepsOnlyTheNewAmount(t *testing.T) {
 	}
 }
 
-// Ignorar el gate es SEGURO, y es la propiedad que lo hace shippeable: el
-// resultado por default es exactamente el de hoy — dos filas, totales
-// correctos. Sin esto, el gate sería un paso bloqueante disfrazado.
 func TestNearDuplicate_IgnoringItLeavesTodaysBehaviour(t *testing.T) {
 	h := newConversationHarness(t)
 	h.insertCoffeeThenCorrection(t)
 
-	// El usuario no toca nada y sigue hablando.
 	h.ScriptToolCalls(recordMovementsCall(`{"movements":[
 		{"type":"expense","amount":"500","currency":"ARS","category":"Alimentación",
 		 "subcategory":"Supermercado","description":"Kiosco","date":"2026-08-12"}]}`))

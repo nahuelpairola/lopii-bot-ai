@@ -19,7 +19,6 @@ func resolvedContains(m *fakeMetricRepo, outcome string) bool {
 	return false
 }
 
-// (f) rename OK → Rename applied, account_renamed resolved.
 func TestFinishAccountManage_Rename_Success(t *testing.T) {
 	accRepo := &fakeAccountRepoFull{}
 	metrics := &fakeMetricRepo{}
@@ -43,7 +42,6 @@ func TestFinishAccountManage_Rename_Success(t *testing.T) {
 	}
 }
 
-// (g) rename collision → ErrAccountAlreadyExists, no success outcome.
 func TestFinishAccountManage_Rename_Collision(t *testing.T) {
 	accRepo := &fakeAccountRepoFull{renameErr: account.ErrAccountAlreadyExists}
 	metrics := &fakeMetricRepo{}
@@ -64,7 +62,6 @@ func TestFinishAccountManage_Rename_Collision(t *testing.T) {
 	}
 }
 
-// (h) cancelled → cancelled outcome, no writes.
 func TestFinishAccountManage_Cancelled_NoWrite(t *testing.T) {
 	accRepo := &fakeAccountRepoFull{}
 	metrics := &fakeMetricRepo{}
@@ -81,7 +78,6 @@ func TestFinishAccountManage_Cancelled_NoWrite(t *testing.T) {
 	}
 }
 
-// (i) create_new → starts the create flow with the seeded message.
 func TestFinishAccountManage_CreateNew_StartsCreate(t *testing.T) {
 	orch := &fakeFullOrchestrator{}
 	store := &fakeStoreForController{}

@@ -8,8 +8,6 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// TestTodayCivil_IsArgentineCalendarDay falla si "hoy" vuelve a salir del reloj
-// del server: entre las 21:00 y las 24:00 ART, UTC ya está en el día siguiente.
 func TestTodayCivil_IsArgentineCalendarDay(t *testing.T) {
 	got := movement.TodayCivil()
 	want := time.Now().In(constants.ArgentinaZone).Format("2006-01-02")

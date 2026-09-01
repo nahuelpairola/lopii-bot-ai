@@ -2,9 +2,6 @@ package orchestrator
 
 import "testing"
 
-// El 400 de Groq con code "tool_use_failed" significa "el mensaje no traía lo
-// que la tool necesita", no "request malformado". Distinguirlo es lo que
-// permite pedirle al usuario el dato que falta.
 func TestIsToolUseFailed_RecognizesGroqRefusal(t *testing.T) {
 	body := []byte(`{"error":{"message":"Tool choice is required, but model did not call a tool","type":"invalid_request_error","code":"tool_use_failed","failed_generation":""}}`)
 	if !isToolUseFailed(body) {
@@ -19,8 +16,6 @@ func TestIsToolUseFailed_OtherErrorIsNotIt(t *testing.T) {
 	}
 }
 
-// Un mensaje que apenas menciona la frase no puede disparar el caso: por eso se
-// parsea el código en vez de buscar la subcadena.
 func TestIsToolUseFailed_MentionInMessageIsNotEnough(t *testing.T) {
 	body := []byte(`{"error":{"message":"something about tool_use_failed happened","code":"server_error"}}`)
 	if isToolUseFailed(body) {

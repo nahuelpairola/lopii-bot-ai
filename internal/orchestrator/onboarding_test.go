@@ -30,7 +30,6 @@ func TestClassifyOnboarding_MultipleAccounts(t *testing.T) {
 	if result.Accounts[2].Currency != "USD" || result.Accounts[2].Balance != "100" {
 		t.Errorf("third account = %+v, want USD/100", result.Accounts[2])
 	}
-	// The prompt must forbid unit/asset positions and instruct ARS default.
 	for _, want := range []string{"NUNCA unidades", "Efectivo", "ARS"} {
 		if !strings.Contains(captured, want) {
 			t.Errorf("system prompt missing %q", want)

@@ -8,9 +8,6 @@ import (
 	"lopiibot.com/internal/messenger"
 )
 
-// finishCategoryMatchOffer y finishCategoryProposalConfirm delegan en flow
-// (category_finish.go). Conservan los nombres de borde mientras los tests y
-// handleFlowFinished los usen.
 func (c *controller) finishCategoryMatchOffer(ctx context.Context, chat messenger.Chat, data conversation.Data) {
 	flow.FinishCategoryMatchOffer(ctx, c, chat, data)
 }

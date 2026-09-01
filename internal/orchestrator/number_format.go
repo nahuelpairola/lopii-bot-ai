@@ -1,12 +1,5 @@
 package orchestrator
 
-// numberFormatRule is the shared amount-normalization rule injected into every
-// prompt that extracts a monetary amount (create, onboarding, update). It teaches
-// the model to read Argentine number formatting (dot = thousands, comma = decimal)
-// and always emit a plain decimal string that decimal.NewFromString accepts.
-//
-// MUST contain no '%' (it is concatenated into createSystemPromptTemplate, a
-// fmt.Sprintf format string) and no backtick (it is a raw string literal).
 const numberFormatRule = `
 REGLA DE FORMATO NUMÉRICO (montos):
 - El usuario escribe en convención argentina: el punto "." separa miles y la coma "," separa decimales. El monto puede venir con "$" o espacios.
