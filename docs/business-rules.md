@@ -9,29 +9,13 @@
 
 ## The accounting model (money precision — READ THIS before touching any money path)
 
-**Every movement is signed and attributed to a real account. No exceptions.** Accounts
-hold the user's actual money (bank, Mercado Pago, broker); a balance is *always*
-`SUM(amount)` over its movements, so the stored sign IS the accounting. Getting a sign
-or an `account_id` wrong silently corrupts a balance — this is the one place in the
-codebase where a small mistake is a financial bug, not a cosmetic one.
-
-| Type | `account_id` | Stored sign | Meaning |
-|---|---|---|---|
-| `expense` | source account (required) | **negative** (`-amount.Abs()`) | money leaves an account |
-| `income` | destination account (required) | **positive** (`+amount.Abs()`) | money enters an account |
-| `transfer` | both legs (required) | negative out / positive in | money moves between two own accounts |
+**The signed/attributed model — which type carries which sign, and against which account — is
+in [AGENTS.md](../AGENTS.md#the-accounting-model--read-before-touching-any-money-path), which
+every session loads.** It is not repeated here. Below is what that section does not cover: the
+guard's insert-time invariants, the insufficient-funds gate, and how the model shows up in
+reporting.
 
 Non-negotiable rules:
-- **The app owns the sign, never the LLM.** Normalization forces `expense`→negative,
-  `income`→positive on write. The LLM emits positive magnitudes; app code applies the sign.
-- **The sign is internal to storage.** It never escapes: both the user (receipts,
-  diffs, pickers) and the LLM (UPDATE/DELETE candidates) always see `amount.Abs()`.
-  Direction is conveyed by the movement type, never a `-`. Feeding a signed amount to
-  either audience is a bug (it was the cause of a real `0.00` corruption).
-- **Account resolution is app-side, deterministic** (the account list shown to the LLM
-  does not mark the default, so the LLM structurally cannot pick it): LLM-matched
-  account → it; nil → currency default (`FindDefaultByCurrency`); no account in that
-  currency → gap-fill asks. Applies uniformly to expense, income, and transfer legs.
 - **Insert-time invariants (the guard), enforced for CREATE and UPDATE alike:**
   sign matches type; `amount != 0`; movement currency == attributed account currency; a
   transfer's two legs reference *different* accounts and (same currency) sum to 0;
