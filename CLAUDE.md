@@ -38,5 +38,4 @@ path fires only when something reads a file in that subtree, which is not guaran
   and do not know codegraph exists, so an orientation step is worth redirecting by hand.
 
 - **Reading a file is how a package's `AGENTS.md` gets loaded**, and `codegraph_explore` does not
-  count as reading. That is why the table above sends an *edit* through `Read`: it is the cheap
-  way to arrive with the traps in hand. When you skip it, open the package's file deliberately.
+  count as reading. That is why the table above sends an *edit* through `Read`.

@@ -1,8 +1,3 @@
-// Package agent test-double para el cluster del loop (tasks T4/T5). Este
-// archivo NO tiene Test*: solo definiciones. fakeServices implementa TODO de
-// agentServices y TODO de flow.runner por delegación a los fakes de repos que
-// se duplican desde internal/controller/messaging (el paquete agent no puede
-// importar el controller — ciclo de imports, ver ledger ruling 4).
 package agent
 
 import (
@@ -28,10 +23,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// fakeServices es el test-double del loop: implementa las dos interfaces que
-// la producción de agent consume — agentServices (agent.go) y flow.runner
-// (runner.go) — delegando cada método al fake de repo correspondiente. Los
-// puentes del engine y los outbounds imitan lo que hace el *controller real.
 type fakeServices struct {
 	engine        *conversation.Engine
 	actions       *fakeActionsRepo
@@ -48,11 +39,6 @@ type fakeServices struct {
 	handledGroq bool
 }
 
-// fakeMovements es la interfaz que acepta el campo movements de fakeServices:
-// el conjunto completo de métodos a los que fakeServices delega. La satisface
-// fakeMovementRepoFull y también los fakes a medida que un test necesita
-// inyectar (fakeMovementRepoForResolve en reference_resolution_test.go, que
-// captura los argumentos de las queries de ventana).
 type fakeMovements interface {
 	InsertBatch(ms []movement.Movement) error
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
@@ -70,8 +56,6 @@ type fakeMovements interface {
 	ReassignSubcategory(userID uint64, fromID uint64, toID uint64) error
 	TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
 }
-
-// --- agentServices: repos de lectura. ---
 
 func (f *fakeServices) FindUserAccounts(userID uint64) ([]account.Account, error) {
 	return f.accounts.FindByUserID(userID)
@@ -105,8 +89,6 @@ func (f *fakeServices) ChatHistoryAppend(userID uint64, question, answer string)
 	return f.chatHistory.Append(userID, question, answer)
 }
 
-// --- agentServices: cola de acciones parkeadas. ---
-
 func (f *fakeServices) ActionsInsert(a *pendingaction.PendingAction) error {
 	return f.actions.Insert(a)
 }
@@ -124,10 +106,8 @@ func (f *fakeServices) ActionsDelete(id uint64) error {
 }
 
 func (f *fakeServices) ActionsEnabled() bool {
-	return true // el repo fake siempre está cableado
+	return true
 }
-
-// --- agentServices: métricas. ---
 
 func (f *fakeServices) MetricsLog(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error {
 	return f.metrics.Log(userID, traceID, rawMessage, intent, needsConfirmation, outcome)
@@ -141,8 +121,6 @@ func (f *fakeServices) MetricsSetIntentIfQueued(userID uint64, intent string) er
 	return f.metrics.SetIntentIfQueued(userID, intent)
 }
 
-// --- agentServices: el orquestador. ---
-
 func (f *fakeServices) Run(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
 	return f.orch.Run(ctx, systemPrompt, userText, history, tools, execute)
 }
@@ -154,8 +132,6 @@ func (f *fakeServices) ClassifyCategories(ctx context.Context, message string, r
 func (f *fakeServices) ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error) {
 	return f.orch.ResolveUpdate(ctx, text, candidate, accounts)
 }
-
-// --- agentServices: outbounds a Telegram y a los flows. ---
 
 func (f *fakeServices) SendText(ctx context.Context, chat messenger.Chat, text string) {
 	f.sendTexts = append(f.sendTexts, text)
@@ -177,17 +153,13 @@ func (f *fakeServices) IsReplaying(ctx context.Context) bool {
 	return f.replaying
 }
 
-// --- agentServices: bridges al gate de casi-duplicado y al pipeline de escritura. ---
-
 func (f *fakeServices) MaybeNearDuplicate(userID uint64, inserted []movement.Movement) []conversation.Button {
-	return nil // el gate de casi-duplicado vive en messaging; sus tests no se mueven
+	return nil
 }
 
 func (f *fakeServices) ResolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error) {
 	return flow.ResolveAndInsertMovements(f, data)
 }
-
-// --- agentServices: el 429 y los loops vecinos. ---
 
 func (f *fakeServices) HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
 	f.handledGroq = true
@@ -206,8 +178,6 @@ func (f *fakeServices) FinishAnswerQuery(ctx context.Context, chat messenger.Cha
 func (f *fakeServices) FinishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error {
 	return nil
 }
-
-// --- flow.runner: el pipeline de escritura de flow. ---
 
 func (f *fakeServices) InsertAccount(a *account.Account) error {
 	return f.accounts.Insert(a)
@@ -281,8 +251,6 @@ func (f *fakeServices) ReassignSubcategoryMovements(userID, fromID, toID uint64)
 	return f.movements.ReassignSubcategory(userID, fromID, toID)
 }
 
-// --- flow.runner: no-ops (recordatorios y nudges viven en messaging). ---
-
 func (f *fakeServices) UpsertReminder(rem *reminder.Reminder) error { return nil }
 func (f *fakeServices) DisableReminder(userID uint64) error         { return nil }
 func (f *fakeServices) SetWeeklySummary(userID uint64, enabled bool) error {
@@ -296,23 +264,15 @@ func (f *fakeServices) SuggestMergeTarget(ctx context.Context, userID, sourceID 
 	return nil
 }
 
-// fakeOrchestrator es el test-double del orquestador en su versión agent.
-// Copia el de messaging (movement_update_flow_test.go) y le agrega
-// classifyPairs y updateCalled, lo que el loop del agente necesita.
 type fakeOrchestrator struct {
 	updateResult      orchestrator.UpdateResult
 	updateErr         error
 	gotUpdateAccounts []orchestrator.AccountOption
-	// runFn deja que un test maneje el loop unificado. Sin setear, Run falla
-	// fuerte: un camino que llegue ahí sin quererlo migró antes de su etapa.
-	runFn        func(execute func(string, json.RawMessage) (string, error)) (string, error)
-	gotRunPrompt string
-	gotRunTools  []orchestrator.AgentTool
-	// classifyPairs es lo que devuelve ClassifyCategories, programado por el
-	// test. updateCalled marca que se llegó a ResolveUpdate — aserción NEGATIVA
-	// en los caminos estructurados que no deberían hacer esa segunda llamada.
-	classifyPairs []orchestrator.Pair
-	updateCalled  bool
+	runFn             func(execute func(string, json.RawMessage) (string, error)) (string, error)
+	gotRunPrompt      string
+	gotRunTools       []orchestrator.AgentTool
+	classifyPairs     []orchestrator.Pair
+	updateCalled      bool
 }
 
 func (o *fakeOrchestrator) ClassifyCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry, accounts []orchestrator.AccountOption, today string) (orchestrator.CreateResult, error) {
@@ -333,15 +293,8 @@ func (o *fakeOrchestrator) AnswerQuery(ctx context.Context, systemPrompt, userTe
 	return "", nil
 }
 
-// errRunNotWired es lo que devuelven los fakes cuando el test no programó el
-// loop. Un camino que llegue ahí sin querer migró antes de su etapa, y tiene que
-// fallar fuerte en vez de recibir una respuesta vacía plausible.
 var errRunNotWired = errors.New("Run is not wired in this test")
 
-// swallowTurnDone imita lo que el Run de verdad hace con ErrAgentTurnDone: no es
-// un error, es el executor avisando que la app se queda con el turno. Sin esto
-// cada fake lo propagaría como fallo y el test vería rojo donde el código real
-// ve un turno normal — de una sola vuelta, que es justo el punto.
 func swallowTurnDone(execute func(string, json.RawMessage) (string, error)) func(string, json.RawMessage) (string, error) {
 	return func(name string, args json.RawMessage) (string, error) {
 		result, err := execute(name, args)
@@ -367,13 +320,9 @@ func (o *fakeOrchestrator) ResolveAccountManage(ctx context.Context, text string
 	return orchestrator.AccountManageResult{}, nil
 }
 
-// ClassifyCategories es el agregado de la versión agent: el loop usa la
-// taxonomía y los pares clasificados, y el test los programa acá.
 func (o *fakeOrchestrator) ClassifyCategories(ctx context.Context, message string, rows []orchestrator.ClassifyRow, taxonomy []orchestrator.TaxonomyEntry) []orchestrator.Pair {
 	return o.classifyPairs
 }
-
-// --- Fakes de repos duplicados verbatim desde internal/controller/messaging. ---
 
 type fakeActionsRepo struct {
 	rows    []*pendingaction.PendingAction
@@ -404,7 +353,6 @@ func (r *fakeActionsRepo) NextForUser(userID uint64) (*pendingaction.PendingActi
 	return best, nil
 }
 
-// Update pisa la fila de rows que coincida por ID, igual que un Save real.
 func (r *fakeActionsRepo) Update(a *pendingaction.PendingAction) error {
 	for i, row := range r.rows {
 		if row.ID == a.ID {
@@ -437,7 +385,6 @@ func (r *fakeActionsRepo) CountForUser(userID uint64) (int64, error) {
 	return n, nil
 }
 
-// fakeMetricRepo captura las llamadas para las Tasks 4-6.
 type fakeMetricRepo struct {
 	logged        []loggedIntent
 	resolved      []string
@@ -461,7 +408,6 @@ func (f *fakeMetricRepo) Resolve(userID uint64, outcome string, movementIDs []ui
 	return nil
 }
 
-// queuedIntents guarda las correcciones de intent que hizo el drenaje.
 func (f *fakeMetricRepo) SetIntentIfQueued(userID uint64, intent string) error {
 	f.queuedIntents = append(f.queuedIntents, intent)
 	return nil
@@ -531,9 +477,6 @@ func (r *fakeAccountRepoFull) Insert(a *account.Account) error {
 	}
 	a.ID = uint(len(r.inserted) + 100)
 	r.inserted = append(r.inserted, *a)
-	// Igual que el repo real: una cuenta recién insertada la devuelve
-	// FindByUserID. Sin esto, un segundo loadAccountIndex no la ve y todo
-	// movimiento que la apunte falla con ErrCurrencyAccountMismatch.
 	r.byUserID = append(r.byUserID, *a)
 	return nil
 }
@@ -574,7 +517,7 @@ func (r *fakeAccountRepoFull) Rename(accountID uint64, name string) error {
 }
 func (r *fakeAccountRepoFull) UnsetDefault(userID uint64, cur currency.Currency) error {
 	r.unsetCalls = append(r.unsetCalls, cur)
-	delete(r.byCurrency, cur) // mirror the real repo: after unset, no default of this currency
+	delete(r.byCurrency, cur)
 	return nil
 }
 func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
@@ -584,7 +527,7 @@ func (r *fakeAccountRepoFull) SetDefault(accountID uint64) error {
 
 type fakeMovementRepoFull struct {
 	inserted           []movement.Movement
-	batches            [][]movement.Movement // every InsertBatch call, in order (inserted only tracks the last)
+	batches            [][]movement.Movement
 	balances           map[uint64]string
 	replacedOldIDs     []uint
 	replaced           []movement.Movement
@@ -676,10 +619,6 @@ func (r *fakeMovementRepoFull) TopDescriptionsBySubcategory(userID uint64, subca
 	return r.topDescriptions, nil
 }
 
-// fakeConvStore es un store compatible con conversation.Engine — la satisfacción
-// de interfaces en Go es estructural, así que este struct satisface la interfaz
-// unexportada stateStore del motor puro por su set de métodos, igual que hace el
-// fakeStore de internal/conversation/engine_test.go desde ese paquete.
 type fakeConvStore struct {
 	flowName, stepName string
 	data               conversation.Data
@@ -700,14 +639,10 @@ func (s *fakeConvStore) Clear(userID uint64) error {
 	return nil
 }
 
-// stubChatHistory es un chatHistoryRepository no-op para los tests que
-// ejercitan el loop pero no les importa el hilo conversacional en sí.
 type stubChatHistory struct{}
 
 func (stubChatHistory) Recent(userID uint64) ([]chathistory.Turn, error)    { return nil, nil }
 func (stubChatHistory) Append(userID uint64, question, answer string) error { return nil }
-
-// --- Helpers duplicados desde messaging. ---
 
 func strPtr(s string) *string { return &s }
 
@@ -728,13 +663,10 @@ func newSubForTest(id uint, category, sub string) *subcategory.Subcategory {
 	return s
 }
 
-// acct arma una cuenta mínima para los tests.
 func acct(id uint64, cur currency.Currency, def bool) account.Account {
 	return account.Account{Model: gorm.Model{ID: uint(id)}, UserID: 1, Currency: cur, IsDefault: def}
 }
 
-// accountsMap indexa cuentas igual que accountIndex, para los tests que arman
-// los mapas a mano en vez de pasar por loadAccountIndex.
 func mustJSON(t *testing.T, v any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(v)
@@ -743,8 +675,6 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return raw
 }
-
-// --- Constructores (espejan newLoopController/newDispatchController). ---
 
 func newLoopServices(t *testing.T) *fakeServices {
 	t.Helper()

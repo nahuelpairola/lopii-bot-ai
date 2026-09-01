@@ -11,21 +11,7 @@ import (
 	"lopiibot.com/internal/orchestrator"
 )
 
-// Los prompts de gap-fill cuando UN mensaje deja varias filas sin categoría.
-//
-// El bug reportado: dos filas en PENDING_REVIEW producían dos preguntas
-// IDÉNTICAS y sin fila, así que el usuario no sabía por cuál de sus dos
-// movimientos le estaban preguntando.
-//
-// Esto era un eval con Groq real (tag llm_eval): la llamada al modelo servía
-// sólo para FABRICAR dos filas en PENDING_REVIEW. Las aserciones siempre fueron
-// sobre la copy. Con el resultado escrito a mano el test es gratis, no necesita
-// API key, y corre en cada `go test ./...` — que es donde tiene que estar un
-// guard de un bug reportado.
 func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
-	// Lo que devolvía el modelo con una taxonomía deliberadamente pobre: ni
-	// "super" ni "nafta" tenían dónde ir, así que las dos filas caían en
-	// PENDING_REVIEW.
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "5000", Currency: "ARS", Description: "super",
 			Category: "PENDING_REVIEW", Subcategory: "PENDING_REVIEW", Date: "2026-07-24"},
@@ -49,8 +35,6 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 		t.Errorf("category prompt missing position counter: %q", prompt0)
 	}
 
-	// Answer row 0's category, check its subcategory prompt references the
-	// same row (not the other one).
 	data["gap_active_row"] = gaps[0]
 	rows[idx0].Category = "Mascotas"
 	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
@@ -62,8 +46,6 @@ func TestGapPrompt_TwoGapsAskAboutDifferentRows(t *testing.T) {
 		t.Errorf("subcategory prompt missing chosen category: %q", subPrompt)
 	}
 
-	// Advance to row 1 — this is the exact failure mode from the bug report:
-	// two consecutive category prompts that read identically.
 	data[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice(gaps[1:])
 	prompt1 := flow.MsgAskCategory(data)
 	if prompt1 == prompt0 {

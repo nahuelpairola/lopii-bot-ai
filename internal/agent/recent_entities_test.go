@@ -30,8 +30,6 @@ func TestRenderRecentEntities(t *testing.T) {
 			t.Errorf("el bloque no contiene %q:\n%s", want, block)
 		}
 	}
-	// El signo NO sale de storage: el usuario y el modelo ven el valor absoluto y
-	// la dirección la da el tipo. Un "-12700" acá invita al modelo a copiarlo.
 	if strings.Contains(block, "-12") {
 		t.Errorf("el signo contable se escapó al prompt:\n%s", block)
 	}
@@ -43,8 +41,6 @@ func TestRenderRecentEntities_EmptyWhenNothingRecent(t *testing.T) {
 	}
 }
 
-// Sin description cae a la subcategoría: una fila sin nombre no le sirve al
-// modelo para resolver una referencia.
 func TestRenderRecentEntities_FallsBackToSubcategory(t *testing.T) {
 	m := movement.Movement{
 		Model:       gorm.Model{ID: 7, CreatedAt: time.Now()},

@@ -20,8 +20,6 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// candidateMovement arma un movimiento cargado recién, con descripción — los dos
-// requisitos para que resolveCandidates lo devuelva por match textual.
 func candidateMovement(id uint, txID *uuid.UUID, description string, amount int64) movement.Movement {
 	now := time.Now()
 	return movement.Movement{
@@ -44,14 +42,10 @@ func newExecutorWith(t *testing.T, userText string, movements ...movement.Moveme
 	}, 1, userText, nil)
 }
 
-// taxonomyForTest es la taxonomía mínima que buildCreateSeed necesita para NO
-// marcar gap de categoría: el par tiene que existir de verdad.
 func taxonomyForTest() []orchestrator.TaxonomyEntry {
 	return []orchestrator.TaxonomyEntry{{Category: "Alimentación", Subcategory: "Supermercado"}}
 }
 
-// accountsWithDefault da una cuenta ARS por defecto, que es lo que evita el
-// camino de flow.NeedsFirstAccount.
 func accountsWithDefault() *fakeAccountRepoFull {
 	acc := &account.Account{Model: gorm.Model{ID: 1}, Name: "Mercado Pago", Currency: currency.ARS, IsDefault: true}
 	return &fakeAccountRepoFull{
@@ -61,16 +55,10 @@ func accountsWithDefault() *fakeAccountRepoFull {
 	}
 }
 
-// movementsWithBalance fija el saldo de la cuenta 1, para poder disparar (o no)
-// el gate de fondos insuficientes.
 func movementsWithBalance(balance string) *fakeMovementRepoFull {
 	return &fakeMovementRepoFull{balances: map[uint64]string{1: balance}}
 }
 
-// subcategoriesForTest tiene el mismo par que taxonomyForTest. Los dos tienen
-// que coincidir: la taxonomía decide si hay gap, y el repo decide si la
-// inserción encuentra la subcategoría — desalinearlos da un gap fantasma o un
-// insert que falla al final.
 func subcategoriesForTest() *fakeSubcategoryRepoFull {
 	sub := subcategory.Subcategory{Model: gorm.Model{ID: 1}, Category: "Alimentación", Subcategory: "Supermercado"}
 	return &fakeSubcategoryRepoFull{
@@ -79,13 +67,6 @@ func subcategoriesForTest() *fakeSubcategoryRepoFull {
 	}
 }
 
-// newCreateExecutor arma el ejecutor con lo mínimo que necesita un CREATE:
-// cuentas, saldo y taxonomía.
-// newCreateExecutor arma el executor con el clasificador scripteado.
-//
-// Desde que la clasificación salió del loop, record_movements NO trae el par:
-// lo pone ClassifyCategories. Un test que no lo programe recibe PENDING_REVIEW
-// en todas las filas y termina midiendo el gap-fill en vez de lo suyo.
 func newCreateExecutor(t *testing.T, balance, userText string, pairs ...orchestrator.Pair) *agentExecutor {
 	t.Helper()
 	if pairs == nil {
@@ -101,10 +82,6 @@ func newCreateExecutor(t *testing.T, balance, userText string, pairs ...orchestr
 	return newAgentExecutor(context.Background(), svc, 1, userText, taxonomyForTest())
 }
 
-// TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn: el camino sin fricción.
-// Cierra el turno con ErrAgentTurnDone porque el recibo lo escribe la app —
-// pedirle al modelo que narre "listo" cuesta el prompt entero otra vez, y
-// medido en la etapa 2 el modelo NUNCA narra junto a los tool_calls.
 func TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn(t *testing.T) {
 	e := newCreateExecutor(t, "100000", "gasté 5000 en el super")
 
@@ -125,19 +102,11 @@ func TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn(t *testing.T) {
 	if len(e.parked) != 0 {
 		t.Errorf("un CREATE limpio no parkea nada: %+v", e.parked)
 	}
-	// El recibo lo pone la app: es lo que hace que el turno no necesite narración.
 	if e.reply == "" {
 		t.Error("falta el recibo; sin él el usuario no ve nada")
 	}
 }
 
-// executeDone corre una tool que TIENE que cerrar el turno.
-//
-// Que devuelva ErrAgentTurnDone no es tolerancia, es LA aserción: si dejara de
-// devolverlo, el loop volvería a gastar una segunda vuelta —el prompt entero de
-// nuevo, ~5k tokens— narrando algo que la app ya sabe decir. Contra el TPM de
-// 8.000 eso es un 429, y la corrección del usuario terminaba en la cola en vez
-// de en el gate.
 func executeDone(t *testing.T, e *agentExecutor, tool, args string) string {
 	t.Helper()
 	out, err := e.execute(tool, json.RawMessage(args))
@@ -147,10 +116,6 @@ func executeDone(t *testing.T, e *agentExecutor, tool, args string) string {
 	return out
 }
 
-// TestAgentExecutor_CorrectResolvesInOneRound es el punto del rediseño: el
-// modelo pide corregir y listo. No hay vuelta de búsqueda — el candidato lo
-// resuelve la app — porque una segunda vuelta arrastra ~5k tokens de prompt y no
-// entra en el TPM.
 func TestAgentExecutor_CorrectResolvesInOneRound(t *testing.T) {
 	e := newExecutorWith(t, "la panaderia era 2000", candidateMovement(10, nil, "compra en panadería", 3000))
 
@@ -174,14 +139,11 @@ func TestAgentExecutor_CorrectResolvesInOneRound(t *testing.T) {
 	if a.Payload.Change != "eran 2000" {
 		t.Errorf("se perdió el cambio pedido: %q", a.Payload.Change)
 	}
-	// Los oldIDs salen de la búsqueda de la app, nunca del modelo.
 	if got := a.Payload.Candidates[0].OldIDs; len(got) != 1 || got[0] != "10" {
 		t.Errorf("los oldIDs no salieron de resolveCandidates: %+v", got)
 	}
 }
 
-// TestAgentExecutor_InsufficientFundsParksTheGate: el gate de saldo negativo no
-// se saltea desde el loop. Nada se inserta hasta que el usuario decide.
 func TestAgentExecutor_InsufficientFundsParksTheGate(t *testing.T) {
 	e := newCreateExecutor(t, "100", "gasté 50000 en el super")
 
@@ -196,19 +158,14 @@ func TestAgentExecutor_InsufficientFundsParksTheGate(t *testing.T) {
 	if len(e.parked) != 1 || e.parked[0].Payload.Seed[conversation.KeyGatePrompt] == nil {
 		t.Fatalf("tenía que parkear el gate con su copy: %+v", e.parked)
 	}
-	// Y retoma como CREATE: es lo que hace que el drenaje sepa a qué flujo ir.
 	if e.parked[0].Tool != orchestrator.ToolRecordMovements {
 		t.Errorf("el gate retoma un CREATE, no otra cosa: %q", e.parked[0].Tool)
 	}
 }
 
-// TestAgentExecutor_SearchesWithTheUsersTextNotTheModelParaphrase: el matcheo
-// por tokens y el plegado de acentos están tuneados contra lo que escribe el
-// usuario. La paráfrasis del modelo puede perder justo la palabra que matchea.
 func TestAgentExecutor_SearchesWithTheUsersTextNotTheModelParaphrase(t *testing.T) {
 	e := newExecutorWith(t, "la panaderia era 2000", candidateMovement(10, nil, "compra en panadería", 3000))
 
-	// El change no nombra la panadería; sólo el texto original lo hace.
 	executeDone(t, e, orchestrator.ToolCorrectMovement, `{"change":"cambiar el monto a 2000"}`)
 	if len(e.parked) != 1 {
 		t.Fatalf("tenía que encontrarlo por el texto del usuario, got %d parked", len(e.parked))
@@ -247,19 +204,14 @@ func TestAgentExecutor_NothingToCorrectDoesNotPark(t *testing.T) {
 	if len(e.parked) != 0 {
 		t.Errorf("sin candidatos no se parkea nada: %+v", e.parked)
 	}
-	// Y queda anotado, para que la métrica diga no_candidates y no un fracaso genérico.
 	if !e.noCandidates {
 		t.Error("falta la marca de que no había candidatos")
 	}
-	// La copy la pone la app: hacérsela narrar al modelo cuesta la vuelta entera.
 	if e.reply != messages.MsgNoCandidatesFound {
 		t.Errorf("want %q, got %q", messages.MsgNoCandidatesFound, e.reply)
 	}
 }
 
-// TestAgentExecutor_BadArgsStillPark: un argumento ilegible no puede tumbar el
-// turno. El pedido se entiende por el nombre de la tool y el candidato sale del
-// texto del usuario, así que no hay nada que perder.
 func TestAgentExecutor_BadArgsStillPark(t *testing.T) {
 	e := newExecutorWith(t, "la panaderia era 2000", candidateMovement(10, nil, "compra en panadería", 3000))
 	executeDone(t, e, orchestrator.ToolCorrectMovement, `no soy json`)
@@ -314,14 +266,6 @@ func TestAgentExecutor_UnwiredToolsSayNotAvailable(t *testing.T) {
 	}
 }
 
-// El par estructural es un DEFAULT: si el clasificador dice algo útil, gana el
-// clasificador.
-//
-// Medido en vivo el 2026-08-12: "Suscribi 3100000 a FCI" quedó en
-// `Sistema | Transferencia` porque había un `return` que le impedía al
-// clasificador ver el movimiento. Una suscripción de FCI entre dos cuentas
-// propias en la misma moneda tiene la forma EXACTA de una transferencia —2 patas
-// que suman cero— y no es una transferencia: sólo el mensaje las distingue.
 func TestClassify_TheClassifierBeatsTheStructuralDefault(t *testing.T) {
 	movs := []orchestrator.MovementDraft{
 		{Type: "transfer", Amount: "-3100000", Currency: "ARS"},
@@ -340,15 +284,11 @@ func TestClassify_TheClassifierBeatsTheStructuralDefault(t *testing.T) {
 	}
 }
 
-// Y cuando el clasificador NO dice nada útil, el default entra: sin él un
-// transfer sin clasificar caería en PENDING_REVIEW y abriría el picker por algo
-// que la forma ya contesta.
 func TestClassify_StructuralDefaultFillsWhatTheClassifierLeavesEmpty(t *testing.T) {
 	movs := []orchestrator.MovementDraft{
 		{Type: "transfer", Amount: "-50000", Currency: "ARS"},
 		{Type: "transfer", Amount: "50000", Currency: "ARS"},
 	}
-	// El clasificador falló (429, timeout): devuelve PENDING_REVIEW.
 	ex := executorWithPairs(t, "pasé 50 mil al banco", []orchestrator.Pair{
 		{Category: constants.PendingReview, Subcategory: constants.PendingReview},
 		{Category: constants.PendingReview, Subcategory: constants.PendingReview},
@@ -362,7 +302,6 @@ func TestClassify_StructuralDefaultFillsWhatTheClassifierLeavesEmpty(t *testing.
 	}
 }
 
-// executorWithPairs arma un ejecutor cuyo clasificador devuelve los pares dados.
 func executorWithPairs(t *testing.T, userText string, pairs []orchestrator.Pair) *agentExecutor {
 	t.Helper()
 	svc := &fakeServices{
@@ -375,11 +314,6 @@ func executorWithPairs(t *testing.T, userText string, pairs []orchestrator.Pair)
 	return newAgentExecutor(context.Background(), svc, 1, userText, taxonomyForTest())
 }
 
-// La fecha que dice el usuario tiene que LLEGAR a la búsqueda. El 2026-08-15 el
-// mensaje decía "del 04 de agosto", el modelo la tenía, y park() llamaba a
-// resolveCandidates con dos strings vacíos: la rama de fecha existía y era
-// código muerto. Sin esto, el movimiento del 04/08 —cargado el 08/08— quedaba
-// fuera de la ventana por created_at y el picker ofrecía cualquier otra cosa.
 func TestAgentExecutor_CorrectPassesTheDateLocatorToTheSearch(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
 	e := newAgentExecutor(context.Background(), &fakeServices{movements: fake}, 3,

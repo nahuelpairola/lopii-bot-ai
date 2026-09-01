@@ -27,13 +27,9 @@ func TestResolveTaxonomyPair(t *testing.T) {
 		{"sólo la subcategoría", "mantenimiento hogar", "Vivienda", "Mantenimiento hogar", true},
 		{"el par entero", "Vivienda | Mantenimiento hogar", "Vivienda", "Mantenimiento hogar", true},
 		{"con barra", "vivienda/mantenimiento hogar", "Vivienda", "Mantenimiento hogar", true},
-		// Sin acentos: el usuario escribe rápido y el teclado del teléfono no ayuda.
 		{"sin acentos", "seguro vehiculo", "Transporte", "Seguro vehículo", true},
-		// Sólo lo inequívoco: adivinar mal acá es un dato corrupto, y el gap-fill
-		// ya sabe preguntar.
 		{"no existe", "proyecto hogar", "", "", false},
 		{"vacío", "   ", "", "", false},
-		// "hogar" solo NO alcanza: hay dos. Un match parcial elegiría una al azar.
 		{"ambiguo", "hogar", "", "", false},
 	}
 	for _, tc := range cases {
@@ -47,9 +43,6 @@ func TestResolveTaxonomyPair(t *testing.T) {
 	}
 }
 
-// El lote se trata como lote SÓLO con las dos condiciones puestas. Sin el cambio
-// estructurado hay que volver al picker: la alternativa es pedirle al modelo que
-// reproduzca N filas enteras, que es donde corrompe datos en silencio.
 func TestIsBatchCorrection(t *testing.T) {
 	twoCandidates := []flow.CandidateGroup{{OldIDs: []string{"1"}}, {OldIDs: []string{"2"}}}
 	change := []correctionChange{{fieldCategory, opSet, "Vivienda"}}
@@ -63,7 +56,6 @@ func TestIsBatchCorrection(t *testing.T) {
 		{"sin cambio estructurado", agentPayload{Scope: scopeAll, Candidates: twoCandidates}, false},
 		{"scope one", agentPayload{Scope: scopeOne, Changes: change, Candidates: twoCandidates}, false},
 		{"scope vacío", agentPayload{Changes: change, Candidates: twoCandidates}, false},
-		// Un solo candidato no necesita el camino de lote: ya se confirma directo.
 		{"un candidato", agentPayload{Scope: scopeAll, Changes: change, Candidates: twoCandidates[:1]}, false},
 	}
 	for _, tc := range cases {

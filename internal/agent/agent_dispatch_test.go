@@ -50,7 +50,6 @@ func TestParkAgentActions_FreezesTheBudgetAndKeepsOrder(t *testing.T) {
 	if len(repo.rows) != 2 {
 		t.Fatalf("want 2 parked rows, got %d", len(repo.rows))
 	}
-	// 1 pregunta + budgetSlack; la que no pregunta nada arranca en el slack.
 	if repo.rows[0].Budget != 1+budgetSlack {
 		t.Errorf("want budget %d, got %d", 1+budgetSlack, repo.rows[0].Budget)
 	}
@@ -59,7 +58,6 @@ func TestParkAgentActions_FreezesTheBudgetAndKeepsOrder(t *testing.T) {
 	}
 }
 
-// TestDrain_WIP1: con dos acciones parkeadas se abre UNA sola.
 func TestDrain_OpensExactlyOneAtATime(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
@@ -79,9 +77,6 @@ func TestDrain_OpensExactlyOneAtATime(t *testing.T) {
 	}
 }
 
-// TestResume_CreateWithGapsOpensMovementCreate: un CREATE incompleto no inserta
-// nada y retoma el flujo que ya existe. La etapa 3 cambia cómo se llega al
-// gap-fill, no el gap-fill.
 func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
 	seed := conversation.Data{
 		conversation.KeyMovements:           movement.EncodeMovementRows([]movement.MovementRow{{Type: "expense", Amount: "5000", Currency: "ARS"}}),
@@ -121,7 +116,6 @@ func TestDrain_NothingParkedIsANoOp(t *testing.T) {
 	}
 }
 
-// TestAnswerResolvesTheCandidate: la etiqueta contestada es el índice.
 func TestApplyAnswers_LabelPositionIsTheCandidateIndex(t *testing.T) {
 	action := &pendingaction.PendingAction{Payload: mustJSON(t, agentPayload{
 		Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}},
@@ -151,8 +145,6 @@ func TestApplyAnswers_FreeTextThatNamesNoCandidateStaysUnresolved(t *testing.T) 
 	}
 }
 
-// TestDiscard_NamesWhatWasDropped es el tope de presupuesto: se tira entera y se
-// dice qué se cayó. Tirar algo en silencio es la falla que esto viene a evitar.
 func TestDiscard_NamesWhatWasDropped(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
@@ -173,8 +165,6 @@ func TestDiscard_NamesWhatWasDropped(t *testing.T) {
 	}
 }
 
-// TestBudgetExhausted_DiscardsInsteadOfAskingAgain cierra el lazo: openAskUser
-// con presupuesto agotado descarta, no vuelve a preguntar para siempre.
 func TestBudgetExhausted_DiscardsInsteadOfAskingAgain(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
@@ -193,8 +183,6 @@ func TestBudgetExhausted_DiscardsInsteadOfAskingAgain(t *testing.T) {
 	}
 }
 
-// TestResume_DeleteOpensTheExistingGate: el confirm de borrado no se toca, sólo
-// cambia cómo se llega hasta él.
 func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
@@ -221,8 +209,6 @@ func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 	}
 }
 
-// TestResume_RefusesACandidateOutOfRange: nunca actuar sobre un índice que no
-// existe, aunque el payload venga corrupto.
 func TestResume_RefusesACandidateOutOfRange(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
@@ -283,8 +269,6 @@ func TestNextForUser_IsPerUser(t *testing.T) {
 	}
 }
 
-// Cancelar es un final del usuario, no un flujo muerto: sin el resolve la fila
-// queda en pending y el mensaje siguiente la cierra como abandoned.
 func TestFinishAskUser_CancelResuelveLaMetrica(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
@@ -304,17 +288,10 @@ func TestFinishAskUser_CancelResuelveLaMetrica(t *testing.T) {
 	}
 }
 
-// El picker es un TextStep: el texto libre ya se acepta. Lo que estaba roto es
-// que no llegaba a ningún lado — applyAnswers no encontraba el texto entre las
-// etiquetas, devolvía resolved=false, y openAskUser volvía a mostrar LOS MISMOS
-// cinco botones. Escribir gastaba una vuelta de presupuesto y no cambiaba nada.
 func TestFinishAskUser_TextoLibreVuelveABuscar(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
 
-	// La ventana que va a devolver la re-búsqueda: sólo la carnicería nombra
-	// algo del texto nuevo. created_at viejo a propósito, para no caer en el
-	// atajo del recién-creado.
 	svc.movements = &fakeMovementRepoForResolve{result: []movement.Movement{
 		{Model: gorm.Model{ID: 40, CreatedAt: time.Now().Add(-200 * time.Hour)},
 			Description: strPtr("Compra en carnicería")},
@@ -352,16 +329,10 @@ func TestFinishAskUser_TextoLibreVuelveABuscar(t *testing.T) {
 	}
 }
 
-// TestFinishAskUser_ReBusquedaSinMatchAvisaFallback: si la re-búsqueda no
-// matchea textualmente, la lista salió del fallback por recencia y el cartel
-// tiene que decirlo — no puede prometer "encontré parecidos" (mismo criterio
-// que park en agent_executor.go).
 func TestFinishAskUser_ReBusquedaSinMatchAvisaFallback(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
 
-	// Nada en la descripción comparte token con "eran 2000" ni con la
-	// respuesta libre: la re-búsqueda cae en el fallback por recencia.
 	svc.movements = &fakeMovementRepoForResolve{result: []movement.Movement{
 		{Model: gorm.Model{ID: 40, CreatedAt: time.Now().Add(-200 * time.Hour)},
 			Description: strPtr("Nafta YPF")},
@@ -399,9 +370,6 @@ func TestFinishAskUser_ReBusquedaSinMatchAvisaFallback(t *testing.T) {
 	}
 }
 
-// La re-búsqueda tiene que usar LA MISMA ventana que la original. Sin esto, una
-// corrección que había entrado por fecha salta a la ventana por created_at y el
-// usuario ve otro conjunto por una razón que no puede adivinar.
 func TestFinishAskUser_LaReBusquedaRespetaLaVentana(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)

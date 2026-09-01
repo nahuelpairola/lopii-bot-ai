@@ -30,8 +30,7 @@ never your own reading of your own diff.
 
 **The code is the truth. A comment that lies is worse than no comment**, because an agent believes
 it and nothing turns red. Write comments while you work if they help; **delete them before you
-commit.** `TestNoCommentsInGoSource` (`internal/harness`) enforces this against a baseline that
-only ever goes down.
+commit.** `TestNoCommentsInGoSource` (`internal/harness`) fails on the first one that survives.
 
 The one exception is a **tool directive** — a line the toolchain reads, which asserts nothing about
 behaviour: `//go:build`, `//go:embed`, `//lint:`, and templ's `// Code generated` and
@@ -86,17 +85,17 @@ is no CI.** They run when someone runs them.
 | `llm_eval` | `GROQ_APIKEY` | 3 files, `internal/orchestrator` |
 | `query_eval` | `GROQ_APIKEY` **and** Postgres | 1 file |
 
-Both eval suites **fail loudly when `GROQ_APIKEY` is unset** instead of skipping in silence — the
+Both eval suites **fail loudly when `GROQ_APIKEY` is unset** rather than skipping in silence: the
 tag is asked for by hand, so a skip was a green that proved nothing. They spend real Groq quota,
-which is per model and shared with production. `GROQ_APIKEY` is the only name that works
-(`GROQ_API_KEY` is exported by nothing, and the evals had never run because of it).
+shared with production. `GROQ_APIKEY` is the only name that works — `GROQ_API_KEY` is exported by
+nothing, which is why the evals had never once run.
 
 Two expected reds, both deliberate — do not "fix" either:
 
-- `TestEveryConfigFile_HasNoSameTurnModelCollision`, red by decision since 2026-08-17. Groq left
-  two usable models where the invariant needs three. **Swapping models to make it green makes the
-  bot lie to users.** `check.sh` excuses this one by name and nothing else. It goes green on its
-  own once a third TPM bucket exists.
+- `TestEveryConfigFile_HasNoSameTurnModelCollision`, red by decision since 2026-08-17: Groq left
+  two usable models where the invariant needs three, and **swapping models to make it green makes
+  the bot lie to users**. `check.sh` excuses this one by name and nothing else; it goes green on
+  its own once a third TPM bucket exists.
 - Anything needing Postgres, when Postgres is down. Check that before diagnosing.
 
 `gofmt -l` reports **every** file on Windows (`core.autocrlf=true`, no `eol` rule for `*.go`).
@@ -167,18 +166,12 @@ add a third.
 | [PRODUCT.md](PRODUCT.md) | who the product is for and what it promises | before deciding what a surface should *do* or say |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | the index of every reference doc, the anti-pattern list, and the open technical debt | you need any of those three |
 
-Every package with traps carries its own `AGENTS.md`. **Editing a package means reading its file
-first** — the trap is not visible in the code. Four of them are the money path (`movement`,
-`conversation`, `agent`, `pendingjob`): ignoring those records money wrong with nothing to warn
-you, so `CLAUDE.md` imports them and they are loaded before you start. The rest load only when
-something reads a file in that subtree, which is not guaranteed — open them deliberately.
-`TestPackageCountsMatchReality` keeps the counts in this file honest.
+Every package with traps carries its own `AGENTS.md`, and **editing a package means reading its
+file first** — the trap is never visible in the code. The rest load only when something reads a
+file in that subtree, which is not guaranteed, so open them deliberately.
 
-`DESIGN.md` and `PRODUCT.md` are both **generated** but by different commands: `/impeccable
-document` derives `DESIGN.md` from the shipped artifact plus its `.impeccable/design.json`
-sidecar, while `/impeccable init` writes `PRODUCT.md` from an interview and has no sidecar.
-**Never edit `DESIGN.md` by hand** — it drifts from its sidecar silently, and the sidecar is what
-the live panel reads. A targeted edit to one `PRODUCT.md` section is fine.
+**Never edit `DESIGN.md` by hand** — it is generated, and drifts from its sidecar silently.
+How both root docs are generated: `docs/ARCHITECTURE.md`.
 
 For structure, ask `codegraph_explore`: one call returns verbatim source plus the call graph.
 Once you know which file you are changing, **read that file** — `Read` also pulls in its package's

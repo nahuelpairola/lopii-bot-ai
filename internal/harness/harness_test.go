@@ -10,15 +10,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 )
 
-const (
-	alwaysLoadedLineBudget = 530
-	baselineFile           = "comment_baseline.txt"
-)
+const alwaysLoadedLineBudget = 530
 
 var allowedDirectives = []string{
 	"//go:",
@@ -130,19 +126,16 @@ func TestNoCommentsInGoSource(t *testing.T) {
 		}
 	}
 
-	baseline := readBaseline(t)
-	if len(findings) > baseline {
-		t.Errorf("los comentarios subieron de %d a %d. El comentario es andamio: se borra antes de commitear.\nPrimeros 10 hallazgos nuevos:", baseline, len(findings))
-		for i, f := range findings {
-			if i >= 10 {
-				break
-			}
-			t.Errorf("  %s:%d  %s", f.file, f.line, firstLine(f.text))
-		}
+	if len(findings) == 0 {
 		return
 	}
-	if len(findings) < baseline {
-		t.Errorf("los comentarios bajaron de %d a %d. Bajá el baseline en %s a %d y volvé a correr.", baseline, len(findings), baselineFile, len(findings))
+	t.Errorf("%d comentarios en el código. El comentario es andamio: se borra antes de commitear. Sólo sobreviven las directivas de herramienta (%s).", len(findings), strings.Join(allowedDirectives, ", "))
+	for i, f := range findings {
+		if i >= 10 {
+			t.Errorf("  … y %d más", len(findings)-10)
+			break
+		}
+		t.Errorf("  %s:%d  %s", f.file, f.line, firstLine(f.text))
 	}
 }
 
@@ -154,30 +147,6 @@ func firstLine(s string) string {
 		s = s[:70] + "…"
 	}
 	return s
-}
-
-func readBaseline(t *testing.T) int {
-	t.Helper()
-	raw, err := os.ReadFile(baselineFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0
-		}
-		t.Fatalf("no se pudo leer %s: %v", baselineFile, err)
-	}
-	for _, line := range strings.Split(string(raw), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		n, err := strconv.Atoi(line)
-		if err != nil {
-			t.Fatalf("%s tiene que ser un número, no %q", baselineFile, line)
-		}
-		return n
-	}
-	t.Fatalf("%s está vacío", baselineFile)
-	return 0
 }
 
 var lineNumberRef = regexp.MustCompile(`[a-zA-Z_][a-zA-Z0-9_]*\.go:\d+`)

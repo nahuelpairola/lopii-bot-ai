@@ -111,3 +111,20 @@ reasoning behind a design choice lives in [decisions.md](decisions.md).
   `pendingjob`'s drain gate. A second instance needs Postgres for both.
 - `ClassifyCreate` and `ResolveDelete` survive only as methods on test fakes; stage 5 removed
   every production caller.
+
+## The two generated root docs
+
+`DESIGN.md` and `PRODUCT.md` are both generated, but by different commands and from different
+sources. `/impeccable document` derives `DESIGN.md` from the shipped artifact and writes
+`.impeccable/design.json` as its sidecar; `/impeccable init` writes `PRODUCT.md` from an
+interview and has no sidecar. Running `document` does not refresh `PRODUCT.md`.
+
+**Never edit `DESIGN.md` by hand** — it drifts from its sidecar silently, and the sidecar is what
+the live panel reads. `PRODUCT.md` has no sidecar, so a targeted edit to one section is fine and
+is the right tool when a single recorded decision changes; re-run `/impeccable init` only when
+the product itself moved.
+
+Refresh `DESIGN.md` **on the same branch** as the change that dated it: the design detector reads
+the `DESIGN.md` on your branch, so shipping a visual change while the refresh waits elsewhere
+makes it report a value that is genuinely on the ramp as off it.
+

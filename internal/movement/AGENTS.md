@@ -50,9 +50,8 @@ timezone (UTC), not the ART offset the parameter carries. Every "today" row then
 ART-anchored `since` and **vanishes from the result for part of the day**. It compiles, it runs,
 it loses rows.
 
-`FindSimilarForUser`'s `query string` parameter is dead — it no longer filters anything
-(`repository.go`). It stays in the signature because removing it ripples through the
-interface and three test mocks.
+`FindSimilarForUser`'s `query string` parameter is dead: it stays in the signature only because
+removing it ripples through the interface and three test mocks.
 
 ## `ListForAccount` breaks two house rules on purpose
 

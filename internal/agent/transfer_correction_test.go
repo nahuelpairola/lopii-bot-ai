@@ -13,19 +13,11 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-// Corregir el monto de una transferencia. Las dos patas vuelven a escribirse
-// enteras, así que tienen que salir con signos OPUESTOS y compartiendo
-// transaction_id — si no, validateTransferGroups rechaza el grupo y la
-// corrección muere entera. Pasó en producción el 2026-08-20: tres intentos de
-// llevar una transferencia de 10.000 a 100.000 fallaron y el usuario terminó
-// cargando una segunda de 90.000 (movimientos 307/308 + 309/310).
 func TestResolveAndInsertMovements_TransferAmountCorrection(t *testing.T) {
 	sub := newSubForTest(5, "Transferencias", "Entre cuentas")
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Transferencias|Entre cuentas": sub,
-		// El camino de escritura pregunta por el par del FCI en cada transfer que
-		// sale; sin la entrada el fake devuelve error y nunca se llega al guard.
-		"Inversiones|FCI": newSubForTest(6, "Inversiones", "FCI"),
+		"Inversiones|FCI":              newSubForTest(6, "Inversiones", "FCI"),
 	}}
 	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(2, currency.ARS, false)}}
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000", 2: "1000000"}}
@@ -49,8 +41,6 @@ func TestResolveAndInsertMovements_TransferAmountCorrection(t *testing.T) {
 		t.Fatalf("applyChanges: %v", err)
 	}
 
-	// El viaje real de la corrección: las filas salen a MovementDraft y vuelven,
-	// que es donde se pierde todo lo que la app sabe y el modelo no.
 	after := make([]movement.MovementRow, 0, len(corrected))
 	for _, r := range corrected {
 		after = append(after, draftToRow(rowToDraft(r)))

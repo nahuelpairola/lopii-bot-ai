@@ -9,13 +9,6 @@ import (
 	"lopiibot.com/internal/movement"
 )
 
-// TestMsgConfirmDelete_IncludesSubcategoryDescriptionDate: el único camino que
-// hoy pasa por MsgConfirmDelete con filas completas es el borrado "desde adentro"
-// del grupo (MovementDeleteFlowFinish) — el bot borró, confirmó, y no puede
-// confirmar nada que no tenga. Pero nada impone que el paso de confirmación sea
-// sordo a lo que ya sabe la fila, y en un DELETEs "desde la lista" la fila va a
-// venir completa. Si el mensaje repite una subcategoría que nunca se muestra en
-// ese flujo, es un bug visible; si no, es un detalle que nadie nota.
 func TestMsgConfirmDelete_IncludesSubcategoryDescriptionDate(t *testing.T) {
 	data := conversation.Data{
 		conversation.KeyCandidateGroups: flow.EncodeCandidateGroups([]flow.CandidateGroup{
