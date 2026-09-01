@@ -203,8 +203,8 @@ lives in the `AGENTS.md` and only there.)
 | `settings` | on demand | the only caller of three LLM calls; a 429 is answered before the wizard fallback |
 | `pendingjob` | **always** | the replay flag is set once at the call site; `EnqueueBehindPending` is webhook-only |
 | `nudges` | on demand | `MarkSent` is once-ever; a tip's tap jumps the engine on purpose |
-| `notifier` | on demand | the sweeper sends with `ParseMode: HTML` - every emitter must be HTML-safe |
-| `quote` | on demand | `usd_quotes` has irregular gaps (read `<= D`, never `= D`); `monthly_cpi.value` is a % change, not a level |
+| `notifier` | on demand | the sweeper sends with `ParseMode: HTML` - every emitter must be HTML-safe; the monthly summary bypasses `SendText` and is not opt-in |
+| `quote` | on demand | `usd_quotes` has irregular gaps (read `<= D`, never `= D`) and one reader, the monthly summary; `monthly_cpi.value` is a % change, not a level |
 | `controller/messaging` | on demand | the bridge pattern; the per-user lock; what bypasses the engine |
 | `controller/miniapp` | on demand | **auth is which Gin group you register on, and nothing else** |
 | `messenger` | on demand | the only place that knows a channel exists; the core never branches on `Channel` |

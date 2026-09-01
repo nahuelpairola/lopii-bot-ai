@@ -32,6 +32,17 @@ collision.
 (`text_step.go:39-41`) — `PossibleNextSteps()` never inspects them, so a violating button jumps
 to an undeclared step with startup validation having given false confidence.
 
+## A `Button` carries either `Data` or `WebAppPath`, never both
+
+Telegram rejects an inline button that sets both `callback_data` and `web_app` with a 400, and
+the message never arrives. `Button` has no type or validation stopping you: the adapter
+(`internal/messenger/telegram`) branches on `WebAppPath != ""` and drops `Data` when it wins,
+so a button carrying both loses its callback silently at render time rather than failing here.
+Two tests in that package assert the exclusivity in both directions.
+
+`WebAppPath` is a **path**, not a URL — the adapter prefixes the configured `baseHost`. That is
+why `telegram.New` takes a host; a path shipped as a full URL renders as garbage.
+
 ## Three hooks, three names, one idea
 
 `ChoiceStep.OnChoice`, `TextStep.OnEscape` (buttons) and `TextStep.OnText` (accepted text) all
