@@ -64,6 +64,23 @@ var Tools = []orchestrator.AgentTool{
 		}`),
 	},
 	{
+		Name:        "spending_report",
+		Description: "Gasto o ingreso en un rango con el PROMEDIO DIARIO de cada fila YA CALCULADO por la app. Usala siempre que la pregunta pida un promedio, una tasa \"por día\" o \"cuánto por día\": no calcules vos el promedio. group_by agrupa por UN solo eje. Devuelve montos en positivo y excluye transferencias entre cuentas propias.",
+		Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"from": {"type": "string", "description": "fecha desde YYYY-MM-DD"},
+				"to": {"type": "string", "description": "fecha hasta YYYY-MM-DD"},
+				"currency": {"type": "string", "enum": ["ARS", "USD"]},
+				"group_by": {"type": ["string", "null"], "enum": ["none", "category", "subcategory", "account", null]},
+				"type": {"type": ["string", "null"], "enum": ["expense", "income", null]},
+				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
+				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos."}
+			},
+			"required": ["from", "to", "currency"]
+		}`),
+	},
+	{
 		Name:        "list_movements",
 		Description: "Lista movimientos individuales (los más recientes primero) en un rango de fechas, con filtros opcionales. Montos en positivo.",
 		Parameters: json.RawMessage(`{

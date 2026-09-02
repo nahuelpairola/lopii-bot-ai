@@ -948,3 +948,49 @@ func TestExec_SpendingReport_UngroupedZeroIsNotAMuteZero(t *testing.T) {
 		t.Errorf("tiene que caer en describeEmptyResult: %s", out)
 	}
 }
+
+func TestSpendingReportSchema_ExcludesTheGroupingsThatWouldLie(t *testing.T) {
+	var tool *orchestrator.AgentTool
+	for i := range Tools {
+		if Tools[i].Name == "spending_report" {
+			tool = &Tools[i]
+		}
+	}
+	if tool == nil {
+		t.Fatal("spending_report no esta en Tools: el modelo no la puede pedir")
+	}
+
+	var schema struct {
+		Properties map[string]struct {
+			Enum []any `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(tool.Parameters, &schema); err != nil {
+		t.Fatalf("el schema no parsea: %v", err)
+	}
+
+	tiene := func(campo, valor string) bool {
+		for _, v := range schema.Properties[campo].Enum {
+			if s, ok := v.(string); ok && s == valor {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, prohibido := range []string{"day", "month", "type"} {
+		if tiene("group_by", prohibido) {
+			t.Errorf("group_by=%q no puede estar en el enum: el promedio diario de esa agrupacion "+
+				"es redundante o directamente falso, y el schema es lo unico que se lo impide al modelo", prohibido)
+		}
+	}
+	for _, obligatorio := range []string{"none", "category", "subcategory", "account"} {
+		if !tiene("group_by", obligatorio) {
+			t.Errorf("group_by=%q falta: sin el, el modelo tiene que agrupar de otra forma y sumar a mano", obligatorio)
+		}
+	}
+	if tiene("type", constants.Transfer) {
+		t.Error("type=transfer no puede estar: las dos patas de un transfer son la misma plata, " +
+			"y cualquier agregado sobre las dos es 2x")
+	}
+}
