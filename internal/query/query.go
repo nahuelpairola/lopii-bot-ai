@@ -186,6 +186,8 @@ func NewExecutor(svc services, userID uint64) func(string, json.RawMessage) (str
 				rem = nil
 			}
 			return describeReminder(rem), nil
+		case "spending_report":
+			return execSpendingReport(svc, userID, args)
 		default:
 			return "", fmt.Errorf("herramienta desconocida: %s", name)
 		}
@@ -496,6 +498,57 @@ func stripLeadingIcon(s string) string {
 
 func parseQueryDate(s string) (time.Time, error) {
 	return time.Parse("2006-01-02", strings.TrimSpace(s))
+}
+
+func withDailyRate(amount decimal.Decimal, days int, cur string) string {
+	shown := amount.Abs().StringFixed(2) + " " + cur
+	if days <= 0 {
+		return shown
+	}
+	rate := amount.Abs().Div(decimal.NewFromInt(int64(days)))
+	return shown + " · " + rate.StringFixed(2) + "/día"
+}
+
+func rejectsDailyRate(groupBy, movType string) bool {
+	return groupBy == movement.GroupByDay || groupBy == movement.GroupByMonth ||
+		groupBy == movement.GroupByType || movType == constants.Transfer
+}
+
+func execSpendingReport(svc services, userID uint64, args queryToolArgs) (string, error) {
+	if rejectsDailyRate(args.GroupBy, args.Type) {
+		return "", fmt.Errorf("no hay promedio diario para eso: agrupá por categoría, subcategoría o cuenta, o pedí el total sin agrupar")
+	}
+	q, err := buildMovementQuery(svc, userID, args)
+	if err != nil {
+		return "", err
+	}
+	rows, err := svc.QuerySumMovements(q, args.GroupBy)
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 || (ungroupedSum(args.GroupBy) && rows[0].Total.IsZero()) {
+		return describeEmptyResult(svc, q, args)
+	}
+	cur := q.Currency.String()
+	days := daysInRange(q.From, q.To, agent.StartOfTodayArgentina())
+
+	var lines []string
+	if ungroupedSum(args.GroupBy) {
+		lines = append(lines, "total: "+withDailyRate(rows[0].Total, days, cur))
+	} else {
+		labels := groupLabels(svc, userID, args.GroupBy, rows)
+		for i, r := range rows {
+			lines = append(lines, labels[i]+": "+withDailyRate(r.Total, days, cur))
+		}
+		if showsGroupedTotal(rows, args.GroupBy, args.Type) {
+			lines = append(lines, fmt.Sprintf("total (suma de las %d filas): %s",
+				len(rows), withDailyRate(sumRows(rows), days, cur)))
+		}
+	}
+	if days > 0 {
+		lines = append(lines, fmt.Sprintf("(promedio diario sobre %d días)", days))
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 func describeReminder(r *reminder.Reminder) string {

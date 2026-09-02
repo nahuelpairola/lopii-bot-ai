@@ -847,3 +847,104 @@ func TestDaysInRange_ReadsEachDateInItsOwnZoneNotAsAnInstant(t *testing.T) {
 			"pero como instante ya cayo en el 4 de septiembre UTC", got)
 	}
 }
+
+func TestExec_SpendingReport_GroupedCarriesTheDailyRatePerRow(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "Ocio", Total: dec("310")},
+		{Label: "Comida", Total: dec("620")},
+	}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"category"}`))
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if !strings.Contains(out, "10.00/día") {
+		t.Errorf("Ocio 310 en 31 dias son 10.00/dia: %s", out)
+	}
+	if !strings.Contains(out, "20.00/día") {
+		t.Errorf("Comida 620 en 31 dias son 20.00/dia: %s", out)
+	}
+	if !strings.Contains(out, "30.00/día") {
+		t.Errorf("el total (930) tambien lleva su tasa: %s", out)
+	}
+	if !strings.Contains(out, "31 días") {
+		t.Errorf("el resultado tiene que decir sobre cuantos dias promedio: %s", out)
+	}
+}
+
+func TestExec_SpendingReport_UngroupedIsASingleTotalWithItsRate(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("930")}}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"none"}`))
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if !strings.Contains(out, "930.00 ARS") || !strings.Contains(out, "30.00/día") {
+		t.Errorf("total con su tasa diaria: %s", out)
+	}
+	if strings.Contains(out, "suma de las") {
+		t.Errorf("sin agrupar no hay linea de total de filas: %s", out)
+	}
+}
+
+func TestExec_SpendingReport_OneRowHasNoTotalLine(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Ocio", Total: dec("310")}}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"category"}`))
+	if strings.Contains(out, "suma de las") {
+		t.Errorf("una sola fila: el total ES la fila, repetirlo son dos hechos donde hay uno: %s", out)
+	}
+	if !strings.Contains(out, "10.00/día") {
+		t.Errorf("pero su promedio si va: %s", out)
+	}
+}
+
+func TestExec_SpendingReport_EmptyGoesThroughTheSameProbesAsSum(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: nil}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"category"}`))
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if !strings.Contains(out, msgQueryNoRowsInRange) {
+		t.Errorf("un resultado vacio sin search es el mismo mensaje que en sum_movements: %s", out)
+	}
+}
+
+func TestExec_SpendingReport_RefusesTheGroupingsThatWouldProduceAFalseAverage(t *testing.T) {
+	for _, args := range []string{
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"month"}`,
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"day"}`,
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"type"}`,
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","type":"transfer"}`,
+	} {
+		m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "x", Total: dec("310")}}}
+		exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+		if _, err := exec("spending_report", json.RawMessage(args)); err == nil {
+			t.Errorf("%s tendria que ser rechazado: el enum del schema es la primera linea de defensa, "+
+				"pero si un modelo la esquiva el promedio que sale es FALSO, no impreciso", args)
+		}
+	}
+}
+
+func TestExec_SpendingReport_UngroupedZeroIsNotAMuteZero(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("0")}}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"none"}`))
+	if strings.Contains(out, "0.00/día") {
+		t.Errorf("un sum sin agrupar devuelve SIEMPRE una fila: el cero es ausencia, no una tasa: %s", out)
+	}
+	if !strings.Contains(out, msgQueryNoRowsInRange) {
+		t.Errorf("tiene que caer en describeEmptyResult: %s", out)
+	}
+}
