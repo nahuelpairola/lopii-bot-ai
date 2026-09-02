@@ -209,6 +209,23 @@ func (p Period) DaysElapsed(now time.Time) int {
 	return days
 }
 
+func (p Period) PerDayNote(now time.Time) string {
+	end := p.To
+	if n := now.In(constants.ArgentinaZone); n.Before(end) {
+		end = n
+	}
+	from := startOfDayART(p.From)
+	to := startOfDayART(end)
+	days := p.DaysElapsed(now)
+
+	if from.Year() == to.Year() && from.Month() == to.Month() {
+		return fmt.Sprintf(msgPerDayNoteSameMonth, days, from.Day(), to.Day(), monthShortEs[to.Month()-1])
+	}
+	return fmt.Sprintf(msgPerDayNote, days,
+		from.Day(), monthShortEs[from.Month()-1],
+		to.Day(), monthShortEs[to.Month()-1])
+}
+
 func startOfDayART(t time.Time) time.Time {
 	a := t.In(constants.ArgentinaZone)
 	return time.Date(a.Year(), a.Month(), a.Day(), 0, 0, 0, 0, constants.ArgentinaZone)

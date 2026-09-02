@@ -33,6 +33,11 @@ const (
 
 var AccountSlotColors = []string{"#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"}
 
+const (
+	msgPerDayNote          = "Por día = total ÷ %d días corridos, del %d %s al %d %s."
+	msgPerDayNoteSameMonth = "Por día = total ÷ %d días corridos, del %d al %d %s."
+)
+
 const AssetVersionParam = "v"
 
 var AssetVersion = "dev"

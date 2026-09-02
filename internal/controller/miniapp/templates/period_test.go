@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -210,5 +211,52 @@ func TestDaysElapsed_UsesArgentineWallClockNotUTC(t *testing.T) {
 
 	if got := p.DaysElapsed(time.Date(2026, 9, 3, 1, 30, 0, 0, time.UTC)); got != 2 {
 		t.Errorf("DaysElapsed = %d, want 2: a la 01:30 UTC en Argentina todavía es el 2", got)
+	}
+}
+
+func TestPerDayNote_SpansMonthsNamingBoth(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(Preset3M, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	got := p.PerDayNote(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone))
+	want := "Por día = total ÷ 64 días corridos, del 1 jul al 2 sep."
+	if got != want {
+		t.Errorf("PerDayNote = %q, want %q", got, want)
+	}
+}
+
+func TestPerDayNote_SameMonthPrintsTheMonthOnce(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	got := p.PerDayNote(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone))
+	want := "Por día = total ÷ 2 días corridos, del 1 al 2 sep."
+	if got != want {
+		t.Errorf("PerDayNote = %q, want %q", got, want)
+	}
+}
+
+func TestPerDayNote_ClosedMonthEndsAtItsLastDay(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.July), art(2026, time.September), currency.ARS)
+
+	got := p.PerDayNote(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone))
+	want := "Por día = total ÷ 31 días corridos, del 1 al 31 jul."
+	if got != want {
+		t.Errorf("PerDayNote = %q, want %q: un mes cerrado no termina hoy", got, want)
+	}
+}
+
+func TestPerDayNote_NamesTheSameCountItDividesBy(t *testing.T) {
+	now := time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)
+	for _, preset := range []string{PresetMonth, Preset3M, Preset6M, PresetYear} {
+		p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(preset, Preset6M),
+			art(2026, time.September), art(2026, time.September), currency.ARS)
+
+		want := strconv.Itoa(p.DaysElapsed(now)) + " días corridos"
+		if !strings.Contains(p.PerDayNote(now), want) {
+			t.Errorf("preset %s: la nota dice %q y no contiene %q — la frase y la columna divergieron",
+				preset, p.PerDayNote(now), want)
+		}
 	}
 }
