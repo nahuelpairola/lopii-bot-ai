@@ -35,6 +35,7 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 	var sb strings.Builder
 	fmt.Fprintf(&sb, msgMonthlyHeader, constants.MonthLongEs[to.Month()-1])
 	sb.WriteString(openingLines(spent, earned))
+	sb.WriteString(perDayLine(spent, to))
 	sb.WriteString(spendComparison(spent, prevSpent, prevTo))
 
 	dollars, err := b.dollarLine(spent, to)
@@ -125,6 +126,14 @@ func openingLines(spent, earned decimal.Decimal) string {
 	}
 	return fmt.Sprintf(msgMonthlyInAndOut,
 		money(earned, currency.ARS), money(spent, currency.ARS), money(left, currency.ARS))
+}
+
+func perDayLine(spent decimal.Decimal, to time.Time) string {
+	if !spent.IsPositive() {
+		return ""
+	}
+	perDay := spent.Div(decimal.NewFromInt(int64(daysInMonth(to)))).Round(0)
+	return fmt.Sprintf(msgMonthlyPerDay, money(perDay, currency.ARS))
 }
 
 func spendComparison(spent, prevSpent decimal.Decimal, prevTo time.Time) string {
