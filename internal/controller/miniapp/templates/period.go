@@ -195,6 +195,25 @@ func upperFirst(s string) string {
 	return string(r)
 }
 
+func (p Period) DaysElapsed(now time.Time) int {
+	end := p.To
+	if n := now.In(constants.ArgentinaZone); n.Before(end) {
+		end = n
+	}
+	from := startOfDayART(p.From)
+	to := startOfDayART(end)
+	days := int(to.Sub(from)/(24*time.Hour)) + 1
+	if days < 1 {
+		return 1
+	}
+	return days
+}
+
+func startOfDayART(t time.Time) time.Time {
+	a := t.In(constants.ArgentinaZone)
+	return time.Date(a.Year(), a.Month(), a.Day(), 0, 0, 0, 0, constants.ArgentinaZone)
+}
+
 func periodQuery(route string, presets map[string]string, anchor time.Time, cur currency.Currency) string {
 	v := url.Values{}
 

@@ -156,3 +156,59 @@ func TestWithPreset_DoesNotMutateThePeriod(t *testing.T) {
 		t.Errorf("Query después de WithPreset = %q", got)
 	}
 }
+
+func TestDaysElapsed_ClosedMonthCountsEveryDayOfIt(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.July), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)); got != 31 {
+		t.Errorf("DaysElapsed = %d, want 31: julio ya cerró, se cuenta entero", got)
+	}
+}
+
+func TestDaysElapsed_OpenMonthStopsToday(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)); got != 2 {
+		t.Errorf("DaysElapsed = %d, want 2: dividir por 30 informa un costo diario de 28 días que no pasaron", got)
+	}
+}
+
+func TestDaysElapsed_MultiMonthAddsClosedMonthsPlusElapsed(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(Preset3M, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)); got != 64 {
+		t.Errorf("DaysElapsed = %d, want 64: julio 31 + agosto 31 + 2 de septiembre", got)
+	}
+}
+
+func TestDaysElapsed_FirstDayOfTheMonthCountsAsOne(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 1, 0, 30, 0, 0, constants.ArgentinaZone)); got != 1 {
+		t.Errorf("DaysElapsed = %d, want 1: el día en curso ya cuenta", got)
+	}
+}
+
+func TestDaysElapsed_NeverReturnsZeroEvenIfTheWindowStartsInTheFuture(t *testing.T) {
+	p := Period{
+		From: art(2026, time.October),
+		To:   art(2026, time.October).AddDate(0, 1, 0).Add(-time.Nanosecond),
+	}
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)); got != 1 {
+		t.Errorf("DaysElapsed = %d, want 1: un divisor 0 o negativo hace explotar decimal.Div", got)
+	}
+}
+
+func TestDaysElapsed_UsesArgentineWallClockNotUTC(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 3, 1, 30, 0, 0, time.UTC)); got != 2 {
+		t.Errorf("DaysElapsed = %d, want 2: a la 01:30 UTC en Argentina todavía es el 2", got)
+	}
+}
