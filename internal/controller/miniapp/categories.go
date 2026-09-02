@@ -3,7 +3,6 @@ package miniapp
 import (
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -76,10 +75,14 @@ func (c *controller) buildCategoriesData(userID uint64, p templates.Period, grou
 		total = total.Add(r.Total)
 	}
 
+	now := nowInART()
+	days := decimal.NewFromInt(int64(p.DaysElapsed(now)))
+
 	out := templates.CategoriesData{
-		Period: p,
-		Empty:  len(rows) == 0,
-		Total:  templates.FormatMoney(total, p.Currency),
+		Period:     p,
+		Empty:      len(rows) == 0,
+		Total:      templates.FormatMoney(total, p.Currency),
+		PerDayNote: p.PerDayNote(now),
 	}
 	labels := make([]string, len(rows))
 	values := make([]float64, len(rows))
@@ -87,7 +90,7 @@ func (c *controller) buildCategoriesData(userID uint64, p templates.Period, grou
 		row := templates.CategoryRow{
 			Category: r.Label,
 			Total:    templates.FormatMoney(r.Total, p.Currency),
-			Share:    sharePercent(r.Total, total),
+			PerDay:   templates.FormatMoney(r.Total.Div(days), p.Currency),
 		}
 
 		if category == nil {
@@ -105,14 +108,6 @@ func (c *controller) buildCategoriesData(userID uint64, p templates.Period, grou
 	}
 	out.Chart = templates.BarChartData{Labels: labels, Values: values, Role: templates.RoleExpense}
 	return out, nil
-}
-
-func sharePercent(v, total decimal.Decimal) string {
-	if total.IsZero() {
-		return ""
-	}
-	pct := v.Mul(decimal.NewFromInt(100)).Div(total)
-	return strconv.FormatInt(pct.Round(0).IntPart(), 10) + "%"
 }
 
 func (c *controller) handleSubcategoryLeaf(ctx *gin.Context, userID uint64, p templates.Period, category, sub string) {

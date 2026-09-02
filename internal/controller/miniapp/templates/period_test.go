@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -154,5 +155,108 @@ func TestWithPreset_DoesNotMutateThePeriod(t *testing.T) {
 	}
 	if got := p.Query(); got != "/app/evolution?c=ARS&m=2026-07&p=month&pt=6m" {
 		t.Errorf("Query después de WithPreset = %q", got)
+	}
+}
+
+func TestDaysElapsed_ClosedMonthCountsEveryDayOfIt(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.July), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)); got != 31 {
+		t.Errorf("DaysElapsed = %d, want 31: julio ya cerró, se cuenta entero", got)
+	}
+}
+
+func TestDaysElapsed_OpenMonthStopsToday(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)); got != 2 {
+		t.Errorf("DaysElapsed = %d, want 2: dividir por 30 informa un costo diario de 28 días que no pasaron", got)
+	}
+}
+
+func TestDaysElapsed_MultiMonthAddsClosedMonthsPlusElapsed(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(Preset3M, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)); got != 64 {
+		t.Errorf("DaysElapsed = %d, want 64: julio 31 + agosto 31 + 2 de septiembre", got)
+	}
+}
+
+func TestDaysElapsed_FirstDayOfTheMonthCountsAsOne(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 1, 0, 30, 0, 0, constants.ArgentinaZone)); got != 1 {
+		t.Errorf("DaysElapsed = %d, want 1: el día en curso ya cuenta", got)
+	}
+}
+
+func TestDaysElapsed_NeverReturnsZeroEvenIfTheWindowStartsInTheFuture(t *testing.T) {
+	p := Period{
+		From: art(2026, time.October),
+		To:   art(2026, time.October).AddDate(0, 1, 0).Add(-time.Nanosecond),
+	}
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)); got != 1 {
+		t.Errorf("DaysElapsed = %d, want 1: un divisor 0 o negativo hace explotar decimal.Div", got)
+	}
+}
+
+func TestDaysElapsed_UsesArgentineWallClockNotUTC(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	if got := p.DaysElapsed(time.Date(2026, 9, 3, 1, 30, 0, 0, time.UTC)); got != 2 {
+		t.Errorf("DaysElapsed = %d, want 2: a la 01:30 UTC en Argentina todavía es el 2", got)
+	}
+}
+
+func TestPerDayNote_SpansMonthsNamingBoth(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(Preset3M, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	got := p.PerDayNote(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone))
+	want := "Por día = total ÷ 64 días corridos, del 1 jul al 2 sep."
+	if got != want {
+		t.Errorf("PerDayNote = %q, want %q", got, want)
+	}
+}
+
+func TestPerDayNote_SameMonthPrintsTheMonthOnce(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.September), art(2026, time.September), currency.ARS)
+
+	got := p.PerDayNote(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone))
+	want := "Por día = total ÷ 2 días corridos, del 1 al 2 sep."
+	if got != want {
+		t.Errorf("PerDayNote = %q, want %q", got, want)
+	}
+}
+
+func TestPerDayNote_ClosedMonthEndsAtItsLastDay(t *testing.T) {
+	p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(PresetMonth, Preset6M),
+		art(2026, time.July), art(2026, time.September), currency.ARS)
+
+	got := p.PerDayNote(time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone))
+	want := "Por día = total ÷ 31 días corridos, del 1 al 31 jul."
+	if got != want {
+		t.Errorf("PerDayNote = %q, want %q: un mes cerrado no termina hoy", got, want)
+	}
+}
+
+func TestPerDayNote_NamesTheSameCountItDividesBy(t *testing.T) {
+	now := time.Date(2026, 9, 2, 10, 0, 0, 0, constants.ArgentinaZone)
+	for _, preset := range []string{PresetMonth, Preset3M, Preset6M, PresetYear} {
+		p := NewPeriod(RouteCategories, SinglePeriodScope, presetsFor(preset, Preset6M),
+			art(2026, time.September), art(2026, time.September), currency.ARS)
+
+		want := strconv.Itoa(p.DaysElapsed(now)) + " días corridos"
+		if !strings.Contains(p.PerDayNote(now), want) {
+			t.Errorf("preset %s: la nota dice %q y no contiene %q — la frase y la columna divergieron",
+				preset, p.PerDayNote(now), want)
+		}
 	}
 }

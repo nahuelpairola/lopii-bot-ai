@@ -705,8 +705,13 @@ or two letters match half the list and the highlight becomes noise.
 
 ### Category Table
 
-- **Character:** three columns (name, total, share) that fit a 360px phone
+- **Character:** three columns (name, total, por día) that fit a 360px phone
   outright — no scroller, no sticky column, unlike Evolución.
+- **The third column is an amount, not a percentage.** It was a share (`75%`)
+  until 2026-09-02 and is now what the category costs per elapsed day. A
+  percentage answers "what fraction", which is not the question this audience
+  asks; an absolute figure is. Both are Money-shaped cells, so the swap cost no
+  width — which is why the table is still three columns and still fits.
 - **Shape:** `.cat-table`, `0.85rem` text — the same compaction Evolución
   already carried, applied here for the same reason: Pico's own `td`/`th`
   padding overflows a phone once a table has real content in every cell.
@@ -724,6 +729,16 @@ or two letters match half the list and the highlight becomes noise.
 - **Accessible name:** the table itself carries an `aria-label`
   (`Gastos por categoría` / `…por subcategoría`), because the Categorías index
   has no `<h1>` above it to borrow one from.
+- **Legend note:** a single `<p class="muted">` sits **below** the table,
+  carrying the sentence that defines the third column — *"Por día = total ÷ 64
+  días corridos, del 1 jul al 2 sep."* It goes below, not above like Evolución's
+  legend, because the column it explains is self-evidently money and the reader
+  only needs the divisor once they have seen a figure worth questioning. Its
+  numbers are computed, never written: the day count and both dates come from
+  the same window the column divides by, so the sentence cannot contradict the
+  cells above it. It lives inside `categoryTable`, which is why the
+  subcategory drill inherits it, and why an empty period renders no orphaned
+  note — the whole component is skipped.
 
 ### Evolución Table
 

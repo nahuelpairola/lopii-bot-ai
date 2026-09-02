@@ -19,6 +19,7 @@
 - [The agent loop and QUERY](#the-agent-loop-and-query)
 - [Groq quota, the 429 queue and rate limits](#groq-quota-the-429-queue-and-rate-limits)
 - [Notifications and reminders](#notifications-and-reminders)
+- [The Mini App](#the-mini-app)
 - [Package layout, metrics and tooling](#package-layout-metrics-and-tooling)
 
 ## Interaction principles
@@ -282,6 +283,38 @@ illegible as a Telegram message.
 - **Reminder delete == disable, no `deleted_at`.** With one `reminders` row per user, "borrar el recordatorio" and "apagar el recordatorio" are the same user-facing fact — stop reminding me. `enabled=false` covers both; re-enabling is just sending a new window. Skips a second code path and a `deleted_at` column for a distinction the user never perceives.
 - **The monthly summary resolves over `users`, not `reminders`, because it cannot be turned off (2026-08-31).** The weekly summary is opt-in through `reminders.weekly_summary_enabled`, and the monthly one was first built hanging off the same flag — which meant switching off the weekly silently switched off the monthly too. Making it unconditional looked like deleting that one predicate from `ListMonthlyDue`, and that would have been wrong: the query reads `reminders`, and **5 of the 7 production users have no row in that table at all** (a row is only created when someone configures a reminder or opts into the weekly). Dropping the filter alone would have left the "mandatory" monthly reaching two people. It now `LEFT JOIN`s `reminders` from `users`, and `SetLastMonthlySummaryOn` upserts the row when it is missing. That upsert writes **one column**: reusing the existing `Upsert`, whose `DoUpdates` list covers `enabled` and `weekly_summary_enabled`, would have reset both flags on every monthly send — switching off the daily reminder of every user who had one.
 - **`BuildMonthly` returns a `conversation.Prompt`, not the `string` its weekly sibling returns (2026-08-30).** The weekly's `Build` returns text and the sweeper ships it with `messenger.SendText`, which is documented as the no-buttons helper. The monthly carries a WebApp button (it deep-links the Mini App into the reported month), so it cannot go through `SendText` at all — the sweeper calls `chat.Send(ctx, prompt)` directly. This forced `internal/summary` to import `internal/conversation`, verified cycle-free: `conversation`'s only intra-repo import is `internal/database`.
+
+## The Mini App
+
+### "Por día" divides by elapsed days, not by the length of the month — 2026-09-02
+
+The Categories table's `%` column was replaced by a per-day cost. A percentage
+answers "what share", which is not the question users ask out loud; "how much is my
+day costing me" is.
+
+The divisor is calendar days from the period's start through `min(period end,
+today)`, one rule for all four presets. Two alternatives were dropped:
+
+- **Nominal length of the period** (30 days for an open September). Comparable
+  month to month, but on the 2nd it reports a daily cost spread over 28 days that
+  have not happened yet — it understates by construction.
+- **Branching on "is the anchor the current month?"** Identical numbers, because a
+  closed period's `min(end, today)` IS its last day. Rejected as an implementation,
+  not as a rule: two code paths that have to agree forever.
+
+The consequence is the intended reading: Total grows with the period while Por día
+flattens. 3M reports what a day cost on average that quarter, not what a day cost
+in a month.
+
+`Period.PerDayNote` prints the day count it divided by, taken from the same `now`
+and the same window as `Period.DaysElapsed`. The sentence and the column cannot
+drift, because a bug in one is a bug in the other.
+
+**Known limitation.** Over 6M and Año the average mixes pesos of different
+purchasing power: a peso from last October is not a peso from today, so the figure
+understates what a day costs now. Deflating by CPI is parked work; the number is
+useful without it, and the limitation is recorded here rather than papered over in
+the UI.
 
 ## Package layout, metrics and tooling
 

@@ -10,7 +10,7 @@ func TestSubcategoryDrill_RowsLinkToTheirLeaf(t *testing.T) {
 	data := CategoriesData{
 		Drill: "Alimentación",
 		Rows: []CategoryRow{
-			{Category: "Supermercado", Total: "$80.000", Share: "65%", Href: "/app/categories?p=month&m=2026-08&c=ARS&category=Alimentaci%C3%B3n&subcategory=Supermercado"},
+			{Category: "Supermercado", Total: "$80.000", PerDay: "$2.580", Href: "/app/categories?p=month&m=2026-08&c=ARS&category=Alimentaci%C3%B3n&subcategory=Supermercado"},
 		},
 		Total: "$123.000",
 	}
@@ -137,8 +137,8 @@ func TestCategories_ChartSitsInABox(t *testing.T) {
 func TestCategories_TotalSitsAboveTheTable(t *testing.T) {
 	data := CategoriesData{
 		Rows: []CategoryRow{
-			{Category: "Alimentación", Total: "$60.000", Share: "75%"},
-			{Category: "Transporte", Total: "$20.000", Share: "25%"},
+			{Category: "Alimentación", Total: "$60.000", PerDay: "$1.935"},
+			{Category: "Transporte", Total: "$20.000", PerDay: "$645"},
 		},
 		Chart: BarChartData{Labels: []string{"Alimentación", "Transporte"}, Values: []float64{60000, 20000}},
 		Total: "$80.000",
@@ -161,7 +161,7 @@ func TestCategories_TotalSitsAboveTheTable(t *testing.T) {
 func TestCategoriesDrill_HeaderIsOneTotalLine(t *testing.T) {
 	data := CategoriesData{
 		Drill: "Alimentación",
-		Rows:  []CategoryRow{{Category: "Supermercado", Total: "$412.300", Share: "100%"}},
+		Rows:  []CategoryRow{{Category: "Supermercado", Total: "$412.300", PerDay: "$13.300"}},
 		Total: "$412.300",
 	}
 
@@ -189,5 +189,59 @@ func TestCategoriesDrill_HeaderIsOneTotalLine(t *testing.T) {
 
 	if !strings.Contains(html, `<span class="money">$412.300</span>`) {
 		t.Errorf("la cifra perdio .money, y con eso los numerales tabulares:\n%s", html)
+	}
+}
+
+func TestCategories_TableShowsPerDayAndNotAPercentage(t *testing.T) {
+	data := CategoriesData{
+		Rows: []CategoryRow{
+			{Category: "Alimentación", Total: "$60.000", PerDay: "$1.935"},
+		},
+		Total:      "$60.000",
+		PerDayNote: "Por día = total ÷ 31 días corridos, del 1 al 31 jul.",
+	}
+
+	var sb strings.Builder
+	if err := Categories(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if !strings.Contains(html, "$1.935") {
+		t.Errorf("la fila no muestra su costo por día:\n%s", html)
+	}
+	if !strings.Contains(html, `<th scope="col">Por día</th>`) {
+		t.Errorf("la columna no está encabezada:\n%s", html)
+	}
+	if strings.Contains(html, `<th scope="col">%</th>`) {
+		t.Errorf("el porcentaje sigue ahí: se saca, no se suma al lado:\n%s", html)
+	}
+	if !strings.Contains(html, data.PerDayNote) {
+		t.Errorf("sin la nota, el mismo número significa algo distinto en cada pestaña y nada lo aclara:\n%s", html)
+	}
+	if strings.Index(html, "<table") > strings.Index(html, data.PerDayNote) {
+		t.Errorf("la nota explica la tabla, así que va debajo de ella:\n%s", html)
+	}
+}
+
+func TestSubcategoryDrill_CarriesThePerDayColumnToo(t *testing.T) {
+	data := CategoriesData{
+		Drill:      "Alimentación",
+		Rows:       []CategoryRow{{Category: "Supermercado", Total: "$412.300", PerDay: "$13.300"}},
+		Total:      "$412.300",
+		PerDayNote: "Por día = total ÷ 31 días corridos, del 1 al 31 jul.",
+	}
+
+	var sb strings.Builder
+	if err := SubcategoryDrill(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	html := sb.String()
+
+	if !strings.Contains(html, "$13.300") {
+		t.Errorf("el drill comparte categoryTable, así que la subcategoría también lleva su por día:\n%s", html)
+	}
+	if !strings.Contains(html, data.PerDayNote) {
+		t.Errorf("la nota vive dentro de categoryTable y el drill la hereda:\n%s", html)
 	}
 }

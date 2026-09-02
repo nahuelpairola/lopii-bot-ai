@@ -9,18 +9,19 @@ type BarChartData struct {
 type CategoryRow struct {
 	Category string
 	Icon     string
-	Href  string
-	Total string
-	Share string
+	Href     string
+	Total    string
+	PerDay   string
 }
 
 type CategoriesData struct {
-	Period Period
-	Rows   []CategoryRow
-	Chart  BarChartData
-	Total  string
-	Drill  string
-	Empty  bool
+	Period     Period
+	Rows       []CategoryRow
+	Chart      BarChartData
+	Total      string
+	PerDayNote string
+	Drill      string
+	Empty      bool
 }
 
 templ Categories(data CategoriesData) {
@@ -91,7 +92,7 @@ templ SubcategoryLeaf(data SubcategoryLeafData) {
 templ categoryTable(data CategoriesData, header string) {
 	<table class="cat-table" aria-label={ TableLabel(header) }>
 		<thead>
-			<tr><th scope="col">{ header }</th><th scope="col">Total</th><th scope="col">%</th></tr>
+			<tr><th scope="col">{ header }</th><th scope="col">Total</th><th scope="col">Por día</th></tr>
 		</thead>
 		<tbody>
 			for _, row := range data.Rows {
@@ -104,9 +105,10 @@ templ categoryTable(data CategoriesData, header string) {
 						}
 					</th>
 					<td class="money">{ row.Total }</td>
-					<td class="money muted">{ row.Share }</td>
+					<td class="money muted">{ row.PerDay }</td>
 				</tr>
 			}
 		</tbody>
 	</table>
+	<p class="muted">{ data.PerDayNote }</p>
 }
