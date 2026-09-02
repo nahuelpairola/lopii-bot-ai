@@ -458,3 +458,49 @@ func TestBuildMonthly_AccountRiseNamesThePreviousMonth(t *testing.T) {
 		t.Errorf("the reported month was named as its own predecessor:\n%s", p.Text)
 	}
 }
+
+func TestBuildMonthly_SaysWhatLivingCostPerDay(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense|" + julKey: sums(row("", "1240000")),
+		"ARS|income|" + julKey:  sums(row("", "2100000")),
+	}}
+	p, err := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+	if err != nil {
+		t.Fatalf("BuildMonthly: %v", err)
+	}
+
+	want := "<b>VIVIR TE SALIÓ $40.000 POR DÍA</b>"
+	if !strings.Contains(p.Text, want) {
+		t.Errorf("missing %q in:\n%s", want, p.Text)
+	}
+}
+
+func TestBuildMonthly_PerDayDividesByEveryDayOfTheClosedMonth(t *testing.T) {
+	febFrom := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	febTo := time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC)
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|expense||2026-02-01": sums(row("", "280000")),
+	}}
+	p, err := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, febFrom, febTo, mPrevFrom, mPrevTo)
+	if err != nil {
+		t.Fatalf("BuildMonthly: %v", err)
+	}
+
+	if !strings.Contains(p.Text, "$10.000 POR DÍA") {
+		t.Errorf("february must divide by 28, not 31, in:\n%s", p.Text)
+	}
+}
+
+func TestBuildMonthly_NoSpendingOmitsThePerDayLine(t *testing.T) {
+	m := fakeMovements{sums: map[string][]movement.CategorySum{
+		"ARS|income|" + julKey: sums(row("", "2100000")),
+	}}
+	p, err := monthlyBuilder(t, m, fakeAccounts{}).BuildMonthly(1, mFrom, mTo, mPrevFrom, mPrevTo)
+	if err != nil {
+		t.Fatalf("BuildMonthly: %v", err)
+	}
+
+	if strings.Contains(p.Text, "POR DÍA") {
+		t.Errorf("a month with no spending must not price a day:\n%s", p.Text)
+	}
+}

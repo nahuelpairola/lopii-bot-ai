@@ -7,6 +7,7 @@ const (
 	msgMonthlyOverspent = "Entró <b>%s</b> y gastaste <b>%s</b>: se te fueron <b>%s</b> de más.\n"
 	msgMonthlySpentLess = "<i>Gastaste %s menos que en %s.</i>\n"
 	msgMonthlySpentMore = "<i>Gastaste %s más que en %s.</i>\n"
+	msgMonthlyPerDay    = "<b>VIVIR TE SALIÓ %s POR DÍA</b>\n"
 )
 
 const (
