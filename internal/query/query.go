@@ -316,6 +316,22 @@ func ungroupedSum(groupBy string) bool {
 
 const groupByNoneArg = "none"
 
+func civilDate(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+func daysInRange(from, to, today time.Time) int {
+	start, end, limit := civilDate(from), civilDate(to), civilDate(today)
+	if end.After(limit) {
+		end = limit
+	}
+	if end.Before(start) {
+		return 0
+	}
+	return int(end.Sub(start).Hours()/24) + 1
+}
+
 func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string) (string, bool) {
 	if groupBy == "type" || movType == constants.Transfer || len(rows) < 2 {
 		return "", false

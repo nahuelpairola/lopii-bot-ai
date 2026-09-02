@@ -814,3 +814,36 @@ func TestExec_SumMovements_NonTransferUnchanged(t *testing.T) {
 		t.Error("sólo las transferencias se agrupan por dirección")
 	}
 }
+
+func TestDaysInRange_CountsCalendarDaysAndStopsAtToday(t *testing.T) {
+	utc := func(y int, m time.Month, d int) time.Time {
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	casos := []struct {
+		nombre          string
+		from, to, today time.Time
+		want            int
+	}{
+		{"mes cerrado en el pasado", utc(2026, 8, 1), utc(2026, 8, 31), utc(2026, 9, 1), 31},
+		{"mes en curso corta en hoy", utc(2026, 9, 1), utc(2026, 9, 30), utc(2026, 9, 3), 3},
+		{"un solo dia", utc(2026, 8, 15), utc(2026, 8, 15), utc(2026, 9, 1), 1},
+		{"rango enteramente futuro", utc(2026, 10, 1), utc(2026, 10, 31), utc(2026, 9, 1), 0},
+		{"hoy es el primer dia del rango", utc(2026, 9, 3), utc(2026, 9, 30), utc(2026, 9, 3), 1},
+	}
+	for _, c := range casos {
+		if got := daysInRange(c.from, c.to, c.today); got != c.want {
+			t.Errorf("%s: daysInRange = %d, want %d", c.nombre, got, c.want)
+		}
+	}
+}
+
+func TestDaysInRange_ReadsEachDateInItsOwnZoneNotAsAnInstant(t *testing.T) {
+	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
+	tardeEnArgentina := time.Date(2026, 9, 3, 23, 0, 0, 0, constants.ArgentinaZone)
+
+	if got := daysInRange(from, to, tardeEnArgentina); got != 3 {
+		t.Errorf("daysInRange = %d, want 3: el 3 de septiembre a las 23:00 ART sigue siendo el dia 3, "+
+			"pero como instante ya cayo en el 4 de septiembre UTC", got)
+	}
+}
