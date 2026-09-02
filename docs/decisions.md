@@ -325,14 +325,9 @@ the UI.
 - **`internal/controller/messaging` was split by cluster, one package per reason to change.** It had grown to ~10k non-test lines across 52 files — 4× the next package — and go.dev's module-layout guidance says the answer is to split off supporting packages under `internal/`, not to document around it. Done in stages, each a pure move verified by the full test protocol: copy→`messages`, flows→`flow`, the unified loop→`agent`, free-text reads→`query`, contextual tips→`nudges`, the 429 queue→`pendingjob`, the configuration wizards→`settings`. The edge kept 1.6k lines across 20 files: webhook handlers, `/start`, the bridges, `userLocks`, tracing, metric outcomes.
   The seam that made it work is the **consumer-defined interface**: each cluster declares the narrow set of methods it needs (`flow.runner`, `agent`'s `agentServices`, `settings.Services`, …) and `*controller` implements all of them structurally through one-line bridge files. No cluster imports a repository, and none imports another cluster's internals. The methods are exported although most interfaces are not — an interface with unexported methods can only be satisfied from inside its own package, and the implementation is at the edge.
   Two things were deliberately *not* moved. The wizard **starts** stay out of `flow` because they call the LLM and `flow` must not import `orchestrator` — they went to `settings`, which `flow` reaches back through two runner methods. And the tests that exercise a finish through the `*controller` stayed at the edge: they test webhook→engine→finish, which is the edge's job. Using `flow` does not make a test a `flow` test — only the builder/step tests moved.
-- **`messages` was later dissolved (2026-09-02).** A call-site audit found almost every constant in
-  it had exactly one reader, all in `agent` — the split had produced a package whose only job was
-  exporting single-use strings. Single-call-site constants and the two helper functions
-  (`MsgAskWhatToChange`, `DisplayAmount`) were inlined at their call site; the two strings with
-  several call sites but one consumer package (`MsgHelp`, `MsgStillCannotCorrect`) became
-  unexported consts in `agent`; the one string genuinely shared across packages, `MsgAskRewrite`
-  (`agent` + `settings`), is now exported from `agent` itself — a package `settings` already
-  imports, so nothing new was created and no import cycle opened.
+- **`messages` was later dissolved (2026-09-02):** almost every constant in it had exactly one
+  reader, all in `agent`. Inlined or folded into `agent`/`settings` — see that commit for the
+  breakdown.
 
 ### Why `ArgentinaZone` is a fixed offset and not `time.LoadLocation` (2026-08-31)
 
