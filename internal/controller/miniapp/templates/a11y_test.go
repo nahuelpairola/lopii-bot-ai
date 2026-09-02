@@ -61,8 +61,8 @@ func TestCategories_ChartDefersToTheTable(t *testing.T) {
 	data := CategoriesData{
 		Period: Period{Currency: currency.ARS},
 		Rows: []CategoryRow{
-			{Category: "Alimentación", Total: "$100", Share: "60%", Href: "/app/categories?p=month&c=Alimentaci%C3%B3n"},
-			{Category: "Transporte", Total: "$60", Share: "40%"},
+			{Category: "Alimentación", Total: "$100", PerDay: "$3", Href: "/app/categories?p=month&c=Alimentaci%C3%B3n"},
+			{Category: "Transporte", Total: "$60", PerDay: "$2"},
 		},
 		Total: "$160",
 		Chart: BarChartData{Labels: []string{"Alimentación", "Transporte"}, Values: []float64{100, 60}},

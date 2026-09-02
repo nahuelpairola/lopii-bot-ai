@@ -100,12 +100,12 @@ func TestHandleCategoryDrill_CategoryWithSlash(t *testing.T) {
 	}
 }
 
-func TestHandleCategories_ShowsShareOfTotal(t *testing.T) {
+func TestHandleCategories_ShowsWhatEachCategoryCostsPerDay(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	movements := stubMovements{rows: map[string][]movement.CategorySum{
 		"category": {
-			{Label: "Alimentación", Total: decimal.NewFromInt(750)},
-			{Label: "Transporte", Total: decimal.NewFromInt(250)},
+			{Label: "Alimentación", Total: decimal.NewFromInt(31000)},
+			{Label: "Transporte", Total: decimal.NewFromInt(6200)},
 		},
 	}}
 	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
@@ -113,14 +113,20 @@ func TestHandleCategories_ShowsShareOfTotal(t *testing.T) {
 	c.RegisterRoutes(router)
 
 	w := httptest.NewRecorder()
-	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categories"))
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categories?p=month&m=2026-07&c=ARS"))
 
 	body := w.Body.String()
-	if !bodyContains(body, "75%") {
-		t.Fatal("cada fila debe mostrar su participación en el total")
-	}
 	if !bodyContains(body, "$1.000") {
-		t.Fatal("la vista debe mostrar el total del período")
+		t.Fatal("$31.000 en julio son $1.000 por día: 31 días corridos")
+	}
+	if !bodyContains(body, "$200") {
+		t.Fatal("$6.200 en julio son $200 por día")
+	}
+	if !bodyContains(body, "31 días corridos") {
+		t.Fatal("la nota debe nombrar el divisor que se usó")
+	}
+	if bodyContains(body, `<th scope="col">%</th>`) {
+		t.Fatal("el porcentaje salió de la tabla")
 	}
 }
 
