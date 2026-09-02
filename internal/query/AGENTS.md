@@ -78,9 +78,13 @@ own. Changing how `sum_movements` renders a grouped row changes both — which i
 `day` is redundant (the daily average of a daily row IS the row) and `type` mixes absolute
 values, but `month` is the dangerous one: dividing a month's total by the days of the WHOLE
 range is false, not imprecise. `type=transfer` is out for the reason `groupedTotalLine`
-already refuses a transfer total — two legs, same money. None of this is checked in Go: Groq
-validates arguments server-side, so the schema is what makes the wrong call impossible.
-`TestSpendingReportSchema_ExcludesTheGroupingsThatWouldLie` is what fails when someone widens it.
+already refuses a transfer total — two legs, same money. Two layers guard this, with different
+jobs: the enum steers the model — Groq validates arguments server-side, so a well-behaved call
+cannot ask for an excluded grouping — and `rejectsDailyRate` guards the number itself, for a
+fallback model in the chain that bypasses that validation. With `group_by=month` the average that
+comes out is false, not imprecise, so both layers must survive; deleting either reopens the bug
+the other exists to close. `TestSpendingReportSchema_ExcludesTheGroupingsThatWouldLie` is what
+fails when someone widens the enum.
 
 `daysInRange` reads each date **in its own location** (`t.Date()`), because `parseQueryDate`
 returns UTC and `StartOfTodayArgentina` returns ART midnight. With a start-of-day argument the
