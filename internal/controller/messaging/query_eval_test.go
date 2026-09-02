@@ -273,6 +273,10 @@ func TestQueryEval(t *testing.T) {
 		if !strings.Contains(normDigits(ans), "25806") {
 			t.Errorf("Alimentacion son 8000 en 31 dias = 258,06/dia, calculado por la app: %s", ans)
 		}
+		if strings.Contains(normDigits(ans), "16129") {
+			t.Errorf("16129 es Supermercado (5000/31): agrupo por subcategoria, no por categoria. "+
+				"Alimentacion y Gimnasio dan los dos 258,06, asi que el 25806 solo no distingue el eje: %s", ans)
+		}
 	})
 
 	t.Run("promedio_diario_sin_agrupar", func(t *testing.T) {
