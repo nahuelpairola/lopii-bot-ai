@@ -994,3 +994,23 @@ func TestSpendingReportSchema_ExcludesTheGroupingsThatWouldLie(t *testing.T) {
 			"y cualquier agregado sobre las dos es 2x")
 	}
 }
+
+func TestSystemPrompt_SendsAveragesToTheToolAndKeepsSubtractionExplicit(t *testing.T) {
+	p := SystemPrompt()
+
+	if strings.Contains(p, "promediar") || strings.Contains(p, "dividí el total") {
+		t.Error("el prompt no puede seguir licenciando la tasa diaria: la calcula la app, y el modelo " +
+			"dividiendo a mano erro 0,05% contra el SQL el 2026-09-01")
+	}
+	if !strings.Contains(p, "spending_report") {
+		t.Error("el prompt tiene que nombrar la tool: si no, el modelo no sabe donde pedir el promedio")
+	}
+	if !strings.Contains(p, "restar") {
+		t.Error("comparar dos periodos SIGUE siendo del modelo, y tiene que estar dicho: una licencia " +
+			"implicita no se puede auditar en la proxima medicion")
+	}
+	if !strings.Contains(p, "group_by=month") {
+		t.Error("el promedio MENSUAL sigue siendo del modelo y necesita su camino: spending_report " +
+			"excluye group_by=month a proposito, asi que sin esta linea la pregunta se queda sin ninguno")
+	}
+}
