@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/trace"
@@ -75,9 +74,9 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 		return orchestrator.IntentReminderSet
 	case len(ex.inserted) > 0:
 		return orchestrator.IntentCreate
-	case ex.reply == messages.MsgHelp:
+	case ex.reply == msgHelp:
 		return orchestrator.IntentHelp
-	case ex.reply == messages.MsgAskRewrite:
+	case ex.reply == MsgAskRewrite:
 		return orchestrator.IntentUnclear
 	case len(ex.parked) > 0:
 		switch ex.parked[0].Tool {

@@ -8,7 +8,6 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -42,7 +41,7 @@ func startAgentLoop(ctx context.Context, svc agentServices, chat messenger.Chat,
 	if err != nil {
 		if executor.wrote {
 			resolveMetric(ctx, svc, userID, flow.OutcomeCreateInserted, collectMovementIDs(executor.inserted)...)
-			svc.SendText(ctx, chat, messages.MsgPartialSuccessAfterWrite)
+			svc.SendText(ctx, chat, "Registré lo que me pediste, pero me quedé sin margen para el resto. Mandame de nuevo lo que falte.")
 			slog.WarnContext(ctx, "agent loop failed after a write: not queued", "user_id", userID, "err", err)
 			return nil
 		}
@@ -107,9 +106,9 @@ func resolveAgentLoopMetric(ctx context.Context, svc agentServices, userID uint6
 	switch {
 	case len(ex.inserted) > 0:
 		resolveMetric(ctx, svc, userID, flow.OutcomeCreateInserted, collectMovementIDs(ex.inserted)...)
-	case ex.reply == messages.MsgHelp:
+	case ex.reply == msgHelp:
 		resolveMetric(ctx, svc, userID, outcomeHelpShown)
-	case ex.reply == messages.MsgAskRewrite:
+	case ex.reply == MsgAskRewrite:
 		resolveMetric(ctx, svc, userID, outcomeUnclear)
 	case ex.noCandidates:
 		resolveMetric(ctx, svc, userID, outcomeNoCandidates)

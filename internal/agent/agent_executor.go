@@ -11,7 +11,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -123,10 +122,10 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 		e.settingsArea = a.Area
 		return "ya abriste la configuración que pidió el usuario", orchestrator.ErrAgentTurnDone
 	case orchestrator.ToolReplyHelp:
-		e.reply = messages.MsgHelp
+		e.reply = msgHelp
 		return "ya le mandaste al usuario la explicación de qué podés hacer", orchestrator.ErrAgentTurnDone
 	case orchestrator.ToolAskRewrite:
-		e.reply = messages.MsgAskRewrite
+		e.reply = MsgAskRewrite
 		return "ya le pediste al usuario que lo reescriba", orchestrator.ErrAgentTurnDone
 	default:
 		return resultNotWiredYet, nil
@@ -223,7 +222,7 @@ func (e *agentExecutor) park(req parkRequest) (string, error) {
 	}
 	if len(groups) == 0 {
 		e.noCandidates = true
-		e.reply = messages.MsgNoCandidatesFound
+		e.reply = "No tengo movimientos de ese día para tocar. ¿De qué fecha era?"
 		return resultNoCandidates, orchestrator.ErrAgentTurnDone
 	}
 

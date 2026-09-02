@@ -5,7 +5,6 @@ import (
 	"log/slog"
 
 	"lopiibot.com/internal/agent"
-	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/messenger"
 )
 
@@ -21,7 +20,7 @@ func Dispatch(ctx context.Context, s Services, chat messenger.Chat, userID uint6
 		return StartReminderSetup(ctx, s, chat, userID)
 	default:
 		slog.WarnContext(ctx, "manage_settings con área desconocida", "user_id", userID, "area", area)
-		s.SendText(ctx, chat, messages.MsgAskRewrite)
+		s.SendText(ctx, chat, agent.MsgAskRewrite)
 		return nil
 	}
 }
