@@ -81,3 +81,14 @@ const (
 	SettingsAreaCategoryManage = "categoria_administrar"
 	SettingsAreaReminder       = "recordatorio"
 )
+
+const msgHelp = "Conmigo es fácil, me hablás normal:\n\n" +
+	"📝 Anotar: «gasté 500 en el súper», «me pagaron 10 mil»\n" +
+	"✏️ Corregir: «el súper eran 600»\n" +
+	"🗑️ Borrar: «borrá el último gasto»\n" +
+	"🔄 Transferir: «pasé 50 mil del banco a MP»\n" +
+	"❓ Preguntar: «¿cuánto gasté esta semana?»\n" +
+	"🗂️ Categorías: «creá una categoría para mascotas», «sacá la que repetí»\n" +
+	"🏦 Cuentas y recordatorios: pedímelos cuando quieras."
+
+const MsgAskRewrite = "✍️ Dale, mandalo de nuevo con más detalle (monto, categoría, y si es un movimiento nuevo)."

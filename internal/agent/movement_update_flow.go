@@ -11,7 +11,6 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -19,10 +18,12 @@ import (
 	"lopiibot.com/internal/trace"
 )
 
+const msgStillCannotCorrect = "Sigo sin darme cuenta qué cambiarle. Probá diciéndomelo derecho — ej: «el café fueron 2000»."
+
 func movementToRow(m movement.Movement) movement.MovementRow {
 	row := movement.MovementRow{
 		Type:     string(m.Type),
-		Amount:   messages.DisplayAmount(m.Amount),
+		Amount:   m.Amount.Abs().String(),
 		Currency: m.Currency.String(),
 		Date:     m.Date.Format("2006-01-02"),
 	}
@@ -158,7 +159,7 @@ func proceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messeng
 	if !result.Resolved || correctionIsNoOp(beforeRows, result.Movements) {
 		if ask.gaveValue {
 			resolveMetric(ctx, svc, userID, outcomeLoopDidNothing)
-			svc.SendText(ctx, chat, messages.MsgStillCannotCorrect)
+			svc.SendText(ctx, chat, msgStillCannotCorrect)
 			return nil
 		}
 		return parkChangeQuestion(ctx, svc, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
@@ -204,6 +205,14 @@ func sameAmount(before, after string) bool {
 	return b.Abs().Equal(a.Abs())
 }
 
+func askWhatToChange(rows []movement.MovementRow) string {
+	const ask = "¿Cuánto era? Escribime el monto — o tocá abajo si lo que está mal es otra cosa."
+	if len(rows) == 0 {
+		return ask
+	}
+	return "Encontré " + movement.MovementGapDescriptor(rows[0]) + ". " + ask
+}
+
 func parkChangeQuestion(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, change, transactionID string, oldIDs []string, rows []movement.MovementRow, ask ChangeAsk) error {
 	if !svc.ActionsEnabled() {
 		resolveMetric(ctx, svc, userID, outcomeParkFailed)
@@ -222,11 +231,11 @@ func parkChangeQuestion(ctx context.Context, svc agentServices, chat messenger.C
 	}
 	question := pendingaction.OpenQuestion{
 		Key:     questionKeyChange,
-		Prompt:  messages.MsgAskWhatToChange(rows),
+		Prompt:  askWhatToChange(rows),
 		Options: changeFieldOptions(),
 	}
 	if ask.pickedField {
-		question.Prompt, question.Options = messages.MsgAskChangeValue, nil
+		question.Prompt, question.Options = "Dale. ¿Y cuál es el valor nuevo?", nil
 	}
 	questions, err := json.Marshal([]pendingaction.OpenQuestion{question})
 	if err != nil {
@@ -272,18 +281,18 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, chat mess
 		slog.WarnContext(ctx, "structured correction rejected", "user_id", userID, "err", err)
 		resolveMetric(ctx, svc, userID, outcomeCorrectionRefused)
 		if errors.Is(err, errRefundThatGrows) {
-			svc.SendText(ctx, chat, messages.MsgRefundWouldGrow)
+			svc.SendText(ctx, chat, "Me dijiste que te devolvieron plata, pero el cambio que entendí lo dejaría más caro. ¿Cuánto te devolvieron?")
 			return nil
 		}
 		if errors.Is(err, errRefundExceedsAmount) {
-			svc.SendText(ctx, chat, messages.MsgRefundExceeds)
+			svc.SendText(ctx, chat, "Me decís que te devolvieron más de lo que salió ese movimiento 🤔 ¿Cuánto fue?")
 			return nil
 		}
 		if errors.Is(err, errAmbiguousSetAll) {
-			svc.SendText(ctx, chat, messages.MsgAmbiguousSetAll)
+			svc.SendText(ctx, chat, "¿A cuál de todos le pongo ese monto? Decime cuál y lo cambio.")
 			return nil
 		}
-		svc.SendText(ctx, chat, messages.MsgStillCannotCorrect)
+		svc.SendText(ctx, chat, msgStillCannotCorrect)
 		return nil
 	}
 
@@ -312,7 +321,7 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, chat mess
 
 	if correctionIsNoOp(beforeRows, drafts) {
 		resolveMetric(ctx, svc, userID, outcomeNothingToChange)
-		svc.SendText(ctx, chat, messages.MsgCorrectionChangesNothing)
+		svc.SendText(ctx, chat, "Eso ya estaba así, no cambié nada.")
 		return nil
 	}
 

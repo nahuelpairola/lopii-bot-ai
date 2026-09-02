@@ -7,9 +7,9 @@ not tell you.
 
 It used to be ~10k lines and hold the whole app. What lived here now lives in `flow` (the flows),
 `agent` (the unified loop), `query` (free-text reads), `settings` (the configuration wizards),
-`nudges` (contextual tips), `pendingjob` (the 429 queue) and `messages` (shared copy). Each has its
-own doc-comments; the traps that moved with them moved too — `flow/AGENTS.md` carries flow
-registration and the `callback_data` limit, `conversation/AGENTS.md` the `Data` contract.
+`nudges` (contextual tips) and `pendingjob` (the 429 queue). Each has its own doc-comments; the
+traps that moved with them moved too — `flow/AGENTS.md` carries flow registration and the
+`callback_data` limit, `conversation/AGENTS.md` the `Data` contract.
 
 ## The bridge pattern, and why the methods are exported
 

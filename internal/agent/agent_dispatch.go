@@ -11,7 +11,6 @@ import (
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
@@ -327,7 +326,7 @@ func dropAgentAction(ctx context.Context, svc agentServices, chat messenger.Chat
 }
 
 func msgAgentActionDiscarded(what string) string {
-	return fmt.Sprintf(messages.MsgAgentActionDiscardedTemplate, what)
+	return fmt.Sprintf("No terminé de entender %s, así que lo dejo sin hacer.\n\nSi querés, escribímelo de nuevo con un poco más de detalle.", what)
 }
 
 func describeAction(action *pendingaction.PendingAction) string {

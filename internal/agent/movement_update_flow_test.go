@@ -12,7 +12,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
 	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/messages"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -161,7 +160,7 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 }
 
 func TestMsgAskWhatToChange_AsksForTheValueNotTheField(t *testing.T) {
-	got := messages.MsgAskWhatToChange([]movement.MovementRow{{Amount: "1800", Description: "Cafe"}})
+	got := askWhatToChange([]movement.MovementRow{{Amount: "1800", Description: "Cafe"}})
 
 	if !strings.Contains(got, "Cuánto era") {
 		t.Errorf("no pide el valor nuevo: %q", got)
@@ -236,7 +235,7 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 	if err := json.Unmarshal(actions.rows[0].Questions, &qs); err != nil {
 		t.Fatal(err)
 	}
-	if qs[0].Prompt != messages.MsgAskChangeValue {
+	if qs[0].Prompt != "Dale. ¿Y cuál es el valor nuevo?" {
 		t.Errorf("la segunda vuelta pregunta el valor, no el campo: %q", qs[0].Prompt)
 	}
 	if len(qs[0].Options) != 0 {
