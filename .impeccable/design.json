@@ -546,7 +546,7 @@
       "name": "Category Table",
       "kind": "custom",
       "refersTo": null,
-      "description": "Categorias' three-column table (name, total, share). Same 0.85rem/0.35rem-0.4rem compaction as Evolucion and for the same reason, but no scroller or sticky column - three columns fit a 360px phone outright. The name column is a th scope=row carrying font-weight: inherit, so the semantics change and the look does not.",
+      "description": "Categorias' three-column table (name, total, por dia). Same 0.85rem/0.35rem-0.4rem compaction as Evolucion and for the same reason, but no scroller or sticky column - three columns fit a 360px phone outright. The name column is a th scope=row carrying font-weight: inherit, so the semantics change and the look does not. The third column held a share (75%) until 2026-09-02 and now holds what the category costs per elapsed day; both are Money-shaped cells, so the swap cost no width. A single p.muted below the table carries the sentence defining that column, with its day count and dates computed from the same window the column divides by. It lives inside categoryTable, so the subcategory drill inherits it and an empty period renders no orphaned note.",
       "html": "<table class=\"ds-cat-table\"><tr><th scope=\"row\"><a class=\"ds-row-link\" href=\"#\">🍝 Comida</a></th><td>$62.800</td><td>24%</td></tr></table>",
       "css": ".ds-cat-table { font-size: 0.85rem; width: 100%; } .ds-cat-table th, .ds-cat-table td { padding: 0 0.4rem; height: 44px; } .ds-cat-table th[scope=\"row\"] { font-weight: inherit; text-align: left; }"
     },
