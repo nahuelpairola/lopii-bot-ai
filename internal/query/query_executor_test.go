@@ -814,3 +814,203 @@ func TestExec_SumMovements_NonTransferUnchanged(t *testing.T) {
 		t.Error("sólo las transferencias se agrupan por dirección")
 	}
 }
+
+func TestDaysInRange_CountsCalendarDaysAndStopsAtToday(t *testing.T) {
+	utc := func(y int, m time.Month, d int) time.Time {
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	casos := []struct {
+		nombre          string
+		from, to, today time.Time
+		want            int
+	}{
+		{"mes cerrado en el pasado", utc(2026, 8, 1), utc(2026, 8, 31), utc(2026, 9, 1), 31},
+		{"mes en curso corta en hoy", utc(2026, 9, 1), utc(2026, 9, 30), utc(2026, 9, 3), 3},
+		{"un solo dia", utc(2026, 8, 15), utc(2026, 8, 15), utc(2026, 9, 1), 1},
+		{"rango enteramente futuro", utc(2026, 10, 1), utc(2026, 10, 31), utc(2026, 9, 1), 0},
+		{"hoy es el primer dia del rango", utc(2026, 9, 3), utc(2026, 9, 30), utc(2026, 9, 3), 1},
+	}
+	for _, c := range casos {
+		if got := daysInRange(c.from, c.to, c.today); got != c.want {
+			t.Errorf("%s: daysInRange = %d, want %d", c.nombre, got, c.want)
+		}
+	}
+}
+
+func TestDaysInRange_ReadsEachDateInItsOwnZoneNotAsAnInstant(t *testing.T) {
+	from := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)
+	tardeEnArgentina := time.Date(2026, 9, 3, 23, 0, 0, 0, constants.ArgentinaZone)
+
+	if got := daysInRange(from, to, tardeEnArgentina); got != 3 {
+		t.Errorf("daysInRange = %d, want 3: el 3 de septiembre a las 23:00 ART sigue siendo el dia 3, "+
+			"pero como instante ya cayo en el 4 de septiembre UTC", got)
+	}
+}
+
+func TestExec_SpendingReport_GroupedCarriesTheDailyRatePerRow(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "Ocio", Total: dec("310")},
+		{Label: "Comida", Total: dec("620")},
+	}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"category"}`))
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if !strings.Contains(out, "10.00/día") {
+		t.Errorf("Ocio 310 en 31 dias son 10.00/dia: %s", out)
+	}
+	if !strings.Contains(out, "20.00/día") {
+		t.Errorf("Comida 620 en 31 dias son 20.00/dia: %s", out)
+	}
+	if !strings.Contains(out, "30.00/día") {
+		t.Errorf("el total (930) tambien lleva su tasa: %s", out)
+	}
+	if !strings.Contains(out, "31 días") {
+		t.Errorf("el resultado tiene que decir sobre cuantos dias promedio: %s", out)
+	}
+}
+
+func TestExec_SpendingReport_UngroupedIsASingleTotalWithItsRate(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("930")}}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"none"}`))
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if !strings.Contains(out, "930.00 ARS") || !strings.Contains(out, "30.00/día") {
+		t.Errorf("total con su tasa diaria: %s", out)
+	}
+	if strings.Contains(out, "suma de las") {
+		t.Errorf("sin agrupar no hay linea de total de filas: %s", out)
+	}
+}
+
+func TestExec_SpendingReport_OneRowHasNoTotalLine(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "Ocio", Total: dec("310")}}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"category"}`))
+	if strings.Contains(out, "suma de las") {
+		t.Errorf("una sola fila: el total ES la fila, repetirlo son dos hechos donde hay uno: %s", out)
+	}
+	if !strings.Contains(out, "10.00/día") {
+		t.Errorf("pero su promedio si va: %s", out)
+	}
+}
+
+func TestExec_SpendingReport_EmptyGoesThroughTheSameProbesAsSum(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: nil}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, err := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"category"}`))
+	if err != nil {
+		t.Fatalf("exec: %v", err)
+	}
+	if !strings.Contains(out, msgQueryNoRowsInRange) {
+		t.Errorf("un resultado vacio sin search es el mismo mensaje que en sum_movements: %s", out)
+	}
+}
+
+func TestExec_SpendingReport_RefusesTheGroupingsThatWouldProduceAFalseAverage(t *testing.T) {
+	for _, args := range []string{
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"month"}`,
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"day"}`,
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"type"}`,
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","type":"transfer"}`,
+	} {
+		m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "x", Total: dec("310")}}}
+		exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+		if _, err := exec("spending_report", json.RawMessage(args)); err == nil {
+			t.Errorf("%s tendria que ser rechazado: el enum del schema es la primera linea de defensa, "+
+				"pero si un modelo la esquiva el promedio que sale es FALSO, no impreciso", args)
+		}
+	}
+}
+
+func TestExec_SpendingReport_UngroupedZeroIsNotAMuteZero(t *testing.T) {
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{{Label: "", Total: dec("0")}}}
+	exec := newQueryExecutor(m, &fakeQueryAccounts{}, &fakeQuerySubcats{})
+
+	out, _ := exec("spending_report", json.RawMessage(
+		`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","group_by":"none"}`))
+	if strings.Contains(out, "0.00/día") {
+		t.Errorf("un sum sin agrupar devuelve SIEMPRE una fila: el cero es ausencia, no una tasa: %s", out)
+	}
+	if !strings.Contains(out, msgQueryNoRowsInRange) {
+		t.Errorf("tiene que caer en describeEmptyResult: %s", out)
+	}
+}
+
+func TestSpendingReportSchema_ExcludesTheGroupingsThatWouldLie(t *testing.T) {
+	var tool *orchestrator.AgentTool
+	for i := range Tools {
+		if Tools[i].Name == "spending_report" {
+			tool = &Tools[i]
+		}
+	}
+	if tool == nil {
+		t.Fatal("spending_report no esta en Tools: el modelo no la puede pedir")
+	}
+
+	var schema struct {
+		Properties map[string]struct {
+			Enum []any `json:"enum"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(tool.Parameters, &schema); err != nil {
+		t.Fatalf("el schema no parsea: %v", err)
+	}
+
+	tiene := func(campo, valor string) bool {
+		for _, v := range schema.Properties[campo].Enum {
+			if s, ok := v.(string); ok && s == valor {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, prohibido := range []string{"day", "month", "type"} {
+		if tiene("group_by", prohibido) {
+			t.Errorf("group_by=%q no puede estar en el enum: el promedio diario de esa agrupacion "+
+				"es redundante o directamente falso, y el schema es lo unico que se lo impide al modelo", prohibido)
+		}
+	}
+	for _, obligatorio := range []string{"none", "category", "subcategory", "account"} {
+		if !tiene("group_by", obligatorio) {
+			t.Errorf("group_by=%q falta: sin el, el modelo tiene que agrupar de otra forma y sumar a mano", obligatorio)
+		}
+	}
+	if tiene("type", constants.Transfer) {
+		t.Error("type=transfer no puede estar: las dos patas de un transfer son la misma plata, " +
+			"y cualquier agregado sobre las dos es 2x")
+	}
+}
+
+func TestSystemPrompt_SendsAveragesToTheToolAndKeepsSubtractionExplicit(t *testing.T) {
+	p := SystemPrompt()
+
+	if strings.Contains(p, "promediar") || strings.Contains(p, "dividí el total") {
+		t.Error("el prompt no puede seguir licenciando la tasa diaria: la calcula la app, y el modelo " +
+			"dividiendo a mano erro 0,05% contra el SQL el 2026-09-01")
+	}
+	if !strings.Contains(p, "spending_report") {
+		t.Error("el prompt tiene que nombrar la tool: si no, el modelo no sabe donde pedir el promedio")
+	}
+	if !strings.Contains(p, "restar") {
+		t.Error("comparar dos periodos SIGUE siendo del modelo, y tiene que estar dicho: una licencia " +
+			"implicita no se puede auditar en la proxima medicion")
+	}
+	if !strings.Contains(p, "group_by=month") {
+		t.Error("el promedio MENSUAL sigue siendo del modelo y necesita su camino: spending_report " +
+			"excluye group_by=month a proposito, asi que sin esta linea la pregunta se queda sin ninguno")
+	}
+}

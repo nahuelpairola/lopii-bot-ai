@@ -167,6 +167,39 @@ message. The helper is shared with `GuessNamesOwnAccount` and reference resoluti
   tuning a prompt against a failing case, check that the tool the case expects is actually one
   the model was offered.
 
+**2026-09-01 — the model's arithmetic drifts, so the app took the average back.** Measured
+against SQL on an answer the user accepted as good: the model narrated $13.548,71 where
+`SUM(ABS(amount))/31` gives $13.550,16, and $9.302,29 where it gives $9.307,52 — ~0.05% off,
+with no fixed sign. It divides by hand. This is the third operation the prompt licensed and the
+app took back, after summing grouped rows (2026-08-14, it answered 2.031.070 out of two rows
+that added to 2.065.070) and splitting transfers (2026-08-21).
+
+**Two operations stayed with the model on purpose, and both are named explicitly in the prompt so
+the next measurement can audit them:** subtracting two periods ("how much more than last month"),
+and the MONTHLY average. The monthly one is not an oversight — its divisor is the days of *that*
+month, not of the range, so it is a different calculation rather than the same one under another
+`group_by`. Forbidding it along with the daily rate would have left "how much per month on
+average this year" with no path at all, since `spending_report` excludes `group_by=month`.
+
+The same day exposed the more expensive half: `group_by` is a single axis, so "how much per day
+AND per category" is not expressible. Without the word "promedio" in the message the model went
+looking for the cross-tab in series — `group_by=day`, then `group_by=category`, then
+`list_movements limit=50` — and since every round re-injects the previous results, Groq's
+reservation (`prompt + max_completion`, charged up front) climbed 1998 → 2903 → 4426 against an
+8000 TPM per-model ceiling. Four queries ended in `query_failed`; three never started, dying on a
+400 `tool_use_failed` in round 0, one of them generating "No dispongo de una forma de obtener el
+desglose de gastos simultáneamente". 15 of the last 30 days' 85 queries (18%) ask for a derived
+number.
+
+**The divisor is calendar days, clamped at today.** August whole = 31; "this month" on a
+September 3rd = 3, not 30. Dividing by 30 there reports a third of the real rate with nothing
+marking it. The result always states the divisor, for the same reason `appendConsultedRange`
+exists: it is the only thing that betrays a badly resolved range.
+
+**Rejected: a two-axis `group_by`.** 30 days × 12 categories is ~360 cells in a tool result that
+gets re-injected every round — worse than the `list_movements` that broke the ceiling — and
+illegible as a Telegram message.
+
 ## Groq quota, the 429 queue and rate limits
 
 - **A terminal Groq 429 is a typed error (`orchestrator.RateLimitedError`), not a string to re-parse.** `Client.send`'s existing retry loop already computes the best available wait (header priority over body-parsed text); wrapping that wait in a struct returned via `errors.As` means the pending-jobs queue (and any future consumer) never re-derives or re-parses anything Groq said — it reads `RetryAfter` off the error itself. The alternative (checking `errors.Is(err, someSentinel)` and separately re-parsing the body for the wait) would duplicate parsing logic `send` already did.

@@ -68,6 +68,29 @@ Three more things that are not obvious from the code:
   expense row to the income row yields a number that is neither, and the whole point of the line
   is that the model quotes it without checking.
 
+## `spending_report` reuses the sum executor, and its exclusions live in the ENUM
+
+It is a thin wrapper: `buildMovementQuery`, `QuerySumMovements`, `describeEmptyResult` and
+`groupLabels` are the same ones `sum_movements` runs. Only the render and the division are its
+own. Changing how `sum_movements` renders a grouped row changes both — which is the point.
+
+**Its `group_by` enum is deliberately narrower, and widening it ships a wrong number.**
+`day` is redundant (the daily average of a daily row IS the row) and `type` mixes absolute
+values, but `month` is the dangerous one: dividing a month's total by the days of the WHOLE
+range is false, not imprecise. `type=transfer` is out for the reason `groupedTotalLine`
+already refuses a transfer total — two legs, same money. Two layers guard this, with different
+jobs: the enum steers the model — Groq validates arguments server-side, so a well-behaved call
+cannot ask for an excluded grouping — and `rejectsDailyRate` guards the number itself, for a
+fallback model in the chain that bypasses that validation. With `group_by=month` the average that
+comes out is false, not imprecise, so both layers must survive; deleting either reopens the bug
+the other exists to close. `TestSpendingReportSchema_ExcludesTheGroupingsThatWouldLie` is what
+fails when someone widens the enum.
+
+`daysInRange` reads each date **in its own location** (`t.Date()`), because `parseQueryDate`
+returns UTC and `StartOfTodayArgentina` returns ART midnight. With a start-of-day argument the
+instant arithmetic happens to agree; it stops agreeing the moment a caller passes a wall-clock
+`time.Now()`, which at 23:00 ART counts one day too many.
+
 ## Money
 
 Amounts come back from the DB signed; everything shown to the model and to the user goes through

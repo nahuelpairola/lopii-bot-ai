@@ -64,6 +64,23 @@ var Tools = []orchestrator.AgentTool{
 		}`),
 	},
 	{
+		Name:        "spending_report",
+		Description: "Gasto o ingreso en un rango con el PROMEDIO DIARIO de cada fila YA CALCULADO por la app. Usala siempre que la pregunta pida un promedio, una tasa \"por día\" o \"cuánto por día\": no calcules vos el promedio. group_by agrupa por UN solo eje. Devuelve montos en positivo y excluye transferencias entre cuentas propias.",
+		Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"from": {"type": "string", "description": "fecha desde YYYY-MM-DD"},
+				"to": {"type": "string", "description": "fecha hasta YYYY-MM-DD"},
+				"currency": {"type": "string", "enum": ["ARS", "USD"]},
+				"group_by": {"type": ["string", "null"], "enum": ["none", "category", "subcategory", "account", null]},
+				"type": {"type": ["string", "null"], "enum": ["expense", "income", null]},
+				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
+				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos."}
+			},
+			"required": ["from", "to", "currency"]
+		}`),
+	},
+	{
 		Name:        "list_movements",
 		Description: "Lista movimientos individuales (los más recientes primero) en un rango de fechas, con filtros opcionales. Montos en positivo.",
 		Parameters: json.RawMessage(`{
@@ -150,7 +167,7 @@ func SystemPrompt() string {
 	today := movement.WeekdayEs(now) + " " + now.Format("2006-01-02")
 	return fmt.Sprintf(`Sos el asistente de consultas de un bot de finanzas personales argentino.
 Basá TODA cifra en los datos que devuelven las herramientas — nunca inventes ni estimes un número sin respaldo de una herramienta.
-Sí podés hacer aritmética SOBRE esos datos: sumar, restar, promediar o sacar tasas por día/mes. Para un promedio mensual, pedí los totales por mes (group_by=month) y dividí. Para comparar dos períodos ("cuánto más que el mes pasado"), pedí cada total y restá. Para una tasa diaria, dividí el total por la cantidad de días del rango.
+La tasa por día no la calcules: pedí spending_report, que la trae hecha y agrupa por UN eje (para "por día y por categoría", agrupá por categoría). Sí calculás vos: restar dos períodos ("cuánto más que el mes pasado"), y el promedio mensual (group_by=month y dividí).
 Hoy es %s (hora de Argentina). Resolvé fechas relativas ("hoy", "ayer", "esta semana", "el mes pasado", "mayo") a rangos concretos YYYY-MM-DD antes de llamar una herramienta.
 Los montos se muestran siempre en positivo. ARS y USD son mundos separados: nunca los sumes ni los conviertas; si hacen falta ambos, reportá cada uno por su lado.
 Nunca hagas una pregunta de aclaración — no podés recibir la respuesta del usuario. Si la consulta es ambigua entre varias categorías o cuentas conocidas, resolvela vos: usá list_categories para ver las que aplican y respondé TODAS las interpretaciones plausibles en la misma respuesta.
@@ -186,6 +203,8 @@ func NewExecutor(svc services, userID uint64) func(string, json.RawMessage) (str
 				rem = nil
 			}
 			return describeReminder(rem), nil
+		case "spending_report":
+			return execSpendingReport(svc, userID, args)
 		default:
 			return "", fmt.Errorf("herramienta desconocida: %s", name)
 		}
@@ -250,25 +269,10 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	if ungroupedSum(groupBy) {
 		return fmt.Sprintf("total: %s %s", rows[0].Total.Abs().StringFixed(2), cur), nil
 	}
-	nameByID := map[string]string{}
-	if groupBy == "account" {
-		accts, _ := svc.QueryAccountsByUserID(userID)
-		for _, a := range accts {
-			nameByID[fmt.Sprintf("%d", a.ID)] = a.Name
-		}
-	}
-	var lines []string
-	for _, r := range rows {
-		label := r.Label
-		if groupBy == "account" {
-			if n, ok := nameByID[label]; ok {
-				label = n
-			}
-		}
-		if groupBy == "category" && label != "" {
-			label = svc.QueryIconForCategory(userID, label) + " " + label
-		}
-		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
+	labels := groupLabels(svc, userID, groupBy, rows)
+	lines := make([]string, 0, len(rows)+1)
+	for i, r := range rows {
+		lines = append(lines, fmt.Sprintf("%s: %s %s", labels[i], r.Total.Abs().StringFixed(2), cur))
 	}
 	if line, ok := groupedTotalLine(rows, groupBy, cur, args.Type); ok {
 		lines = append(lines, line)
@@ -316,15 +320,63 @@ func ungroupedSum(groupBy string) bool {
 
 const groupByNoneArg = "none"
 
-func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string) (string, bool) {
-	if groupBy == "type" || movType == constants.Transfer || len(rows) < 2 {
-		return "", false
+func civilDate(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+func daysInRange(from, to, today time.Time) int {
+	start, end, limit := civilDate(from), civilDate(to), civilDate(today)
+	if end.After(limit) {
+		end = limit
 	}
+	if end.Before(start) {
+		return 0
+	}
+	return int(end.Sub(start).Hours()/24) + 1
+}
+
+func groupLabels(svc services, userID uint64, groupBy string, rows []movement.CategorySum) []string {
+	nameByID := map[string]string{}
+	if groupBy == movement.GroupByAccount {
+		accts, _ := svc.QueryAccountsByUserID(userID)
+		for _, a := range accts {
+			nameByID[fmt.Sprintf("%d", a.ID)] = a.Name
+		}
+	}
+	labels := make([]string, len(rows))
+	for i, r := range rows {
+		label := r.Label
+		if groupBy == movement.GroupByAccount {
+			if n, ok := nameByID[label]; ok {
+				label = n
+			}
+		}
+		if groupBy == movement.GroupByCategory && label != "" {
+			label = svc.QueryIconForCategory(userID, label) + " " + label
+		}
+		labels[i] = label
+	}
+	return labels
+}
+
+func sumRows(rows []movement.CategorySum) decimal.Decimal {
 	total := decimal.Zero
 	for _, r := range rows {
 		total = total.Add(r.Total.Abs())
 	}
-	return fmt.Sprintf("total (suma de las %d filas): %s %s", len(rows), total.StringFixed(2), cur), true
+	return total
+}
+
+func showsGroupedTotal(rows []movement.CategorySum, groupBy, movType string) bool {
+	return groupBy != movement.GroupByType && movType != constants.Transfer && len(rows) >= 2
+}
+
+func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string) (string, bool) {
+	if !showsGroupedTotal(rows, groupBy, movType) {
+		return "", false
+	}
+	return fmt.Sprintf("total (suma de las %d filas): %s %s", len(rows), sumRows(rows).StringFixed(2), cur), true
 }
 
 func execListMovements(svc services, userID uint64, args queryToolArgs) (string, error) {
@@ -463,6 +515,57 @@ func stripLeadingIcon(s string) string {
 
 func parseQueryDate(s string) (time.Time, error) {
 	return time.Parse("2006-01-02", strings.TrimSpace(s))
+}
+
+func withDailyRate(amount decimal.Decimal, days int, cur string) string {
+	shown := amount.Abs().StringFixed(2) + " " + cur
+	if days <= 0 {
+		return shown
+	}
+	rate := amount.Abs().Div(decimal.NewFromInt(int64(days)))
+	return shown + " · " + rate.StringFixed(2) + "/día"
+}
+
+func rejectsDailyRate(groupBy, movType string) bool {
+	return groupBy == movement.GroupByDay || groupBy == movement.GroupByMonth ||
+		groupBy == movement.GroupByType || movType == constants.Transfer
+}
+
+func execSpendingReport(svc services, userID uint64, args queryToolArgs) (string, error) {
+	if rejectsDailyRate(args.GroupBy, args.Type) {
+		return "", fmt.Errorf("no hay promedio diario para eso: agrupá por categoría, subcategoría o cuenta, o pedí el total sin agrupar")
+	}
+	q, err := buildMovementQuery(svc, userID, args)
+	if err != nil {
+		return "", err
+	}
+	rows, err := svc.QuerySumMovements(q, args.GroupBy)
+	if err != nil {
+		return "", err
+	}
+	if len(rows) == 0 || (ungroupedSum(args.GroupBy) && rows[0].Total.IsZero()) {
+		return describeEmptyResult(svc, q, args)
+	}
+	cur := q.Currency.String()
+	days := daysInRange(q.From, q.To, agent.StartOfTodayArgentina())
+
+	var lines []string
+	if ungroupedSum(args.GroupBy) {
+		lines = append(lines, "total: "+withDailyRate(rows[0].Total, days, cur))
+	} else {
+		labels := groupLabels(svc, userID, args.GroupBy, rows)
+		for i, r := range rows {
+			lines = append(lines, labels[i]+": "+withDailyRate(r.Total, days, cur))
+		}
+		if showsGroupedTotal(rows, args.GroupBy, args.Type) {
+			lines = append(lines, fmt.Sprintf("total (suma de las %d filas): %s",
+				len(rows), withDailyRate(sumRows(rows), days, cur)))
+		}
+	}
+	if days > 0 {
+		lines = append(lines, fmt.Sprintf("(promedio diario sobre %d días)", days))
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 func describeReminder(r *reminder.Reminder) string {
