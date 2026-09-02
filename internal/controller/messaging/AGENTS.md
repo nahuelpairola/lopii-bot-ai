@@ -11,11 +11,6 @@ It used to be ~10k lines and hold the whole app. What lived here now lives in `f
 traps that moved with them moved too — `flow/AGENTS.md` carries flow registration and the
 `callback_data` limit, `conversation/AGENTS.md` the `Data` contract.
 
-`messages` — the shared-copy package split off alongside the others — was later dissolved: almost
-every constant in it had exactly one call site in `agent`, so it was inlined there (or kept as an
-unexported const when a string had more than one call site); the one truly cross-package string,
-`MsgAskRewrite`, is now exported from `agent` itself, which `settings` already imports.
-
 ## The bridge pattern, and why the methods are exported
 
 Every cluster defines a narrow interface of what it needs from the world (`flow.runner`,
