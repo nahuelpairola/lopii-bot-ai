@@ -285,4 +285,15 @@ func TestQueryEval(t *testing.T) {
 			t.Errorf("16000 en 31 dias = 516,13/dia: %s", ans)
 		}
 	})
+
+	t.Run("resta_entre_dos_totales_la_hace_el_modelo", func(t *testing.T) {
+		ans := ask(t, "¿cuánto más gasté en Supermercado que en Panadería en julio de 2026?")
+		if !strings.Contains(normDigits(ans), "2000") {
+			t.Errorf("Supermercado 5000 menos Panaderia 3000 son 2000. El par NO es casual: "+
+				"Gimnasio menos Panaderia da 5000, que es el monto de Supermercado, y Gimnasio menos "+
+				"Supermercado da 3000, que es el de Panaderia — con esos pares la asercion pasaria "+
+				"aunque el modelo repitiera un operando en vez de restar, que es como fallo el "+
+				"2026-08-14. Solo 5000-3000=2000 no colisiona con nada del seed. Respuesta: %s", ans)
+		}
+	})
 }
