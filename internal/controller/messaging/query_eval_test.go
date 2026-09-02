@@ -264,4 +264,21 @@ func TestQueryEval(t *testing.T) {
 			t.Errorf("contestó por todas las cuentas ante una cuenta inexistente: %s", ans)
 		}
 	})
+
+	t.Run("promedio_diario_por_categoria", func(t *testing.T) {
+		ans := ask(t, "¿cuánto gasté por categoría por día en julio de 2026?")
+		if strings.TrimSpace(ans) == "" {
+			t.Fatal("la consulta que rompio el 2026-09-01 tiene que contestar algo")
+		}
+		if !strings.Contains(normDigits(ans), "25806") {
+			t.Errorf("Alimentacion son 8000 en 31 dias = 258,06/dia, calculado por la app: %s", ans)
+		}
+	})
+
+	t.Run("promedio_diario_sin_agrupar", func(t *testing.T) {
+		ans := ask(t, "¿cuánto gasté en promedio por día en julio de 2026?")
+		if !strings.Contains(normDigits(ans), "51613") {
+			t.Errorf("16000 en 31 dias = 516,13/dia: %s", ans)
+		}
+	})
 }
