@@ -250,25 +250,10 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	if ungroupedSum(groupBy) {
 		return fmt.Sprintf("total: %s %s", rows[0].Total.Abs().StringFixed(2), cur), nil
 	}
-	nameByID := map[string]string{}
-	if groupBy == "account" {
-		accts, _ := svc.QueryAccountsByUserID(userID)
-		for _, a := range accts {
-			nameByID[fmt.Sprintf("%d", a.ID)] = a.Name
-		}
-	}
-	var lines []string
-	for _, r := range rows {
-		label := r.Label
-		if groupBy == "account" {
-			if n, ok := nameByID[label]; ok {
-				label = n
-			}
-		}
-		if groupBy == "category" && label != "" {
-			label = svc.QueryIconForCategory(userID, label) + " " + label
-		}
-		lines = append(lines, fmt.Sprintf("%s: %s %s", label, r.Total.Abs().StringFixed(2), cur))
+	labels := groupLabels(svc, userID, groupBy, rows)
+	lines := make([]string, 0, len(rows)+1)
+	for i, r := range rows {
+		lines = append(lines, fmt.Sprintf("%s: %s %s", labels[i], r.Total.Abs().StringFixed(2), cur))
 	}
 	if line, ok := groupedTotalLine(rows, groupBy, cur, args.Type); ok {
 		lines = append(lines, line)
@@ -332,15 +317,47 @@ func daysInRange(from, to, today time.Time) int {
 	return int(end.Sub(start).Hours()/24) + 1
 }
 
-func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string) (string, bool) {
-	if groupBy == "type" || movType == constants.Transfer || len(rows) < 2 {
-		return "", false
+func groupLabels(svc services, userID uint64, groupBy string, rows []movement.CategorySum) []string {
+	nameByID := map[string]string{}
+	if groupBy == movement.GroupByAccount {
+		accts, _ := svc.QueryAccountsByUserID(userID)
+		for _, a := range accts {
+			nameByID[fmt.Sprintf("%d", a.ID)] = a.Name
+		}
 	}
+	labels := make([]string, len(rows))
+	for i, r := range rows {
+		label := r.Label
+		if groupBy == movement.GroupByAccount {
+			if n, ok := nameByID[label]; ok {
+				label = n
+			}
+		}
+		if groupBy == movement.GroupByCategory && label != "" {
+			label = svc.QueryIconForCategory(userID, label) + " " + label
+		}
+		labels[i] = label
+	}
+	return labels
+}
+
+func sumRows(rows []movement.CategorySum) decimal.Decimal {
 	total := decimal.Zero
 	for _, r := range rows {
 		total = total.Add(r.Total.Abs())
 	}
-	return fmt.Sprintf("total (suma de las %d filas): %s %s", len(rows), total.StringFixed(2), cur), true
+	return total
+}
+
+func showsGroupedTotal(rows []movement.CategorySum, groupBy, movType string) bool {
+	return groupBy != movement.GroupByType && movType != constants.Transfer && len(rows) >= 2
+}
+
+func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string) (string, bool) {
+	if !showsGroupedTotal(rows, groupBy, movType) {
+		return "", false
+	}
+	return fmt.Sprintf("total (suma de las %d filas): %s %s", len(rows), sumRows(rows).StringFixed(2), cur), true
 }
 
 func execListMovements(svc services, userID uint64, args queryToolArgs) (string, error) {
