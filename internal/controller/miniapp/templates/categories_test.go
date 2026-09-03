@@ -192,10 +192,10 @@ func TestCategoriesDrill_HeaderIsOneTotalLine(t *testing.T) {
 	}
 }
 
-func TestCategories_TableShowsPerDayAndNotAPercentage(t *testing.T) {
+func TestCategories_TableShowsShareAndPerDay(t *testing.T) {
 	data := CategoriesData{
 		Rows: []CategoryRow{
-			{Category: "Alimentación", Total: "$60.000", PerDay: "$1.935"},
+			{Category: "Alimentación", Total: "$60.000", Share: "75%", PerDay: "$1.935"},
 		},
 		Total:      "$60.000",
 		PerDayNote: "Por día = total ÷ 31 días corridos, del 1 al 31 jul.",
@@ -213,8 +213,14 @@ func TestCategories_TableShowsPerDayAndNotAPercentage(t *testing.T) {
 	if !strings.Contains(html, `<th scope="col">Por día</th>`) {
 		t.Errorf("la columna no está encabezada:\n%s", html)
 	}
-	if strings.Contains(html, `<th scope="col">%</th>`) {
-		t.Errorf("el porcentaje sigue ahí: se saca, no se suma al lado:\n%s", html)
+	if !strings.Contains(html, `<th scope="col">%</th>`) {
+		t.Errorf("el porcentaje volvió a la tabla, entre Total y Por día:\n%s", html)
+	}
+	if !strings.Contains(html, "75%") {
+		t.Errorf("la fila no muestra su participación en el total:\n%s", html)
+	}
+	if strings.Index(html, `<th scope="col">%</th>`) > strings.Index(html, `<th scope="col">Por día</th>`) {
+		t.Errorf("el porcentaje va antes de Por día, no después:\n%s", html)
 	}
 	if !strings.Contains(html, data.PerDayNote) {
 		t.Errorf("sin la nota, el mismo número significa algo distinto en cada pestaña y nada lo aclara:\n%s", html)

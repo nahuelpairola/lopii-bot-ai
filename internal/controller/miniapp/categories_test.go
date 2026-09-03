@@ -125,8 +125,14 @@ func TestHandleCategories_ShowsWhatEachCategoryCostsPerDay(t *testing.T) {
 	if !bodyContains(body, "31 días corridos") {
 		t.Fatal("la nota debe nombrar el divisor que se usó")
 	}
-	if bodyContains(body, `<th scope="col">%</th>`) {
-		t.Fatal("el porcentaje salió de la tabla")
+	if !bodyContains(body, `<th scope="col">%</th>`) {
+		t.Fatal("el porcentaje volvió a la tabla")
+	}
+	if !bodyContains(body, "83%") {
+		t.Fatal("Alimentación es el 83% del total")
+	}
+	if !bodyContains(body, "17%") {
+		t.Fatal("Transporte es el 17% del total")
 	}
 }
 
