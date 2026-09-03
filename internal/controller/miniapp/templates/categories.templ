@@ -11,6 +11,7 @@ type CategoryRow struct {
 	Icon     string
 	Href     string
 	Total    string
+	Share    string
 	PerDay   string
 }
 
@@ -90,25 +91,28 @@ templ SubcategoryLeaf(data SubcategoryLeafData) {
 }
 
 templ categoryTable(data CategoriesData, header string) {
-	<table class="cat-table" aria-label={ TableLabel(header) }>
-		<thead>
-			<tr><th scope="col">{ header }</th><th scope="col">Total</th><th scope="col">Por día</th></tr>
-		</thead>
-		<tbody>
-			for _, row := range data.Rows {
-				<tr>
-					<th scope="row">
-						if row.Href != "" {
-							<a class="row-link" href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Category }</a>
-						} else {
-							{ row.Icon } { row.Category }
-						}
-					</th>
-					<td class="money">{ row.Total }</td>
-					<td class="money muted">{ row.PerDay }</td>
-				</tr>
-			}
-		</tbody>
-	</table>
+	<div class="cat-table-scroll">
+		<table class="cat-table" aria-label={ TableLabel(header) }>
+			<thead>
+				<tr><th scope="col">{ header }</th><th scope="col">Total</th><th scope="col">%</th><th scope="col">Por día</th></tr>
+			</thead>
+			<tbody>
+				for _, row := range data.Rows {
+					<tr>
+						<th scope="row">
+							if row.Href != "" {
+								<a class="row-link" href={ row.Href } hx-get={ row.Href } hx-target="#content" hx-push-url="true" hx-indicator="#content">{ row.Icon } { row.Category }</a>
+							} else {
+								{ row.Icon } { row.Category }
+							}
+						</th>
+						<td class="money">{ row.Total }</td>
+						<td class="money muted">{ row.Share }</td>
+						<td class="money muted">{ row.PerDay }</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
 	<p class="muted">{ data.PerDayNote }</p>
 }

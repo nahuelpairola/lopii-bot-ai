@@ -246,9 +246,12 @@ a[role="button"].chip::after {
 
 #content.htmx-request { opacity: 0.55; transition: opacity 0.1s; }
 
+.cat-table-scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+
 .cat-table {
   font-size: 0.85rem;
   width: 100%;
+  min-width: max-content;
 }
 
 .cat-table thead th {
@@ -258,6 +261,7 @@ a[role="button"].chip::after {
 .cat-table tbody th, .cat-table tbody td {
   height: 44px;
   padding: 0 0.4rem;
+  white-space: nowrap;
 }
 
 .cat-table tbody th { font-weight: inherit; }

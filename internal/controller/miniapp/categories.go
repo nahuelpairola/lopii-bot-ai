@@ -3,6 +3,7 @@ package miniapp
 import (
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -90,6 +91,7 @@ func (c *controller) buildCategoriesData(userID uint64, p templates.Period, grou
 		row := templates.CategoryRow{
 			Category: r.Label,
 			Total:    templates.FormatMoney(r.Total, p.Currency),
+			Share:    sharePercent(r.Total, total),
 			PerDay:   templates.FormatMoney(r.Total.Div(days), p.Currency),
 		}
 
@@ -108,6 +110,14 @@ func (c *controller) buildCategoriesData(userID uint64, p templates.Period, grou
 	}
 	out.Chart = templates.BarChartData{Labels: labels, Values: values, Role: templates.RoleExpense}
 	return out, nil
+}
+
+func sharePercent(v, total decimal.Decimal) string {
+	if total.IsZero() {
+		return ""
+	}
+	pct := v.Mul(decimal.NewFromInt(100)).Div(total)
+	return strconv.FormatInt(pct.Round(0).IntPart(), 10) + "%"
 }
 
 func (c *controller) handleSubcategoryLeaf(ctx *gin.Context, userID uint64, p templates.Period, category, sub string) {
