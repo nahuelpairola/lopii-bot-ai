@@ -26,6 +26,8 @@ createModel = "openai/gpt-oss-120b"
 updateModel = "openai/gpt-oss-20b"
 queryModel = "openai/gpt-oss-120b"
 agentModel = "openai/gpt-oss-20b"
+agentFallbackModels = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
+queryFallbackModels = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
 # El clasificador va en OTRO modelo a proposito: el techo de TPM de Groq es por
 # modelo, y el loop ya entra al suyo una vez por minuto y medio.
 classifierModel = "openai/gpt-oss-20b"

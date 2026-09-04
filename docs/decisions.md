@@ -250,19 +250,53 @@ illegible as a Telegram message.
   model - so `TestEveryConfigFile_HasNoSameTurnModelCollision` is red on purpose. The table is left
   intact: it describes what really collides, and that did not change because a model went away.
 
-- **`qwen/qwen3.6-27b` is deliberately NOT the third model, and this is the note that keeps it
+- **`qwen/qwen3.6-27b` is deliberately NOT in any chain, and this is the note that keeps it
   out.** It is the obvious candidate every time someone looks at
   `TestEveryConfigFile_HasNoSameTurnModelCollision` sitting red and reaches for a third TPM
   bucket to fix it. It emits its reasoning **inside the content**, so the `<think>` block reaches
   the user. That is not a cost problem that a cap could solve — it breaks the output.
-- **The fallback lists are not the chain.** `agentRound` and `queryChain` build `[primary] +
-  list`, so the last step repeats the primary and retries a bucket that already bounced. Left
-  that way on purpose (2026-08-19): Groq leaves two usable models, both 8.000 TPM in separate
-  buckets, and two calls landing in different buckets is the only thing that makes stepping aside
-  worth anything.
+  `qwen/qwen3.8-27b` is a different model and does not show this: none of the live Telegram
+  turns below leaked a `<think>` block, so it is the one actually in the fallback lists.
+- **`qwen/qwen3.8-27b` is the third TPM bucket, added to both fallback lists (2026-09-04),
+  after it did not fit as a fourth free-standing chain link.** It reserves noticeably more
+  tokens per round than either gpt-oss — on an identical ~2.460-token agent prompt, Groq's
+  `Requested` ran 4.700-6.200 for qwen against 4.100-4.650 for gpt-oss-20b — because the
+  round-1 retry re-sends round 0's assistant tool-call message, and qwen's carries more than
+  the JSON arguments (see the eval numbers in `internal/orchestrator/agent_loop_eval_test.go`'s
+  git history). Standalone as `agentModel`/`queryModel`+`narrationModel` it choked on its own
+  8.000 TPM / 200.000 TPD ceilings running the full eval suites back to back — `qwen3.6-27b`
+  even harder, with three `tool_use_failed` 400s burning 475-1.498 output tokens each before
+  giving up under `tool_choice: required`. As the LAST link of a chain that only reaches it
+  after two real buckets already bounced, that ceiling stopped being a blocker: verified live
+  against 9 real Telegram turns run by hand (simple expense, referent-less correction — cascaded
+  live to this model and closed clean, "Listo, lo dejo en $1.500." —, a two-leg transfer with
+  correct signs on both legs, a multi-entity query attributing each total to its own category, a
+  duplicate-category-create correctly resolving to the existing pair instead of a new one, a
+  two-movement batch in one message, an account-rename gap-fill, an overdraft correctly parking
+  into `movement_negative_confirm`, and a relative-date correction ("el lunes") correctly
+  arriving with no date and falling through to the picker instead of guessing). It is `console.
+  groq.com`'s own "Preview" tier — can be pulled with no notice — but being the LAST link bounds
+  that: `roundWithFallback` only advances the chain on a 429, so a discontinued model returns a
+  different error and the turn fails exactly as it would with no third link, only on the specific
+  day both real buckets are also dry. `qwen/qwen3.6-27b` was not promoted alongside it — see the
+  bullet above — and stacking both qwen models was considered and rejected: they are both
+  "Preview," so they do not diversify risk against Groq retiring the family, and `qwen3.6-27b`
+  never got this same live validation.
+- **The fallback lists are not the chain, and used to repeat.** `agentRound` and `queryChain`
+  build `[primary] + list`, so a list entry equal to the primary retries a bucket that already
+  bounced for nothing. `config.go`'s `AgentFallbackModels`/`QueryFallbackModels` **defaults**
+  carried exactly that — `["...120b", "...20b"]` behind an `agentModel` default of `...20b`, an
+  artifact of swapping out the retired `llama-3.3-70b` (`fc300ab`) onto a list that already had
+  the other gpt-oss model in it. `local.toml` had already overridden it by hand before this was
+  named here; the default itself was fixed only once qwen gave the chain a real third bucket to
+  fill that slot with (2026-09-04).
 - **`QueryFallbackModels` is a separate list from the agent's, not a reuse.** Query's primary
   (120b) is precisely the agent's first substitute, so sharing one list would send the first
-  retry to the model that just bounced.
+  retry to the model that just bounced. qwen sits SECOND in query's list (not last, unlike the
+  agent's) because query starts with only one other real bucket instead of two, so there is less
+  margin before a 429 goes unrescued — `narrationModel` stays pinned to `gpt-oss-20b` regardless,
+  so the forced-narration call (400-token completion cap, tighter than `record_movements`'
+  1.500) never routes through qwen under this ordering.
 - **`NarrationModel` is chosen for NOT reasoning (2026-08-13).** The forced narration is the last
   call of a query — no tools left to pick, only prose to write. A reasoning model spends the
   completion budget thinking and returns empty; empty falls back to `queryModel`. Writing is

@@ -31,14 +31,10 @@ agentModel = "openai/gpt-oss-20b"
 # techos de Groq son POR MODELO —verificado leyendo los headers: 8.000 TPM para
 # cada gpt-oss, y TPD independiente— así que un 429 en uno no dice nada del otro.
 # Van explícitos y no por default para que la prueba del fallback no esté
-# probando, de paso, el parseo de viper.
-#
-# Un solo suplente por cadena: quedan DOS modelos usables, así que el segundo
-# paso repetiría el bucket que acaba de rebotar y no rescata nada. Estuvo un
-# tiempo como ["gpt-oss-20b", "gpt-oss-20b"] — artefacto de reemplazar el
-# llama-3.3-70b dado de baja (fc300ab) sobre una lista que ya lo tenía.
-agentFallbackModels = ["openai/gpt-oss-120b"]
-queryFallbackModels = ["openai/gpt-oss-20b"]
+# probando, de paso, el parseo de viper. Por qué qwen3.8-27b entra acá y en
+# qué orden: docs/decisions.md, sección "Groq quota, el 429 queue y rate limits".
+agentFallbackModels = ["openai/gpt-oss-120b", "qwen/qwen3.8-27b"]
+queryFallbackModels = ["qwen/qwen3.8-27b", "openai/gpt-oss-20b"]
 narrationModel = "openai/gpt-oss-20b"
 # El clasificador va en OTRO modelo a proposito: el techo de TPM de Groq es por
 # modelo, y el loop ya entra al suyo una vez por minuto y medio.

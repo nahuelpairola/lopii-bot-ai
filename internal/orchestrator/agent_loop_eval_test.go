@@ -127,11 +127,16 @@ func TestAgentLoopEval(t *testing.T) {
 	if model == "" {
 		model = "openai/gpt-oss-20b"
 	}
+	var fallbacks []string
+	if raw := os.Getenv("GROQ_AGENT_FALLBACK_MODELS"); raw != "" {
+		fallbacks = strings.Split(raw, ",")
+	}
 	o := New(Config{
-		APIKey:         key,
-		BaseURL:        evalBaseURL(),
-		AgentModel:     model,
-		TimeoutSeconds: 60,
+		APIKey:              key,
+		BaseURL:             evalBaseURL(),
+		AgentModel:          model,
+		AgentFallbackModels: fallbacks,
+		TimeoutSeconds:      60,
 	})
 
 	ran := 0
