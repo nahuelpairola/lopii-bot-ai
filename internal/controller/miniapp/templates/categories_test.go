@@ -251,3 +251,20 @@ func TestSubcategoryDrill_CarriesThePerDayColumnToo(t *testing.T) {
 		t.Errorf("la nota vive dentro de categoryTable y el drill la hereda:\n%s", html)
 	}
 }
+
+func TestSubcategoryLeaf_ShowsLoadMoreSentinelWhenMoreHrefSet(t *testing.T) {
+	data := SubcategoryLeafData{
+		Category:    "Alimentación",
+		Subcategory: "Supermercado",
+		MoreHref:    "/app/categories?category=Alimentaci%C3%B3n&subcategory=Supermercado&offset=50",
+		Rows:        []MovementRow{{Title: "Coto", Date: "12 ago", Amount: "$1"}},
+	}
+
+	var sb strings.Builder
+	if err := SubcategoryLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(sb.String(), `id="mov-more"`) {
+		t.Error("con más movimientos por cargar tiene que estar el sentinel del scroll")
+	}
+}

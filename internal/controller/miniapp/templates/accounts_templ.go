@@ -171,8 +171,6 @@ func Accounts(data AccountsData) templ.Component {
 	})
 }
 
-const MsgLeafCapped = "Mostrando los 50 más recientes del período."
-
 const MsgFilterNoMatch = "Nada coincide con esa búsqueda."
 
 const (
@@ -225,7 +223,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 		var templ_7745c5c3_Var9 templ.SafeURL
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(data.BackQuery))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 75, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 73, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -238,7 +236,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(data.BackQuery)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 75, Col: 83}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 73, Col: 83}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 		if templ_7745c5c3_Err != nil {
@@ -251,7 +249,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(data.AccountName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 76, Col: 23}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 74, Col: 23}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -264,7 +262,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(data.OpeningLabel)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 78, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 76, Col: 27}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -277,7 +275,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(data.Opening)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 79, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 77, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -300,7 +298,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(MovFilterID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 84, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 82, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 			if templ_7745c5c3_Err != nil {
@@ -329,7 +327,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(MovFilterEmptyID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 87, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 85, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 			if templ_7745c5c3_Err != nil {
@@ -342,7 +340,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(MsgFilterNoMatch)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 87, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 85, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {
@@ -355,7 +353,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(data.ClosingLabel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 89, Col: 28}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 87, Col: 28}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -368,7 +366,7 @@ func AccountLeaf(data AccountLeafData) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(data.Closing)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 90, Col: 37}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/controller/miniapp/templates/accounts.templ`, Line: 88, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {

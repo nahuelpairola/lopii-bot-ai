@@ -68,7 +68,7 @@ type SubcategoryLeafData struct {
 	BackQuery   string
 	Rows        []MovementRow
 	Total       string
-	Capped      bool
+	MoreHref    string
 	Empty       bool
 }
 
@@ -80,9 +80,7 @@ templ SubcategoryLeaf(data SubcategoryLeafData) {
 		@EmptyState("Sin gastos en esta subcategoría.")
 	} else {
 		@movementList(data.Rows)
-		if data.Capped {
-			<p class="muted">{ MsgLeafCapped }</p>
-		}
+		@movementMore(data.MoreHref)
 		<p class="balance-line">
 			<span>Total</span>
 			<span class="money">{ data.Total }</span>
