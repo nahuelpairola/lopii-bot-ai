@@ -2,6 +2,8 @@ package miniapp
 
 import (
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,11 +153,15 @@ type stubMovementsWithRows struct {
 	stubMovements
 	movements []movement.Movement
 
-	lastQuery *movement.MovementQuery
+	lastQuery  *movement.MovementQuery
+	lastOffset *int
 }
 
-func (s stubMovementsWithRows) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+func (s stubMovementsWithRows) ListForUser(q movement.MovementQuery, limit, offset int) ([]movement.Movement, error) {
 	*s.lastQuery = q
+	if s.lastOffset != nil {
+		*s.lastOffset = offset
+	}
 	return s.movements, nil
 }
 
@@ -223,5 +229,91 @@ func TestHandleCategories_PeriodChipsKeepTheDrill(t *testing.T) {
 		if !leafKeepsDrill(w.Body.String(), tc.want) {
 			t.Errorf("%s: cambiar el rango pierde %s y vuelve al índice", tc.url, tc.want)
 		}
+	}
+}
+
+func TestHandleSubcategoryLeaf_ForwardsOffsetToRepository(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var got movement.MovementQuery
+	var gotOffset int
+	movements := stubMovementsWithRows{
+		stubMovements: stubMovements{rows: map[string][]movement.CategorySum{
+			"": {{Label: "", Total: decimal.NewFromInt(80000)}},
+		}},
+		movements: []movement.Movement{{
+			Date: time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1), Currency: currency.ARS,
+		}},
+		lastQuery:  &got,
+		lastOffset: &gotOffset,
+	}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categories?category=Alimentaci%C3%B3n&subcategory=Supermercado&offset=50"))
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotOffset != 50 {
+		t.Errorf("offset = %d, want 50", gotOffset)
+	}
+}
+
+func TestHandleSubcategoryLeaf_OffsetRequestRendersOnlyFragment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var got movement.MovementQuery
+	movements := stubMovementsWithRows{
+		stubMovements: stubMovements{rows: map[string][]movement.CategorySum{
+			"": {{Label: "", Total: decimal.NewFromInt(80000)}},
+		}},
+		movements: []movement.Movement{{
+			Date: time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1), Currency: currency.ARS,
+		}},
+		lastQuery: &got,
+	}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categories?category=Alimentaci%C3%B3n&subcategory=Supermercado&offset=50"))
+	body := w.Body.String()
+
+	if strings.Contains(body, "<h1>") {
+		t.Errorf("un pedido de más filas no debe repetir el encabezado de la hoja:\n%s", body)
+	}
+}
+
+func TestHandleSubcategoryLeaf_MarksMoreWhenPageIsFull(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	full := make([]movement.Movement, movementLeafLimit)
+	for i := range full {
+		full[i] = movement.Movement{
+			Date: time.Date(2026, 8, 12, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1), Currency: currency.ARS,
+		}
+	}
+	var got movement.MovementQuery
+	movements := stubMovementsWithRows{
+		stubMovements: stubMovements{rows: map[string][]movement.CategorySum{
+			"": {{Label: "", Total: decimal.NewFromInt(80000)}},
+		}},
+		movements: full,
+		lastQuery: &got,
+	}
+	c := NewController(movements, stubAccounts{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/categories?category=Alimentaci%C3%B3n&subcategory=Supermercado"))
+	body := w.Body.String()
+
+	if !strings.Contains(body, "offset="+strconv.Itoa(movementLeafLimit)) {
+		t.Errorf("con la página llena el sentinel tiene que apuntar al offset siguiente:\n%s", body)
 	}
 }

@@ -121,26 +121,19 @@ func sharePercent(v, total decimal.Decimal) string {
 }
 
 func (c *controller) handleSubcategoryLeaf(ctx *gin.Context, userID uint64, p templates.Period, category, sub string) {
+	offset := parseOffset(ctx)
 	expenseType := constants.Expense
 	q := movement.MovementQuery{
 		UserID: userID, From: p.From, To: p.To, Currency: p.Currency,
 		Type: &expenseType, Category: &category, Subcategory: &sub,
 	}
 
-	movs, err := c.movements.ListForUser(q, movementLeafLimit)
+	movs, err := c.movements.ListForUser(q, movementLeafLimit, offset)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	totals, err := c.movements.SumForUser(q, "")
-	if err != nil {
-		ctx.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-	total := decimal.Zero
-	if len(totals) > 0 {
-		total = totals[0].Total
-	}
+	hasMore := len(movs) == movementLeafLimit
 
 	rows := make([]templates.MovementRow, 0, len(movs))
 	for _, m := range movs {
@@ -156,6 +149,25 @@ func (c *controller) handleSubcategoryLeaf(ctx *gin.Context, userID uint64, p te
 		})
 	}
 
+	base := p.Query() + "&" + categoryParam + "=" + url.QueryEscape(category) + "&" + subcategoryParam + "=" + url.QueryEscape(sub)
+	next := nextOffsetHref(base, offset, hasMore)
+
+	if offset > 0 {
+		ctx.Status(http.StatusOK)
+		templates.MovementFragment(rows, next).Render(ctx.Request.Context(), ctx.Writer)
+		return
+	}
+
+	totals, err := c.movements.SumForUser(q, "")
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	total := decimal.Zero
+	if len(totals) > 0 {
+		total = totals[0].Total
+	}
+
 	ctx.Status(http.StatusOK)
 	templates.SubcategoryLeaf(templates.SubcategoryLeafData{
 		Period:      p,
@@ -164,7 +176,7 @@ func (c *controller) handleSubcategoryLeaf(ctx *gin.Context, userID uint64, p te
 		BackQuery:   p.Query() + "&" + categoryParam + "=" + url.QueryEscape(category),
 		Rows:        rows,
 		Total:       templates.FormatMoney(total, p.Currency),
-		Capped:      len(movs) == movementLeafLimit,
+		MoreHref:    next,
 		Empty:       len(movs) == 0,
 	}).Render(ctx.Request.Context(), ctx.Writer)
 }

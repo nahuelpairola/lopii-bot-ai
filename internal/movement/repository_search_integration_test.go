@@ -52,7 +52,7 @@ func TestMovementQuery_Search_MatchesAllThreeLegs(t *testing.T) {
 		Search:    &term,
 	}
 
-	rows, err := r.ListForUser(q, 50)
+	rows, err := r.ListForUser(q, 50, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -21,8 +21,8 @@ type movementReader interface {
 	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
 	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
 	MonthlyDeltasForAccount(accountID uint64) ([]movement.MonthlyDelta, error)
-	ListForAccount(accountID uint64, from, to time.Time, limit int) ([]movement.Movement, error)
-	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
+	ListForAccount(accountID uint64, from, to time.Time, limit, offset int) ([]movement.Movement, error)
+	ListForUser(q movement.MovementQuery, limit, offset int) ([]movement.Movement, error)
 }
 
 type accountReader interface {

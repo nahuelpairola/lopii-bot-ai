@@ -60,7 +60,7 @@ type movementRepository interface {
 	SoftDeleteByIDs(ids []uint) error
 	InsertAccountsWithOpenings(items []movement.AccountOpening) error
 	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
-	ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error)
+	ListForUser(q movement.MovementQuery, limit, offset int) ([]movement.Movement, error)
 	ReassignAccount(fromID, toID uint64) error
 	CountForUser(userID uint64) (int64, error)
 	CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error)

@@ -2,6 +2,7 @@ package miniapp
 
 import (
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,10 +22,14 @@ type stubMovementsWithAccounts struct {
 	balances map[uint64]decimal.Decimal
 	deltas   map[uint64][]movement.MonthlyDelta
 
-	movements []movement.Movement
+	movements  []movement.Movement
+	lastOffset *int
 }
 
-func (s stubMovementsWithAccounts) ListForAccount(accountID uint64, from, to time.Time, limit int) ([]movement.Movement, error) {
+func (s stubMovementsWithAccounts) ListForAccount(accountID uint64, from, to time.Time, limit, offset int) ([]movement.Movement, error) {
+	if s.lastOffset != nil {
+		*s.lastOffset = offset
+	}
 	return s.movements, nil
 }
 
@@ -357,5 +362,112 @@ func TestHandleAccounts_TotalsTheBalancesItShows(t *testing.T) {
 	body := w.Body.String()
 	if !bodyContains(body, "$75.500") {
 		t.Errorf("falta el total $75.500 (50.000 + 25.500), que es lo que hace que la pantalla cierre:\n%s", body)
+	}
+}
+
+func TestHandleAccountLeaf_ForwardsOffsetToRepository(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	accountID := uint64(1)
+	var gotOffset int
+	movements := stubMovementsWithAccounts{
+		balances:   map[uint64]decimal.Decimal{1: decimal.Zero},
+		deltas:     map[uint64][]movement.MonthlyDelta{1: {}},
+		lastOffset: &gotOffset,
+		movements: []movement.Movement{{
+			AccountID: &accountID, Date: time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1500), Currency: currency.ARS,
+		}},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&m=2026-08&c=ARS&account=1&offset=50"))
+
+	if w.Code != 200 {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if gotOffset != 50 {
+		t.Errorf("offset = %d, want 50", gotOffset)
+	}
+}
+
+func TestHandleAccountLeaf_OffsetRequestRendersOnlyFragment(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	accountID := uint64(1)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{1: decimal.Zero},
+		deltas:   map[uint64][]movement.MonthlyDelta{1: {}},
+		movements: []movement.Movement{{
+			AccountID: &accountID, Date: time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1500), Currency: currency.ARS,
+		}},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&m=2026-08&c=ARS&account=1&offset=50"))
+	body := w.Body.String()
+
+	if strings.Contains(body, "<h1>") {
+		t.Errorf("un pedido de más filas no debe repetir el encabezado de la hoja:\n%s", body)
+	}
+	if strings.Contains(body, "Volver a Cuentas") {
+		t.Errorf("un pedido de más filas no debe repetir el link de volver:\n%s", body)
+	}
+}
+
+func TestHandleAccountLeaf_MarksMoreWhenPageIsFull(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	accountID := uint64(1)
+	full := make([]movement.Movement, movementLeafLimit)
+	for i := range full {
+		full[i] = movement.Movement{
+			AccountID: &accountID, Date: time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-100), Currency: currency.ARS,
+		}
+	}
+	movements := stubMovementsWithAccounts{
+		balances:  map[uint64]decimal.Decimal{1: decimal.Zero},
+		deltas:    map[uint64][]movement.MonthlyDelta{1: {}},
+		movements: full,
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&m=2026-08&c=ARS&account=1"))
+	body := w.Body.String()
+
+	if !strings.Contains(body, "offset="+strconv.Itoa(movementLeafLimit)) {
+		t.Errorf("con la página llena el sentinel tiene que apuntar al offset siguiente:\n%s", body)
+	}
+}
+
+func TestHandleAccountLeaf_NoMoreWhenPageIsShort(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	accountID := uint64(1)
+	movements := stubMovementsWithAccounts{
+		balances: map[uint64]decimal.Decimal{1: decimal.Zero},
+		deltas:   map[uint64][]movement.MonthlyDelta{1: {}},
+		movements: []movement.Movement{{
+			AccountID: &accountID, Date: time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
+			Type: movement.Expense, Amount: decimal.NewFromInt(-1500), Currency: currency.ARS,
+		}},
+	}
+	c := NewController(movements, stubAccountsWithData{}, stubIcons{}, stubUsers{}, testBotToken, testBotUsername)
+	router := gin.New()
+	c.RegisterRoutes(router)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, authedHTMXRequest(t, "/app/accounts?p=month&m=2026-08&c=ARS&account=1"))
+	body := w.Body.String()
+
+	if strings.Contains(body, `id="mov-more"`) {
+		t.Errorf("con una sola fila no puede haber más para cargar:\n%s", body)
 	}
 }

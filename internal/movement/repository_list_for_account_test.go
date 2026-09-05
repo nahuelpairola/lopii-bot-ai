@@ -33,7 +33,7 @@ func TestListForAccount_IncludesTransfers(t *testing.T) {
 
 	rows, err := r.ListForAccount(accountID,
 		time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), 50)
+		time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC), 50, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestListForAccount_IncludesTransfers(t *testing.T) {
 
 	empty, err := r.ListForAccount(accountID,
 		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
-		time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC), 50)
+		time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC), 50, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

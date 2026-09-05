@@ -201,7 +201,7 @@ func (r *fakeMovementRepoFull) SumForUser(q movement.MovementQuery, groupBy stri
 func (r *fakeMovementRepoFull) CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error) {
 	return r.dayCounts, nil
 }
-func (r *fakeMovementRepoFull) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+func (r *fakeMovementRepoFull) ListForUser(q movement.MovementQuery, limit, offset int) ([]movement.Movement, error) {
 	return nil, nil
 }
 func (r *fakeMovementRepoFull) ReassignAccount(fromID, toID uint64) error {

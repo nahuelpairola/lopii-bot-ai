@@ -23,3 +23,14 @@ templ movementList(rows []MovementRow) {
 		</section>
 	}
 }
+
+templ movementMore(href string) {
+	if href != "" {
+		<div id="mov-more" class="mov-more" hx-get={ href } hx-trigger="revealed" hx-target="#mov-more" hx-swap="outerHTML"></div>
+	}
+}
+
+templ MovementFragment(rows []MovementRow, moreHref string) {
+	@movementList(rows)
+	@movementMore(moreHref)
+}

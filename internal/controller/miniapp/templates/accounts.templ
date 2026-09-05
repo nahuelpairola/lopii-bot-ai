@@ -48,8 +48,6 @@ templ Accounts(data AccountsData) {
 	}
 }
 
-const MsgLeafCapped = "Mostrando los 50 más recientes del período."
-
 const MsgFilterNoMatch = "Nada coincide con esa búsqueda."
 
 const (
@@ -66,7 +64,7 @@ type AccountLeafData struct {
 	Closing      string
 	BackQuery    string
 	Rows         []MovementRow
-	Capped       bool
+	MoreHref     string
 	Empty        bool
 }
 
@@ -83,10 +81,8 @@ templ AccountLeaf(data AccountLeafData) {
 	} else {
 		<input id={ MovFilterID } type="search" placeholder="Buscar en esta cuenta" aria-label="Buscar movimientos" autocomplete="off"/>
 		@movementList(data.Rows)
+		@movementMore(data.MoreHref)
 		<p id={ MovFilterEmptyID } class="muted filter-status" role="status" data-msg={ MsgFilterNoMatch }></p>
-		if data.Capped {
-			<p class="muted">{ MsgLeafCapped }</p>
-		}
 		<p class="balance-line">
 			<span>{ data.ClosingLabel }</span>
 			<span class="money">{ data.Closing }</span>

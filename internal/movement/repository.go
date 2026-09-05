@@ -330,7 +330,7 @@ func (r *repository) SumForUser(q MovementQuery, groupBy string) ([]CategorySum,
 	return rows, err
 }
 
-func (r *repository) ListForUser(q MovementQuery, limit int) ([]Movement, error) {
+func (r *repository) ListForUser(q MovementQuery, limit, offset int) ([]Movement, error) {
 	limit = clampListLimit(limit)
 	var ms []Movement
 	db := r.db.DB.Model(&Movement{}).
@@ -338,7 +338,7 @@ func (r *repository) ListForUser(q MovementQuery, limit int) ([]Movement, error)
 		Preload("Subcategory").
 		Joins("JOIN subcategories s ON s.id = movements.subcategory_id")
 	db = q.apply(db)
-	err := db.Order("movements.date DESC, movements.id DESC").Limit(limit).Find(&ms).Error
+	err := db.Order("movements.date DESC, movements.id DESC").Limit(limit).Offset(offset).Find(&ms).Error
 	return ms, err
 }
 
@@ -354,7 +354,7 @@ func clampListLimit(limit int) int {
 	return limit
 }
 
-func (r *repository) ListForAccount(accountID uint64, from, to time.Time, limit int) ([]Movement, error) {
+func (r *repository) ListForAccount(accountID uint64, from, to time.Time, limit, offset int) ([]Movement, error) {
 	limit = clampListLimit(limit)
 	var ms []Movement
 	err := r.db.DB.Model(&Movement{}).
@@ -363,6 +363,7 @@ func (r *repository) ListForAccount(accountID uint64, from, to time.Time, limit 
 		Where("date >= ? AND date <= ?", from.Format("2006-01-02"), to.Format("2006-01-02")).
 		Order("date DESC, id DESC").
 		Limit(limit).
+		Offset(offset).
 		Find(&ms).Error
 	return ms, err
 }

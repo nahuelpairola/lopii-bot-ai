@@ -33,11 +33,11 @@ func (s stubMovements) MonthlyDeltasForAccount(accountID uint64) ([]movement.Mon
 	return nil, nil
 }
 
-func (s stubMovements) ListForAccount(accountID uint64, from, to time.Time, limit int) ([]movement.Movement, error) {
+func (s stubMovements) ListForAccount(accountID uint64, from, to time.Time, limit, offset int) ([]movement.Movement, error) {
 	return nil, nil
 }
 
-func (s stubMovements) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+func (s stubMovements) ListForUser(q movement.MovementQuery, limit, offset int) ([]movement.Movement, error) {
 	return nil, nil
 }
 

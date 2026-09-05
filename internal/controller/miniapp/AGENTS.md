@@ -56,10 +56,31 @@ They look alike and are deliberately not symmetric:
 | Row note | `Categoría › Subcategoría` | none — it would repeat on all 50 rows |
 | Footer | opening + closing balance | the period total |
 
-**Neither footer is the sum of the visible rows**, and that is the whole point: the list is
-capped at 50, so summing what is on screen would contradict the figure the user tapped to
-get here. Both come from an aggregate over *all* rows (`MonthlyDeltasForAccount` /
-`SumForUser`). Deriving them from `Rows` looks simpler and is wrong.
+**Neither footer is the sum of the visible rows**, and that is the whole point: each page is only
+`movementLeafLimit` (50) rows, so summing what is on screen would contradict the figure the user
+tapped to get here even after scrolling past the first page. Both come from an aggregate over
+*all* rows (`MonthlyDeltasForAccount` / `SumForUser`). Deriving them from `Rows` looks simpler and
+is wrong.
+
+## Both leaves paginate by offset, not by loading everything
+
+Past the first `movementLeafLimit` rows, both leaves load more via htmx infinite scroll: a
+sentinel (`templates.movementMore`, `id="mov-more"`) with `hx-trigger="revealed"` fetches the next
+page and replaces itself. `?offset=` on the same route is the signal, not a new route:
+`offset == 0` renders the full leaf (header, balances/total, list, sentinel); `offset > 0` renders
+only `templates.MovementFragment` (the next rows + the next sentinel, or nothing once
+`len(rows) < movementLeafLimit`). `parseOffset`/`nextOffsetHref`/`offsetParam`
+(`accounts.go`) are shared by both handlers — the second one added does not redeclare them.
+
+**A `offset > 0` request skips the aggregate query its full-page sibling needs but does not
+render**: the account leaf skips `MonthlyDeltasForAccount`, the subcategory leaf skips
+`SumForUser`. Wiring a page-2 request back through either call is wasted work, not a correctness
+bug — but it does mean a future change to either aggregate must be re-checked against the fragment
+branch too, since it is easy to update the `offset == 0` branch and forget the early return above
+it never reaches it.
+
+If a page boundary falls mid-day, that day's rows can render split across two date-grouped blocks
+with the header repeated — cosmetic, not worth reconciling across two separate HTTP responses.
 
 Consequences worth knowing before touching either:
 
