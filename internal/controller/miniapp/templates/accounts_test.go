@@ -80,15 +80,12 @@ func TestAccountLeaf_ReconcilesAndFlagsUnclassified(t *testing.T) {
 	if strings.Contains(html, "<table") {
 		t.Error("la hoja es una lista, no una tabla: cuatro datos por fila en un webview angosto obligan a scrollear en horizontal")
 	}
-	if strings.Contains(html, MsgLeafCapped) {
-		t.Error("con 2 filas no se avisa de ningún tope")
-	}
 }
 
-func TestAccountLeaf_WarnsWhenCapped(t *testing.T) {
+func TestAccountLeaf_ShowsLoadMoreSentinelWhenMoreHrefSet(t *testing.T) {
 	data := AccountLeafData{
 		AccountName: "Galicia",
-		Capped:      true,
+		MoreHref:    "/app/accounts?account=1&offset=50",
 		Rows:        []MovementRow{{Title: "Coto", Date: "12 ago", Amount: "-$1"}},
 	}
 
@@ -96,8 +93,27 @@ func TestAccountLeaf_WarnsWhenCapped(t *testing.T) {
 	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	if !strings.Contains(sb.String(), MsgLeafCapped) {
-		t.Error("si la lista quedó cortada hay que decirlo: si no, el saldo final no cuadra con lo que se ve y parece un error de la app")
+	html := sb.String()
+	if !strings.Contains(html, `id="mov-more"`) {
+		t.Error("con más movimientos por cargar tiene que estar el sentinel del scroll")
+	}
+	if !strings.Contains(html, "offset=50") {
+		t.Error("el sentinel apunta a la próxima página")
+	}
+}
+
+func TestAccountLeaf_NoSentinelWhenNoMoreHref(t *testing.T) {
+	data := AccountLeafData{
+		AccountName: "Galicia",
+		Rows:        []MovementRow{{Title: "Coto", Date: "12 ago", Amount: "-$1"}},
+	}
+
+	var sb strings.Builder
+	if err := AccountLeaf(data).Render(context.Background(), &sb); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(sb.String(), `id="mov-more"`) {
+		t.Error("sin más para cargar no debe haber sentinel")
 	}
 }
 

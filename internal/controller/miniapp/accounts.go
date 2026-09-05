@@ -122,9 +122,27 @@ const movementLeafLimit = 50
 
 const msgUnclassified = "Sin clasificar"
 
+const offsetParam = "offset"
+
+func parseOffset(ctx *gin.Context) int {
+	n, err := strconv.Atoi(ctx.Query(offsetParam))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+func nextOffsetHref(base string, offset int, hasMore bool) string {
+	if !hasMore {
+		return ""
+	}
+	return base + "&" + offsetParam + "=" + strconv.Itoa(offset+movementLeafLimit)
+}
+
 func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw string) {
 
 	p := periodFromQuery(ctx, templates.SinglePeriodScope)
+	offset := parseOffset(ctx)
 
 	id, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil {
@@ -147,12 +165,22 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 	p = p.WithDrill("&" + accountParam + "=" + strconv.FormatUint(id, 10))
 	p.HideCurrency = true
 
-	deltas, err := c.movements.MonthlyDeltasForAccount(id)
+	movs, err := c.movements.ListForAccount(id, p.From, p.To, movementLeafLimit, offset)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	movs, err := c.movements.ListForAccount(id, p.From, p.To, movementLeafLimit, 0)
+	hasMore := len(movs) == movementLeafLimit
+	rows := movementRows(movs, acc.Currency)
+	next := nextOffsetHref(p.Query()+"&"+accountParam+"="+strconv.FormatUint(id, 10), offset, hasMore)
+
+	if offset > 0 {
+		ctx.Status(http.StatusOK)
+		templates.MovementFragment(rows, next).Render(ctx.Request.Context(), ctx.Writer)
+		return
+	}
+
+	deltas, err := c.movements.MonthlyDeltasForAccount(id)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
@@ -172,8 +200,8 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 		ClosingLabel: "Saldo al " + p.To.Format("02/01"),
 		Closing:      templates.FormatMoney(opening.Add(inWindow), acc.Currency),
 		BackQuery:    p.Query(),
-		Rows:         movementRows(movs, acc.Currency),
-		Capped:       len(movs) == movementLeafLimit,
+		Rows:         rows,
+		MoreHref:     next,
 		Empty:        len(movs) == 0,
 	}
 
