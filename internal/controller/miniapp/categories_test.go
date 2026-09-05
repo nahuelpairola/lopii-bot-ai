@@ -154,7 +154,7 @@ type stubMovementsWithRows struct {
 	lastQuery *movement.MovementQuery
 }
 
-func (s stubMovementsWithRows) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+func (s stubMovementsWithRows) ListForUser(q movement.MovementQuery, limit, offset int) ([]movement.Movement, error) {
 	*s.lastQuery = q
 	return s.movements, nil
 }

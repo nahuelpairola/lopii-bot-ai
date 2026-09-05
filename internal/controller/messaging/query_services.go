@@ -25,7 +25,7 @@ func (c *controller) QueryIconForCategory(userID uint64, category string) string
 	return c.subcategories.IconForCategory(userID, category)
 }
 func (c *controller) QueryListMovements(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
-	return c.movements.ListForUser(q, limit)
+	return c.movements.ListForUser(q, limit, 0)
 }
 func (c *controller) QuerySumMovements(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
 	return c.movements.SumForUser(q, groupBy)

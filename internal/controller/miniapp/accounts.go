@@ -152,7 +152,7 @@ func (c *controller) handleAccountLeaf(ctx *gin.Context, userID uint64, raw stri
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	movs, err := c.movements.ListForAccount(id, p.From, p.To, movementLeafLimit)
+	movs, err := c.movements.ListForAccount(id, p.From, p.To, movementLeafLimit, 0)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return

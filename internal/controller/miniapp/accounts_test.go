@@ -24,7 +24,7 @@ type stubMovementsWithAccounts struct {
 	movements []movement.Movement
 }
 
-func (s stubMovementsWithAccounts) ListForAccount(accountID uint64, from, to time.Time, limit int) ([]movement.Movement, error) {
+func (s stubMovementsWithAccounts) ListForAccount(accountID uint64, from, to time.Time, limit, offset int) ([]movement.Movement, error) {
 	return s.movements, nil
 }
 

@@ -127,7 +127,7 @@ func (c *controller) handleSubcategoryLeaf(ctx *gin.Context, userID uint64, p te
 		Type: &expenseType, Category: &category, Subcategory: &sub,
 	}
 
-	movs, err := c.movements.ListForUser(q, movementLeafLimit)
+	movs, err := c.movements.ListForUser(q, movementLeafLimit, 0)
 	if err != nil {
 		ctx.AbortWithStatus(http.StatusInternalServerError)
 		return
