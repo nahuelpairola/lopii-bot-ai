@@ -306,7 +306,7 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, chat mess
 	for _, g := range after {
 		for _, r := range g {
 			if r.Subcategory == "" {
-				if cat, sub, ok := resolveTaxonomyPair(r.Category, taxonomy); ok {
+				if cat, sub, ok := resolveTaxonomy(r.Category, taxonomy); ok {
 					r.Category, r.Subcategory = cat, sub
 				}
 			}

@@ -153,7 +153,7 @@ func categoryGapsFor(rows []movement.MovementRow, taxonomy []orchestrator.Taxono
 	return gaps
 }
 
-func resolveTaxonomyPair(text string, taxonomy []orchestrator.TaxonomyEntry) (category, subcategory string, ok bool) {
+func resolveTaxonomy(text string, taxonomy []orchestrator.TaxonomyEntry) (category, subcategory string, ok bool) {
 	needle := normalizeForTaxonomy(text)
 	if needle == "" {
 		return "", "", false
@@ -166,14 +166,21 @@ func resolveTaxonomyPair(text string, taxonomy []orchestrator.TaxonomyEntry) (ca
 			hits = append(hits, t)
 		}
 	}
-	if len(hits) != 1 {
-		return "", "", false
+	if len(hits) == 1 {
+		return hits[0].Category, hits[0].Subcategory, true
 	}
-	return hits[0].Category, hits[0].Subcategory, true
+	if len(hits) == 0 {
+		for _, t := range taxonomy {
+			if normalizeForTaxonomy(t.Category) == needle {
+				return t.Category, "", true
+			}
+		}
+	}
+	return "", "", false
 }
 
 func normalizeForTaxonomy(s string) string {
-	s = strings.ToLower(foldAccents(s))
+	s = foldAccents(strings.ToLower(s))
 	for _, sep := range []string{"|", "/", ">", "-", ":"} {
 		s = strings.ReplaceAll(s, sep, " ")
 	}

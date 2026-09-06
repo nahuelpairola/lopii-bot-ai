@@ -16,7 +16,7 @@ func testTaxonomy() []orchestrator.TaxonomyEntry {
 	}
 }
 
-func TestResolveTaxonomyPair(t *testing.T) {
+func TestResolveTaxonomy(t *testing.T) {
 	cases := []struct {
 		name    string
 		input   string
@@ -28,15 +28,18 @@ func TestResolveTaxonomyPair(t *testing.T) {
 		{"el par entero", "Vivienda | Mantenimiento hogar", "Vivienda", "Mantenimiento hogar", true},
 		{"con barra", "vivienda/mantenimiento hogar", "Vivienda", "Mantenimiento hogar", true},
 		{"sin acentos", "seguro vehiculo", "Transporte", "Seguro vehículo", true},
+		{"sólo la categoría", "vivienda", "Vivienda", "", true},
+		{"la categoría en mayúsculas", "ALIMENTACIÓN", "Alimentación", "", true},
+		{"la categoría sin acento", "alimentacion", "Alimentación", "", true},
 		{"no existe", "proyecto hogar", "", "", false},
 		{"vacío", "   ", "", "", false},
 		{"ambiguo", "hogar", "", "", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cat, sub, ok := resolveTaxonomyPair(tc.input, testTaxonomy())
+			cat, sub, ok := resolveTaxonomy(tc.input, testTaxonomy())
 			if ok != tc.wantOK || cat != tc.wantCat || sub != tc.wantSub {
-				t.Errorf("resolveTaxonomyPair(%q) = %q/%q/%v, want %q/%q/%v",
+				t.Errorf("resolveTaxonomy(%q) = %q/%q/%v, want %q/%q/%v",
 					tc.input, cat, sub, ok, tc.wantCat, tc.wantSub, tc.wantOK)
 			}
 		})
