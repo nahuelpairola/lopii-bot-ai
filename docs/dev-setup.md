@@ -89,7 +89,7 @@ is no CI.** They run when someone runs them.
 | Tag | Needs | Notes |
 |---|---|---|
 | `integration` | local Postgres (`docker compose up -d`) | 11 files. Drains and writes real rows |
-| `conv_test` | nothing | 3 files |
+| `conv_test` | local Postgres (`docker compose up -d`) | 4 files. Skips itself when Postgres is down |
 | `llm_eval` | `GROQ_APIKEY` | 3 files, `internal/orchestrator` |
 | `query_eval` | `GROQ_APIKEY` **and** Postgres | 1 file |
 
