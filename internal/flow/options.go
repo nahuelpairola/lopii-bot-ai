@@ -26,6 +26,7 @@ const (
 	OptionBalanceLater          = "balance_later"
 	AccountChoiceExistingPrefix = "existing:"
 	OptionAccountCreate         = "create"
+	OptionSubcategoryCreate     = "create_subcategory"
 	OptionBack                  = "back"
 	OptionConfirmSeed           = "confirm_seed"
 	OptionUseExisting           = "use_existing"
@@ -34,6 +35,8 @@ const (
 )
 
 const AccountPendingCreate = "PENDING_CREATE"
+
+const MaxSubcategoryNameRunes = 30
 
 const (
 	MoveChoiceMove = "move"

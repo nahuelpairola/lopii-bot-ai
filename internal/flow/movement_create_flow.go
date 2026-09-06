@@ -7,6 +7,7 @@ import (
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/movement"
+	"lopiibot.com/internal/subcategory"
 )
 
 const (
@@ -14,8 +15,24 @@ const (
 	stepFirstAccountBalance = "first_account_balance"
 	stepResolveCategory     = "resolve_category"
 	stepResolveSubcategory  = "resolve_subcategory"
+	stepNewSubcategoryName  = "new_subcategory_name"
 	stepResolveAccount      = "resolve_account"
 )
+
+func closeCategoryGap(data conversation.Data, sub string) conversation.Data {
+	next := conversation.CopyData(data)
+	rowIdx := ActiveGapRow(data)
+
+	rows := movement.DecodeMovementRows(data)
+	rows[rowIdx].Subcategory = sub
+	next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
+
+	if gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps); len(gaps) > 0 {
+		next[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice(gaps[1:])
+	}
+	next[conversation.KeyGapActiveRow] = ""
+	return next
+}
 
 func NewMovementCreateFlow(subcategories subcategoryRepository, accounts accountRepository) *conversation.Flow {
 	steps := map[string]conversation.Step{
@@ -146,30 +163,68 @@ func NewMovementCreateFlow(subcategories subcategoryRepository, accounts account
 						NextStep: stepResolveCategory,
 					})
 				}
-				opts = append(opts, CancelOption)
+				opts = append(opts,
+					conversation.ChoiceOption{Label: "➕ Otra", Value: OptionSubcategoryCreate, NextStep: stepNewSubcategoryName},
+					conversation.ChoiceOption{Label: "⬅️ Atrás", Value: OptionBack, NextStep: stepResolveCategory},
+					CancelOption,
+				)
 				return opts
 			},
-			DeclaredNextSteps: []string{stepResolveCategory},
+			DeclaredNextSteps: []string{stepResolveCategory, stepNewSubcategoryName},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				if value == OptionCancel {
 					next := conversation.CopyData(data)
 					conversation.SetFlag(next, conversation.KeyCancelled)
 					return next
 				}
-				next := conversation.CopyData(data)
-				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingCategoryGaps)
-				rowIdx := ActiveGapRow(data)
-
-				rows := movement.DecodeMovementRows(data)
-				rows[rowIdx].Subcategory = value
-				next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
-				if len(gaps) > 0 {
-					next[conversation.KeyPendingCategoryGaps] = conversation.EncodeStringSlice(gaps[1:])
+				if value == OptionSubcategoryCreate {
+					return data
 				}
-				next[conversation.KeyGapActiveRow] = ""
-				return next
+				if value == OptionBack {
+					next := conversation.CopyData(data)
+					rows := movement.DecodeMovementRows(data)
+					rows[ActiveGapRow(data)].Category = ""
+					next[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
+					next[conversation.KeyGapActiveRow] = ""
+					return next
+				}
+				return closeCategoryGap(data, value)
 			},
 			InvalidChoiceMessage: MsgInvalidChoice,
+		},
+		stepNewSubcategoryName: conversation.TextStep{
+			PromptText: MsgAskNewSubcategoryName,
+			DataKey:    string(conversation.KeyNewSubcategoryName),
+			Validate: func(text string, _ conversation.Data) string {
+				trimmed := strings.TrimSpace(text)
+				if trimmed == "" {
+					return subcategory.MsgInvalidSubcategoryName
+				}
+				if len([]rune(trimmed)) > MaxSubcategoryNameRunes {
+					return MsgSubcategoryNameTooLong
+				}
+				return ""
+			},
+			NextStep: stepResolveCategory,
+			OnText: func(text string, data conversation.Data) conversation.Data {
+				next := closeCategoryGap(data, strings.TrimSpace(text))
+				gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingNewSubcats)
+				next[conversation.KeyPendingNewSubcats] = conversation.EncodeStringSlice(
+					append(gaps, strconv.Itoa(ActiveGapRow(data))))
+				return next
+			},
+			EscapeOptions: []conversation.ChoiceOption{
+				{Label: "⬅️ Atrás", Value: OptionBack, NextStep: stepResolveSubcategory},
+				CancelOption,
+			},
+			OnEscape: func(value string, data conversation.Data) conversation.Data {
+				if value != OptionCancel {
+					return data
+				}
+				next := conversation.CopyData(data)
+				conversation.SetFlag(next, conversation.KeyCancelled)
+				return next
+			},
 		},
 		stepResolveAccount: conversation.ChoiceStep{
 			PromptText: MsgAskAccount,

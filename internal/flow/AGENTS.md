@@ -28,6 +28,11 @@ subcategory names into the callback value, and users create their own categories
 guard anywhere in the repo. `movement_delete_flow.go` and `ask_user_flow.go` show the correct
 shape: `strconv.Itoa(i)`, resolved back on the other side.
 
+`MaxSubcategoryNameRunes` (30) is not a UX preference: `stepNewSubcategoryName` lets the user type
+a name that this same picker will later render as a button whose callback value IS that name, so
+30 runes is what keeps the worst case (2 bytes each) inside the 64. Raising it makes buttons go
+mute instead of failing.
+
 ## `runner` is exported on purpose
 
 `runner` (`runner.go`) is the narrow interface this package uses to reach the DB and the outbound

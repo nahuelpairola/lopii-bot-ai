@@ -38,6 +38,10 @@ func InsertNewSubcategory(r runner, data conversation.Data) error {
 		icon = r.SubcategoryIconForCategory(userID, category)
 	}
 
+	return insertSubcategory(r, userID, category, sub, description, icon)
+}
+
+func insertSubcategory(r runner, userID uint64, category, sub, description, icon string) error {
 	s := &subcategory.Subcategory{
 		UserID:      &userID,
 		Category:    category,
