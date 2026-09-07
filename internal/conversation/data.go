@@ -24,6 +24,8 @@ const (
 	KeyOldMovementIDs      DataKey = "old_movement_ids"
 	KeyPendingCategoryGaps DataKey = "pending_category_gaps"
 	KeyPendingAccountGaps  DataKey = "pending_account_gaps"
+	KeyPendingNewSubcats   DataKey = "pending_new_subcategories"
+	KeyNewSubcategoryName  DataKey = "new_subcategory_name"
 	KeyCandidateIDs        DataKey = "candidate_ids"
 	KeyCandidateLabels     DataKey = "candidate_labels"
 	KeyCandidateNames      DataKey = "candidate_names"

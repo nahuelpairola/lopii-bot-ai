@@ -15,6 +15,7 @@ import (
 const (
 	MsgInvalidChoice            = "Esa opción no está. Tocá un botón de abajo 👇"
 	MsgInvalidAccountCreateName = "Mandame un nombre válido para la cuenta."
+	MsgSubcategoryNameTooLong   = "Ese nombre es muy largo. Probá con uno de hasta 30 caracteres."
 
 	MsgAskReminderWindow       = "¿En qué franja querés que te recuerde cargar los gastos? (solo te aviso los días que no anotaste nada)"
 	MsgAskReminderCustomWindow = "Decime el rango en horario de 24 hs, por ejemplo: 20 a 21"
@@ -329,4 +330,9 @@ func MsgInsufficientFunds(short []movement.AccountShortfall) string {
 	c := currency.Currency(s.Currency)
 	return fmt.Sprintf("⚠️ Ojo: %s quedaría en %s (te faltan %s). ¿Cómo lo registro?",
 		s.Name, currency.FormatMoney(s.After, c), currency.FormatMoney(s.After.Abs(), c))
+}
+
+func MsgAskNewSubcategoryName(data conversation.Data) string {
+	rows := movement.DecodeMovementRows(data)
+	return "Decime cómo la querés llamar, dentro de " + rows[ActiveGapRow(data)].Category + "."
 }

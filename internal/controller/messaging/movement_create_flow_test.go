@@ -30,6 +30,7 @@ type fakeSubcategoryRepoFull struct {
 	deleteCalls      int
 	deleteErr        error
 	reloadCalls      int
+	insertedSubs     []subcategory.Subcategory
 }
 
 func (r *fakeSubcategoryRepoFull) FindByCategoryAndSubcategory(userID uint64, category, sub string) (*subcategory.Subcategory, error) {
@@ -48,7 +49,16 @@ func (r *fakeSubcategoryRepoFull) DistinctCategoriesForUser(userID uint64) ([]st
 func (r *fakeSubcategoryRepoFull) IconForCategory(userID uint64, category string) string {
 	return "📂"
 }
-func (r *fakeSubcategoryRepoFull) Insert(s *subcategory.Subcategory) error { return nil }
+func (r *fakeSubcategoryRepoFull) Insert(s *subcategory.Subcategory) error {
+	s.ID = uint(len(r.insertedSubs) + 200)
+	r.insertedSubs = append(r.insertedSubs, *s)
+	if r.byCategoryAndSub == nil {
+		r.byCategoryAndSub = map[string]*subcategory.Subcategory{}
+	}
+	stored := *s
+	r.byCategoryAndSub[s.Category+"|"+s.Subcategory] = &stored
+	return nil
+}
 func (r *fakeSubcategoryRepoFull) Reload() error {
 	r.reloadCalls++
 	return nil
@@ -868,5 +878,71 @@ func TestFirstAccountNetDelta(t *testing.T) {
 				t.Errorf("flow.FirstAccountNetDelta() = %s, want %s", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestResolveAndInsertMovements_CreatesTheSubcategoryTheUserNamedInTheGap(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movement.MovementRow{
+		{Type: "expense", Amount: "-80990", Currency: "ARS", AccountID: "1", Category: "Salud", Subcategory: "Alojamiento por tratamiento", Date: "2026-09-06"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeyMode:                flow.ModeCreate,
+		conversation.KeyOldMovementIDs:      conversation.EncodeStringSlice(nil),
+		conversation.KeyMovements:           movement.EncodeMovementRows(rows),
+		conversation.KeyPendingCategoryGaps: conversation.EncodeStringSlice(nil),
+		conversation.KeyPendingAccountGaps:  conversation.EncodeStringSlice(nil),
+		conversation.KeyPendingNewSubcats:   conversation.EncodeStringSlice([]string{"0"}),
+	}
+
+	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+		t.Fatalf("ResolveAndInsertMovements: %v", err)
+	}
+	if len(subRepo.insertedSubs) != 1 {
+		t.Fatalf("subcategorías creadas = %d, want 1", len(subRepo.insertedSubs))
+	}
+	created := subRepo.insertedSubs[0]
+	if created.Category != "Salud" || created.Subcategory != "Alojamiento por tratamiento" {
+		t.Errorf("se creó %q/%q", created.Category, created.Subcategory)
+	}
+	if created.UserID == nil || *created.UserID != 1 {
+		t.Error("la subcategoría nueva tiene que ser del usuario, no global")
+	}
+	if len(movRepo.inserted) != 1 || movRepo.inserted[0].SubcategoryID != uint64(created.ID) {
+		t.Error("el movimiento no quedó apuntando a la subcategoría recién creada")
+	}
+}
+
+func TestResolveAndInsertMovements_DoesNotDuplicateAnExistingSubcategory(t *testing.T) {
+	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
+		"Salud|Psicología": newSubForTest(5, "Salud", "Psicología"),
+	}}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{1: "1000000"}}
+	c := &controller{subcategories: subRepo, accounts: accRepo, movements: movRepo}
+
+	rows := []movement.MovementRow{
+		{Type: "expense", Amount: "-80990", Currency: "ARS", AccountID: "1", Category: "Salud", Subcategory: "Psicología", Date: "2026-09-06"},
+	}
+	data := conversation.Data{
+		conversation.UserIDKey:              uint64(1),
+		conversation.KeyMode:                flow.ModeCreate,
+		conversation.KeyOldMovementIDs:      conversation.EncodeStringSlice(nil),
+		conversation.KeyMovements:           movement.EncodeMovementRows(rows),
+		conversation.KeyPendingCategoryGaps: conversation.EncodeStringSlice(nil),
+		conversation.KeyPendingAccountGaps:  conversation.EncodeStringSlice(nil),
+		conversation.KeyPendingNewSubcats:   conversation.EncodeStringSlice([]string{"0"}),
+	}
+
+	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+		t.Fatalf("ResolveAndInsertMovements: %v", err)
+	}
+	if len(subRepo.insertedSubs) != 0 {
+		t.Errorf("duplicó una subcategoría que ya existía: %+v", subRepo.insertedSubs)
 	}
 }

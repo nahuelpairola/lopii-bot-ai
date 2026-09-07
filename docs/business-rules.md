@@ -95,6 +95,7 @@ floored silently.
 - ~60 global subcategories across 16 categories (+ `Sistema`/`PENDING_REVIEW` reserved), reseeded in migration `20260710130000` (coarse-nitid redesign; replaces `20260625234857`). Fine detail lives in the `description` free text, not in extra buckets.
 - Reserved: `PENDING_REVIEW | PENDING_REVIEW` (low LLM confidence), `Sistema | Saldo inicial`, `Sistema | Rendimiento inversión`
 - Reserved category names (`PENDING_REVIEW`, `Sistema`, case-insensitive) apply to user-created categories too, not just the seeded taxonomy — checked at creation time in `subcategory_setup_flow.go`.
+- A user can also create a subcategory **from the movement gap itself** (`➕ Otra` in the subcategory picker): it is created under the category already picked, with that category's icon and no description, in the same write as the movement. The full wizard (`subcategory_setup`) stays the way to give it an icon and a description of its own.
 
 ### LLM classification
 - Intents: `CREATE | UPDATE | DELETE | QUERY` — classified via Groq (Call 1 router also returns `needs_confirmation`, meaningful only for CREATE)

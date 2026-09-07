@@ -44,6 +44,10 @@ func ResolveAndInsertMovements(r runner, data conversation.Data) ([]movement.Mov
 		return nil, fmt.Errorf("create counterparty account: %w", err)
 	}
 
+	if err := createPendingSubcategories(r, userID, rows, data); err != nil {
+		return nil, fmt.Errorf("create pending subcategory: %w", err)
+	}
+
 	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
 
 	movements, groups, err := buildMovements(r, userID, rows)
@@ -236,6 +240,26 @@ func createCounterpartyAccounts(r runner, userID uint64, rows []movement.Movemen
 		created[key] = id
 		idx.add(*newAccount)
 		rows[i].AccountID = strconv.FormatUint(id, 10)
+	}
+	return nil
+}
+
+func createPendingSubcategories(r runner, userID uint64, rows []movement.MovementRow, data conversation.Data) error {
+	for _, raw := range conversation.DecodeStringSlice(data, conversation.KeyPendingNewSubcats) {
+		i, err := strconv.Atoi(raw)
+		if err != nil || i < 0 || i >= len(rows) {
+			continue
+		}
+		row := rows[i]
+		if row.Category == "" || row.Subcategory == "" {
+			continue
+		}
+		if _, err := r.FindSubcategory(userID, row.Category, row.Subcategory); err == nil {
+			continue
+		}
+		if err := insertSubcategory(r, userID, row.Category, row.Subcategory, "", r.SubcategoryIconForCategory(userID, row.Category)); err != nil {
+			return err
+		}
 	}
 	return nil
 }
