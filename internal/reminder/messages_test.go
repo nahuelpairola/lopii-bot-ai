@@ -33,3 +33,35 @@ func TestReminderMessagesAreHTMLSafe(t *testing.T) {
 		}
 	}
 }
+
+const enrichBase = "¿Anotamos lo de hoy?"
+
+func TestEnrich_FewerThanTwoItemsReturnsBaseUnchanged(t *testing.T) {
+	for _, items := range [][]string{nil, {}, {"café"}} {
+		if got := Enrich(enrichBase, items); got != enrichBase {
+			t.Errorf("Enrich(%v) = %q, want base unchanged", items, got)
+		}
+	}
+}
+
+func TestEnrich_TwoItemsJoinWithO(t *testing.T) {
+	want := enrichBase + "\n\nPor acá suele haber café o panadería."
+	if got := Enrich(enrichBase, []string{"café", "panadería"}); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestEnrich_ThreeItemsJoinWithCommaAndO(t *testing.T) {
+	want := enrichBase + "\n\nPor acá suele haber café, panadería o verdulería."
+	if got := Enrich(enrichBase, []string{"café", "panadería", "verdulería"}); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestEnrich_RenderedMessageEscapesUserDescriptions(t *testing.T) {
+	got := Enrich(enrichBase, []string{"Ahorro & Cía", "<b>kiosco</b>"})
+	want := enrichBase + "\n\nPor acá suele haber Ahorro &amp; Cía o &lt;b&gt;kiosco&lt;/b&gt;."
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

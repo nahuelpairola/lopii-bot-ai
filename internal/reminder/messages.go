@@ -1,6 +1,10 @@
 package reminder
 
-import "math/rand"
+import (
+	"html"
+	"math/rand"
+	"strings"
+)
 
 var reminderMessages = []string{
 	"¿Cargaste tus gastos de hoy? Un minuto ahora te ahorra el quilombo de fin de mes 💪",
@@ -22,4 +26,18 @@ var reminderMessages = []string{
 
 func PickMessage() string {
 	return reminderMessages[rand.Intn(len(reminderMessages))]
+}
+
+func Enrich(base string, items []string) string {
+	const minItemsForAList = 2
+	if len(items) < minItemsForAList {
+		return base
+	}
+	escaped := make([]string, len(items))
+	for i, it := range items {
+		escaped[i] = html.EscapeString(it)
+	}
+	last := len(escaped) - 1
+	list := strings.Join(escaped[:last], ", ") + " o " + escaped[last]
+	return base + "\n\nPor acá suele haber " + list + "."
 }

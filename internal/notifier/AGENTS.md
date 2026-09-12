@@ -28,10 +28,16 @@ data enters (`summary.go` — account names, category labels, the top movement's
 `html.EscapeString`. Escaping happens in the builder, not in the adapter, because the adapter
 cannot tell the deliberate `<b>` from a user's stray `<`.
 
-The reminder copy is safe by inspection rather than escaping — it is static, with no user data in
-it — and `reminder/messages_test.go` guards that it stays that way. If a reminder ever
-interpolates a name, that test is the thing that will not catch it: the test checks the constants,
-not the rendered message.
+The daily reminder is **no longer static**. `sweepReminders` appends the user's recurring expense
+descriptions through `reminder.Enrich`, and those are raw user text — `Enrich` is where they get
+escaped. Two tests guard two different things, and neither covers the other:
+`TestReminderMessagesAreHTMLSafe` checks the fifteen constant bases, and
+`TestEnrich_RenderedMessageEscapesUserDescriptions` checks the **rendered** message. Anything new
+interpolated into a reminder needs a rendered-message test of its own; the constants test will
+stay green over a raw `&`.
+
+The enrichment lookup must never cost the reminder: a failed `TopRecurringDescriptions` logs and
+sends the plain base (`TestSweep_RecurringLookupFailureStillSendsThePlainReminder`).
 
 ## The monthly summary is not opt-in, and that changes where its candidates come from
 

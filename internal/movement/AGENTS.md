@@ -73,4 +73,7 @@ about *choosing* a subcategory (pickers, taxonomy resolution), where offering a 
 is a real bug. Callers must still nil-check `Subcategory`; `Unscoped` shrinks the case, it
 does not remove it.
 
+`TopRecurringDescriptions` adds no new trap: it goes through `apply`, so it inherits that **a zero
+`Currency` matches nothing rather than every currency** — it is pinned to ARS on purpose.
+
 Why: `docs/decisions.md`, section **The money model** and **Movements: mutation and reference resolution**.

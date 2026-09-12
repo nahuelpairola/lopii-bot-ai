@@ -330,6 +330,27 @@ func (r *repository) SumForUser(q MovementQuery, groupBy string) ([]CategorySum,
 	return rows, err
 }
 
+const recurringDescriptionKey = "unaccent(lower(btrim(movements.description)))"
+
+func (r *repository) TopRecurringDescriptions(userID uint64, from, to time.Time, minCount, limit int) ([]string, error) {
+	expenseType := constants.Expense
+	q := MovementQuery{UserID: userID, From: from, To: to, Currency: currency.ARS, Type: &expenseType}
+	db := r.db.DB.Model(&Movement{}).
+		Joins("JOIN subcategories s ON s.id = movements.subcategory_id")
+	db = q.apply(db)
+
+	var labels []string
+	err := db.
+		Where("btrim(coalesce(movements.description, '')) <> ''").
+		Select("mode() WITHIN GROUP (ORDER BY movements.description) AS label").
+		Group(recurringDescriptionKey).
+		Having("COUNT(*) >= ?", minCount).
+		Order("COUNT(*) DESC, " + recurringDescriptionKey + " ASC").
+		Limit(limit).
+		Pluck("label", &labels).Error
+	return labels, err
+}
+
 func (r *repository) ListForUser(q MovementQuery, limit, offset int) ([]Movement, error) {
 	limit = clampListLimit(limit)
 	var ms []Movement
