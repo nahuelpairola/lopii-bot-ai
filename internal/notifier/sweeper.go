@@ -34,6 +34,7 @@ type reminderStore interface {
 
 type movementReader interface {
 	FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error)
+	TopRecurringDescriptions(userID uint64, from, to time.Time, minCount, limit int) ([]string, error)
 }
 
 type userReader interface {
@@ -132,6 +133,11 @@ func (s *Sweeper) sweepRetention(now time.Time) {
 }
 
 func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
+	const (
+		recurringWindowDays = 30
+		recurringMinCount   = 2
+		recurringLimit      = 3
+	)
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	nowMin := now.Hour()*60 + now.Minute()
 
@@ -163,7 +169,14 @@ func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
 			slog.ErrorContext(ctx, "notifier chat lookup failed", "user_id", r.UserID, "err", err)
 			continue
 		}
-		if err := messenger.SendText(ctx, chat, reminder.PickMessage()); err != nil {
+		text := reminder.PickMessage()
+		recurring, err := s.movements.TopRecurringDescriptions(r.UserID, startOfDay.AddDate(0, 0, -recurringWindowDays), startOfDay, recurringMinCount, recurringLimit)
+		if err != nil {
+			slog.ErrorContext(ctx, "notifier recurring descriptions lookup failed", "user_id", r.UserID, "err", err)
+		} else {
+			text = reminder.Enrich(text, recurring)
+		}
+		if err := messenger.SendText(ctx, chat, text); err != nil {
 			slog.ErrorContext(ctx, "notifier send failed", "user_id", r.UserID, "err", err)
 			continue
 		}

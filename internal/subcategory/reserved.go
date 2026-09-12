@@ -3,6 +3,8 @@ package subcategory
 import (
 	"slices"
 	"strings"
+
+	"lopiibot.com/internal/constants"
 )
 
 const CategorySystem = "Sistema"
@@ -11,7 +13,7 @@ const SubOpeningBalance = "Saldo inicial"
 
 const SubTransfer = "Transferencia"
 
-var reservedCategories = []string{CategorySystem, "PENDING_REVIEW"}
+var reservedCategories = []string{CategorySystem, constants.PendingReview}
 
 func ReservedCategories() []string {
 	return slices.Clone(reservedCategories)

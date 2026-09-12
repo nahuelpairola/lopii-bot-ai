@@ -2,6 +2,8 @@ package notifier
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,10 +31,21 @@ func (f *fakeReminders) SetLastSummaryOn(uint64, time.Time) error             { 
 func (f *fakeReminders) ListMonthlyDue(time.Time) ([]uint64, error)           { return nil, nil }
 func (f *fakeReminders) SetLastMonthlySummaryOn(uint64, time.Time) error      { return nil }
 
-type fakeMovements struct{ byUser map[uint64]int }
+type fakeMovements struct {
+	byUser        map[uint64]int
+	recurring     []string
+	recurringErr  error
+	recurringFrom time.Time
+	recurringTo   time.Time
+}
 
 func (f *fakeMovements) FindRecentlyCreatedForUser(userID uint64, _ time.Time, limit int) ([]movement.Movement, error) {
 	return make([]movement.Movement, f.byUser[userID]), nil
+}
+
+func (f *fakeMovements) TopRecurringDescriptions(_ uint64, from, to time.Time, _, _ int) ([]string, error) {
+	f.recurringFrom, f.recurringTo = from, to
+	return f.recurring, f.recurringErr
 }
 
 type fakeUsers struct{}
@@ -68,6 +81,40 @@ func TestSweep_FiresPastMidpointWhenNoActivity(t *testing.T) {
 	}
 	if chat.LastText() == "" {
 		t.Error("expected a non-empty reminder text")
+	}
+	if _, ok := r.remindedT[1]; !ok {
+		t.Error("expected SetLastRemindedOn to be called")
+	}
+}
+
+func TestSweep_ReminderNamesTheUsersRecurringExpensesFromTheLast30Days(t *testing.T) {
+	r := &fakeReminders{due: []reminder.Reminder{{UserID: 1, WindowStartMin: 1200, WindowEndMin: 1260}}}
+	m := &fakeMovements{byUser: map[uint64]int{}, recurring: []string{"café", "panadería"}}
+	chat := &messenger.FakeChat{}
+	s := newSweeper(r, m, chat)
+
+	s.sweepReminders(context.Background(), at(20, 30))
+	if !strings.HasSuffix(chat.LastText(), "\n\nPor acá suele haber café o panadería.") {
+		t.Errorf("reminder does not name the recurring expenses: %q", chat.LastText())
+	}
+	startOfDay := time.Date(2026, 7, 9, 0, 0, 0, 0, time.UTC)
+	if !m.recurringTo.Equal(startOfDay) || !m.recurringFrom.Equal(startOfDay.AddDate(0, 0, -30)) {
+		t.Errorf("window = [%v, %v], want the 30 days up to %v", m.recurringFrom, m.recurringTo, startOfDay)
+	}
+}
+
+func TestSweep_RecurringLookupFailureStillSendsThePlainReminder(t *testing.T) {
+	r := &fakeReminders{due: []reminder.Reminder{{UserID: 1, WindowStartMin: 1200, WindowEndMin: 1260}}}
+	m := &fakeMovements{byUser: map[uint64]int{}, recurring: []string{"café", "panadería"}, recurringErr: errors.New("db down")}
+	chat := &messenger.FakeChat{}
+	s := newSweeper(r, m, chat)
+
+	s.sweepReminders(context.Background(), at(20, 30))
+	if len(chat.Sent) != 1 {
+		t.Fatalf("expected one send despite the lookup failure, got %v", chat.Sent)
+	}
+	if strings.Contains(chat.LastText(), "Por acá suele haber") {
+		t.Errorf("failed lookup must not enrich: %q", chat.LastText())
 	}
 	if _, ok := r.remindedT[1]; !ok {
 		t.Error("expected SetLastRemindedOn to be called")
