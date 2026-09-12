@@ -181,9 +181,12 @@ the top can be explained by the rows underneath it, and the user can walk from
 a total down to the individual movement that produced it without ever losing
 the window they were reading. Trust is the deliverable: a figure that does not
 reconcile is worse than no figure at all. That is why the account leaf prints
-an opening and a closing balance around a capped list and says the list is
-capped, and why footers come from aggregates over every row rather than from
-what fits on screen.
+an opening and a closing balance around a paginated list, and why footers
+come from aggregates over every row rather than from what has loaded on
+screen. The list itself loads 50 rows at a time behind an htmx infinite
+scroll, but the footer never depends on how many pages the user has
+scrolled through — it is computed the same way whether ten rows or a
+thousand have loaded.
 
 **The app does not own its palette. Telegram does.** Every color token is a
 `var(--tg-theme-*)` reference with a fallback, so the surface is painted in
@@ -515,9 +518,9 @@ group's `GroupTitle`, and not on each row — `GroupRowsByDay`
 (`templates/movement_row.go`) splits the list into consecutive same-date runs
 before render, so the row's meta line is free to hold only what actually
 varies between rows. Evolución and Categorías are the two real tables in the
-app; only Evolución pays for it with a horizontal scroller and a sticky first
-column — Categorías' three columns fit a 360px phone at table-size text
-without either.
+app, and both pay for it with a horizontal scroller; only Evolución also pins
+a sticky first column — Categorías' name column scrolls away with its four
+columns rather than staying pinned.
 
 **The Carried-State Rule.** Every view emits `AppState` — a hidden `#app-state`
 block of inputs the tab bar reads with `hx-include`. A view that renders without
@@ -683,6 +686,20 @@ or two letters match half the list and the highlight becomes noise.
   highlight on purpose: "500" would match dates, amounts, and any description
   containing a number.
 
+- **Pagination:** past the first 50 rows, both movement leaves (account leaf,
+  subcategory leaf) load more via an invisible htmx sentinel
+  (`id="mov-more"`, `hx-trigger="revealed"`) that fetches the next page and
+  replaces itself — never a "cargar más" button and never a page number. The
+  sentinel carries no styling of its own; it is empty until it is revealed,
+  at which point it is replaced by the next batch of rows plus the next
+  sentinel, or by nothing once a page comes back short. This keeps the
+  Rows-Not-Tables shape (day groups, hairline rows, immovable amount)
+  identical across a page boundary — pagination is a data-loading mechanism,
+  not a new visual affordance. A page boundary that falls mid-day can render
+  that day's rows split across two `mov-group` blocks with the header
+  repeated; accepted as cosmetic rather than worth reconciling across two
+  HTTP responses.
+
 ### Variación Callout
 
 - **Character:** context, deliberately not a fourth KPI, and deliberately not
@@ -705,18 +722,22 @@ or two letters match half the list and the highlight becomes noise.
 
 ### Category Table
 
-- **Character:** three columns (name, total, por día) that fit a 360px phone
-  outright — no scroller, no sticky column, unlike Evolución.
-- **The third column is an amount, not a percentage.** It was a share (`75%`)
-  until 2026-09-02 and is now what the category costs per elapsed day. A
-  percentage answers "what fraction", which is not the question this audience
-  asks; an absolute figure is. Both are Money-shaped cells, so the swap cost no
-  width — which is why the table is still three columns and still fits.
+- **Character:** four columns (name, total, %, por día). The share (`75%`)
+  was replaced by por día on 2026-09-02 and came back the same day **beside**
+  it, not instead of it.
+- **Scroller, not squeeze:** four columns no longer fit a 360px phone, so the
+  table sits inside `.cat-table-scroll` (`overflow-x: auto`,
+  `overscroll-behavior-x: contain`), the same pattern as `.evolution-scroll`.
+  The table takes `min-width: max-content` and body cells `white-space:
+  nowrap`, so a long category name or a seven-figure amount never wraps or
+  shrinks a column — the row scrolls sideways instead. Unlike Evolución there
+  is no sticky column.
 - **Shape:** `.cat-table`, `0.85rem` text — the same compaction Evolución
   already carried, applied here for the same reason: Pico's own `td`/`th`
   padding overflows a phone once a table has real content in every cell.
   Header cells take `0.35rem 0.4rem`; data cells take `height: 44px` with
-  `0 0.4rem` and no vertical padding (see The 44px Rule).
+  `0 0.4rem` and no vertical padding (see The 44px Rule). Both `%` and por día
+  are muted money cells; the total stays in full ink.
 - **Row link:** each category/subcategory name is a `.row-link` when it drills
   further (the top-level view links to subcategories; the drill itself does
   not link further and renders the name as plain text). `.row-link` exists
@@ -730,7 +751,7 @@ or two letters match half the list and the highlight becomes noise.
   (`Gastos por categoría` / `…por subcategoría`), because the Categorías index
   has no `<h1>` above it to borrow one from.
 - **Legend note:** a single `<p class="muted">` sits **below** the table,
-  carrying the sentence that defines the third column — *"Por día = total ÷ 64
+  carrying the sentence that defines the por día column — *"Por día = total ÷ 64
   días corridos, del 1 jul al 2 sep."* It goes below, not above like Evolución's
   legend, because the column it explains is self-evidently money and the reader
   only needs the divisor once they have seen a figure worth questioning. Its
@@ -910,7 +931,8 @@ silent mattered most.
   Charging the touch floor on the link *and* padding on the cell pays for it
   twice.
 - **Do** derive a footer total from an aggregate over all rows, never from the
-  rows on screen — the list is capped at 50.
+  rows loaded on screen — each page loads 50 rows via infinite scroll, and
+  the footer must hold at any scroll depth.
 
 ### Don't:
 
