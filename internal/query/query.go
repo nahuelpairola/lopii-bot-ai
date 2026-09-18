@@ -58,7 +58,7 @@ var Tools = []orchestrator.AgentTool{
 				"group_by": {"type": ["string", "null"], "enum": ["none", "category", "subcategory", "type", "month", "day", "account", null]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null], "description": "opcional; sin esto se excluyen las transferencias"},
 				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
-				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos. Ej: \"alimentacion\", \"netflix\", \"lote\"."}
+				` + orchestrator.SearchProperty + `
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -75,7 +75,7 @@ var Tools = []orchestrator.AgentTool{
 				"group_by": {"type": ["string", "null"], "enum": ["none", "category", "subcategory", "account", null]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", null]},
 				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
-				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos."}
+				` + orchestrator.SearchProperty + `
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -91,7 +91,7 @@ var Tools = []orchestrator.AgentTool{
 				"currency": {"type": "string", "enum": ["ARS", "USD"]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null]},
 				"account": {"type": ["string", "null"]},
-				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos. Ej: \"alimentacion\", \"netflix\", \"lote\"."},
+				` + orchestrator.SearchProperty + `,
 				"limit": {"type": ["integer", "null"], "description": "máximo de filas (default 20, tope 50)"}
 			},
 			"required": ["from", "to", "currency"]
