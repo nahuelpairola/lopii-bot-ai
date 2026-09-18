@@ -93,7 +93,13 @@ func TestQueryEval(t *testing.T) {
 	d := func(day int) time.Time { return time.Date(2026, 7, day, 12, 0, 0, 0, time.UTC) }
 	dec := func(s string) decimal.Decimal { return decimal.RequireFromString(s) }
 	loteSuper, loteGym := "compras del lote", "gimnasio del lote"
+	aug := func(day int) time.Time { return time.Date(2026, 8, day, 12, 0, 0, 0, time.UTC) }
+	segMoto, segAuto, segHogar := "Seguro moto", "Seguro auto", "seguro del hogar"
+	const subSeguroVehiculo, subSeguroHogar = 109, 103
 	seed := []movement.Movement{
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: subSeguroVehiculo, Date: aug(19), Type: movement.Expense, Amount: dec("-10980"), Currency: currency.ARS, Description: &segMoto},
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: subSeguroVehiculo, Date: aug(19), Type: movement.Expense, Amount: dec("-34540"), Currency: currency.ARS, Description: &segAuto},
+		{UserID: uid, AccountID: &bancoID, SubcategoryID: subSeguroHogar, Date: aug(23), Type: movement.Expense, Amount: dec("-20305"), Currency: currency.ARS, Description: &segHogar},
 		{UserID: uid, AccountID: &bancoID, SubcategoryID: 1, Date: d(5), Type: movement.Expense, Amount: dec("-5000"), Currency: currency.ARS, Description: &loteSuper},
 		{UserID: uid, AccountID: &bancoID, SubcategoryID: 4, Date: d(6), Type: movement.Expense, Amount: dec("-3000"), Currency: currency.ARS},
 		{UserID: uid, AccountID: &bancoID, SubcategoryID: 52, Date: d(7), Type: movement.Expense, Amount: dec("-8000"), Currency: currency.ARS, Description: &loteGym},
@@ -284,6 +290,57 @@ func TestQueryEval(t *testing.T) {
 		if !strings.Contains(normDigits(ans), "51613") {
 			t.Errorf("16000 en 31 dias = 516,13/dia: %s", ans)
 		}
+	})
+
+	seguroSinColados := func(t *testing.T, ans string, colados map[string]string) {
+		n := normDigits(ans)
+		for monto, porque := range colados {
+			if strings.Contains(n, monto) {
+				t.Errorf("apareció %s (%s): la búsqueda arrastró un seguro que no se pidió: %s", monto, porque, ans)
+			}
+		}
+	}
+
+	t.Run("seguro_de_la_moto_suma_solo_la_moto", func(t *testing.T) {
+		ans := ask(t, "¿Cuánto pagué de seguro de la moto en agosto de 2026?")
+		if !strings.Contains(normDigits(ans), "10980") {
+			t.Errorf("el seguro de la moto son 10980: %s", ans)
+		}
+		seguroSinColados(t, ans, map[string]string{
+			"65825": "los tres seguros, el error del 2026-09-17",
+			"45520": "auto + moto",
+			"20305": "el seguro del hogar",
+			"34540": "el seguro del auto",
+		})
+	})
+
+	for _, pregunta := range []string{
+		"¿Cuánto pagué de seguro de auto y moto en agosto de 2026?",
+		"¿Cuánto pagué de seguro auto o moto en agosto de 2026?",
+		"¿Cuánto gasté en agosto de 2026 en seguro del auto y de la moto?",
+	} {
+		t.Run("seguro_auto_y_moto_no_incluye_el_hogar/"+pregunta, func(t *testing.T) {
+			ans := ask(t, pregunta)
+			n := normDigits(ans)
+			if !strings.Contains(n, "45520") && !(strings.Contains(n, "34540") && strings.Contains(n, "10980")) {
+				t.Errorf("auto 34540 + moto 10980 = 45520; no aparece ni el total ni los dos montos: %s", ans)
+			}
+			seguroSinColados(t, ans, map[string]string{
+				"65825": "los tres seguros, el error del 2026-09-17",
+				"20305": "el seguro del hogar",
+			})
+		})
+	}
+
+	t.Run("seguro_del_hogar_suma_solo_el_hogar", func(t *testing.T) {
+		ans := ask(t, "¿Cuánto pagué de seguro del hogar en agosto de 2026?")
+		if !strings.Contains(normDigits(ans), "20305") {
+			t.Errorf("el seguro del hogar son 20305: %s", ans)
+		}
+		seguroSinColados(t, ans, map[string]string{
+			"65825": "los tres seguros",
+			"45520": "los seguros de vehículo",
+		})
 	})
 
 	t.Run("resta_entre_dos_totales_la_hace_el_modelo", func(t *testing.T) {
