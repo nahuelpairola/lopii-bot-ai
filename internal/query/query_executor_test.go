@@ -949,6 +949,32 @@ func TestExec_SpendingReport_UngroupedZeroIsNotAMuteZero(t *testing.T) {
 	}
 }
 
+func TestSearchSchema_ShowsAMultiWordExampleSoTheModelKeepsTheQualifier(t *testing.T) {
+	for _, name := range []string{"sum_movements", "list_movements", "spending_report"} {
+		var tool *orchestrator.AgentTool
+		for i := range Tools {
+			if Tools[i].Name == name {
+				tool = &Tools[i]
+			}
+		}
+		if tool == nil {
+			t.Fatalf("%s no esta en Tools", name)
+		}
+		var schema struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(tool.Parameters, &schema); err != nil {
+			t.Fatalf("%s: el schema no parsea: %v", name, err)
+		}
+		if !strings.Contains(schema.Properties["search"].Description, `"seguro moto"`) {
+			t.Errorf("%s: search tiene que mostrar un ejemplo de varias palabras; sin el, el modelo "+
+				"achica \"seguro de la moto\" a \"seguro\" y suma tambien el seguro del hogar (user 2, 2026-09-17)", name)
+		}
+	}
+}
+
 func TestSpendingReportSchema_ExcludesTheGroupingsThatWouldLie(t *testing.T) {
 	var tool *orchestrator.AgentTool
 	for i := range Tools {

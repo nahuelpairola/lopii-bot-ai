@@ -14,8 +14,12 @@ executor case, never a flow.
 ## The tools have ONE text filter, and it is not the only text matcher in the repo
 
 `sum_movements` and `list_movements` take a single `search` (since 2026-08-14; it replaced
-`category`, `subcategory` and `description`). It matches category name OR subcategory name OR
-description, case- and accent-insensitively, **in SQL** via the `unaccent` extension. One
+`category`, `subcategory` and `description`). It is split into words, connectors are dropped, and
+**every** word must appear in category + subcategory + description, case- and accent-insensitively,
+**in SQL** via the `unaccent` extension (`movement.searchWords`). A bare generic word ("seguro")
+still matches every row that contains it, so the schema description (`orchestrator.SearchProperty`,
+shared with the dead copy in `agent_tools.go` that the parity test holds equal) tells the model to
+keep the narrowing words. One
 parameter, because the model cannot reliably tell which of the three fields a name lives in:
 "lote" reads like a category and actually sits in the description of movements spread across
 four subcategories.

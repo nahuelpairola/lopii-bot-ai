@@ -2,6 +2,7 @@ package movement
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -242,6 +243,26 @@ type CategorySum struct {
 	Total decimal.Decimal `gorm:"column:total"`
 }
 
+const searchableText = "unaccent(lower(s.category || ' ' || s.subcategory || ' ' || coalesce(movements.description, '')))"
+
+var searchConnectors = map[string]bool{
+	"de": true, "del": true, "la": true, "las": true, "el": true, "los": true, "y": true, "o": true,
+	"e": true, "en": true, "a": true, "al": true, "con": true, "para": true, "por": true,
+}
+
+func searchWords(term string) []string {
+	var words []string
+	for _, w := range strings.Fields(term) {
+		if !searchConnectors[strings.ToLower(w)] {
+			words = append(words, w)
+		}
+	}
+	if len(words) == 0 {
+		return []string{term}
+	}
+	return words
+}
+
 func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 	db = db.Where("movements.user_id = ? AND movements.currency = ?", q.UserID, q.Currency.String()).
 		Where("movements.date >= ? AND movements.date <= ?",
@@ -261,12 +282,9 @@ func (q MovementQuery) apply(db *gorm.DB) *gorm.DB {
 		db = db.Where("s.subcategory = ?", *q.Subcategory)
 	}
 	if q.Search != nil {
-		t := "%" + *q.Search + "%"
-		db = db.Where(
-			"unaccent(lower(s.category)) LIKE unaccent(lower(?)) OR "+
-				"unaccent(lower(s.subcategory)) LIKE unaccent(lower(?)) OR "+
-				"unaccent(lower(coalesce(movements.description, ''))) LIKE unaccent(lower(?))",
-			t, t, t)
+		for _, w := range searchWords(*q.Search) {
+			db = db.Where(searchableText+" LIKE unaccent(lower(?))", "%"+w+"%")
+		}
 	}
 	switch {
 	case q.OnlyReserved:

@@ -49,6 +49,8 @@ var recordMovementsParams = json.RawMessage(`{
 	"required": ["movements"]
 }`)
 
+const SearchProperty = `"search": {"type": ["string", "null"], "description": "opcional: texto a buscar, sin distinguir mayúsculas ni acentos. Cada palabra tiene que aparecer en el nombre de la categoría, el de la subcategoría o la descripción del movimiento. Mantené las palabras que acotan: para el seguro de la moto pasá \"seguro moto\", no \"seguro\". Ej: \"alimentacion\", \"netflix\", \"lote\", \"seguro moto\"."}`
+
 func AgentTools() []AgentTool {
 	return []AgentTool{
 		{
@@ -85,7 +87,7 @@ func AgentTools() []AgentTool {
 				"group_by": {"type": ["string", "null"], "enum": ["none", "category", "subcategory", "type", "month", "day", "account", null]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null], "description": "opcional; sin esto se excluyen las transferencias"},
 				"account": {"type": ["string", "null"], "description": "opcional: nombre de una cuenta del usuario"},
-				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos. Ej: \"alimentacion\", \"netflix\", \"lote\"."}
+				` + SearchProperty + `
 			},
 			"required": ["from", "to", "currency"]
 		}`),
@@ -103,7 +105,7 @@ func AgentTools() []AgentTool {
 				"currency": {"type": "string", "enum": ["ARS", "USD"]},
 				"type": {"type": ["string", "null"], "enum": ["expense", "income", "transfer", null]},
 				"account": {"type": ["string", "null"]},
-				"search": {"type": ["string", "null"], "description": "opcional: texto a buscar. Matchea contra el nombre de la categoría, el de la subcategoría y la descripción del movimiento, sin distinguir mayúsculas ni acentos. Ej: \"alimentacion\", \"netflix\", \"lote\"."},
+				` + SearchProperty + `,
 				"limit": {"type": ["integer", "null"], "description": "máximo de filas (default 20, tope 50)"}
 			},
 			"required": ["from", "to", "currency"]
