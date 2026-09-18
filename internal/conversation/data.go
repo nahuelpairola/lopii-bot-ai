@@ -53,6 +53,7 @@ const (
 	KeyNewName         DataKey = "new_name"
 	KeyNewTotal        DataKey = "new_total"
 	KeyMessage         DataKey = "message"
+	KeyOperationHint   DataKey = "operation_hint"
 
 	KeyCategoryIcon           DataKey = "category_icon"
 	KeySubcategoryDescription DataKey = "subcategory_description"

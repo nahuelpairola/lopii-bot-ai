@@ -59,14 +59,25 @@ func StartAccountManage(ctx context.Context, s Services, chat messenger.Chat, us
 		conversation.KeyCandidateNames:      conversation.EncodeStringSlice(names),
 		conversation.KeyCandidateCurrencies: conversation.EncodeStringSlice(curs),
 	}
-	if res.MatchedAccountID != nil {
+	matched := res.MatchedAccountID
+	if id, ok := accountNamedInText(text, accs); ok {
+		matched = &id
+	}
+	if matched != nil {
 		for _, a := range accs {
-			if uint64(a.ID) == *res.MatchedAccountID {
+			if uint64(a.ID) == *matched {
 				seed[conversation.KeyAccountID] = strconv.FormatUint(uint64(a.ID), 10)
 				seed[conversation.KeyAccountName] = a.Name
 				seed[conversation.KeyAccountCurrency] = a.Currency.String()
 				break
 			}
+		}
+	}
+	_, resolved := seed[conversation.KeyAccountID]
+	if adjust, total := adjustIntent(text, accs, resolved); adjust {
+		seed[conversation.KeyOperationHint] = flow.OpAdjust
+		if total != "" && flow.ValidateBalanceAmount(total, seed) == "" {
+			seed[conversation.KeyNewTotal] = total
 		}
 	}
 

@@ -118,6 +118,14 @@ control is the `multi_entidad_no_niega_lo_que_no_consulto` eval, which *measures
 instead of assuming it. Its blocklist of denial phrases is inherently incomplete: the first
 version passed green while the model denied three entities with a phrasing the list lacked.
 
+## `TestAgentLoopEval` offers the model six tools, and `manage_settings` is not one of them
+
+`evalTools()` is a hand-picked subset. The account cases in `agentEvalCases`
+(`modificar_cuenta_wallet`, `actualizar_mercado`, `renombrar_balanz`) still expect
+`manage_account`, a tool stage 5 deleted, and the tool that replaced it is not offered, so
+**they cannot pass and they measure nothing**. A routing change to `manage_settings` needs
+that tool added to `evalTools()` before any eval result about it means anything.
+
 ## Copies that nothing keeps in sync
 
 The read-tool schemas in `agent_tools.go` are hand-copied **verbatim** from `internal/query`'s

@@ -59,6 +59,26 @@ why `MsgCanRetypeToSearch` is appended by `park` at the `ask_user` call site rat
 folded into either constant. Putting it inside one of them writes a promise the `ChoiceStep` path
 cannot keep.
 
+## `operation_hint` makes the account menu skip itself, so every way back must clear it
+
+`StepAccountManageMenu.SkipIf` jumps to the confirm screen (or to the amount question) while
+`operation_hint` is `adjust`. Any button that routes *back to the menu* has to delete the hint in its
+own hook, or the menu skips again and the user is bounced forward, never reaching it — "⬅️ Atrás" on
+the amount question does exactly that. "🏦 Otra cuenta" does the opposite on purpose: it clears the
+account and **sets** the hint, so after the picker the menu skips straight back to confirm with the
+typed total still in place.
+
+On the confirm screen "✏️ Cambiar monto" keeps the value `OptionBack` it had as "⬅️ Atrás":
+buttons already sent to Telegram carry the old value and keep working.
+
+## `ValidateBalanceAmount` accepts US-format numbers and misreads them
+
+It trusts `movement.ParseARAmount`, which reads `3,605.24` as **3.60524** (a comma makes it drop
+every dot and take the first comma as the decimal point). Users do type that shape
+(`intent_events`, 2026-09), so a total typed that way reaches the confirm screen wrong and only the
+user's eye catches it. `settings.statedTotal` rejects the shape before parsing; this step does not
+yet.
+
 ## Money
 
 Amounts, signs or `account_id`: `AGENTS.md` § The accounting model, before editing. The write
