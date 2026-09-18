@@ -23,6 +23,8 @@ const (
 	OptionManageDefault = "op_default"
 	OptionManageCreate  = "op_create_new"
 
+	OptionManageOtherAccount = "op_other_account"
+
 	OpRename    = "rename"
 	OpAdjust    = "adjust"
 	OpDefault   = "default"
@@ -48,6 +50,17 @@ func AccountManageBalance(balances balanceSummer, data conversation.Data) decima
 		return decimal.Zero
 	}
 	return sum
+}
+
+func skipMenuForAdjustHint(data conversation.Data) (string, bool) {
+	if conversation.StringOrEmpty(data[conversation.KeyOperationHint]) != OpAdjust {
+		return "", false
+	}
+	total := conversation.StringOrEmpty(data[conversation.KeyNewTotal])
+	if total != "" && ValidateBalanceAmount(total, data) == "" {
+		return StepAccountManageConfirmAdjust, true
+	}
+	return StepAccountManageAskTotal, true
 }
 
 func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
@@ -113,6 +126,7 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 			},
 			OnChoice:             OnAccountManageCancel,
 			InvalidChoiceMessage: MsgInvalidChoice,
+			SkipIf:               skipMenuForAdjustHint,
 		},
 		StepAccountManageAskName: conversation.TextStep{
 			PromptText: func(data conversation.Data) string {
@@ -162,7 +176,14 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 				{Label: "⬅️ Atrás", Value: OptionBack, NextStep: StepAccountManageMenu},
 				CancelOption,
 			},
-			OnEscape: OnAccountManageCancel,
+			OnEscape: func(value string, data conversation.Data) conversation.Data {
+				next := OnAccountManageCancel(value, data)
+				if value == OptionBack {
+					next = conversation.CopyData(next)
+					delete(next, conversation.KeyOperationHint)
+				}
+				return next
+			},
 		},
 		StepAccountManageConfirmAdjust: conversation.ChoiceStep{
 			PromptText: func(data conversation.Data) string {
@@ -176,14 +197,22 @@ func NewAccountManageFlow(balances balanceSummer) *conversation.Flow {
 			},
 			Options: []conversation.ChoiceOption{
 				{Label: "✅ Confirmar", Value: OptionConfirm, Finish: true},
-				{Label: "⬅️ Atrás", Value: OptionBack, NextStep: StepAccountManageAskTotal},
+				{Label: "✏️ Cambiar monto", Value: OptionBack, NextStep: StepAccountManageAskTotal},
+				{Label: "🏦 Otra cuenta", Value: OptionManageOtherAccount, NextStep: StepAccountManagePick},
 				CancelOption,
 			},
 			OnChoice: func(value string, data conversation.Data) conversation.Data {
 				next := OnAccountManageCancel(value, data)
-				if value == OptionConfirm {
+				switch value {
+				case OptionConfirm:
 					next = conversation.CopyData(next)
 					next[conversation.KeyOperation] = OpAdjust
+				case OptionManageOtherAccount:
+					next = conversation.CopyData(next)
+					next[conversation.KeyOperationHint] = OpAdjust
+					delete(next, conversation.KeyAccountID)
+					delete(next, conversation.KeyAccountName)
+					delete(next, conversation.KeyAccountCurrency)
 				}
 				return next
 			},

@@ -226,3 +226,98 @@ func TestAccountManageFlow_CancelInsideTextSteps(t *testing.T) {
 		t.Fatalf("cancel in total step: finished=%v cancelled=%v", result.Finished, result.Data["cancelled"])
 	}
 }
+
+func adjustSeed(total string) conversation.Data {
+	seed := manageSeed(true)
+	seed["operation_hint"] = OpAdjust
+	if total != "" {
+		seed["new_total"] = total
+	}
+	return seed
+}
+
+func TestAccountManageFlow_StatedTotal_OpensOnConfirmAdjust(t *testing.T) {
+	engine, store := newAccountManageTestEngine()
+	const userID = uint64(1)
+	if _, err := engine.StartWithData(userID, AccountManageFlowName, adjustSeed("207555,66")); err != nil {
+		t.Fatalf("StartWithData: %v", err)
+	}
+	if store.stepName != StepAccountManageConfirmAdjust {
+		t.Fatalf("stepName = %q, want %q", store.stepName, StepAccountManageConfirmAdjust)
+	}
+	result, _, err := engine.Handle(userID, conversation.Input{CallbackData: OptionConfirm})
+	if err != nil || !result.Finished {
+		t.Fatalf("confirm: result=%+v err=%v", result, err)
+	}
+	if result.Data["operation"] != OpAdjust || result.Data["new_total"] != "207555,66" {
+		t.Errorf("operation/new_total = %v/%v, want adjust/207555,66", result.Data["operation"], result.Data["new_total"])
+	}
+}
+
+func TestAccountManageFlow_AdjustHintWithoutTotal_AsksForTheTotal(t *testing.T) {
+	engine, store := newAccountManageTestEngine()
+	engine.StartWithData(1, AccountManageFlowName, adjustSeed(""))
+	if store.stepName != StepAccountManageAskTotal {
+		t.Errorf("stepName = %q, want %q", store.stepName, StepAccountManageAskTotal)
+	}
+}
+
+func TestAccountManageFlow_AdjustHintWithoutAccount_PicksThenGoesStraightToConfirm(t *testing.T) {
+	engine, store := newAccountManageTestEngine()
+	const userID = uint64(1)
+	seed := manageSeed(false)
+	seed["operation_hint"] = OpAdjust
+	seed["new_total"] = "5000"
+	engine.StartWithData(userID, AccountManageFlowName, seed)
+	if store.stepName != StepAccountManagePick {
+		t.Fatalf("stepName = %q, want %q", store.stepName, StepAccountManagePick)
+	}
+	engine.Handle(userID, conversation.Input{CallbackData: "pick_1"})
+	if store.stepName != StepAccountManageConfirmAdjust {
+		t.Errorf("stepName = %q, want %q", store.stepName, StepAccountManageConfirmAdjust)
+	}
+}
+
+func TestAccountManageFlow_BackFromAskTotal_ShowsTheFullMenuInsteadOfLooping(t *testing.T) {
+	engine, store := newAccountManageTestEngine()
+	const userID = uint64(1)
+	engine.StartWithData(userID, AccountManageFlowName, adjustSeed(""))
+	engine.Handle(userID, conversation.Input{CallbackData: OptionBack})
+	if store.stepName != StepAccountManageMenu {
+		t.Errorf("stepName = %q, want %q", store.stepName, StepAccountManageMenu)
+	}
+}
+
+func TestAccountManageFlow_ConfirmAdjust_ChangeAmountAsksForItAgain(t *testing.T) {
+	engine, store := newAccountManageTestEngine()
+	const userID = uint64(1)
+	engine.StartWithData(userID, AccountManageFlowName, adjustSeed("5000"))
+	engine.Handle(userID, conversation.Input{CallbackData: OptionBack})
+	if store.stepName != StepAccountManageAskTotal {
+		t.Fatalf("stepName = %q, want %q", store.stepName, StepAccountManageAskTotal)
+	}
+	engine.Handle(userID, conversation.Input{Text: "6000"})
+	result, _, _ := engine.Handle(userID, conversation.Input{CallbackData: OptionConfirm})
+	if !result.Finished || result.Data["new_total"] != "6000" {
+		t.Errorf("finished=%v new_total=%v, want true/6000", result.Finished, result.Data["new_total"])
+	}
+}
+
+func TestAccountManageFlow_ConfirmAdjust_OtherAccountRepicksAndKeepsTheTotal(t *testing.T) {
+	engine, store := newAccountManageTestEngine()
+	const userID = uint64(1)
+	engine.StartWithData(userID, AccountManageFlowName, adjustSeed("5000"))
+	engine.Handle(userID, conversation.Input{CallbackData: OptionManageOtherAccount})
+	if store.stepName != StepAccountManagePick {
+		t.Fatalf("stepName = %q, want %q", store.stepName, StepAccountManagePick)
+	}
+	engine.Handle(userID, conversation.Input{CallbackData: "pick_1"})
+	if store.stepName != StepAccountManageConfirmAdjust {
+		t.Fatalf("stepName = %q, want %q", store.stepName, StepAccountManageConfirmAdjust)
+	}
+	result, _, _ := engine.Handle(userID, conversation.Input{CallbackData: OptionConfirm})
+	if result.Data["account_id"] != "20" || result.Data["account_currency"] != "USD" || result.Data["new_total"] != "5000" {
+		t.Errorf("account/currency/total = %v/%v/%v, want 20/USD/5000",
+			result.Data["account_id"], result.Data["account_currency"], result.Data["new_total"])
+	}
+}
