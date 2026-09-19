@@ -3,6 +3,7 @@ env="local"
 [server]
 baseHost="https://31pk7cpc-80.brs.devtunnels.ms"
 port="80"
+ginMode="debug"
 
 [database]
 host     = "localhost"

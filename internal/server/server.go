@@ -35,6 +35,7 @@ const quoteTimeoutSeconds = 60
 func InitServer(conf *config.Config) error {
 	logging.Init(conf.Log.Level, conf.Log.Format)
 
+	gin.SetMode(conf.Server.GinMode)
 	ginEngine := gin.New()
 	ginEngine.Use(gin.LoggerWithConfig(gin.LoggerConfig{SkipPaths: []string{"/health/internal", "/health/external"}}))
 	ginEngine.Use(gin.Recovery())
