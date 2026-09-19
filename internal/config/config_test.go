@@ -39,25 +39,25 @@ func TestEveryConfigFile_HasNoSameTurnModelCollision(t *testing.T) {
 }
 
 func TestGinMode_IsReleaseOnDeployedEnvAndDebugOnlyLocally(t *testing.T) {
-	casos := map[string]string{
+	cases := map[string]string{
 		"dev.toml":   gin.ReleaseMode,
 		"local.toml": gin.DebugMode,
 	}
-	for archivo, esperado := range casos {
-		t.Run(archivo, func(t *testing.T) {
+	for file, want := range cases {
+		t.Run(file, func(t *testing.T) {
 			v := viper.New()
-			v.SetConfigFile(filepath.Join("..", "..", "config", archivo))
+			v.SetConfigFile(filepath.Join("..", "..", "config", file))
 			v.SetConfigType("toml")
 			applyDefaults(v)
 			if err := v.ReadInConfig(); err != nil {
-				t.Fatalf("leer %s: %v", archivo, err)
+				t.Fatalf("read %s: %v", file, err)
 			}
 			var cfg Config
 			if err := v.Unmarshal(&cfg); err != nil {
-				t.Fatalf("unmarshal %s: %v", archivo, err)
+				t.Fatalf("unmarshal %s: %v", file, err)
 			}
-			if cfg.Server.GinMode != esperado {
-				t.Errorf("%s: server.ginMode = %q, se esperaba %q", archivo, cfg.Server.GinMode, esperado)
+			if cfg.Server.GinMode != want {
+				t.Errorf("%s: server.ginMode = %q, want %q", file, cfg.Server.GinMode, want)
 			}
 		})
 	}
