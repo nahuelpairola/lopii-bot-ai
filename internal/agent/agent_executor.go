@@ -14,12 +14,14 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
+	"lopiibot.com/internal/pendingjob"
 )
 
 const (
 	resultNoCandidates = "no encontré ningún movimiento que coincida con eso"
 	resultParked       = "listo, la app sigue con eso y le pide confirmación al usuario"
 	resultNotWiredYet  = "esa herramienta todavía no está disponible"
+	resultClaimLost    = "otra ejecución ya está procesando este mensaje, no hagas nada"
 
 	questionKeyCandidate = "candidate"
 
@@ -64,6 +66,7 @@ type agentExecutor struct {
 	noCandidates bool
 	wrote        bool
 	inserted     []movement.Movement
+	claimErr     error
 }
 
 func newAgentExecutor(ctx context.Context, svc agentServices, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
@@ -159,6 +162,11 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	})
 	if hasGaps || hasFirst {
 		return e.parkCreate(seed)
+	}
+
+	if err := pendingjob.ClaimReplay(e.ctx); err != nil {
+		e.claimErr = err
+		return resultClaimLost, orchestrator.ErrAgentTurnDone
 	}
 
 	inserted, err := e.svc.ResolveAndInsertMovements(seed)

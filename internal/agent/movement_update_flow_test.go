@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
+	"lopiibot.com/internal/pendingjob"
 )
 
 func TestMovementToRow_ResolvesCategoryFromSubcategory(t *testing.T) {
@@ -447,5 +449,27 @@ func TestApplyAnswers_ValueWithoutAButtonBuildsNothing(t *testing.T) {
 	}
 	if !payload.GaveChangeValue {
 		t.Error("tenía que quedar marcado que dio un valor")
+	}
+}
+
+func TestProceedToUpdateConfirm_ClaimedElsewhere_StartsNothing(t *testing.T) {
+	orch := &fakeOrchestrator{updateResult: orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{
+		{Type: "expense", Amount: "3500", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Description: "Café", Date: "2026-07-02"},
+	}}}
+	store := &fakeConvStore{}
+	engine := conversation.NewEngine(store, func(string) string { return "algo" })
+	engine.Register(flow.NewMovementUpdateConfirmFlow())
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true)}}
+	svc := &fakeServices{orch: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
+	ctx := pendingjob.WithClaim(context.Background(), func() (bool, error) { return false, nil })
+
+	beforeRows := []movement.MovementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
+	err := proceedToUpdateConfirm(ctx, svc, &messenger.FakeChat{}, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, ChangeAsk{})
+
+	if !errors.Is(err, pendingjob.ErrClaimedElsewhere) {
+		t.Fatalf("want ErrClaimedElsewhere, got %v", err)
+	}
+	if store.flowName != "" {
+		t.Fatalf("the losing instance started %q: the user would get the confirmation twice", store.flowName)
 	}
 }
