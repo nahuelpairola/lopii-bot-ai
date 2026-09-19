@@ -6,7 +6,7 @@ type Repository interface {
 	Insert(job *PendingJob) error
 	ListByUserOrdered(userID uint64) ([]PendingJob, error)
 	ListPendingUserIDs() ([]uint64, error)
-	Delete(id uint64) error
+	Delete(id uint64) (bool, error)
 	CountByUser(userID uint64) (int64, error)
 }
 
@@ -34,8 +34,9 @@ func (r *repository) ListPendingUserIDs() ([]uint64, error) {
 	return ids, err
 }
 
-func (r *repository) Delete(id uint64) error {
-	return r.conn.DB.Delete(&PendingJob{}, "id = ?", id).Error
+func (r *repository) Delete(id uint64) (bool, error) {
+	res := r.conn.DB.Delete(&PendingJob{}, "id = ?", id)
+	return res.RowsAffected == 1, res.Error
 }
 
 func (r *repository) CountByUser(userID uint64) (int64, error) {

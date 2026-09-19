@@ -15,6 +15,7 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
+	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/trace"
 )
 
@@ -127,10 +128,16 @@ func amountOnlyCorrection(before []movement.MovementRow, ask ChangeAsk) ([]orche
 
 func proceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask ChangeAsk) error {
 	if ask.pickedField && !ask.gaveValue {
+		if err := pendingjob.ClaimReplay(ctx); err != nil {
+			return err
+		}
 		return parkChangeQuestion(ctx, svc, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
 	if after, ok := amountOnlyCorrection(beforeRows, ask); ok {
+		if err := pendingjob.ClaimReplay(ctx); err != nil {
+			return err
+		}
 		return seedAndStartUpdateConfirm(ctx, svc, chat, userID, message, oldIDs, beforeRows,
 			orchestrator.UpdateResult{Resolved: true, Movements: after})
 	}
@@ -154,6 +161,9 @@ func proceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messeng
 		Movements:     drafts,
 	}, accountOptions)
 	if err != nil {
+		return err
+	}
+	if err := pendingjob.ClaimReplay(ctx); err != nil {
 		return err
 	}
 	if !result.Resolved || correctionIsNoOp(beforeRows, result.Movements) {

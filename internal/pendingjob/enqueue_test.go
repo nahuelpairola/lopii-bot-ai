@@ -22,7 +22,7 @@ func (f *fakeJobs) Insert(j *PendingJob) error {
 }
 func (f *fakeJobs) ListByUserOrdered(uint64) ([]PendingJob, error) { return f.inserted, nil }
 func (f *fakeJobs) ListPendingUserIDs() ([]uint64, error)          { return nil, nil }
-func (f *fakeJobs) Delete(uint64) error                            { return nil }
+func (f *fakeJobs) Delete(uint64) (bool, error)                    { return true, nil }
 func (f *fakeJobs) CountByUser(uint64) (int64, error)              { return f.count, nil }
 
 type enqueueTestServices struct {

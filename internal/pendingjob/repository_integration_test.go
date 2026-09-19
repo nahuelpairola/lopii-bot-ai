@@ -72,7 +72,7 @@ func TestRepository_InsertListDeleteCount(t *testing.T) {
 		}
 	}
 
-	if err := r.Delete(ids[0]); err != nil {
+	if _, err := r.Delete(ids[0]); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	if n, err := r.CountByUser(uid); err != nil || n != 2 {

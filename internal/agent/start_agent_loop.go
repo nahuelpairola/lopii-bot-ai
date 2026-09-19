@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/pendingjob"
 )
 
 func startAgentLoop(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, text string) error {
@@ -31,6 +33,16 @@ func startAgentLoop(ctx context.Context, svc agentServices, chat messenger.Chat,
 
 	executor := newAgentExecutor(ctx, svc, userID, text, taxonomy)
 	answer, err := svc.Run(ctx, prompt, text, history, tools, executor.execute)
+
+	if executor.claimErr != nil {
+		return executor.claimErr
+	}
+	var rl *orchestrator.RateLimitedError
+	if !errors.As(err, &rl) {
+		if cerr := pendingjob.ClaimReplay(ctx); cerr != nil {
+			return cerr
+		}
+	}
 
 	if svc.IsReplaying(ctx) {
 		setQueuedIntent(ctx, svc, userID, intentForExecutor(executor, err))

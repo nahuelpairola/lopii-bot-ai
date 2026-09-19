@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
+	"lopiibot.com/internal/pendingjob"
 )
 
 func correctInTheLoop() *fakeOrchestrator {
@@ -336,5 +338,108 @@ func TestLoop_ReplayDoesNotOpenANewIntentEvent(t *testing.T) {
 	}
 	if len(metrics.queuedIntents) != 1 || metrics.queuedIntents[0] != string(orchestrator.IntentHelp) {
 		t.Errorf("el replay tenía que corregir el intent a HELP, corrigió %v", metrics.queuedIntents)
+	}
+}
+
+func recordSuperIn(execute func(string, json.RawMessage) (string, error)) (string, error) {
+	_, err := execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
+		{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
+		 "subcategory":"Supermercado","date":"2026-08-01","description":"super",
+		 "payment_method":"transfer"}]}`))
+	return "", err
+}
+
+func TestRecord_DuringReplay_ClaimsBeforeInsert(t *testing.T) {
+	movs := movementsWithBalance("100000")
+	claimedBeforeInsert := false
+	ctx := pendingjob.WithClaim(context.Background(), func() (bool, error) {
+		claimedBeforeInsert = len(movs.batches) == 0
+		return true, nil
+	})
+	svc := newLoopServices(t)
+	svc.orch = &fakeOrchestrator{
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
+		runFn:         recordSuperIn,
+	}
+	svc.accounts = accountsWithDefault()
+	svc.subcategories = subcategoriesForTest()
+	svc.movements = movs
+
+	if err := startAgentLoop(ctx, svc, &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
+		t.Fatal(err)
+	}
+	if !claimedBeforeInsert {
+		t.Fatal("the replayed turn inserted before claiming its job: two instances would both insert")
+	}
+	if len(movs.batches) != 1 {
+		t.Fatalf("want the movement inserted once after a won claim, got %d batches", len(movs.batches))
+	}
+}
+
+func TestRecord_ClaimedElsewhere_InsertsNothing(t *testing.T) {
+	movs := movementsWithBalance("100000")
+	ctx := pendingjob.WithClaim(context.Background(), func() (bool, error) { return false, nil })
+	svc := newLoopServices(t)
+	svc.orch = &fakeOrchestrator{
+		classifyPairs: []orchestrator.Pair{{Category: "Alimentación", Subcategory: "Supermercado"}},
+		runFn:         recordSuperIn,
+	}
+	svc.accounts = accountsWithDefault()
+	svc.subcategories = subcategoriesForTest()
+	svc.movements = movs
+	chat := &messenger.FakeChat{}
+
+	err := startAgentLoop(ctx, svc, chat, 1, "gasté 5000 en el super")
+
+	if !errors.Is(err, pendingjob.ErrClaimedElsewhere) {
+		t.Fatalf("want ErrClaimedElsewhere, got %v", err)
+	}
+	if len(movs.batches) != 0 {
+		t.Fatal("inserted after losing the claim: the money is recorded twice")
+	}
+	if len(chat.Sent) != 0 || len(svc.sendTexts) != 0 {
+		t.Fatalf("the losing instance must stay silent, sent %v %v", chat.Sent, svc.sendTexts)
+	}
+}
+
+func TestPark_DuringReplay_ClaimsBeforeActionsInsert(t *testing.T) {
+	repo := &fakeActionsRepo{}
+	claimedBeforePark := false
+	ctx := pendingjob.WithClaim(context.Background(), func() (bool, error) {
+		claimedBeforePark = len(repo.rows) == 0
+		return true, nil
+	})
+	svc := newLoopServices(t)
+	svc.orch = correctInTheLoop()
+	svc.actions = repo
+	svc.movements = &fakeMovementRepoFull{similar: []movement.Movement{
+		candidateMovement(10, nil, "compra en panadería", 3000),
+		candidateMovement(11, nil, "panadería del barrio", 5000),
+	}}
+
+	if err := startAgentLoop(ctx, svc, &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
+		t.Fatal(err)
+	}
+	if !claimedBeforePark {
+		t.Fatal("the replayed turn parked an action before claiming its job")
+	}
+	if len(repo.rows) != 1 {
+		t.Fatalf("want the action parked once, got %d", len(repo.rows))
+	}
+}
+
+func TestLoop_RateLimitedReplay_DoesNotClaim(t *testing.T) {
+	claimed := false
+	ctx := pendingjob.WithClaim(context.Background(), func() (bool, error) { claimed = true; return true, nil })
+	svc := newLoopServices(t)
+	svc.replaying = true
+	svc.orch = &fakeOrchestrator{runFn: func(func(string, json.RawMessage) (string, error)) (string, error) {
+		return "", &orchestrator.RateLimitedError{RetryAfter: time.Second}
+	}}
+
+	_ = startAgentLoop(ctx, svc, &messenger.FakeChat{}, 1, "gasté 5000")
+
+	if claimed {
+		t.Fatal("a 429 with no effects claimed the job: it would leave the queue for no reason")
 	}
 }

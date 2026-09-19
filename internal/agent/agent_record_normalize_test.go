@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -26,6 +27,7 @@ func TestAgentRecord_NormalizesTheCategoryPair(t *testing.T) {
 	}}
 
 	e := &agentExecutor{
+		ctx:      context.Background(),
 		svc:      svc,
 		userID:   1,
 		userText: "pagué 12000 de luz",
