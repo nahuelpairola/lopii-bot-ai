@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -31,8 +33,9 @@ import (
 )
 
 const quoteTimeoutSeconds = 60
+const shutdownBudget = 25 * time.Second
 
-func InitServer(conf *config.Config) error {
+func InitServer(ctx context.Context, conf *config.Config) error {
 	logging.Init(conf.Log.Level, conf.Log.Format)
 
 	gin.SetMode(conf.Server.GinMode)
@@ -98,7 +101,37 @@ func InitServer(conf *config.Config) error {
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
 	sweeper := notifier.NewSweeper(tgTransport, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
-	go pendingjob.Run(context.Background(), messagingController, jobsRepo, tgTransport, pendingjob.JobDrainInterval)
 
-	return ginEngine.Run(":" + conf.Server.Port)
+	drainDone := make(chan struct{})
+	go func() {
+		defer close(drainDone)
+		pendingjob.Run(ctx, messagingController, jobsRepo, tgTransport, pendingjob.JobDrainInterval)
+	}()
+
+	srv := &http.Server{Addr: ":" + conf.Server.Port, Handler: ginEngine}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.ListenAndServe() }()
+
+	select {
+	case err := <-serveErr:
+		return err
+	case <-ctx.Done():
+	}
+	shutdown(srv, drainDone)
+	return nil
+}
+
+func shutdown(srv *http.Server, drainDone <-chan struct{}) {
+	sctx, cancel := context.WithTimeout(context.Background(), shutdownBudget)
+	defer cancel()
+	slog.Info("shutdown: signal received, finishing in-flight work")
+	if err := srv.Shutdown(sctx); err != nil {
+		slog.Error("shutdown: http server did not finish in time", "err", err)
+	}
+	select {
+	case <-drainDone:
+		slog.Info("shutdown: drain finished")
+	case <-sctx.Done():
+		slog.Error("shutdown: drain did not finish in time, its job stays queued unless already claimed")
+	}
 }

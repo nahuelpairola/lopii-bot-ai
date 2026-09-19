@@ -312,6 +312,38 @@ illegible as a Telegram message.
   path a free-text message takes, so an environment that fails to declare it does not degrade —
   every loop call gets a 400 from Groq. No default means it does not start instead.
 
+### Why a replayed job is claimed at its first write, not before or after the replay (2026-09-19)
+
+`ecc:silent-failure-hunter` found that the drain replayed a job and then deleted it with the
+error discarded. A failed delete, a crash between the two, or two instances draining during a
+deploy overlap replayed the message again and recorded the money twice. Render starts the new
+instance before it sends SIGTERM to the old one, and the new one starts ungated. Production
+showed 102 replays and 0 duplicates from 2026-08-05 to 2026-09-04, so the hole was real and had
+not fired yet.
+
+The replay takes up to 22s, nearly all of it the Groq call. The DB write at the end takes
+milliseconds. So the job is claimed (deleted, `RowsAffected == 1`) at the moment the turn
+stops talking to Groq and starts having effects:
+
+- a crash during the Groq call leaves the job queued for a retry;
+- a lost claim means another instance has it, so the turn writes and says nothing.
+
+The only remaining loss is a crash inside the milliseconds between the claim and the commit.
+The graceful shutdown covers deploys: SIGTERM stops new jobs, and the in-flight replay finishes
+on `context.WithoutCancel` inside a 25s budget, under Render's 30s.
+
+Rejected:
+
+- **Delete before the replay.** A crash anywhere in the 22s loses the message silently; about 1%
+  a month at ~55 deploys.
+- **A `claimed_at` lease column.** A migration, and deploys would still cut replays; it could
+  only apologise afterwards.
+- **Delete the job inside `InsertBatch`'s transaction.** `ResolveAndInsertMovements` creates
+  accounts and subcategories before that transaction, so a double replay still duplicates
+  accounts.
+- **River (`JobCompleteTx`).** It is the same pattern, but a dependency with its own migrations
+  and a non-pooled connection for about 100 replays a month.
+
 ## Notifications and reminders
 
 - **System→user notification engine: shared `send()` + ticker, per-notifier trigger/query stays specific.** `internal/notifier.Sweeper` is one `time.Ticker` goroutine whose `tick` calls a `sweepX` per notifier — today three: `sweepReminders`, `sweepWeeklySummary`, `sweepRetention`. The *only* shared asset is the ticker and an injected `send(ctx, chatID, text)` — deliberately reachable outside the sweeper so a future admin-triggered broadcast can call it directly without going through the ticker. Everything else (candidate query, fire condition, cadence, guard) is each notifier's own; there is no polymorphic `notifications` table, no notification-type registry, no templating engine. A `notifications(type, payload jsonb)` table would force a lowest-common-denominator schema and lose typed columns/FKs for a gain (one shared table) nobody needs — the reminder and a future Cafecito prompt or weekly summary don't share a data shape, only a delivery mechanism. Adding a second tenant is a ~20-line sibling function and one line in `tick`; a `[]notifier` abstraction is deferred to the third tenant (`// ponytail:` marked in `sweeper.go`).
