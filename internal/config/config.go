@@ -32,6 +32,7 @@ type telegram struct {
 type server struct {
 	Port     string `mapstructure:"port"`
 	BaseHost string `mapstructure:"baseHost"`
+	GinMode  string `mapstructure:"ginMode"`
 }
 
 type groq struct {

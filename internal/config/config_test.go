@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
 )
 
@@ -32,6 +33,31 @@ func TestEveryConfigFile_HasNoSameTurnModelCollision(t *testing.T) {
 			if conflictos := ModelBucketConflicts(cfg.Groq); len(conflictos) > 0 {
 				t.Errorf("%s tiene llamadas del mismo turno compartiendo modelo:\n  %s",
 					ruta, strings.Join(conflictos, "\n  "))
+			}
+		})
+	}
+}
+
+func TestGinMode_IsReleaseOnDeployedEnvAndDebugOnlyLocally(t *testing.T) {
+	cases := map[string]string{
+		"dev.toml":   gin.ReleaseMode,
+		"local.toml": gin.DebugMode,
+	}
+	for file, want := range cases {
+		t.Run(file, func(t *testing.T) {
+			v := viper.New()
+			v.SetConfigFile(filepath.Join("..", "..", "config", file))
+			v.SetConfigType("toml")
+			applyDefaults(v)
+			if err := v.ReadInConfig(); err != nil {
+				t.Fatalf("read %s: %v", file, err)
+			}
+			var cfg Config
+			if err := v.Unmarshal(&cfg); err != nil {
+				t.Fatalf("unmarshal %s: %v", file, err)
+			}
+			if cfg.Server.GinMode != want {
+				t.Errorf("%s: server.ginMode = %q, want %q", file, cfg.Server.GinMode, want)
 			}
 		})
 	}

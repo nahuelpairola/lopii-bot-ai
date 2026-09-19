@@ -2,6 +2,7 @@ env="dev"
 
 [server]
 baseHost="https://lopii-finance-bot.onrender.com"
+ginMode="release"
 
 [database]
 host     = ""
