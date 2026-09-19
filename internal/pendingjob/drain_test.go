@@ -24,8 +24,11 @@ func (d *drainJobs) Insert(j *PendingJob) error {
 }
 func (d *drainJobs) ListByUserOrdered(uint64) ([]PendingJob, error) { return d.jobs, nil }
 func (d *drainJobs) ListPendingUserIDs() ([]uint64, error)          { return []uint64{7}, nil }
-func (d *drainJobs) Delete(id uint64) error                         { d.deleted = append(d.deleted, id); return nil }
-func (d *drainJobs) CountByUser(uint64) (int64, error)              { return int64(len(d.jobs)), nil }
+func (d *drainJobs) Delete(id uint64) (bool, error) {
+	d.deleted = append(d.deleted, id)
+	return true, nil
+}
+func (d *drainJobs) CountByUser(uint64) (int64, error) { return int64(len(d.jobs)), nil }
 
 type fakeUsers struct{}
 

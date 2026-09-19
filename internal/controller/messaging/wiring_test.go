@@ -24,7 +24,7 @@ func (fakeJobsRepo) ListByUserOrdered(uint64) ([]pendingjob.PendingJob, error) {
 	return nil, nil
 }
 func (fakeJobsRepo) ListPendingUserIDs() ([]uint64, error) { return nil, nil }
-func (fakeJobsRepo) Delete(uint64) error                   { return nil }
+func (fakeJobsRepo) Delete(uint64) (bool, error)           { return true, nil }
 func (fakeJobsRepo) CountByUser(uint64) (int64, error)     { return 0, nil }
 
 func TestNewController_WiresEveryDependency(t *testing.T) {

@@ -76,7 +76,7 @@ func drainUser(ctx context.Context, s Services, repo Repository, chats chatResol
 		if now.Sub(job.CreatedAt) > MaxJobAge {
 			slog.WarnContext(ctx, "drain: job gave up", "event", "job_gave_up", "user_id", userID, "kind", job.Kind, "age", now.Sub(job.CreatedAt).String())
 			s.SendText(ctx, chat, msgJobGaveUp(job))
-			_ = repo.Delete(job.ID)
+			_, _ = repo.Delete(job.ID)
 			continue
 		}
 		var err error
@@ -95,7 +95,7 @@ func drainUser(ctx context.Context, s Services, repo Repository, chats chatResol
 		} else {
 			slog.InfoContext(ctx, "drain: ok", "event", "job_drained", "user_id", userID, "kind", job.Kind)
 		}
-		_ = repo.Delete(job.ID)
+		_, _ = repo.Delete(job.ID)
 	}
 }
 
