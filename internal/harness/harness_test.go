@@ -186,6 +186,7 @@ var externalSymbols = map[string]string{
 	"DoNothing":            "gorm.io/gorm/clause",
 	"EscapeString":         "html",
 	"additionalProperties": "JSON Schema",
+	"WithoutCancel":        "context",
 }
 
 func declaredSymbols(t *testing.T, root string) map[string]bool {

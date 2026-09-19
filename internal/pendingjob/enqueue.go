@@ -91,7 +91,11 @@ func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, chat me
 
 func EnqueueBehindPending(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string) bool {
 	n, err := repo.CountByUser(userID)
-	if err != nil || n == 0 {
+	if err != nil {
+		slog.ErrorContext(ctx, "enqueue behind pending: count failed, processing live", "user_id", userID, "err", err)
+		return false
+	}
+	if n == 0 {
 		return false
 	}
 	payload, _ := json.Marshal(FreeTextPayload{Text: text})
