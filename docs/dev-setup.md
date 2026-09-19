@@ -83,8 +83,14 @@ bash check.sh    # build + vet + errcheck + the default suite
 ```
 
 Unit tests mock the package's own local interfaces — no real Postgres outside the `integration`
-tag. Four build tags gate the suites that need Postgres or a Groq key. **None run in CI — there
-is no CI.** They run when someone runs them.
+tag. Four build tags gate the suites that need Postgres or a Groq key. **None run in CI**: they
+run when someone runs them.
+
+CI (`.github/workflows/check.yml`, job `check`) runs on every pull request and every push to
+`main`, on Linux: `bash check.sh`, then `govulncheck@v1.8.0 ./...`. Either one failing fails the
+job. It runs the untagged suite only — no Postgres, no Groq key, no secrets. A newly published
+vulnerability in code the bot reaches turns CI red on an unrelated PR; the fix is to bump to the
+"Fixed in" version, not to skip the step.
 
 | Tag | Needs | Notes |
 |---|---|---|

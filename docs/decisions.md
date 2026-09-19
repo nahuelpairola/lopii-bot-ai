@@ -377,3 +377,21 @@ loses nothing. If DST ever comes back, the switch is `time.LoadLocation` **plus*
 
 `TestArgentinaZone_IsUTCMinus3` is what keeps the offset honest.
 
+### Why `govulncheck` gates CI while `errcheck` does not (2026-09-19)
+
+CI runs `check.sh` and `govulncheck` as gates; `errcheck` stays informational inside `check.sh`.
+The difference is who introduced the finding. `errcheck`'s ~215 findings are debt no change
+added, so gating on them fails every PR for someone else's code and teaches everyone to ignore
+the exit code. A reachable vulnerability is a live defect in what ships, and a non-blocking job
+on a one-person repo is read by nobody — informational was rejected for that reason.
+
+Gating on day one was also rejected: the first `govulncheck` run (2026-09-19, go1.26.4) found 9
+reachable vulnerabilities — 7 in the standard library, one each in `quic-go`, `x/net` and
+`x/text`, all through the network paths (`orchestrator`, `quote`, `server`). A CI born red
+teaches that red is normal, so the bump to go 1.26.6 and the three modules merged first
+(PR #96) and the gate came after, green.
+
+`govulncheck` is pinned to a tool version so the tool never changes under a PR. Its
+vulnerability database cannot be pinned: a new entry can turn an unrelated PR red. That is the
+gate working, not a flake.
+
