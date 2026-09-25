@@ -107,3 +107,16 @@ nothing, which is why the evals had never once run.
 `errcheck` runs inside `check.sh` as **information, not a gate**: the tree carries ~215 pre-existing
 findings (~38 outside tests, nearly all unchecked `bot.SendMessage`). Read the ones in your own
 diff, ignore the rest.
+
+### Public mirror
+
+`scripts/public-mirror/publish-public.sh` regenerates the public repo from `origin/main` and runs
+on every push to `main` (`.github/workflows/publish-public.yml`, deploy key in the
+`PUBLIC_MIRROR_DEPLOY_KEY` secret). By hand: without arguments it is a dry run, `--push` publishes.
+It needs `git-filter-repo` 2.47.0 and `gitleaks` 8.30.1 on the path; `bash
+scripts/public-mirror/test.sh` exercises every refusal against scratch repos.
+
+**A real person's name in a test, doc or commit message needs a rule in
+`scripts/public-mirror/replace-text.txt` (and `replace-message.txt`) in the same PR** — the
+tests here are written from real production cases, and nothing else stops the name from
+publishing. Why the rules live in this repo and what breaks a sync: `docs/decisions.md`.

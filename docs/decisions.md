@@ -427,3 +427,21 @@ teaches that red is normal, so the bump to go 1.26.6 and the three modules merge
 vulnerability database cannot be pinned: a new entry can turn an unrelated PR red. That is the
 gate working, not a flake.
 
+
+### Why the public repo is a regenerated mirror and not this repo made public (2026-09-24)
+
+The public repo (`nahuelpairola/lopii-bot-ai`) is this repo's `main` passed through
+`git filter-repo` on every sync: the v1 folder and the spec/plan scratch are dropped from all of
+history, a real user's name and the Supabase project ref are replaced, and `#NN` PR references
+are stripped from commit messages because they would autolink to PRs that do not exist there.
+
+Flipping this repo to public was rejected: its history carries the v1 spreadsheet (tens of
+thousands of real movement rows), and rewriting history in place does not reach GitHub's
+`refs/pull/*` — merged PRs keep the old commits reachable until GitHub Support purges them.
+
+The sync is safe to repeat because the filter is deterministic: the same rules over the same
+history produce the same SHAs, measured by regenerating the published HEAD bit-for-bit. That is
+also its one fragility — **a rule that matches content already published, or a rewrite of this
+repo's `main`, changes old SHAs**, and `publish-public.sh` refuses rather than force-push. A new
+rule for a name that was never published changes nothing. The public repo may carry its own
+commits (its README); the sync merges over them and stops on a conflict.
