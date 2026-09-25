@@ -250,6 +250,9 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	transferSplit := args.Type == constants.Transfer && ungroupedSum(groupBy)
 	if transferSplit {
 		groupBy = movement.GroupByDirection
+		if args.Account != "" {
+			groupBy = movement.GroupByDirectionCounterpart
+		}
 	}
 	rows, err := svc.QuerySumMovements(q, groupBy)
 	if err != nil {
@@ -264,7 +267,11 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 		if err != nil {
 			return "", err
 		}
-		return renderTransferDirections(rows, name, cur), nil
+		counterparts, err := counterpartNames(svc, userID, q.Currency)
+		if err != nil {
+			return "", err
+		}
+		return renderTransferDirections(rows, name, cur, counterparts), nil
 	}
 	if ungroupedSum(groupBy) {
 		return fmt.Sprintf("total: %s %s", rows[0].Total.Abs().StringFixed(2), cur), nil
@@ -285,6 +292,9 @@ const (
 	msgTransferInFmt      = "entró: %s %s"
 	msgTransferOutAcctFmt = "salió de %s: %s %s"
 	msgTransferInAcctFmt  = "entró a %s: %s %s"
+	msgTransferToFmt      = "  hacia %s: %s %s"
+	msgTransferFromFmt    = "  desde %s: %s %s"
+	msgUnknownCounterpart = "otra cuenta"
 )
 
 const (
@@ -292,17 +302,44 @@ const (
 	dirIn  = "in"
 )
 
-func renderTransferDirections(rows []movement.CategorySum, account, cur string) string {
+func renderTransferDirections(rows []movement.CategorySum, account, cur string, counterparts map[string]string) string {
 	totals := map[string]decimal.Decimal{dirOut: decimal.Zero, dirIn: decimal.Zero}
+	details := map[string][]string{}
+	detailFmt := map[string]string{dirOut: msgTransferToFmt, dirIn: msgTransferFromFmt}
 	for _, r := range rows {
-		totals[r.Label] = r.Total.Abs()
+		dir, id, split := strings.Cut(r.Label, movement.CounterpartSep)
+		totals[dir] = totals[dir].Add(r.Total.Abs())
+		if split {
+			name, ok := counterparts[id]
+			if !ok {
+				name = msgUnknownCounterpart
+			}
+			details[dir] = append(details[dir], fmt.Sprintf(detailFmt[dir], name, r.Total.Abs().StringFixed(2), cur))
+		}
 	}
 	out, in := totals[dirOut].StringFixed(2), totals[dirIn].StringFixed(2)
 	if account == "" {
 		return fmt.Sprintf(msgTransferOutFmt, out, cur) + "\n" + fmt.Sprintf(msgTransferInFmt, in, cur)
 	}
-	return fmt.Sprintf(msgTransferOutAcctFmt, account, out, cur) + "\n" +
-		fmt.Sprintf(msgTransferInAcctFmt, account, in, cur)
+	lines := append([]string{fmt.Sprintf(msgTransferOutAcctFmt, account, out, cur)}, details[dirOut]...)
+	lines = append(lines, fmt.Sprintf(msgTransferInAcctFmt, account, in, cur))
+	return strings.Join(append(lines, details[dirIn]...), "\n")
+}
+
+func counterpartNames(svc services, userID uint64, cur currency.Currency) (map[string]string, error) {
+	accts, err := svc.QueryAccountsByUserID(userID)
+	if err != nil {
+		return nil, err
+	}
+	names := make(map[string]string, len(accts))
+	for _, a := range accts {
+		name := a.Name
+		if a.Currency != cur {
+			name += " (" + a.Currency.String() + ")"
+		}
+		names[fmt.Sprintf("%d", a.ID)] = name
+	}
+	return names, nil
 }
 
 func allZero(rows []movement.CategorySum) bool {

@@ -307,7 +307,17 @@ const (
 	GroupByDay         = "day"
 	GroupByAccount     = "account"
 	GroupByDirection   = "direction"
+
+	GroupByDirectionCounterpart = "direction_counterpart"
 )
+
+const CounterpartSep = ":"
+
+const directionExpr = "CASE WHEN movements.amount < 0 THEN 'out' ELSE 'in' END"
+
+const counterpartAccountExpr = "COALESCE((SELECT o.account_id::text FROM movements o" +
+	" WHERE o.transaction_id = movements.transaction_id AND o.id <> movements.id" +
+	" AND o.deleted_at IS NULL LIMIT 1), '')"
 
 func groupLabelExpr(groupBy string) string {
 	switch groupBy {
@@ -324,7 +334,9 @@ func groupLabelExpr(groupBy string) string {
 	case GroupByAccount:
 		return "movements.account_id::text"
 	case GroupByDirection:
-		return "CASE WHEN movements.amount < 0 THEN 'out' ELSE 'in' END"
+		return directionExpr
+	case GroupByDirectionCounterpart:
+		return directionExpr + " || '" + CounterpartSep + "' || " + counterpartAccountExpr
 	default:
 		return ""
 	}
