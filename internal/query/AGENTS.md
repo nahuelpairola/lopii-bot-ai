@@ -60,6 +60,13 @@ Three more things that are not obvious from the code:
   unchanged. `groupedTotalLine` refuses a total for **any** transfer result at any grouping: the
   two legs are the same money, so adding them is 2×. `allZero` is what keeps the mute-zero guard
   alive on this path, since forcing a grouping makes `ungroupedSum` false.
+  **With `account`, each direction also comes broken down by the other leg's account**
+  (`GroupByDirectionCounterpart`: `hacia Inversión` / `desde FCI`). Without it, "¿cuánto transferí
+  de Mercado Pago a Inversión?" got back "salió de Mercado Pago" — every destination together — and
+  the model quoted that total as the answer; its retry used `search`, which never sees account
+  names, and matched the category "Inversiones" on an unrelated transfer (2026-09-24). There is still
+  no `counterparty` argument on purpose: the destination arrives with the number, so the model has
+  nothing to remember to ask for.
 - **`Run` post-processes the model's answer, and that is deliberate.** Two app-owned
   facts are re-attached after narration: the reserved-category verdict
   (`reinstateAppVerdict` — the model once inverted it, telling the user nothing matched while

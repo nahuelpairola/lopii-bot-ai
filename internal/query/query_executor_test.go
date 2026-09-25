@@ -774,6 +774,42 @@ func TestExec_SumMovements_TransferSplitsByDirection(t *testing.T) {
 	}
 }
 
+func TestExec_SumMovements_TransferFromAnAccountNamesWhereTheMoneyWent(t *testing.T) {
+	a := &fakeQueryAccounts{accts: []account.Account{
+		{Model: gorm.Model{ID: 43}, Name: "Mercado Pago", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 44}, Name: "Mercado Pago", Currency: currency.USD},
+		{Model: gorm.Model{ID: 45}, Name: "FCI", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 47}, Name: "Inversión", Currency: currency.ARS},
+	}}
+	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
+		{Label: "out:45", Total: dec("3150000")},
+		{Label: "in:45", Total: dec("1803618.71")},
+		{Label: "out:47", Total: dec("396300")},
+		{Label: "out:44", Total: dec("30500")},
+	}}
+	exec := newQueryExecutor(m, a, &fakeQuerySubcats{})
+
+	out, err := exec("sum_movements", json.RawMessage(`{"from":"2026-08-01","to":"2026-08-31","currency":"ARS","type":"transfer","account":"Mercado Pago"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.lastGroupBy != movement.GroupByDirectionCounterpart {
+		t.Errorf("con cuenta, cada dirección se desglosa por la otra pata; agrupó por %q", m.lastGroupBy)
+	}
+	for _, want := range []string{
+		"salió de Mercado Pago: 3576800.00 ARS",
+		"hacia Inversión: 396300.00 ARS",
+		"hacia FCI: 3150000.00 ARS",
+		"hacia Mercado Pago (USD): 30500.00 ARS",
+		"entró a Mercado Pago: 1803618.71 ARS",
+		"desde FCI: 1803618.71 ARS",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("\"¿cuánto transferí de Mercado Pago a Inversión?\" contestó 3.576.800 (todo lo que salió); falta %q en:\n%s", want, out)
+		}
+	}
+}
+
 func TestExec_SumMovements_TransferShowsBothDirectionsEvenAtZero(t *testing.T) {
 	m := &fakeQueryMovements{sumRows: []movement.CategorySum{
 		{Label: "out", Total: dec("5000")},

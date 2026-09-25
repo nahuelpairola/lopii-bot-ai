@@ -16,3 +16,16 @@ func TestGroupLabelExpr_Direction(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupLabelExpr_CounterpartIsTheOtherLiveLegOfTheSameTransfer(t *testing.T) {
+	got := groupLabelExpr(GroupByDirectionCounterpart)
+	for _, want := range []string{
+		"o.transaction_id = movements.transaction_id",
+		"o.id <> movements.id",
+		"o.deleted_at IS NULL",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("la contraparte tiene que ser la otra pata viva de la misma transferencia; falta %q en: %s", want, got)
+		}
+	}
+}
