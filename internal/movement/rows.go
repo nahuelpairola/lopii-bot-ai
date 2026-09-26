@@ -15,7 +15,6 @@ type MovementRow struct {
 	AccountName      string
 	Category         string
 	Subcategory      string
-	PaymentMethod    string
 	Description      string
 	Date             string
 	Icon             string
@@ -54,7 +53,6 @@ func DecodeMovementRows(data conversation.Data) []MovementRow {
 			AccountName:      conversation.StringOrEmpty(m[conversation.KeyAccountName]),
 			Category:         conversation.StringOrEmpty(m[conversation.KeyCategory]),
 			Subcategory:      conversation.StringOrEmpty(m[conversation.KeySubcategory]),
-			PaymentMethod:    conversation.StringOrEmpty(m[conversation.KeyPaymentMethod]),
 			Description:      conversation.StringOrEmpty(m[conversation.KeyDescription]),
 			Date:             conversation.StringOrEmpty(m[conversation.KeyDate]),
 			Icon:             conversation.StringOrEmpty(m[conversation.KeyIcon]),
@@ -77,7 +75,6 @@ func EncodeMovementRows(rows []MovementRow) []interface{} {
 			conversation.KeyAccountName:      r.AccountName,
 			conversation.KeyCategory:         r.Category,
 			conversation.KeySubcategory:      r.Subcategory,
-			conversation.KeyPaymentMethod:    r.PaymentMethod,
 			conversation.KeyDescription:      r.Description,
 			conversation.KeyDate:             r.Date,
 			conversation.KeyIcon:             r.Icon,

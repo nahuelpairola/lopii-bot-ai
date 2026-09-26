@@ -86,7 +86,7 @@ func draftARS(desc string, accountID *uint64, guess string) orchestrator.Movemen
 	return orchestrator.MovementDraft{
 		Type: "expense", Amount: "5000", Currency: "ARS",
 		AccountID: accountID, AccountNameGuess: guess,
-		PaymentMethod: "transfer", Description: desc, Date: "2026-08-22",
+		Description: desc, Date: "2026-08-22",
 	}
 }
 
@@ -175,7 +175,7 @@ func TestBuildCreateSeed_AccountComesFromTheMessage(t *testing.T) {
 func TestBuildCreateSeed_MessageNamedAccountRespectsCurrency(t *testing.T) {
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
 		Type: "expense", Amount: "100", Currency: "USD",
-		PaymentMethod: "transfer", Description: "algo", Date: "2026-08-22",
+		Description: "algo", Date: "2026-08-22",
 	}}}
 	rows := movement.DecodeMovementRows(
 		buildCreateSeed(result, nil, accountsUser3(), "gasté 100 usd con banco galicia"))
@@ -189,7 +189,7 @@ func TestBuildCreateSeed_IncomeResolvesLikeExpense(t *testing.T) {
 		return orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{{
 			Type: "income", Amount: "300000", Currency: "ARS",
 			AccountID: accountID, AccountNameGuess: guess,
-			PaymentMethod: "transfer", Description: "sueldo", Date: "2026-08-22",
+			Description: "sueldo", Date: "2026-08-22",
 		}}}
 	}
 
@@ -225,9 +225,9 @@ func TestBuildCreateSeed_OneNamedAccountAppliesToEveryRowOfTheTurn(t *testing.T)
 func TestBuildCreateSeed_TransferStillUsesModelAccountID(t *testing.T) {
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "transfer", Amount: "-90000", Currency: "ARS", AccountID: acctID(28),
-			PaymentMethod: "transfer", Description: "transferencia", Date: "2026-08-22", Group: "t1"},
+			Description: "transferencia", Date: "2026-08-22", Group: "t1"},
 		{Type: "transfer", Amount: "90000", Currency: "ARS", AccountID: acctID(27),
-			PaymentMethod: "transfer", Description: "transferencia", Date: "2026-08-22", Group: "t1"},
+			Description: "transferencia", Date: "2026-08-22", Group: "t1"},
 	}}
 	data := buildCreateSeed(result, nil, accountsUser3(), "Tranferencia de 90 mil de fci a mercadopago")
 

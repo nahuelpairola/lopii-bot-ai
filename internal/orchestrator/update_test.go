@@ -27,7 +27,7 @@ func TestBuildUpdateSystemPrompt_IncludesAccountsAndRule(t *testing.T) {
 
 func TestResolveUpdate_Resolved(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"movements\":[{\"type\":\"expense\",\"amount\":\"150\",\"currency\":\"USD\",\"category\":\"Otros\",\"subcategory\":\"Otros\",\"payment_method\":\"transfer\",\"description\":\"Café\",\"date\":\"2026-07-02\"}]}"}}]}}]}`))
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"movements\":[{\"type\":\"expense\",\"amount\":\"150\",\"currency\":\"USD\",\"category\":\"Otros\",\"subcategory\":\"Otros\",\"description\":\"Café\",\"date\":\"2026-07-02\"}]}"}}]}}]}`))
 	}))
 	defer server.Close()
 
@@ -84,7 +84,7 @@ func TestResolveUpdate_AcceptsStringResolved(t *testing.T) {
 
 func TestResolveUpdate_AcceptsNullMentionedDates(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"mentioned_date_from\":null,\"mentioned_date_to\":null,\"movements\":[{\"type\":\"expense\",\"amount\":\"4900\",\"currency\":\"ARS\",\"category\":\"Alimentación\",\"subcategory\":\"Almacén / barrio\",\"payment_method\":\"transfer\",\"description\":\"pago a pablo por el asado\",\"date\":\"2026-07-07\"}]}"}}]}}]}`))
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"mentioned_date_from\":null,\"mentioned_date_to\":null,\"movements\":[{\"type\":\"expense\",\"amount\":\"4900\",\"currency\":\"ARS\",\"category\":\"Alimentación\",\"subcategory\":\"Almacén / barrio\",\"description\":\"pago a pablo por el asado\",\"date\":\"2026-07-07\"}]}"}}]}}]}`))
 	}))
 	defer server.Close()
 
@@ -102,7 +102,7 @@ func TestResolveUpdate_AcceptsNullMentionedDates(t *testing.T) {
 
 func TestResolveUpdate_NetsReintegro(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"movements\":[{\"type\":\"expense\",\"amount\":\"600\",\"currency\":\"ARS\",\"category\":\"Alimentación\",\"subcategory\":\"Salir a comer\",\"payment_method\":\"transfer\",\"description\":\"café\",\"date\":\"2026-07-10\"}]}"}}]}}]}`))
+		w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"arguments":"{\"resolved\":true,\"movements\":[{\"type\":\"expense\",\"amount\":\"600\",\"currency\":\"ARS\",\"category\":\"Alimentación\",\"subcategory\":\"Salir a comer\",\"description\":\"café\",\"date\":\"2026-07-10\"}]}"}}]}}]}`))
 	}))
 	defer server.Close()
 

@@ -37,12 +37,11 @@ var recordMovementsParams = json.RawMessage(`{
 					"currency": {"type": "string", "enum": ["ARS", "USD"]},
 					"account_id": {"type": ["integer", "null"]},
 					"account_name_guess": {"type": ["string", "null"]},
-					"payment_method": {"type": "string"},
 					"description": {"type": "string"},
 					"date": {"type": "string"},
 					"group": {"type": ["string", "null"]}
 				},
-				"required": ["type", "amount", "currency", "payment_method", "description", "date"]
+				"required": ["type", "amount", "currency", "description", "date"]
 			}
 		}
 	},

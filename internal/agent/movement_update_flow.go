@@ -45,9 +45,6 @@ func movementToRow(m movement.Movement) movement.MovementRow {
 	if m.Account != nil {
 		row.AccountName = m.Account.Name
 	}
-	if m.PaymentMethod != nil {
-		row.PaymentMethod = *m.PaymentMethod
-	}
 	if m.Description != nil {
 		row.Description = *m.Description
 	}
@@ -62,7 +59,6 @@ func rowToDraft(r movement.MovementRow) orchestrator.MovementDraft {
 		AccountNameGuess: r.AccountNameGuess,
 		Category:         r.Category,
 		Subcategory:      r.Subcategory,
-		PaymentMethod:    r.PaymentMethod,
 		Description:      r.Description,
 		Date:             r.Date,
 		Group:            r.Group,
@@ -83,7 +79,6 @@ func draftToRow(d orchestrator.MovementDraft) movement.MovementRow {
 		AccountNameGuess: d.AccountNameGuess,
 		Category:         d.Category,
 		Subcategory:      d.Subcategory,
-		PaymentMethod:    d.PaymentMethod,
 		Description:      d.Description,
 		Date:             d.Date,
 		Group:            d.Group,

@@ -41,7 +41,6 @@ const (
 	KeyAccountName      DataKey = "account_name"
 	KeyCategory         DataKey = "category"
 	KeySubcategory      DataKey = "subcategory"
-	KeyPaymentMethod    DataKey = "payment_method"
 	KeyDescription      DataKey = "description"
 	KeyDate             DataKey = "date"
 	KeyIcon             DataKey = "icon"

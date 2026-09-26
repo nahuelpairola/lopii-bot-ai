@@ -35,7 +35,6 @@ type Movement struct {
 	Type          movementType             `gorm:"column:type;type:movement_type;not null"`
 	Amount        decimal.Decimal          `gorm:"column:amount;type:numeric(15,2);not null"`
 	Currency      currency.Currency        `gorm:"column:currency;type:currency_type;not null"`
-	PaymentMethod *string                  `gorm:"column:payment_method"`
 	Description   *string                  `gorm:"column:description"`
 }
 
