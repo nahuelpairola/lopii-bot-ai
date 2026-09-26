@@ -10,7 +10,6 @@ import (
 type User struct {
 	ID        uint64    `gorm:"primaryKey"`
 	Username  string    `gorm:"column:username"`
-	IsAdmin   bool      `gorm:"column:is_admin"`
 	CreatedAt time.Time `gorm:"column:created_at"`
 }
 
