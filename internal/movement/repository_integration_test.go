@@ -37,6 +37,20 @@ func TestInsertAccountsWithOpenings_RollsBackOnFailure(t *testing.T) {
 	}
 }
 
+func TestInsertBatch_MovementWithoutAccount_IsRejectedByDatabase(t *testing.T) {
+	conn := testConnection(t)
+	r := InitRepository(conn)
+
+	ms := []Movement{{UserID: 1, SubcategoryID: 1, Type: Expense, Amount: decimal.NewFromInt(-100), Currency: currency.ARS}}
+	err := r.InsertBatch(ms)
+	if ms[0].ID != 0 {
+		t.Cleanup(func() { conn.DB.Unscoped().Delete(&Movement{}, ms[0].ID) })
+	}
+	if err == nil {
+		t.Fatal("a movement with no account_id was stored; the database must reject it")
+	}
+}
+
 func testConnection(t *testing.T) *database.Connection {
 	creds := database.Creds{
 		Host:     "localhost",

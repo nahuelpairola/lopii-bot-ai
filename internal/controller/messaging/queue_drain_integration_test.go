@@ -78,7 +78,7 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 	uid, cleanup := queueDrainUser(t, conn)
 	t.Cleanup(cleanup)
 
-	banco := &account.Account{UserID: uid, Name: "Banco QueueDrain", Type: account.StandardType, Currency: currency.ARS, IsDefault: true}
+	banco := &account.Account{UserID: uid, Name: "Banco QueueDrain", Currency: currency.ARS, IsDefault: true}
 	if err := accRepo.Insert(banco); err != nil {
 		t.Fatalf("insert banco: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 		conn.DB.Unscoped().Where("user_id = ?", uid).Delete(&pendingaction.PendingAction{})
 	})
 
-	banco := &account.Account{UserID: uid, Name: "Banco AskUserGap", Type: account.StandardType, Currency: currency.ARS, IsDefault: true}
+	banco := &account.Account{UserID: uid, Name: "Banco AskUserGap", Currency: currency.ARS, IsDefault: true}
 	if err := accRepo.Insert(banco); err != nil {
 		t.Fatalf("insert banco: %v", err)
 	}

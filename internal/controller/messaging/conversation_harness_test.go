@@ -44,7 +44,7 @@ type convHarness struct {
 
 func (h *convHarness) SeedAccount(name string, cur currency.Currency, opening string) uint64 {
 	h.t.Helper()
-	acc := &account.Account{UserID: h.userID, Name: name, Type: account.StandardType, Currency: cur}
+	acc := &account.Account{UserID: h.userID, Name: name, Currency: cur}
 	if err := movement.InitRepository(h.conn).InsertAccountsWithOpenings([]movement.AccountOpening{{
 		Account: acc,
 		Movement: movement.Movement{
@@ -125,7 +125,7 @@ func newConversationHarness(t *testing.T) *convHarness {
 		conn.DB.Unscoped().Where("id = ?", uid).Delete(&user.User{})
 	})
 
-	banco := &account.Account{UserID: uid, Name: "Banco Test", Type: account.StandardType, Currency: currency.ARS, IsDefault: true}
+	banco := &account.Account{UserID: uid, Name: "Banco Test", Currency: currency.ARS, IsDefault: true}
 	if err := movRepo.InsertAccountsWithOpenings([]movement.AccountOpening{{
 		Account: banco,
 		Movement: movement.Movement{
