@@ -299,7 +299,6 @@ func buildMovements(r runner, userID uint64, rows []movement.MovementRow) ([]mov
 			Type:          movement.TypeFromString(row.Type),
 			Amount:        amount,
 			Currency:      currency.Currency(row.Currency),
-			PaymentMethod: optionalString(row.PaymentMethod),
 			Description:   optionalString(row.Description),
 		})
 		groups = append(groups, row.Group)

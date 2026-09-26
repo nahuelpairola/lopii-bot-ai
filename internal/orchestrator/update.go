@@ -43,12 +43,11 @@ var updateTool = toolSchema{
 						"account_id": {"type": ["integer", "null"]},
 						"category": {"type": "string"},
 						"subcategory": {"type": "string"},
-						"payment_method": {"type": "string"},
 						"description": {"type": "string"},
 						"date": {"type": "string"},
 						"group": {"type": ["string", "null"]}
 					},
-					"required": ["type", "amount", "currency", "category", "subcategory", "payment_method", "description", "date"]
+					"required": ["type", "amount", "currency", "category", "subcategory", "description", "date"]
 				}
 			}
 		},

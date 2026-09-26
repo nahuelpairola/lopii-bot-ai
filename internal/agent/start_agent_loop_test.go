@@ -248,8 +248,7 @@ func TestLoop_InsertedResolvesCreateInserted(t *testing.T) {
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			_, err := execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
 				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
-				 "subcategory":"Supermercado","date":"2026-08-01","description":"super",
-				 "payment_method":"transfer"}]}`))
+				 "subcategory":"Supermercado","date":"2026-08-01","description":"super"}]}`))
 			return "", err
 		},
 	}
@@ -274,8 +273,7 @@ func TestLoop_NoQueueAfterAWrite(t *testing.T) {
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			_, _ = execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
 				{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
-				 "subcategory":"Supermercado","date":"2026-08-01","description":"super",
-				 "payment_method":"transfer"}]}`))
+				 "subcategory":"Supermercado","date":"2026-08-01","description":"super"}]}`))
 			return "", &orchestrator.RateLimitedError{RetryAfter: time.Second}
 		},
 	}
@@ -344,8 +342,7 @@ func TestLoop_ReplayDoesNotOpenANewIntentEvent(t *testing.T) {
 func recordSuperIn(execute func(string, json.RawMessage) (string, error)) (string, error) {
 	_, err := execute(orchestrator.ToolRecordMovements, json.RawMessage(`{"movements":[
 		{"type":"expense","amount":"5000","currency":"ARS","category":"Alimentación",
-		 "subcategory":"Supermercado","date":"2026-08-01","description":"super",
-		 "payment_method":"transfer"}]}`))
+		 "subcategory":"Supermercado","date":"2026-08-01","description":"super"}]}`))
 	return "", err
 }
 
