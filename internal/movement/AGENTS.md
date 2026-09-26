@@ -7,8 +7,8 @@ model; below is only what that does not say.
 
 Nothing in `repository.go` calls `Normalize`. `InsertBatch`, `InsertAccountsWithOpenings` and
 `ReplaceMovements` accept a `[]Movement` and trust it has already been through the guard —
-which is a pure function the *caller* must invoke (see `flow/movement_write.go`).
-A new write path that skips it compiles and inserts unnormalized money.
+which is a pure function the *caller* must invoke (see `flow/movement_write.go`). A new write
+path that skips it compiles and inserts unnormalized money; only a NULL `account_id` fails loudly.
 
 ## `ReassignAccount` upholds a guard invariant in raw SQL
 

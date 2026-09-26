@@ -13,22 +13,11 @@ type Account struct {
 	gorm.Model
 	UserID    uint64            `gorm:"column:user_id"`
 	Name      string            `gorm:"column:name"`
-	Type      accountType       `gorm:"column:type"`
 	Currency  currency.Currency `gorm:"column:currency"`
 	IsDefault bool              `gorm:"column:is_default"`
 }
 
 var ErrAccountAlreadyExists = errors.New("an account with that name and currency already exists")
-
-type accountType string
-
-const (
-	StandardType accountType = "standard"
-)
-
-func (c accountType) String() string {
-	return string(c)
-}
 
 type repository struct {
 	conn *database.Connection

@@ -80,11 +80,11 @@ func TestQueryEval(t *testing.T) {
 		conn.DB.Unscoped().Where("id = ?", uid).Delete(&user.User{})
 	})
 
-	banco := &account.Account{UserID: uid, Name: "Banco Test", Type: account.StandardType, Currency: currency.ARS, IsDefault: true}
+	banco := &account.Account{UserID: uid, Name: "Banco Test", Currency: currency.ARS, IsDefault: true}
 	if err := accRepo.Insert(banco); err != nil {
 		t.Fatalf("insert banco: %v", err)
 	}
-	wallet := &account.Account{UserID: uid, Name: "Wallet Test", Type: account.StandardType, Currency: currency.USD, IsDefault: true}
+	wallet := &account.Account{UserID: uid, Name: "Wallet Test", Currency: currency.USD, IsDefault: true}
 	if err := accRepo.Insert(wallet); err != nil {
 		t.Fatalf("insert wallet: %v", err)
 	}
