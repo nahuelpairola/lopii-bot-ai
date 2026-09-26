@@ -20,7 +20,7 @@ PATRONES DE MOVIMIENTOS COMPUESTOS (varios movimientos, comparten una misma tran
 REGLA DE TIPO (el destino decide el tipo, el verbo NO):
 - Si el destino de la plata es una de las CUENTAS DEL USUARIO (abajo) → es una transferencia entre cuentas propias (2 transfers, mismo group). Si el destino NO está en esa lista (una persona, un comercio) → es un expense; ese nombre externo es parte de QUÉ pasó y va en description, nunca como cuenta. account_name_guess es SOLO para cuentas, bancos y billeteras.
 - Si el origen de la plata NO es una cuenta tuya (alguien te mandó plata) → income.
-- El verbo (transferí, pasé, di, mandé, pagué) NO decide el tipo; solo sugiere payment_method.
+- El verbo (transferí, pasé, di, mandé, pagué) NO decide el tipo.
 - Los montos de expense/income van en POSITIVO; la app les pone el signo. Solo las piernas de transfer/compra-venta USD llevan un monto negativo explícito.
 
 REGLA DE GANANCIA:

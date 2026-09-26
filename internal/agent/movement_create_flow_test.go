@@ -20,7 +20,7 @@ func TestResolveAndInsertMovements_SimpleSingleMovement_NilTransactionID(t *test
 	svc := &fakeServices{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
-		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
+		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Description: "Café", Date: "2026-07-02"},
 	}}
 	data := buildCreateSeed(result, nil, nil, "")
 	data[conversation.UserIDKey] = uint64(1)
@@ -49,8 +49,8 @@ func TestResolveAndInsertMovements_Compound_SharesTransactionID(t *testing.T) {
 	svc := &fakeServices{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
-		{Type: "transfer", Amount: "140000", Currency: "ARS", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(1), Group: "g1"},
-		{Type: "transfer", Amount: "100", Currency: "USD", Category: "Inversiones", Subcategory: "Compra USD", PaymentMethod: "transfer", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(7), Group: "g1"},
+		{Type: "transfer", Amount: "140000", Currency: "ARS", Category: "Inversiones", Subcategory: "Compra USD", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(1), Group: "g1"},
+		{Type: "transfer", Amount: "100", Currency: "USD", Category: "Inversiones", Subcategory: "Compra USD", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(7), Group: "g1"},
 	}}
 	data := buildCreateSeed(result, nil, nil, "")
 	data[conversation.UserIDKey] = uint64(1)
@@ -79,7 +79,7 @@ func TestResolveAndInsertMovements_PopulatesSubcategoryAssociation(t *testing.T)
 	svc := &fakeServices{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
-		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", PaymentMethod: "cash", Description: "Café", Date: "2026-07-02"},
+		{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Description: "Café", Date: "2026-07-02"},
 	}}
 	data := buildCreateSeed(result, nil, nil, "")
 	data[conversation.UserIDKey] = uint64(1)

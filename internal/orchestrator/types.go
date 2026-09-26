@@ -43,7 +43,6 @@ type MovementDraft struct {
 	AccountNameGuess string  `json:"account_name_guess,omitempty"`
 	Category         string  `json:"category"`
 	Subcategory      string  `json:"subcategory"`
-	PaymentMethod    string  `json:"payment_method"`
 	Description      string  `json:"description"`
 	Date             string  `json:"date"`
 	Group            string  `json:"group"`

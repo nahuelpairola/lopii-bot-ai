@@ -88,7 +88,6 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 			AccountNameGuess: draft.AccountNameGuess,
 			Category:         draft.Category,
 			Subcategory:      draft.Subcategory,
-			PaymentMethod:    draft.PaymentMethod,
 			Description:      draft.Description,
 			Date:             draft.Date,
 			Group:            draft.Group,

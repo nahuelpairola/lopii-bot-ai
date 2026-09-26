@@ -104,7 +104,7 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 		runFn: func(execute func(string, json.RawMessage) (string, error)) (string, error) {
 			args := `{"movements":[{"type":"expense","amount":"500","currency":"ARS",` +
 				`"date":"` + time.Now().Format("2006-01-02") + `",` +
-				`"description":"super","payment_method":"transfer"}]}`
+				`"description":"super"}]}`
 			return execute(orchestrator.ToolRecordMovements, json.RawMessage(args))
 		},
 	}
