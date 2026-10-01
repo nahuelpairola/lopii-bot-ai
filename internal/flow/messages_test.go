@@ -1,8 +1,11 @@
 package flow
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"lopiibot.com/internal/constants"
 )
 
 func TestTurningNotificationsOffSaysTheMonthlyKeepsComing(t *testing.T) {
@@ -14,6 +17,13 @@ func TestTurningNotificationsOffSaysTheMonthlyKeepsComing(t *testing.T) {
 		if !strings.Contains(msg, msgMonthlyAlwaysOn) {
 			t.Errorf("%s no dice que el resumen del mes sigue: %q", name, msg)
 		}
+	}
+}
+
+func TestMonthlyAlwaysOnNamesTheDayTheSweeperFires(t *testing.T) {
+	want := fmt.Sprintf("el %d de cada mes", constants.MonthlySummaryDay)
+	if !strings.Contains(msgMonthlyAlwaysOn, want) {
+		t.Errorf("msgMonthlyAlwaysOn promete otro día que el del sweeper: %q, quiero %q", msgMonthlyAlwaysOn, want)
 	}
 }
 

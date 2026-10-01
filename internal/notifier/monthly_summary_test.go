@@ -53,15 +53,15 @@ func newMonthlySweeper(store *mnStore, chat *messenger.FakeChat, text string) *S
 	}
 }
 
-func thirdAt(hour, min int) time.Time {
-	return time.Date(2026, 8, 3, hour, min, 0, 0, artLoc)
+func firstAt(hour, min int) time.Time {
+	return time.Date(2026, 6, 1, hour, min, 0, 0, artLoc)
 }
 
-func TestSweepMonthlySummary_FiresOnTheThird(t *testing.T) {
+func TestSweepMonthlySummary_FiresOnTheFirst(t *testing.T) {
 	store := &mnStore{allUsers: []uint64{1}}
 	chat := &messenger.FakeChat{}
 
-	sent := newMonthlySweeper(store, chat, "MONTHLY").sweepMonthlySummary(context.Background(), thirdAt(9, 5))
+	sent := newMonthlySweeper(store, chat, "MONTHLY").sweepMonthlySummary(context.Background(), firstAt(9, 5))
 
 	if len(chat.Sent) != 1 || chat.LastText() != "MONTHLY" {
 		t.Fatalf("expected one MONTHLY, got %v", chat.Sent)
@@ -77,12 +77,12 @@ func TestSweepMonthlySummary_FiresOnTheThird(t *testing.T) {
 func TestSweepMonthlySummary_SkipsOtherDays(t *testing.T) {
 	store := &mnStore{allUsers: []uint64{1}}
 	chat := &messenger.FakeChat{}
-	fourth := time.Date(2026, 8, 4, 9, 5, 0, 0, artLoc)
+	third := time.Date(2026, 6, 3, 9, 5, 0, 0, artLoc)
 
-	newMonthlySweeper(store, chat, "MONTHLY").sweepMonthlySummary(context.Background(), fourth)
+	newMonthlySweeper(store, chat, "MONTHLY").sweepMonthlySummary(context.Background(), third)
 
 	if len(chat.Sent) != 0 {
-		t.Fatalf("expected nothing on the 4th, got %v", chat.Sent)
+		t.Fatalf("expected nothing on the 3rd, got %v", chat.Sent)
 	}
 }
 
@@ -90,7 +90,7 @@ func TestSweepMonthlySummary_NotBeforeNine(t *testing.T) {
 	store := &mnStore{allUsers: []uint64{1}}
 	chat := &messenger.FakeChat{}
 
-	newMonthlySweeper(store, chat, "MONTHLY").sweepMonthlySummary(context.Background(), thirdAt(8, 30))
+	newMonthlySweeper(store, chat, "MONTHLY").sweepMonthlySummary(context.Background(), firstAt(8, 30))
 
 	if len(chat.Sent) != 0 {
 		t.Fatalf("expected nothing before 09:00, got %v", chat.Sent)
@@ -101,7 +101,7 @@ func TestSweepMonthlySummary_EmptyMonthSendsNothingButStillMarks(t *testing.T) {
 	store := &mnStore{allUsers: []uint64{1}}
 	chat := &messenger.FakeChat{}
 
-	sent := newMonthlySweeper(store, chat, "").sweepMonthlySummary(context.Background(), thirdAt(9, 5))
+	sent := newMonthlySweeper(store, chat, "").sweepMonthlySummary(context.Background(), firstAt(9, 5))
 
 	if len(chat.Sent) != 0 {
 		t.Fatalf("an empty month must send nothing, got %v", chat.Sent)
@@ -131,33 +131,33 @@ func TestSweepMonthlySummary_WindowIsThePreviousCalendarMonth(t *testing.T) {
 	s := newMonthlySweeper(store, &messenger.FakeChat{}, "MONTHLY")
 	s.summaries = windowSpy{out: &got}
 
-	s.sweepMonthlySummary(context.Background(), thirdAt(9, 5))
+	s.sweepMonthlySummary(context.Background(), firstAt(9, 5))
 
-	if got[0].Month() != time.July || got[0].Day() != 1 {
-		t.Errorf("from = %v, want 2026-07-01", got[0])
+	if got[0].Month() != time.May || got[0].Day() != 1 {
+		t.Errorf("from = %v, want 2026-05-01", got[0])
 	}
-	if got[1].Month() != time.July || got[1].Day() != 31 {
-		t.Errorf("to = %v, want 2026-07-31", got[1])
+	if got[1].Month() != time.May || got[1].Day() != 31 {
+		t.Errorf("to = %v, want 2026-05-31", got[1])
 	}
-	if got[2].Month() != time.June || got[2].Day() != 1 {
-		t.Errorf("prevFrom = %v, want 2026-06-01", got[2])
+	if got[2].Month() != time.April || got[2].Day() != 1 {
+		t.Errorf("prevFrom = %v, want 2026-04-01", got[2])
 	}
-	if got[3].Month() != time.June || got[3].Day() != 30 {
-		t.Errorf("prevTo = %v, want 2026-06-30", got[3])
+	if got[3].Month() != time.April || got[3].Day() != 30 {
+		t.Errorf("prevTo = %v, want 2026-04-30", got[3])
 	}
 }
 
 func TestSweepWeeklySummary_SkipsUsersTheMonthlyJustReached(t *testing.T) {
-	monday3rd := time.Date(2026, 8, 3, 9, 5, 0, 0, artLoc)
-	if monday3rd.Weekday() != time.Monday {
-		t.Fatalf("fixture is wrong: 2026-08-03 is a %v, pick a real Monday-the-3rd", monday3rd.Weekday())
+	monday1st := firstAt(9, 5)
+	if monday1st.Weekday() != time.Monday {
+		t.Fatalf("fixture is wrong: 2026-06-01 is a %v, pick a real Monday-the-1st", monday1st.Weekday())
 	}
 	store := &wkStore{due: []reminder.Reminder{{UserID: 1, WeeklySummaryEnabled: true}}}
 	chat := &messenger.FakeChat{}
 
-	newTestSweeper(store, chat).sweepWeeklySummary(context.Background(), monday3rd, map[uint64]struct{}{1: {}})
+	newTestSweeper(store, chat).sweepWeeklySummary(context.Background(), monday1st, map[uint64]struct{}{1: {}})
 
 	if len(chat.Sent) != 0 {
-		t.Fatalf("the weekly must not double up on a Monday the 3rd, got %v", chat.Sent)
+		t.Fatalf("the weekly must not double up on a Monday the 1st, got %v", chat.Sent)
 	}
 }
