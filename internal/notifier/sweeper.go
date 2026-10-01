@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
@@ -236,14 +237,11 @@ func (s *Sweeper) sweepWeeklySummary(ctx context.Context, now time.Time, skip ma
 	}
 }
 
-const (
-	monthlySummaryDay     = 3
-	monthlySummaryFireMin = 9 * 60
-)
+const monthlySummaryFireMin = 9 * 60
 
 func (s *Sweeper) sweepMonthlySummary(ctx context.Context, now time.Time) map[uint64]struct{} {
 	sent := map[uint64]struct{}{}
-	if now.Day() != monthlySummaryDay {
+	if now.Day() != constants.MonthlySummaryDay {
 		return sent
 	}
 	if now.Hour()*60+now.Minute() < monthlySummaryFireMin {

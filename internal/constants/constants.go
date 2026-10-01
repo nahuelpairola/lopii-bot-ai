@@ -13,4 +13,6 @@ const (
 
 const PendingReview = "PENDING_REVIEW"
 
+const MonthlySummaryDay = 1
+
 const QueryFailed = "No pude resolver esa consulta ahora. Probá reformularla o intentá de nuevo en un momento."

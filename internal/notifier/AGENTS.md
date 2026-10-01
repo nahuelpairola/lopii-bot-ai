@@ -58,7 +58,7 @@ Two consequences worth carrying:
 
 ## The monthly runs before the weekly, and that ordering IS the suppression
 
-On a Monday the 3rd both summaries fire. `tick` calls `sweepMonthlySummary` first and hands its
+On a Monday the 1st both summaries fire. `tick` calls `sweepMonthlySummary` first and hands its
 return value — the set of users it **actually sent to** — to `sweepWeeklySummary` as `skip`.
 Reordering the two calls, or dropping the parameter, silently double-messages those users.
 
