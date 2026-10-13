@@ -113,7 +113,15 @@ func (e *agentExecutor) execute(name string, args json.RawMessage) (string, erro
 	case orchestrator.ToolRecordMovements:
 		return e.record(args)
 	case orchestrator.ToolDeleteMovements:
-		return e.park(parkRequest{tool: orchestrator.ToolDeleteMovements, question: flow.MsgPickDeleteCandidate(nil)})
+		var a struct {
+			DateFrom string `json:"date_from"`
+			DateTo   string `json:"date_to"`
+		}
+		_ = json.Unmarshal(args, &a)
+		return e.park(parkRequest{
+			tool: orchestrator.ToolDeleteMovements, question: flow.MsgPickDeleteCandidate(nil),
+			dateFrom: a.DateFrom, dateTo: a.DateTo,
+		})
 	case orchestrator.ToolAnswerQuery:
 		e.answerQuery = true
 		return "ya le contestaste la consulta al usuario", orchestrator.ErrAgentTurnDone
@@ -224,6 +232,7 @@ type parkRequest struct {
 
 func (e *agentExecutor) park(req parkRequest) (string, error) {
 	tool, change, question := req.tool, req.change, req.question
+	req.dateFrom, req.dateTo = messageBackedDate(e.userText, req.dateFrom), messageBackedDate(e.userText, req.dateTo)
 	groups, err := resolveCandidates(e.svc, e.userID, e.userText, req.dateFrom, req.dateTo)
 	if err != nil {
 		return "", fmt.Errorf("%s: resolve candidates: %w", tool, err)

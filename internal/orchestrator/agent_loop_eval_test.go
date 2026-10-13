@@ -203,12 +203,15 @@ func TestAgentDateAnchorEval(t *testing.T) {
 		id         string
 		msg        string
 		today      string
+		tool       string
 		wantNoDate bool
 		wantFrom   string
 	}{
-		{id: "el_lunes_no_lleva_fecha", today: hoy, msg: "La compra de locro del lunes ponela en salidas restaurante", wantNoDate: true},
-		{id: "la_semana_pasada_no_lleva_fecha", today: hoy, msg: "El gasto de la semana pasada ponelo en otra categoría", wantNoDate: true},
-		{id: "el_4_de_agosto_si_lleva_fecha", today: hoy, msg: "El débito del 4 de agosto ponelo en Servicios", wantFrom: "2026-08-04"},
+		{id: "el_lunes_no_lleva_fecha", today: hoy, tool: ToolCorrectMovement, msg: "La compra de locro del lunes ponela en salidas restaurante", wantNoDate: true},
+		{id: "la_semana_pasada_no_lleva_fecha", today: hoy, tool: ToolCorrectMovement, msg: "El gasto de la semana pasada ponelo en otra categoría", wantNoDate: true},
+		{id: "el_4_de_agosto_si_lleva_fecha", today: hoy, tool: ToolCorrectMovement, msg: "El débito del 4 de agosto ponelo en Servicios", wantFrom: "2026-08-04"},
+		{id: "borrar_con_dia_y_mes_lleva_fecha", today: hoy, tool: ToolDeleteMovements, msg: "Elimina hbo max del 3 de agosto", wantFrom: "2026-08-03"},
+		{id: "borrar_relativo_no_lleva_fecha", today: hoy, tool: ToolDeleteMovements, msg: "Eliminá el helado del sábado pasado", wantNoDate: true},
 	}
 
 	for i, tc := range cases {
@@ -223,7 +226,7 @@ func TestAgentDateAnchorEval(t *testing.T) {
 			prompt := BuildAgentPrompt(tc.today, accounts, taxonomy, "", tools, "")
 			var seen bool
 			execute := func(name string, raw json.RawMessage) (string, error) {
-				if name == ToolCorrectMovement {
+				if name == tc.tool {
 					seen = true
 					if err := json.Unmarshal(raw, &args); err != nil {
 						t.Errorf("args ilegibles: %v — %s", err, raw)
@@ -235,7 +238,7 @@ func TestAgentDateAnchorEval(t *testing.T) {
 
 			_, err := o.Run(context.Background(), prompt, tc.msg, nil, tools, execute)
 			if !seen {
-				t.Fatalf("no llamó %s (err=%v)", ToolCorrectMovement, err)
+				t.Fatalf("no llamó %s (err=%v)", tc.tool, err)
 			}
 
 			if tc.wantNoDate {

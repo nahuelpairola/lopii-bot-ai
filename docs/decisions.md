@@ -203,6 +203,26 @@ exists: it is the only thing that betrays a badly resolved range.
 gets re-injected every round — worse than the `list_movements` that broke the ceiling — and
 illegible as a Telegram message.
 
+### Why the resolver has its own coverage, no row cap, and a message-backed date (2026-10-13)
+
+On 2026-10-12, user 2 tried 7 times to delete "hbo max" of Oct 3, and twice more to zero it.
+Every attempt was cancelled. Both rows were in the window (ranks 37 and 43 of 60). The cause was
+`flow.TokenCoverage` dropping tokens under 4 runes. "hbo max" scored 0, so the picker showed the
+5 newest unrelated rows, and re-typing could not help because it used the same scorer. Prod had
+3 descriptions unreachable this way: `luz`, `gym`, `hbo max`.
+
+**Rejected: lowering the global floor.** The near-dup gate and account matching depend on it.
+**Rejected: typo tolerance between two 3-letter words**, because "más" would match `max`
+everywhere. **The 60-row cap went** because it already failed this way once, at 30, when the cut to
+five became by score.
+
+`delete_movements` gained the `date_from`/`date_to` locator. A date the user names is now a
+mandatory filter on a delete too. The eval showed the cost: "Eliminá el helado del sábado pasado"
+came back with `date_from` set to a Wednesday. So a locator is honored only when the user's text
+says its day and month. **Rejected: trusting the schema description alone.** That gap is the same
+one `TestAgentDateAnchorEval` keeps red on purpose for "el lunes"; on a mandatory filter it stops
+being harmless.
+
 ## Groq quota, the 429 queue and rate limits
 
 - **A terminal Groq 429 is a typed error (`orchestrator.RateLimitedError`), not a string to re-parse.** `Client.send`'s existing retry loop already computes the best available wait (header priority over body-parsed text); wrapping that wait in a struct returned via `errors.As` means the pending-jobs queue (and any future consumer) never re-derives or re-parses anything Groq said — it reads `RetryAfter` off the error itself. The alternative (checking `errors.Is(err, someSentinel)` and separately re-parsing the body for the wait) would duplicate parsing logic `send` already did.

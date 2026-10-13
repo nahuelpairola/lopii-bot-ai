@@ -332,3 +332,45 @@ func TestAgentExecutor_CorrectPassesTheDateLocatorToTheSearch(t *testing.T) {
 		t.Fatal("until = nil: la ventana quedó abierta hasta hoy")
 	}
 }
+
+func TestAgentExecutor_DeletePassesTheDateLocatorToTheSearch(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{}
+	e := newAgentExecutor(context.Background(), &fakeServices{movements: fake}, 2,
+		"Elimina hbo max del 3 de octubre", nil)
+
+	executeDone(t, e, orchestrator.ToolDeleteMovements, `{"date_from":"2026-10-03"}`)
+
+	if fake.recencyCalled {
+		t.Fatal("con date_from no se busca por created_at: la fecha nunca llegó")
+	}
+	if want := time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC); !fake.capturedSince.Equal(want) {
+		t.Errorf("since = %v, want %v", fake.capturedSince, want)
+	}
+	if fake.capturedUntil == nil {
+		t.Fatal("until = nil: la ventana quedó abierta hasta hoy")
+	}
+}
+
+func TestAgentExecutor_DeleteIgnoresADateTheMessageDoesNotSay(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{}
+	e := newAgentExecutor(context.Background(), &fakeServices{movements: fake}, 2,
+		"Eliminá el helado del sábado pasado", nil)
+
+	executeDone(t, e, orchestrator.ToolDeleteMovements, `{"date_from":"2026-08-12"}`)
+
+	if !fake.recencyCalled {
+		t.Fatal("el modelo inventó la fecha de un día de la semana: filtrar por ella manda la búsqueda al día equivocado")
+	}
+}
+
+func TestAgentExecutor_CorrectIgnoresADateTheMessageDoesNotSay(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{}
+	e := newAgentExecutor(context.Background(), &fakeServices{movements: fake}, 2,
+		"La compra de locro del lunes ponela en salidas restaurante", nil)
+
+	executeDone(t, e, orchestrator.ToolCorrectMovement, `{"change":"ponela en salidas","date_from":"2026-08-14"}`)
+
+	if !fake.recencyCalled {
+		t.Fatal("el modelo inventó la fecha de un día de la semana: filtrar por ella manda la búsqueda al día equivocado")
+	}
+}

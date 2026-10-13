@@ -56,20 +56,20 @@ description tokens the message names, plus a capped tie-break for date proximity
 five is by score, not recency. A score of 0 means "no match" and the group never enters — that
 keeps the recency fallback alive; a change letting the date term alone produce a candidate would
 silently delete it. Shortcut: when nothing matches textually but the user just recorded something,
-it returns **exactly one** candidate — the recent entry — rather than a picker.
+it returns **exactly one** candidate — the recent entry — rather than a picker. Scoring uses
+`descriptionCoverage`: **never lower `flow.TokenCoverage`'s 4-rune floor** to reach `luz`/`hbo max`
+— the near-dup gate and account matching depend on it. Why: `docs/decisions.md` (2026-10-13).
 
 It has **two windows, and picking the wrong one is the whole bug class.** With no date it
-searches by `created_at` ("what did I just enter"); with a date it searches by *business* date. A
-correction naming a date entered days later — "el débito del 4 de agosto", loaded on the 8th — is
-invisible to the first window and obvious to the second, which is why `correct_movement` carries
-`date_from`/`date_to` as a **locator** (they never change the movement; a date correction travels
-in `changes` with `field: "date"`). One lone date closes the window on *both* sides: an open
-`until` does not narrow anything, and a lone `date_to` used to invert the window outright.
+searches by `created_at` over 90 days, **with no row cap** (30, then 60, each hid a real row); with
+a date, by *business* date. "el débito del 4 de agosto", loaded on the 8th, is invisible to the first
+and obvious to the second, hence the `date_from`/`date_to` **locator** on `correct_movement` and
+`delete_movements` (it never changes the movement). One lone date closes the window on *both* sides.
 
 Consequence: a relative reference must arrive with **no date at all** — the model cannot turn a
-weekday into one, so `date_from`'s description asks for a date **only** when the message spells out
-day and month. Why `TestAgentDateAnchorEval` keeps "el lunes" red: `docs/decisions.md` (§ The
-agent loop and QUERY).
+weekday into one. The schema asks for a date only when the message spells day and month, and
+**`park` enforces it**: `messageBackedDate` drops a locator the user's text does not say, or "el
+sábado pasado" filters a delete to a wrong Wednesday. Why "el lunes" stays red: `docs/decisions.md`.
 
 When the picker's answer is free text that names none of the options, the loop **searches again**
 with the original message plus what the user just typed, instead of re-asking. That is what
