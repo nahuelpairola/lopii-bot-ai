@@ -24,6 +24,9 @@ const (
 
 const schemaNoArgs = `{"type": "object", "properties": {}}`
 
+const dateLocatorProperties = `"date_from": {"type": ["string", "null"], "description": "Fecha que IDENTIFICA de cuál movimiento habla el mensaje, y SÓLO cuando el mensaje la dice con día y mes: \"el débito del 4 de agosto\", \"el del 12/07\". Si en cambio dice un día de la semana o algo relativo (\"el lunes\", \"ayer\", \"la semana pasada\"), dejala en null y no la calcules: la app resuelve eso sola y mejor. La usa para encontrar el movimiento; NO le cambia la fecha — si lo que se corrige ES la fecha, va en changes con field:date. YYYY-MM-DD o null."},
+	"date_to": {"type": ["string", "null"], "description": "Fecha de fin cuando el mensaje da un TRAMO con las dos puntas dichas (\"los gastos del 3 al 5 de agosto\"): ahí van las dos. Un período relativo (\"la semana pasada\") NO se completa acá ni en date_from. YYYY-MM-DD o null; con date_from solo se busca en ese único día."}`
+
 var recordMovementsParams = json.RawMessage(`{
 	"type": "object",
 	"properties": {
@@ -149,18 +152,22 @@ func AgentTools() []AgentTool {
 					},
 					"required": ["field", "value"]
 				}},
-				"date_from": {"type": ["string", "null"], "description": "Fecha que IDENTIFICA de cuál movimiento habla el mensaje, y SÓLO cuando el mensaje la dice con día y mes: \"el débito del 4 de agosto\", \"el del 12/07\". Si en cambio dice un día de la semana o algo relativo (\"el lunes\", \"ayer\", \"la semana pasada\"), dejala en null y no la calcules: la app resuelve eso sola y mejor. La usa para encontrar el movimiento; NO le cambia la fecha — si lo que se corrige ES la fecha, va en changes con field:date. YYYY-MM-DD o null."},
-				"date_to": {"type": ["string", "null"], "description": "Fecha de fin cuando el mensaje da un TRAMO con las dos puntas dichas (\"los gastos del 3 al 5 de agosto\"): ahí van las dos. Un período relativo (\"la semana pasada\") NO se completa acá ni en date_from. YYYY-MM-DD o null; con date_from solo se busca en ese único día."}
+				` + dateLocatorProperties + `
 			},
 			"required": ["change", "changes"]
 		}`),
 		},
 		{
 			Name:        ToolDeleteMovements,
-			When:        "pedido explícito de borrar (\"borrá\", \"eliminá\"). Tampoco busques cuál. Si en cambio hay que CAMBIARLE algo —incluso dejarlo en cero porque se lo regalaron— es correct_movement.",
+			When:        "pedido explícito de borrar (\"borrá\", \"eliminá\"). Tampoco busques cuál, pero si el mensaje dice la fecha con día y mes, mandala en date_from: la app busca SÓLO en esa fecha. Si en cambio hay que CAMBIARLE algo —incluso dejarlo en cero porque se lo regalaron— es correct_movement.",
 			Kind:        KindAction,
 			Description: "Borra uno o más movimientos ya registrados. La app busca sola de cuál habla el mensaje y le pide confirmación al usuario.",
-			Parameters:  json.RawMessage(schemaNoArgs),
+			Parameters: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				` + dateLocatorProperties + `
+			}
+		}`),
 		},
 		{
 			Name:        ToolManageSettings,
