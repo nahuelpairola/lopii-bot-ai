@@ -445,14 +445,8 @@ func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if fake.capturedLimit != recencyLimit {
-		t.Errorf("limit = %d, want %d: la ventana se acota por cantidad, no solo por tiempo", fake.capturedLimit, recencyLimit)
-	}
 	if recencyWindow < 30*24*time.Hour {
 		t.Errorf("recencyWindow = %v, want >= 30 días: es un techo contra fósiles, no la ventana real", recencyWindow)
-	}
-	if recencyLimit < 60 {
-		t.Errorf("recencyLimit = %d, want >= 60: con 30, el débito de tarjeta del 2026-08-16 quedaba en la fila 32", recencyLimit)
 	}
 }
 
@@ -539,5 +533,56 @@ func TestResolveCandidates_LoneDateToAnchorsSymmetrically(t *testing.T) {
 	}
 	if want := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC); !fake.capturedUntil.Equal(want) {
 		t.Errorf("until = %v, want %v", *fake.capturedUntil, want)
+	}
+}
+
+func TestResolveCandidates_HboMaxFromProd_IsOffered(t *testing.T) {
+	now := time.Now()
+	oct3 := time.Date(2026, 10, 3, 0, 0, 0, 0, time.UTC)
+	oct12 := time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)
+	row := func(id uint, desc, amount string, date time.Time, age time.Duration) movement.Movement {
+		return movement.Movement{
+			Model:       gorm.Model{ID: id, CreatedAt: now.Add(-age)},
+			Type:        movement.Expense,
+			Amount:      decimal.RequireFromString(amount),
+			Currency:    currency.ARS,
+			Date:        date,
+			Description: strPtr(desc),
+		}
+	}
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{
+		row(651, "Gas departamento", "-21104.34", oct12, 3*time.Hour),
+		row(650, "Impuesto provincial lote", "-11490", oct12, 3*time.Hour),
+		row(649, "Agua departamento", "-49515.91", oct12, 3*time.Hour),
+		row(648, "Agua lote", "-5521.74", oct12, 3*time.Hour),
+		row(645, "nafta auto", "-40000", oct12, 4*time.Hour),
+		row(607, "hbo max", "-8122.80", oct3, 8*24*time.Hour),
+		row(601, "hbo max", "-9122.80", oct3, 9*24*time.Hour),
+	}}
+	svc := &fakeServices{movements: fake}
+
+	candidates, err := resolveCandidates(svc, 2, "Elimina hbo max del 3 de octubre", "", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("got %d candidates, want only the two hbo max rows", len(candidates))
+	}
+	for _, c := range candidates {
+		if id := c.Movements[0].ID; id != 601 && id != 607 {
+			t.Errorf("candidate %d offered; the user named hbo max and the picker showed something else", id)
+		}
+	}
+}
+
+func TestResolveCandidates_NoDate_SearchesTheWholeWindowNotTheLatestRows(t *testing.T) {
+	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("hbo max")}}}
+	svc := &fakeServices{movements: fake}
+
+	if _, err := resolveCandidates(svc, 2, "borrá hbo max", "", ""); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.capturedLimit != 0 {
+		t.Errorf("recency limit = %d, want 0: a row past the cap is invisible to every correction", fake.capturedLimit)
 	}
 }

@@ -23,8 +23,8 @@ func StartOfTodayArgentina() time.Time {
 const (
 	dateAnchorMargin = 24 * time.Hour
 	pickerMaxOptions = 5
-	recencyLimit     = 60
 	recencyWindow    = 90 * 24 * time.Hour
+	noRowLimit       = 0
 )
 
 type transactionGroup struct {
@@ -61,7 +61,6 @@ func groupByTransaction(ms []movement.Movement) []transactionGroup {
 const dateTieBreak = 0.25
 
 func scoreGroup(g transactionGroup, message string, anchor time.Time) float64 {
-	lower := foldAccents(strings.ToLower(message))
 	best := 0.0
 	for _, m := range g.Movements {
 		cover := 0.0
@@ -69,7 +68,7 @@ func scoreGroup(g transactionGroup, message string, anchor time.Time) float64 {
 			cover = 1
 		}
 		if m.Description != nil {
-			if c := flow.TokenCoverage(*m.Description, lower); c > cover {
+			if c := descriptionCoverage(*m.Description, message); c > cover {
 				cover = c
 			}
 		}
@@ -112,7 +111,7 @@ func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, date
 	var matches []movement.Movement
 	var err error
 	if dateFrom == "" && dateTo == "" {
-		matches, err = svc.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow), recencyLimit)
+		matches, err = svc.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow), noRowLimit)
 	} else {
 		from, to := parseDateAnchor(dateFrom), parseDateAnchor(dateTo)
 		if from == nil {

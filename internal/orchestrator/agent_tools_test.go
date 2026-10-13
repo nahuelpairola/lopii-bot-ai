@@ -132,34 +132,41 @@ func TestCorrectMovement_WhenAnnouncesEveryFieldItAccepts(t *testing.T) {
 	}
 }
 
-func TestAgentTools_CorrectMovementTakesADateLocator(t *testing.T) {
-	var tool AgentTool
-	for _, tl := range AgentTools() {
-		if tl.Name == ToolCorrectMovement {
-			tool = tl
+func TestAgentTools_CorrectAndDeleteTakeTheSameDateLocator(t *testing.T) {
+	descriptions := map[string]string{}
+	for _, name := range []string{ToolCorrectMovement, ToolDeleteMovements} {
+		var tool AgentTool
+		for _, tl := range AgentTools() {
+			if tl.Name == name {
+				tool = tl
+			}
 		}
-	}
-	var schema struct {
-		Properties map[string]struct {
-			Description string `json:"description"`
-		} `json:"properties"`
-		Required []string `json:"required"`
-	}
-	if err := json.Unmarshal(tool.Parameters, &schema); err != nil {
-		t.Fatalf("schema ilegible: %v", err)
-	}
-	for _, field := range []string{"date_from", "date_to"} {
-		p, ok := schema.Properties[field]
-		if !ok {
-			t.Fatalf("%s no está declarado en el schema", field)
+		var schema struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+			} `json:"properties"`
+			Required []string `json:"required"`
 		}
-		if p.Description == "" {
-			t.Errorf("%s sin descripción: el modelo no puede saber cuándo usarlo", field)
+		if err := json.Unmarshal(tool.Parameters, &schema); err != nil {
+			t.Fatalf("%s: schema ilegible: %v", name, err)
 		}
-	}
-	for _, r := range schema.Required {
-		if r == "date_from" || r == "date_to" {
-			t.Errorf("%s no puede ser required", r)
+		for _, field := range []string{"date_from", "date_to"} {
+			p, ok := schema.Properties[field]
+			if !ok {
+				t.Fatalf("%s: %s no está declarado en el schema", name, field)
+			}
+			if p.Description == "" {
+				t.Errorf("%s: %s sin descripción: el modelo no puede saber cuándo usarlo", name, field)
+			}
+			if prev, seen := descriptions[field]; seen && prev != p.Description {
+				t.Errorf("%s: la descripción de %s difiere entre herramientas: el modelo fecharía distinto un borrado y una corrección", name, field)
+			}
+			descriptions[field] = p.Description
+		}
+		for _, r := range schema.Required {
+			if r == "date_from" || r == "date_to" {
+				t.Errorf("%s: %s no puede ser required", name, r)
+			}
 		}
 	}
 }
