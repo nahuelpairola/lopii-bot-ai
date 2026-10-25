@@ -3,7 +3,6 @@ package messaging
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -22,7 +21,6 @@ import (
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
 	"lopiibot.com/internal/reminder"
-	"lopiibot.com/internal/settings"
 	"lopiibot.com/internal/subcategory"
 	"lopiibot.com/internal/user"
 )
@@ -317,19 +315,11 @@ func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, chat m
 }
 
 func (c *controller) sendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
-	if err := chat.Send(ctx, prompt); err != nil {
-		slog.ErrorContext(ctx, "controller: send prompt failed", "err", err)
-	}
+	flow.SendPrompt(ctx, chat, prompt)
 }
 
 func (c *controller) startFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
-	prompt, err := c.engine.StartWithData(userID, flowName, seed)
-	if err != nil {
-		c.sendText(ctx, chat, msgSomethingBroke)
-		return fmt.Errorf("%s: %w", errCtx, err)
-	}
-	c.sendPrompt(ctx, chat, prompt)
-	return nil
+	return flow.StartFlow(ctx, c.engine, chat, userID, flowName, seed, errCtx)
 }
 
 func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint) {
@@ -337,9 +327,7 @@ func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome s
 }
 
 func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text string) {
-	if err := messenger.SendText(ctx, chat, text); err != nil {
-		slog.ErrorContext(ctx, "controller: send text failed", "err", err)
-	}
+	flow.SendText(ctx, chat, text)
 }
 
 func (c *controller) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
@@ -382,7 +370,7 @@ func (c *controller) ReassignAccountMovements(fromID, toID uint64) error {
 }
 
 func (c *controller) StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
-	return settings.StartAccountCreate(ctx, c, chat, userID, text)
+	return c.wizards().StartAccountCreate(ctx, chat, userID, text)
 }
 
 func (c *controller) SubcategoryIconForCategory(userID uint64, category string) string {

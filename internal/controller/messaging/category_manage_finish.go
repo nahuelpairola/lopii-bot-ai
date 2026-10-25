@@ -6,7 +6,6 @@ import (
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/messenger"
-	"lopiibot.com/internal/settings"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -23,5 +22,5 @@ func (c *controller) proceedToCategoryTarget(ctx context.Context, chat messenger
 }
 
 func (c *controller) suggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {
-	return settings.SuggestMergeTarget(ctx, c, userID, sourceID, data)
+	return c.wizards().SuggestMergeTarget(ctx, userID, sourceID, data)
 }

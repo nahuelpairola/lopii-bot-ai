@@ -6,7 +6,6 @@ import (
 
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/pendingjob"
-	"lopiibot.com/internal/settings"
 )
 
 func (c *controller) finishAnswerQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
@@ -27,5 +26,5 @@ func (c *controller) finishAnswerQuery(ctx context.Context, chat messenger.Chat,
 }
 
 func (c *controller) finishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error {
-	return settings.Dispatch(ctx, c, chat, userID, text, area)
+	return c.wizards().Dispatch(ctx, chat, userID, text, area)
 }

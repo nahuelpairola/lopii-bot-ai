@@ -45,7 +45,7 @@ func startManage(t *testing.T, text string, res orchestrator.AccountManageResult
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAccountManageFlow(zeroBalance{}))
 	s := &testServices{engine: engine, accounts: prodLikeAccounts(), accManage: res}
-	if err := StartAccountManage(context.Background(), s, &messenger.FakeChat{}, 2, text); err != nil {
+	if err := s.w().StartAccountManage(context.Background(), &messenger.FakeChat{}, 2, text); err != nil {
 		t.Fatalf("StartAccountManage: %v", err)
 	}
 	return store

@@ -13,13 +13,14 @@ traps that moved with them moved too — `flow/AGENTS.md` carries flow registrat
 
 ## The bridge pattern is being removed — do not add a bridge
 
-`query` no longer goes through the controller: `c.queries()` calls `query.New(c.accounts, …)` with
-the repositories themselves. It is built **per call on purpose** — most tests here build
-`&controller{…}` literals, and a stored `*query.Answerer` would be nil in every one of them. Why:
-`docs/decisions.md`, § Package layout.
+`query` and `settings` no longer go through the controller: `c.queries()` and `c.wizards()` call
+their package's `New(c.accounts, …)` with the repositories themselves. Each is built **per call on
+purpose** — most tests here build `&controller{…}` literals, and a stored pointer would be nil in
+every one of them. Why: `docs/decisions.md`, § Package layout. Starting a flow and sending a
+prompt are `flow.StartFlow`/`flow.SendPrompt`; `c.startFlow`/`c.sendPrompt` only delegate to them.
 
 The remaining clusters still use bridges (`flow.runner`, `agent`'s `agentServices`,
-`settings.Services`, `nudges.Services`, `pendingjob.Services`): `*controller` implements them
+`nudges.Services`, `pendingjob.Services`): `*controller` implements them
 structurally through one-line bridge files (`*_services.go`). A new dependency for one of those
 goes to its constructor once that cluster is migrated; until then, reuse an existing bridge rather
 than adding a renamed one.
