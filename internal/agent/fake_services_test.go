@@ -19,7 +19,6 @@ import (
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
-	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -158,7 +157,7 @@ func (f *fakeServices) MaybeNearDuplicate(userID uint64, inserted []movement.Mov
 }
 
 func (f *fakeServices) ResolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error) {
-	return flow.ResolveAndInsertMovements(f, data)
+	return flow.New(f.accounts, f.movements, f.subcategories, nil, nil, f.engine, f.ResolveMetric, nil, nil).ResolveAndInsertMovements(data)
 }
 
 func (f *fakeServices) HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
@@ -176,91 +175,6 @@ func (f *fakeServices) FinishAnswerQuery(ctx context.Context, chat messenger.Cha
 }
 
 func (f *fakeServices) FinishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error {
-	return nil
-}
-
-func (f *fakeServices) InsertAccount(a *account.Account) error {
-	return f.accounts.Insert(a)
-}
-
-func (f *fakeServices) GetAccount(id uint64) (*account.Account, error) {
-	return f.accounts.GetAccount(id)
-}
-
-func (f *fakeServices) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
-	return f.movements.SumAmountForAccount(id)
-}
-
-func (f *fakeServices) InsertMovements(movs []movement.Movement) error {
-	return f.movements.InsertBatch(movs)
-}
-
-func (f *fakeServices) InsertMovementsBatch(movs []movement.Movement) error {
-	return f.movements.InsertBatch(movs)
-}
-
-func (f *fakeServices) ReplaceMovements(oldIDs []uint, movs []movement.Movement) error {
-	return f.movements.ReplaceMovements(oldIDs, movs)
-}
-
-func (f *fakeServices) SoftDeleteByIDs(ids []uint) error {
-	return f.movements.SoftDeleteByIDs(ids)
-}
-
-func (f *fakeServices) RenameAccount(id uint64, name string) error {
-	return f.accounts.Rename(id, name)
-}
-
-func (f *fakeServices) FindDefaultAccountByCurrency(userID uint64, cur currency.Currency) (*account.Account, error) {
-	return f.accounts.FindDefaultByCurrency(userID, cur)
-}
-
-func (f *fakeServices) UnsetDefaultAccount(userID uint64, cur currency.Currency) error {
-	return f.accounts.UnsetDefault(userID, cur)
-}
-
-func (f *fakeServices) SetDefaultAccount(id uint64) error {
-	return f.accounts.SetDefault(id)
-}
-
-func (f *fakeServices) ReassignAccountMovements(fromID, toID uint64) error {
-	return f.movements.ReassignAccount(fromID, toID)
-}
-
-func (f *fakeServices) SubcategoryIconForCategory(userID uint64, category string) string {
-	return f.subcategories.IconForCategory(userID, category)
-}
-
-func (f *fakeServices) InsertSubcategory(s *subcategory.Subcategory) error {
-	return f.subcategories.Insert(s)
-}
-
-func (f *fakeServices) ReloadSubcategories() error {
-	return f.subcategories.Reload()
-}
-
-func (f *fakeServices) DeleteSubcategory(userID, id uint64) error {
-	return f.subcategories.Delete(userID, id)
-}
-
-func (f *fakeServices) CountMovementsBySubcategory(userID, subcategoryID uint64) (int64, error) {
-	return f.movements.CountBySubcategory(userID, subcategoryID)
-}
-
-func (f *fakeServices) ReassignSubcategoryMovements(userID, fromID, toID uint64) error {
-	return f.movements.ReassignSubcategory(userID, fromID, toID)
-}
-
-func (f *fakeServices) UpsertReminder(rem *reminder.Reminder) error { return nil }
-func (f *fakeServices) DisableReminder(userID uint64) error         { return nil }
-func (f *fakeServices) SetWeeklySummary(userID uint64, enabled bool) error {
-	return nil
-}
-func (f *fakeServices) MarkTipSent(userID uint64, tip string) error { return nil }
-func (f *fakeServices) StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
-	return nil
-}
-func (f *fakeServices) SuggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {
 	return nil
 }
 

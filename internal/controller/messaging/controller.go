@@ -181,26 +181,6 @@ func (c *controller) FindUserAccounts(userID uint64) ([]account.Account, error) 
 	return c.accounts.FindByUserID(userID)
 }
 
-func (c *controller) InsertAccount(a *account.Account) error {
-	return c.accounts.Insert(a)
-}
-
-func (c *controller) GetAccount(id uint64) (*account.Account, error) {
-	return c.accounts.GetAccount(id)
-}
-
-func (c *controller) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
-	return c.movements.SumAmountForAccount(id)
-}
-
-func (c *controller) InsertMovements(movs []movement.Movement) error {
-	return c.movements.InsertBatch(movs)
-}
-
-func (c *controller) ReplaceMovements(oldIDs []uint, movs []movement.Movement) error {
-	return c.movements.ReplaceMovements(oldIDs, movs)
-}
-
 func (c *controller) FindSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error) {
 	return c.subcategories.FindByCategoryAndSubcategory(userID, category, subcategory)
 }
@@ -230,7 +210,7 @@ func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *use
 	if c.tips().HandleCallback(ctx, chat, u.ID, input.CallbackData) {
 		return &uid, nil
 	}
-	if flow.HandleNearDuplicateChoice(ctx, c, chat, u.ID, input.CallbackData) {
+	if c.finisher().HandleNearDuplicateChoice(ctx, chat, u.ID, input.CallbackData) {
 		return &uid, nil
 	}
 
@@ -277,13 +257,13 @@ func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat
 
 	switch result.FlowName {
 	case flow.MovementCreateFlowName:
-		flow.FinishMovementCreate(ctx, c, chat, result.Data)
+		c.finisher().FinishMovementCreate(ctx, chat, result.Data)
 	case flow.MovementUpdatePickFlowName:
 		agent.FinishMovementUpdatePick(ctx, c, chat, result.Data)
 	case flow.MovementUpdateConfirmFlowName:
 		c.finishMovementUpdateConfirmFlow(ctx, chat, result.Data)
 	case flow.MovementDeleteFlowName:
-		flow.FinishMovementDelete(ctx, c, chat, result.Data)
+		c.finisher().FinishMovementDelete(ctx, chat, result.Data)
 	case flow.AccountCreateFlowName:
 		c.finishAccountCreateFlow(ctx, chat, result.Data)
 	case flow.AccountManageFlowName:
@@ -301,7 +281,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat
 	case flow.CategoryManageTargetFlowName:
 		c.finishCategoryManageTargetFlow(ctx, chat, result.Data)
 	case flow.MovementNegativeConfirmFlowName:
-		flow.FinishMovementNegativeConfirm(ctx, c, chat, result.Data)
+		c.finisher().FinishMovementNegativeConfirm(ctx, chat, result.Data)
 	case flow.ReminderSetupFlowName:
 		c.finishReminderSetup(ctx, chat, result.Data)
 	default:
@@ -310,7 +290,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat
 }
 
 func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, chat messenger.Chat, data conversation.Data) {
-	flow.FinishMovementUpdateConfirm(ctx, c, chat, data)
+	c.finisher().FinishMovementUpdateConfirm(ctx, chat, data)
 }
 
 func (c *controller) sendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
@@ -331,85 +311,6 @@ func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text str
 
 func (c *controller) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
 	return c.startFlow(ctx, chat, userID, flowName, seed, errCtx)
-}
-
-func (c *controller) MarkTipSent(userID uint64, tip string) error {
-	if c.nudges == nil {
-		return nil
-	}
-	return c.nudges.MarkSent(userID, tip)
-}
-
-func (c *controller) SoftDeleteByIDs(ids []uint) error {
-	return c.movements.SoftDeleteByIDs(ids)
-}
-
-func (c *controller) RenameAccount(id uint64, name string) error {
-	return c.accounts.Rename(id, name)
-}
-
-func (c *controller) FindDefaultAccountByCurrency(userID uint64, cur currency.Currency) (*account.Account, error) {
-	return c.accounts.FindDefaultByCurrency(userID, cur)
-}
-
-func (c *controller) UnsetDefaultAccount(userID uint64, cur currency.Currency) error {
-	return c.accounts.UnsetDefault(userID, cur)
-}
-
-func (c *controller) SetDefaultAccount(id uint64) error {
-	return c.accounts.SetDefault(id)
-}
-
-func (c *controller) InsertMovementsBatch(movs []movement.Movement) error {
-	return c.movements.InsertBatch(movs)
-}
-
-func (c *controller) ReassignAccountMovements(fromID, toID uint64) error {
-	return c.movements.ReassignAccount(fromID, toID)
-}
-
-func (c *controller) StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
-	return c.wizards().StartAccountCreate(ctx, chat, userID, text)
-}
-
-func (c *controller) SubcategoryIconForCategory(userID uint64, category string) string {
-	return c.subcategories.IconForCategory(userID, category)
-}
-
-func (c *controller) InsertSubcategory(s *subcategory.Subcategory) error {
-	return c.subcategories.Insert(s)
-}
-
-func (c *controller) ReloadSubcategories() error {
-	return c.subcategories.Reload()
-}
-
-func (c *controller) DeleteSubcategory(userID, id uint64) error {
-	return c.subcategories.Delete(userID, id)
-}
-
-func (c *controller) CountMovementsBySubcategory(userID, subcategoryID uint64) (int64, error) {
-	return c.movements.CountBySubcategory(userID, subcategoryID)
-}
-
-func (c *controller) ReassignSubcategoryMovements(userID, fromID, toID uint64) error {
-	return c.movements.ReassignSubcategory(userID, fromID, toID)
-}
-
-func (c *controller) SuggestMergeTarget(ctx context.Context, userID, sourceID uint64, data conversation.Data) *subcategory.Subcategory {
-	return c.suggestMergeTarget(ctx, userID, sourceID, data)
-}
-
-func (c *controller) UpsertReminder(rem *reminder.Reminder) error {
-	return c.reminders.Upsert(rem)
-}
-
-func (c *controller) DisableReminder(userID uint64) error {
-	return c.reminders.Disable(userID)
-}
-
-func (c *controller) SetWeeklySummary(userID uint64, enabled bool) error {
-	return c.reminders.SetWeeklySummary(userID, enabled)
 }
 
 func (c *controller) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error) {

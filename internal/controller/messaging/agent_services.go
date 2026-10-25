@@ -8,7 +8,6 @@ import (
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
-	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -108,11 +107,11 @@ func (c *controller) IsReplaying(ctx context.Context) bool {
 }
 
 func (c *controller) MaybeNearDuplicate(userID uint64, inserted []movement.Movement) []conversation.Button {
-	return flow.MaybeNearDuplicate(c, userID, inserted)
+	return c.finisher().MaybeNearDuplicate(userID, inserted)
 }
 
 func (c *controller) ResolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error) {
-	return flow.ResolveAndInsertMovements(c, data)
+	return c.finisher().ResolveAndInsertMovements(data)
 }
 
 func (c *controller) HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {

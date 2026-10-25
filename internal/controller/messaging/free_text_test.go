@@ -357,7 +357,7 @@ func TestFinishMovementCreateFlow_Cancelled_ResolvesCancelled(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	c := &controller{metrics: metrics}
 
-	flow.FinishMovementCreate(context.Background(), c, &messenger.FakeChat{}, conversation.Data{"cancelled": "true"})
+	c.finisher().FinishMovementCreate(context.Background(), &messenger.FakeChat{}, conversation.Data{"cancelled": "true"})
 
 	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeCreateCancelled {
 		t.Fatalf("expected resolve create_cancelled, got %+v", metrics.resolved)
@@ -419,7 +419,7 @@ func TestFinishMovementDeleteFlow_Cancelled_ResolvesCancelled(t *testing.T) {
 	metrics := &fakeMetricRepo{}
 	c := &controller{metrics: metrics}
 
-	flow.FinishMovementDelete(context.Background(), c, &messenger.FakeChat{}, conversation.Data{"confirmed": "false"})
+	c.finisher().FinishMovementDelete(context.Background(), &messenger.FakeChat{}, conversation.Data{"confirmed": "false"})
 
 	if len(metrics.resolved) != 1 || metrics.resolved[0] != outcomeDeleteCancelled {
 		t.Fatalf("expected resolve delete_cancelled, got %+v", metrics.resolved)

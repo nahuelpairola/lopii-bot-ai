@@ -33,7 +33,7 @@ func nearDuplicateButtons(insertedID, priorID uint) []conversation.Button {
 	}
 }
 
-func MaybeNearDuplicate(r runner, userID uint64, inserted []movement.Movement) []conversation.Button {
+func (f *Finisher) MaybeNearDuplicate(userID uint64, inserted []movement.Movement) []conversation.Button {
 	if len(inserted) == 0 {
 		return nil
 	}
@@ -42,7 +42,7 @@ func MaybeNearDuplicate(r runner, userID uint64, inserted []movement.Movement) [
 		sameTurn = append(sameTurn, m.ID)
 	}
 
-	priors, err := r.FindRecentlyCreatedForUser(
+	priors, err := f.movements.FindRecentlyCreatedForUser(
 		userID, NearDuplicateWindowStart(time.Now()), nearDupRecentLimit)
 	if err != nil {
 		return nil
@@ -57,7 +57,7 @@ func MaybeNearDuplicate(r runner, userID uint64, inserted []movement.Movement) [
 	return nil
 }
 
-func HandleNearDuplicateChoice(ctx context.Context, r runner, chat messenger.Chat, userID uint64, data string) bool {
+func (f *Finisher) HandleNearDuplicateChoice(ctx context.Context, chat messenger.Chat, userID uint64, data string) bool {
 	if !strings.HasPrefix(data, NearDupPrefix) {
 		return false
 	}
@@ -73,22 +73,22 @@ func HandleNearDuplicateChoice(ctx context.Context, r runner, chat messenger.Cha
 	}
 
 	if action == NearDupSeparte {
-		r.SendText(ctx, chat, MsgNearDupSeparate)
+		SendText(ctx, chat, MsgNearDupSeparate)
 		return true
 	}
 
-	if err := ApplyNearDuplicateChoice(r, userID, action, uint(insertedID), uint(priorID)); err != nil {
+	if err := f.ApplyNearDuplicateChoice(userID, action, uint(insertedID), uint(priorID)); err != nil {
 		slog.ErrorContext(ctx, "near duplicate choice failed",
 			"user_id", userID, "action", action, "inserted", insertedID, "prior", priorID, "err", err)
-		r.SendText(ctx, chat, MsgCouldNotSave("el cambio"))
+		SendText(ctx, chat, MsgCouldNotSave("el cambio"))
 		return true
 	}
-	r.SendText(ctx, chat, MsgNearDupMerged)
+	SendText(ctx, chat, MsgNearDupMerged)
 	return true
 }
 
-func ApplyNearDuplicateChoice(r runner, userID uint64, action string, insertedID, priorID uint) error {
-	recent, err := r.FindRecentlyCreatedForUser(userID, NearDuplicateWindowStart(time.Now()), nearDupRecentLimit)
+func (f *Finisher) ApplyNearDuplicateChoice(userID uint64, action string, insertedID, priorID uint) error {
+	recent, err := f.movements.FindRecentlyCreatedForUser(userID, NearDuplicateWindowStart(time.Now()), nearDupRecentLimit)
 	if err != nil {
 		return fmt.Errorf("near duplicate: find recent: %w", err)
 	}
@@ -116,10 +116,10 @@ func ApplyNearDuplicateChoice(r runner, userID uint64, action string, insertedID
 	}
 	merged.ID = 0
 
-	if err := r.ReplaceMovements([]uint{prior.ID}, []movement.Movement{merged}); err != nil {
+	if err := f.movements.ReplaceMovements([]uint{prior.ID}, []movement.Movement{merged}); err != nil {
 		return fmt.Errorf("near duplicate: replace: %w", err)
 	}
-	if err := r.SoftDeleteByIDs([]uint{inserted.ID}); err != nil {
+	if err := f.movements.SoftDeleteByIDs([]uint{inserted.ID}); err != nil {
 		return fmt.Errorf("near duplicate: delete inserted: %w", err)
 	}
 	return nil

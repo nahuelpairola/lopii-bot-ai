@@ -33,16 +33,16 @@ a name that this same picker will later render as a button whose callback value 
 30 runes is what keeps the worst case (2 bytes each) inside the 64. Raising it makes buttons go
 mute instead of failing.
 
-## `runner` is exported on purpose
+## `Finisher` holds the repositories; the LLM arrives as two funcs
 
-`runner` (`runner.go`) is the narrow interface this package uses to reach the DB and the outbound
-bot, implemented by `messaging`'s `*controller`. Its **methods are exported although the interface
-is not**: an interface with unexported methods can only be implemented from inside its own package,
-and the implementation lives at the edge.
+Every finish and the movement write pipeline are methods of `Finisher` (`runner.go`), built by
+`flow.New` with the repositories themselves. `messaging` builds one per call (`c.finisher()`), so
+there is no long-lived instance to keep in sync.
 
-Anything needing the LLM does *not* go through `runner` directly — `flow` never imports
-`orchestrator`. The two cases that need it (`StartAccountCreate`, `SuggestMergeTarget`) are runner
-methods that the edge forwards to `internal/settings`.
+Anything needing the LLM does *not* enter as a repository — `flow` never imports `orchestrator`.
+The two cases that need it (`startAccountCreate`, `suggestMergeTarget`) are **func arguments** of
+`New`, which the edge fills with `settings.Wizards` methods. A test that passes `nil` for them must
+not reach a finish that calls them.
 
 ## Two pickers, and only one of them re-searches
 
@@ -101,6 +101,7 @@ here. Loosening the candidate rule means putting the guard back.
 **A failed balance adjustment is invisible without its log line.** The finish is a void function,
 so the error never reaches `traced`.
 
-In tests `b` is nil. Use `r.SendText(...)`, which guards; a direct `b.SendMessage` panics.
+In tests pass `&messenger.FakeChat{}` and read what was sent off it; `SendText` goes through the
+chat it is handed.
 
 Why: `docs/decisions.md`, section **Conversation engine and flows**.
