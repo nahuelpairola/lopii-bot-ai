@@ -13,14 +13,14 @@ traps that moved with them moved too — `flow/AGENTS.md` carries flow registrat
 
 ## The bridge pattern is being removed — do not add a bridge
 
-`query` and `settings` no longer go through the controller: `c.queries()` and `c.wizards()` call
-their package's `New(c.accounts, …)` with the repositories themselves. Each is built **per call on
-purpose** — most tests here build `&controller{…}` literals, and a stored pointer would be nil in
-every one of them. Why: `docs/decisions.md`, § Package layout. Starting a flow and sending a
+`query`, `settings` and `nudges` no longer go through the controller: `c.queries()`, `c.wizards()`
+and `c.tips()` call their package's `New(c.accounts, …)` with the repositories themselves. Each is
+built **per call on purpose** — most tests here build `&controller{…}` literals, and a stored
+pointer would be nil in every one of them. Why: `docs/decisions.md`, § Package layout. Starting a flow and sending a
 prompt are `flow.StartFlow`/`flow.SendPrompt`; `c.startFlow`/`c.sendPrompt` only delegate to them.
 
 The remaining clusters still use bridges (`flow.runner`, `agent`'s `agentServices`,
-`nudges.Services`, `pendingjob.Services`): `*controller` implements them
+`pendingjob.Services`): `*controller` implements them
 structurally through one-line bridge files (`*_services.go`). A new dependency for one of those
 goes to its constructor once that cluster is migrated; until then, reuse an existing bridge rather
 than adding a renamed one.
@@ -28,9 +28,9 @@ than adding a renamed one.
 The methods are **exported** even though most interfaces are not: an interface with unexported
 methods can only be satisfied from inside its own package, and the implementation is here.
 
-A bridge is shared the moment two clusters want it — `RemindersFindByUserID` lives in
-`nudges_services.go` and `settings` reuses it. Adding a duplicate is a compile error, which is the
-cheapest possible reminder.
+A bridge is shared the moment two clusters want it — `FindUserAccounts` lives in `controller.go`
+and both `flow.runner` and `agentServices` use it. Adding a duplicate is a compile error, which is
+the cheapest possible reminder.
 
 ## One update per user at a time
 

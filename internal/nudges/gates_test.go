@@ -11,7 +11,7 @@ func daysAgo(n int, count int) movement.DayCount {
 	return movement.DayCount{Date: agent.StartOfTodayArgentina().AddDate(0, 0, -n), Count: count}
 }
 
-func gateFor(t *testing.T, key string) func(Services, uint64, *nudgeStats) bool {
+func gateFor(t *testing.T, key string) func(*Tips, uint64, *nudgeStats) bool {
 	t.Helper()
 	for _, n := range nudges {
 		if n.key == key {
@@ -40,12 +40,12 @@ func TestQueryTipGate_IgnoresOldMovements(t *testing.T) {
 	svc := &testServices{counts: 4}
 
 	stale := &nudgeStats{total: 4, days: []movement.DayCount{daysAgo(21, 4)}}
-	if gateFor(t, nudgeQueryTip)(svc, 1, stale) {
+	if gateFor(t, nudgeQueryTip)(svc.tips(), 1, stale) {
 		t.Error("query_tip no debería dispararse con movimientos de hace tres semanas")
 	}
 
 	fresh := &nudgeStats{total: 9, days: []movement.DayCount{daysAgo(1, 5), daysAgo(3, 4)}}
-	if !gateFor(t, nudgeQueryTip)(svc, 1, fresh) {
+	if !gateFor(t, nudgeQueryTip)(svc.tips(), 1, fresh) {
 		t.Error("query_tip debería dispararse con 9 movimientos en los últimos 7 días")
 	}
 }
@@ -64,10 +64,10 @@ func TestTopCategoryTipGate_NeedsDistinctCategories(t *testing.T) {
 	}
 	s := &nudgeStats{total: 20, days: []movement.DayCount{daysAgo(0, 10)}}
 
-	if gateFor(t, nudgeTopCategoryTip)(cats(2), 1, s) {
+	if gateFor(t, nudgeTopCategoryTip)(cats(2).tips(), 1, s) {
 		t.Error("top_category_tip no debería dispararse con 2 categorías")
 	}
-	if !gateFor(t, nudgeTopCategoryTip)(cats(3), 1, s) {
+	if !gateFor(t, nudgeTopCategoryTip)(cats(3).tips(), 1, s) {
 		t.Error("top_category_tip debería dispararse con 3 categorías")
 	}
 }
@@ -93,7 +93,7 @@ func TestCompareTipGate_RespectsDayOfMonth(t *testing.T) {
 		t.Fatalf("el fixture debería tener datos de sobra en el mes pasado, tiene %d", s.movsInMonth(1))
 	}
 
-	got := gateFor(t, nudgeCompareTip)(svc, 1, s)
+	got := gateFor(t, nudgeCompareTip)(svc.tips(), 1, s)
 	want := dayOfMonth() >= compareTipMinDay
 	if got != want {
 		t.Errorf("compare_tip = %v un día %d; con el umbral en %d debería ser %v",

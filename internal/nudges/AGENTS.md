@@ -9,7 +9,7 @@ will not tell you.
 `MarkSent` no-ops on conflict — a tip only ever sends once. The one recurring tip (the question
 menu) needs its `sent_at` to actually advance so the cooldown re-arms, so it calls
 `MarkSentAgain` instead, which upserts. It is used as a method value
-(`mark = s.NudgesMarkSentAgain`) — grepping for a direct call will not find the wiring.
+(`mark = t.history.MarkSentAgain`) — grepping for a direct call will not find the wiring.
 
 ## A tip's tap must not be eaten by an open flow
 

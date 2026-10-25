@@ -16,7 +16,6 @@ import (
 	"lopiibot.com/internal/invitation"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
-	"lopiibot.com/internal/nudges"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/pendingaction"
 	"lopiibot.com/internal/pendingjob"
@@ -228,7 +227,7 @@ func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *use
 		chat = messenger.ReplaceTapped(chat)
 	}
 
-	if nudges.HandleCallback(ctx, c, chat, u.ID, input.CallbackData) {
+	if c.tips().HandleCallback(ctx, chat, u.ID, input.CallbackData) {
 		return &uid, nil
 	}
 	if flow.HandleNearDuplicateChoice(ctx, c, chat, u.ID, input.CallbackData) {
@@ -246,14 +245,14 @@ func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *use
 				return &uid, nil
 			}
 			err := c.handleFreeText(ctx, chat, u.ID, input.Text)
-			nudges.Maybe(ctx, c, chat, u.ID)
+			c.tips().Maybe(ctx, chat, u.ID)
 			return &uid, err
 		}
 		return &uid, nil
 	}
 	if result.Finished {
 		c.handleFlowFinished(ctx, chat, result)
-		nudges.Maybe(ctx, c, chat, u.ID)
+		c.tips().Maybe(ctx, chat, u.ID)
 		return &uid, nil
 	}
 	c.sendPrompt(ctx, chat, result.Prompt)
