@@ -24,3 +24,22 @@ type Handler func(ctx context.Context, in Incoming)
 func SendText(ctx context.Context, c Chat, s string) error {
 	return c.Send(ctx, conversation.Prompt{Text: s})
 }
+
+type SourceEditor interface {
+	EditSource(ctx context.Context, p conversation.Prompt) error
+	ClearSourceButtons(ctx context.Context) error
+}
+
+func EditSource(ctx context.Context, c Chat, p conversation.Prompt) error {
+	if e, ok := c.(SourceEditor); ok {
+		return e.EditSource(ctx, p)
+	}
+	return c.Send(ctx, p)
+}
+
+func ClearSourceButtons(ctx context.Context, c Chat) error {
+	if e, ok := c.(SourceEditor); ok {
+		return e.ClearSourceButtons(ctx)
+	}
+	return nil
+}

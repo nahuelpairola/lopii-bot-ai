@@ -109,3 +109,14 @@ func TestBuildParams_CallbackButtonUnchanged(t *testing.T) {
 		t.Errorf("WebApp = %+v, want nil", btn.WebApp)
 	}
 }
+
+func TestBuildEditParams_NoButtonsSendsAnEmptyKeyboard(t *testing.T) {
+	p := buildEditParams(42, 99, conversation.Prompt{Text: "hecho"}, "")
+	if p.MessageID != 99 || p.ChatID != int64(42) || p.ParseMode != htmlParseMode {
+		t.Fatalf("params = %+v", p)
+	}
+	kb, ok := p.ReplyMarkup.(*models.InlineKeyboardMarkup)
+	if !ok || kb.InlineKeyboard == nil || len(kb.InlineKeyboard) != 0 {
+		t.Fatalf("reply markup = %#v, want an explicit empty keyboard so Telegram drops the buttons", p.ReplyMarkup)
+	}
+}

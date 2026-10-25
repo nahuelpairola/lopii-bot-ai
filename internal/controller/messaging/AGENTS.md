@@ -46,6 +46,10 @@ Both go early so an open flow cannot swallow the callback as if it were one of i
 Neither belongs to any flow, and both are safe there: the nudge query is read-only and leaves the
 open flow intact.
 
+The chat they receive is already wrapped in `messenger.ReplaceTapped` — the wrap happens at the top
+of `dispatch`, before them, so whatever they send first **rewrites the tapped message**. A new early
+callback inherits that; one that wants a separate message must send twice or run before the wrap.
+
 ## The queue's ordering invariant
 
 `pendingjob.EnqueueBehindPending` runs *after* `engine.Handle` returns "no open flow", and only for
