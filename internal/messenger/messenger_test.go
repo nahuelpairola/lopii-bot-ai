@@ -55,3 +55,45 @@ func TestFakeChat_ErrShortCircuitsBeforeRecording(t *testing.T) {
 		t.Errorf("Typed = %d, quería 0 tras error", f.Typed)
 	}
 }
+
+type sendOnlyChat struct{ sent []conversation.Prompt }
+
+func (c *sendOnlyChat) Send(_ context.Context, p conversation.Prompt) error {
+	c.sent = append(c.sent, p)
+	return nil
+}
+
+func (c *sendOnlyChat) Typing(context.Context) error { return nil }
+
+func TestEditSource_UsesTheChatsEditorWhenItHasOne(t *testing.T) {
+	fc := &FakeChat{}
+	p := conversation.Prompt{Text: "📅 Agendado"}
+	if err := EditSource(context.Background(), fc, p); err != nil {
+		t.Fatal(err)
+	}
+	if len(fc.Edited) != 1 || fc.Edited[0].Text != p.Text || len(fc.Sent) != 0 {
+		t.Fatalf("edited=%v sent=%v, want one edit and no new message", fc.Edited, fc.Sent)
+	}
+}
+
+func TestEditSource_FallsBackToSendOnAChannelThatCannotEdit(t *testing.T) {
+	c := &sendOnlyChat{}
+	if err := EditSource(context.Background(), c, conversation.Prompt{Text: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.sent) != 1 {
+		t.Fatalf("sent %d, want the outcome as a new message", len(c.sent))
+	}
+}
+
+func TestClearSourceButtons_IsANoOpOnAChannelThatCannotEdit(t *testing.T) {
+	c := &sendOnlyChat{}
+	if err := ClearSourceButtons(context.Background(), c); err != nil || len(c.sent) != 0 {
+		t.Fatalf("err=%v sent=%v, want nothing", err, c.sent)
+	}
+	fc := &FakeChat{}
+	_ = ClearSourceButtons(context.Background(), fc)
+	if fc.Cleared != 1 {
+		t.Fatalf("cleared = %d, want 1", fc.Cleared)
+	}
+}

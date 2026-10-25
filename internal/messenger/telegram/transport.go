@@ -67,11 +67,12 @@ func toIncoming(u *models.Update, b *bot.Bot) (messenger.Incoming, bool) {
 	case u.CallbackQuery != nil:
 		cb := u.CallbackQuery
 		var chatID int64
+		var messageID int
 		switch {
 		case cb.Message.Message != nil:
-			chatID = cb.Message.Message.Chat.ID
+			chatID, messageID = cb.Message.Message.Chat.ID, cb.Message.Message.ID
 		case cb.Message.InaccessibleMessage != nil:
-			chatID = cb.Message.InaccessibleMessage.Chat.ID
+			chatID, messageID = cb.Message.InaccessibleMessage.Chat.ID, cb.Message.InaccessibleMessage.MessageID
 		}
 		if chatID == 0 {
 			slog.Warn("telegram: callback sin chat resoluble, se descarta", "callback_id", cb.ID)
@@ -81,7 +82,7 @@ func toIncoming(u *models.Update, b *bot.Bot) (messenger.Incoming, bool) {
 			Channel:       user.ChannelTelegram,
 			ChannelUserID: fmt.Sprint(cb.From.ID),
 			DisplayName:   cb.From.Username,
-			Chat:          chat{b: b, chatID: chatID},
+			Chat:          chat{b: b, chatID: chatID, sourceMessageID: messageID},
 			Input:         conversation.Input{CallbackData: cb.Data},
 		}, true
 

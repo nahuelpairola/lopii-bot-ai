@@ -106,3 +106,19 @@ func TestToIncoming_EmptyUpdateIsSkipped(t *testing.T) {
 		t.Error("un update vacío no se traduce")
 	}
 }
+
+func TestToIncoming_CallbackRemembersTheTappedMessage(t *testing.T) {
+	for name, msg := range map[string]models.MaybeInaccessibleMessage{
+		"accessible":   {Message: &models.Message{ID: 99, Chat: models.Chat{ID: 555}}},
+		"inaccessible": {InaccessibleMessage: &models.InaccessibleMessage{MessageID: 99, Chat: models.Chat{ID: 555}}},
+	} {
+		u := &models.Update{CallbackQuery: &models.CallbackQuery{ID: "cb1", Data: "x", From: models.User{ID: 777}, Message: msg}}
+		in, ok := toIncoming(u, nil)
+		if !ok {
+			t.Fatalf("%s: not translated", name)
+		}
+		if got := in.Chat.(chat).sourceMessageID; got != 99 {
+			t.Errorf("%s: sourceMessageID = %d, want 99 — without it the tap cannot edit its own message", name, got)
+		}
+	}
+}
