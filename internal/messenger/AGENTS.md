@@ -44,3 +44,25 @@ compared for equality against a repo lookup, and so on). What must never happen 
 is an `if`/`switch` that changes *behavior* based on which channel a message came from — that is
 exactly the coupling this refactor removed. `grep -rn "Channel ==\|Channel !=" internal/` outside
 `internal/messenger/` must stay empty.
+
+## Editing the tapped message is an optional capability, and only a callback chat has it
+
+`EditSource` / `ClearSourceButtons` (`messenger.go`) act on the message whose button was tapped.
+They are package functions over an optional `SourceEditor`, not `Chat` methods, for the same reason
+as `SendText`: a channel that cannot edit (WhatsApp) falls back to sending a new message, and
+clearing becomes a no-op. In Telegram only the `chat` built by `toIncoming` for a callback knows
+which message was tapped; a chat from `ChatFor` (sweeper, 429 drain) has none and falls back too.
+An edit must send an **explicit empty keyboard** to drop the buttons — leaving the reply markup unset
+is not the same.
+
+## `ReplaceTapped` must forward every optional capability, or it hides them
+
+`dispatch` wraps every callback's chat in `ReplaceTapped`, and the optional capabilities above are
+found by type assertion — on the **wrapper**, not on what it wraps. So the wrapper re-implements
+`SourceEditor` by delegating. Drop it and nothing fails to compile: `EditSource` quietly becomes a
+`Send`. A new optional capability needs the same forwarding.
+
+`ClearSourceButtons` does **not** spend the turn's one edit; `EditSource` does. A handler that
+clears and then sends gets its send turned into the edit, overwriting the whole card.
+
+Why: `docs/decisions.md`, section **Conversation engine and flows** (one wizard is one card).

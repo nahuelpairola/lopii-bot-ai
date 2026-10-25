@@ -250,15 +250,22 @@ func (h *convHarness) AllMovements() []movement.Movement {
 }
 
 func (h *convHarness) Messages() []string {
-	out := make([]string, len(h.chat.Sent))
-	for i, p := range h.chat.Sent {
+	out := make([]string, len(h.chat.Shown))
+	for i, p := range h.chat.Shown {
 		out[i] = p.Text
 	}
 	return out
 }
 
 func (h *convHarness) LastMessage() string {
-	return h.chat.LastText()
+	return h.lastShown().Text
+}
+
+func (h *convHarness) lastShown() conversation.Prompt {
+	if len(h.chat.Shown) == 0 {
+		return conversation.Prompt{}
+	}
+	return h.chat.Shown[len(h.chat.Shown)-1]
 }
 
 func (h *convHarness) SeedMovement(description, amount string, subcategoryID uint64) uint {
@@ -413,12 +420,12 @@ func (h *convHarness) insertCoffeeThenCorrection(t *testing.T) {
 	h.SendText("Al café de hoy sumale 1070")
 
 	if !h.lastMarkupHas(flow.NearDupPrefix) {
-		t.Fatalf("el recibo salió sin los botones del gate. Sent: %+v", h.chat.Sent)
+		t.Fatalf("el recibo salió sin los botones del gate. Shown: %+v", h.chat.Shown)
 	}
 }
 
 func (h *convHarness) lastMarkupHas(want string) bool {
-	for _, p := range h.chat.Sent {
+	for _, p := range h.chat.Shown {
 		for _, btn := range p.Buttons {
 			if strings.Contains(btn.Data, want) {
 				return true

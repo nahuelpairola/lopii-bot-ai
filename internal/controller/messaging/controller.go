@@ -226,6 +226,9 @@ func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *use
 	uid := u.ID
 	chat := in.Chat
 	input := in.Input
+	if input.CallbackData != "" {
+		chat = messenger.ReplaceTapped(chat)
+	}
 
 	if nudges.HandleCallback(ctx, c, chat, u.ID, input.CallbackData) {
 		return &uid, nil
