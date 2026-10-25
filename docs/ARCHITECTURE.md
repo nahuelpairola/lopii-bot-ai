@@ -57,6 +57,7 @@ For conventions and the money model, see [AGENTS.md](../AGENTS.md) (loaded every
 
 - **Never use `float64` for money.** Always `shopspring/decimal`.
 - **Never import concrete repository types across packages.** Controllers declare local interfaces for the repos they need.
+- **Never hand a consumer the controller as a `Services` interface of renamed pass-throughs.** Pass the repository itself to the consumer's `New(...)`, through an interface that lists only the methods it calls under their real names (`query.New` is the reference). A pass-through bridge costs four edits per new read and hides the real callers from grep. Why: [decisions.md](decisions.md#package-layout-metrics-and-tooling).
 - **Never create Telegram commands for end users.** Everything routes through the LLM orchestrator.
 - **Never read `app_scripts_v1/`.** It's the v1 GAS implementation. No patterns from there apply here.
 - **Never access `conversation_states` directly via GORM.** Always use `conversation.Engine`.

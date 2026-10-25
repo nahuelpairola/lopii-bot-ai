@@ -11,12 +11,18 @@ It used to be ~10k lines and hold the whole app. What lived here now lives in `f
 traps that moved with them moved too — `flow/AGENTS.md` carries flow registration and the
 `callback_data` limit, `conversation/AGENTS.md` the `Data` contract.
 
-## The bridge pattern, and why the methods are exported
+## The bridge pattern is being removed — do not add a bridge
 
-Every cluster defines a narrow interface of what it needs from the world (`flow.runner`,
-`agent`'s `agentServices`, `query`'s `services`, `settings.Services`, `nudges.Services`,
-`pendingjob.Services`) and `*controller` implements all of them structurally, through one-line
-bridge files (`*_services.go`). The clusters never import the repos.
+`query` no longer goes through the controller: `c.queries()` calls `query.New(c.accounts, …)` with
+the repositories themselves. It is built **per call on purpose** — most tests here build
+`&controller{…}` literals, and a stored `*query.Answerer` would be nil in every one of them. Why:
+`docs/decisions.md`, § Package layout.
+
+The remaining clusters still use bridges (`flow.runner`, `agent`'s `agentServices`,
+`settings.Services`, `nudges.Services`, `pendingjob.Services`): `*controller` implements them
+structurally through one-line bridge files (`*_services.go`). A new dependency for one of those
+goes to its constructor once that cluster is migrated; until then, reuse an existing bridge rather
+than adding a renamed one.
 
 The methods are **exported** even though most interfaces are not: an interface with unexported
 methods can only be satisfied from inside its own package, and the implementation is here.
