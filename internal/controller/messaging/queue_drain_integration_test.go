@@ -30,6 +30,25 @@ type fakeChats struct{ chat *messenger.FakeChat }
 
 func (f fakeChats) ChatFor(uint64) (messenger.Chat, error) { return f.chat, nil }
 
+type replayDone struct {
+	*controller
+	done chan struct{}
+}
+
+func (r replayDone) HandleFreeText(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
+	defer close(r.done)
+	return r.controller.HandleFreeText(ctx, chat, userID, text)
+}
+
+func waitReplay(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("el replay no terminó en 10s: el drenaje no tomó el job")
+	}
+}
+
 func queueDrainConn(t *testing.T) *database.Connection {
 	conn, err := database.Initialize(database.Creds{
 		Host: "localhost", Port: 5432, Name: "lopiibot", User: "lopiibot", Password: "lopiibot",
@@ -123,22 +142,9 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, c.users, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
-
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		n, err := jobsRepo.CountByUser(uid)
-		if err != nil {
-			t.Fatalf("count pending jobs: %v", err)
-		}
-		if n == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("el job quedó pendiente después de 10s (count=%d): el drenaje no lo tomó", n)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	done := make(chan struct{})
+	go pendingjob.Run(ctx, replayDone{c, done}, c.users, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
+	waitReplay(t, done)
 
 	if !orch.runCalled {
 		t.Fatal("el replay no llegó al loop: se drenó el job sin ejecutar nada")
@@ -244,22 +250,9 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 	chat := &messenger.FakeChat{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, c.users, jobsRepo, fakeChats{chat: chat}, 50*time.Millisecond)
-
-	deadline := time.Now().Add(10 * time.Second)
-	for {
-		n, err := jobsRepo.CountByUser(uid)
-		if err != nil {
-			t.Fatalf("count pending jobs: %v", err)
-		}
-		if n == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("el job quedó pendiente después de 10s (count=%d): el drenaje no lo tomó", n)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	done := make(chan struct{})
+	go pendingjob.Run(ctx, replayDone{c, done}, c.users, jobsRepo, fakeChats{chat: chat}, 50*time.Millisecond)
+	waitReplay(t, done)
 
 	if !orch.runCalled {
 		t.Fatal("el replay no llegó al loop: se drenó el job sin ejecutar nada")

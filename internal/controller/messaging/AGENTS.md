@@ -58,6 +58,13 @@ would re-enqueue itself forever. `pendingjob`'s replay ctx flag is what tells a 
 from a replay, and the drain deliberately replays through the *real* handler rather than a copy, so
 the two paths cannot drift.
 
+**A drain test waits for the replay, never for the queue to empty.** The agent claims the job at its
+first write, which deletes the row while the turn is still running — so `CountByUser == 0` arrives
+before the movement is inserted or the picker is sent. Two tests did exactly that and failed about
+one run in five (measured 2026-10-26). Hand the drain `replayDone{c, done}` and `waitReplay(t,
+done)` (`queue_drain_integration_test.go`); the closed channel is also what makes reading the
+chat and the fakes afterwards race-free.
+
 ## There is no router
 
 `HandleFreeText` is one line: every message without an open flow goes to the agent's `StartLoop`, and the
