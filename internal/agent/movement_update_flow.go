@@ -121,19 +121,19 @@ func amountOnlyCorrection(before []movement.MovementRow, ask ChangeAsk) ([]orche
 	return []orchestrator.MovementDraft{rowToDraft(after)}, true
 }
 
-func proceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask ChangeAsk) error {
+func (l *Loop) ProceedToUpdateConfirm(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask ChangeAsk) error {
 	if ask.pickedField && !ask.gaveValue {
 		if err := pendingjob.ClaimReplay(ctx); err != nil {
 			return err
 		}
-		return parkChangeQuestion(ctx, svc, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
+		return l.parkChangeQuestion(ctx, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
 	if after, ok := amountOnlyCorrection(beforeRows, ask); ok {
 		if err := pendingjob.ClaimReplay(ctx); err != nil {
 			return err
 		}
-		return seedAndStartUpdateConfirm(ctx, svc, chat, userID, message, oldIDs, beforeRows,
+		return l.seedAndStartUpdateConfirm(ctx, chat, userID, message, oldIDs, beforeRows,
 			orchestrator.UpdateResult{Resolved: true, Movements: after})
 	}
 
@@ -142,7 +142,7 @@ func proceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messeng
 		drafts = append(drafts, rowToDraft(row))
 	}
 
-	accs, err := svc.FindUserAccounts(userID)
+	accs, err := l.accounts.FindByUserID(userID)
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func proceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messeng
 		accountOptions = append(accountOptions, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
 
-	result, err := svc.ResolveUpdate(ctx, message, orchestrator.MovementCandidate{
+	result, err := l.model.ResolveUpdate(ctx, message, orchestrator.MovementCandidate{
 		TransactionID: transactionID,
 		Movements:     drafts,
 	}, accountOptions)
@@ -163,14 +163,14 @@ func proceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messeng
 	}
 	if !result.Resolved || correctionIsNoOp(beforeRows, result.Movements) {
 		if ask.gaveValue {
-			resolveMetric(ctx, svc, userID, outcomeLoopDidNothing)
-			svc.SendText(ctx, chat, msgStillCannotCorrect)
+			l.resolveMetric(ctx, userID, outcomeLoopDidNothing)
+			flow.SendText(ctx, chat, msgStillCannotCorrect)
 			return nil
 		}
-		return parkChangeQuestion(ctx, svc, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
+		return l.parkChangeQuestion(ctx, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
 	}
 
-	return seedAndStartUpdateConfirm(ctx, svc, chat, userID, message, oldIDs, beforeRows, result)
+	return l.seedAndStartUpdateConfirm(ctx, chat, userID, message, oldIDs, beforeRows, result)
 }
 
 func correctionIsNoOp(before []movement.MovementRow, after []orchestrator.MovementDraft) bool {
@@ -218,10 +218,10 @@ func askWhatToChange(rows []movement.MovementRow) string {
 	return "Encontré " + movement.MovementGapDescriptor(rows[0]) + ". " + ask
 }
 
-func parkChangeQuestion(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, change, transactionID string, oldIDs []string, rows []movement.MovementRow, ask ChangeAsk) error {
-	if !svc.ActionsEnabled() {
-		resolveMetric(ctx, svc, userID, outcomeParkFailed)
-		svc.SendText(ctx, chat, flow.MsgSomethingBroke)
+func (l *Loop) parkChangeQuestion(ctx context.Context, chat messenger.Chat, userID uint64, change, transactionID string, oldIDs []string, rows []movement.MovementRow, ask ChangeAsk) error {
+	if l.actions == nil {
+		l.resolveMetric(ctx, userID, outcomeParkFailed)
+		flow.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return nil
 	}
 	payload, err := json.Marshal(agentPayload{
@@ -251,14 +251,14 @@ func parkChangeQuestion(ctx context.Context, svc agentServices, chat messenger.C
 		Payload: payload, Questions: questions,
 		Budget: 1 + budgetSlack, TraceID: trace.ID(ctx),
 	}
-	if err := svc.ActionsInsert(row); err != nil {
+	if err := l.insertAction(row); err != nil {
 		return fmt.Errorf("park change question: %w", err)
 	}
-	return drainNextAgentAction(ctx, svc, chat, userID)
+	return l.DrainNextAction(ctx, chat, userID)
 }
 
-func userTaxonomy(svc agentServices, userID uint64) []orchestrator.TaxonomyEntry {
-	subs, err := svc.SubcategoriesFindAllForUser(userID)
+func (l *Loop) userTaxonomy(userID uint64) []orchestrator.TaxonomyEntry {
+	subs, err := l.subcategories.FindAllForUser(userID)
 	if err != nil {
 		return nil
 	}
@@ -269,7 +269,7 @@ func userTaxonomy(svc agentServices, userID uint64) []orchestrator.TaxonomyEntry
 	return taxonomy
 }
 
-func applyStructuredCorrection(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, payload agentPayload, groups []flow.CandidateGroup) error {
+func (l *Loop) applyStructuredCorrection(ctx context.Context, chat messenger.Chat, userID uint64, payload agentPayload, groups []flow.CandidateGroup) error {
 	before := make([][]movement.MovementRow, 0, len(groups))
 	var oldIDs []string
 	for _, g := range groups {
@@ -279,30 +279,30 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, chat mess
 
 	after, err := applyChangesToSet(before, payload.Changes, guardContext{
 		Scope:        payload.Scope,
-		NamedAccount: accountNamedIn(svc, userID, payload.Change),
+		NamedAccount: l.accountNamedIn(userID, payload.Change),
 		Message:      payload.Change,
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "structured correction rejected", "user_id", userID, "err", err)
-		resolveMetric(ctx, svc, userID, outcomeCorrectionRefused)
+		l.resolveMetric(ctx, userID, outcomeCorrectionRefused)
 		if errors.Is(err, errRefundThatGrows) {
-			svc.SendText(ctx, chat, "Me dijiste que te devolvieron plata, pero el cambio que entendí lo dejaría más caro. ¿Cuánto te devolvieron?")
+			flow.SendText(ctx, chat, "Me dijiste que te devolvieron plata, pero el cambio que entendí lo dejaría más caro. ¿Cuánto te devolvieron?")
 			return nil
 		}
 		if errors.Is(err, errRefundExceedsAmount) {
-			svc.SendText(ctx, chat, "Me decís que te devolvieron más de lo que salió ese movimiento 🤔 ¿Cuánto fue?")
+			flow.SendText(ctx, chat, "Me decís que te devolvieron más de lo que salió ese movimiento 🤔 ¿Cuánto fue?")
 			return nil
 		}
 		if errors.Is(err, errAmbiguousSetAll) {
-			svc.SendText(ctx, chat, "¿A cuál de todos le pongo ese monto? Decime cuál y lo cambio.")
+			flow.SendText(ctx, chat, "¿A cuál de todos le pongo ese monto? Decime cuál y lo cambio.")
 			return nil
 		}
-		svc.SendText(ctx, chat, msgStillCannotCorrect)
+		flow.SendText(ctx, chat, msgStillCannotCorrect)
 		return nil
 	}
 
-	taxonomy := userTaxonomy(svc, userID)
-	accounts, _ := svc.FindUserAccounts(userID)
+	taxonomy := l.userTaxonomy(userID)
+	accounts, _ := l.accounts.FindByUserID(userID)
 	beforeRows := make([]movement.MovementRow, 0, len(oldIDs))
 	for _, g := range before {
 		beforeRows = append(beforeRows, g...)
@@ -325,12 +325,12 @@ func applyStructuredCorrection(ctx context.Context, svc agentServices, chat mess
 	}
 
 	if correctionIsNoOp(beforeRows, drafts) {
-		resolveMetric(ctx, svc, userID, outcomeNothingToChange)
-		svc.SendText(ctx, chat, "Eso ya estaba así, no cambié nada.")
+		l.resolveMetric(ctx, userID, outcomeNothingToChange)
+		flow.SendText(ctx, chat, "Eso ya estaba así, no cambié nada.")
 		return nil
 	}
 
-	return seedAndStartUpdateConfirm(ctx, svc, chat, userID, payload.Change, oldIDs, beforeRows,
+	return l.seedAndStartUpdateConfirm(ctx, chat, userID, payload.Change, oldIDs, beforeRows,
 		orchestrator.UpdateResult{Resolved: true, Movements: drafts})
 }
 
@@ -347,8 +347,8 @@ func carryTransferIdentity(before, after []movement.MovementRow) []movement.Move
 	return after
 }
 
-func accountNamedIn(svc agentServices, userID uint64, message string) string {
-	accs, err := svc.FindUserAccounts(userID)
+func (l *Loop) accountNamedIn(userID uint64, message string) string {
+	accs, err := l.accounts.FindByUserID(userID)
 	if err != nil {
 		return ""
 	}
@@ -361,8 +361,8 @@ func accountNamedIn(svc agentServices, userID uint64, message string) string {
 	return ""
 }
 
-func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, userMessage string, oldIDs []string, beforeRows []movement.MovementRow, result orchestrator.UpdateResult) error {
-	accs, _ := svc.FindUserAccounts(userID)
+func (l *Loop) seedAndStartUpdateConfirm(ctx context.Context, chat messenger.Chat, userID uint64, userMessage string, oldIDs []string, beforeRows []movement.MovementRow, result orchestrator.UpdateResult) error {
+	accs, _ := l.accounts.FindByUserID(userID)
 	nameByID := make(map[string]string, len(accs))
 	for _, a := range accs {
 		nameByID[strconv.FormatUint(uint64(a.ID), 10)] = a.Name
@@ -371,7 +371,7 @@ func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, chat mess
 	afterRows := make([]movement.MovementRow, 0, len(result.Movements))
 	for _, d := range result.Movements {
 		row := draftToRow(d)
-		if sub, err := svc.FindSubcategory(userID, row.Category, row.Subcategory); err == nil {
+		if sub, err := l.subcategories.FindByCategoryAndSubcategory(userID, row.Category, row.Subcategory); err == nil {
 			row.Icon = sub.Icon
 		}
 		if row.AccountID != "" {
@@ -381,7 +381,7 @@ func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, chat mess
 	}
 	afterRows = carryTransferIdentity(beforeRows, afterRows)
 
-	taxonomy := userTaxonomy(svc, userID)
+	taxonomy := l.userTaxonomy(userID)
 
 	seed := conversation.Data{
 		conversation.KeyMode:                modeUpdate,
@@ -399,15 +399,15 @@ func seedAndStartUpdateConfirm(ctx context.Context, svc agentServices, chat mess
 		flowName = flow.MovementCreateFlowName
 	}
 
-	prompt, err := svc.EngineStartWithData(userID, flowName, seed)
+	prompt, err := l.engine.StartWithData(userID, flowName, seed)
 	if err != nil {
 		return err
 	}
-	svc.SendPrompt(ctx, chat, prompt)
+	flow.SendPrompt(ctx, chat, prompt)
 	return nil
 }
 
-func finishMovementUpdatePickFlow(ctx context.Context, svc agentServices, chat messenger.Chat, data conversation.Data) {
+func (l *Loop) FinishMovementUpdatePick(ctx context.Context, chat messenger.Chat, data conversation.Data) {
 	idx, err := strconv.Atoi(conversation.StringOrEmpty(data["chosen_index"]))
 	if err != nil {
 		_ = messenger.SendText(ctx, chat, flow.MsgSomethingBroke)
@@ -422,8 +422,8 @@ func finishMovementUpdatePickFlow(ctx context.Context, svc agentServices, chat m
 	chosen := candidates[idx]
 
 	message := conversation.StringOrEmpty(data["message"])
-	if err := proceedToUpdateConfirm(ctx, svc, chat, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, ChangeAsk{}); err != nil {
-		if svc.EnqueueUpdatePickIfRateLimited(ctx, chat, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
+	if err := l.ProceedToUpdateConfirm(ctx, chat, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, ChangeAsk{}); err != nil {
+		if l.enqueueUpdatePick(ctx, chat, data.UserID(), message, chosen.TransactionID, chosen.OldIDs, chosen.Rows, err) {
 			return
 		}
 		_ = messenger.SendText(ctx, chat, flow.MsgSomethingBroke)

@@ -8,7 +8,6 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/currency"
@@ -177,14 +176,6 @@ func NewController(
 	}
 }
 
-func (c *controller) FindUserAccounts(userID uint64) ([]account.Account, error) {
-	return c.accounts.FindByUserID(userID)
-}
-
-func (c *controller) FindSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error) {
-	return c.subcategories.FindByCategoryAndSubcategory(userID, category, subcategory)
-}
-
 func (c *controller) Handle(ctx context.Context, in messenger.Incoming) {
 	c.traced(ctx, kindOf(in), rawOf(in), func(ctx context.Context) (*uint64, error) {
 		u, err := c.users.FindByChannel(in.Channel, in.ChannelUserID)
@@ -246,11 +237,11 @@ func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat
 		return
 	}
 	if result.FlowName == flow.AskUserFlowName {
-		agent.FinishAskUser(ctx, c, chat, result.Data)
+		c.loop().FinishAskUser(ctx, chat, result.Data)
 		return
 	}
 	defer func() {
-		if err := agent.DrainNextAction(ctx, c, chat, result.Data.UserID()); err != nil {
+		if err := c.loop().DrainNextAction(ctx, chat, result.Data.UserID()); err != nil {
 			slog.ErrorContext(ctx, "drain parked actions failed", "err", err)
 		}
 	}()
@@ -259,7 +250,7 @@ func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat
 	case flow.MovementCreateFlowName:
 		c.finisher().FinishMovementCreate(ctx, chat, result.Data)
 	case flow.MovementUpdatePickFlowName:
-		agent.FinishMovementUpdatePick(ctx, c, chat, result.Data)
+		c.loop().FinishMovementUpdatePick(ctx, chat, result.Data)
 	case flow.MovementUpdateConfirmFlowName:
 		c.finishMovementUpdateConfirmFlow(ctx, chat, result.Data)
 	case flow.MovementDeleteFlowName:
@@ -301,18 +292,6 @@ func (c *controller) startFlow(ctx context.Context, chat messenger.Chat, userID 
 	return flow.StartFlow(ctx, c.engine, chat, userID, flowName, seed, errCtx)
 }
 
-func (c *controller) ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint) {
-	c.resolveMetric(ctx, userID, outcome, movementIDs...)
-}
-
 func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text string) {
 	flow.SendText(ctx, chat, text)
-}
-
-func (c *controller) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
-	return c.startFlow(ctx, chat, userID, flowName, seed, errCtx)
-}
-
-func (c *controller) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error) {
-	return c.movements.FindRecentlyCreatedForUser(userID, since, limit)
 }

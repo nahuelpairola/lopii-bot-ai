@@ -40,7 +40,7 @@ func TestParkAgentActions_FreezesTheBudgetAndKeepsOrder(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
 
-	err := parkAgentActions(context.Background(), svc, 1, []parkedAction{
+	err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{
 		twoCandidateAction(t),
 		{Tool: orchestrator.ToolDeleteMovements, Payload: agentPayload{Chosen: 0}},
 	})
@@ -61,11 +61,11 @@ func TestParkAgentActions_FreezesTheBudgetAndKeepsOrder(t *testing.T) {
 func TestDrain_OpensExactlyOneAtATime(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t), twoCandidateAction(t)}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t), twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := drainNextAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1); err != nil {
+	if err := svc.loop().DrainNextAction(context.Background(), &messenger.FakeChat{}, 1); err != nil {
 		t.Fatal(err)
 	}
 	inProgress, err := svc.engine.InProgress(1)
@@ -88,13 +88,13 @@ func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
 	svc.engine.Register(flow.NewMovementCreateFlow(&fakeSubcategoryRepoFull{}, &fakeAccountRepoFull{}))
 	svc.accounts, svc.subcategories = &fakeAccountRepoFull{}, &fakeSubcategoryRepoFull{}
 
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{{
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{{
 		Tool:    orchestrator.ToolRecordMovements,
 		Payload: agentPayload{Seed: seed, Chosen: 0},
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := drainNextAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1); err != nil {
+	if err := svc.loop().DrainNextAction(context.Background(), &messenger.FakeChat{}, 1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -108,7 +108,7 @@ func TestResume_CreateWithGapsOpensMovementCreate(t *testing.T) {
 
 func TestDrain_NothingParkedIsANoOp(t *testing.T) {
 	svc := newDispatchServices(t, &fakeActionsRepo{})
-	if err := drainNextAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1); err != nil {
+	if err := svc.loop().DrainNextAction(context.Background(), &messenger.FakeChat{}, 1); err != nil {
 		t.Fatalf("sin nada parkeado el drenaje no puede fallar: %v", err)
 	}
 	if inProgress, _ := svc.engine.InProgress(1); inProgress {
@@ -148,12 +148,12 @@ func TestApplyAnswers_FreeTextThatNamesNoCandidateStaysUnresolved(t *testing.T) 
 func TestDiscard_NamesWhatWasDropped(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	action := repo.rows[0]
 
-	if err := discardAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1, action); err != nil {
+	if err := svc.loop().discardAgentAction(context.Background(), &messenger.FakeChat{}, 1, action); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
@@ -168,11 +168,11 @@ func TestDiscard_NamesWhatWasDropped(t *testing.T) {
 func TestBudgetExhausted_DiscardsInsteadOfAskingAgain(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := openAskUser(context.Background(), svc, &messenger.FakeChat{}, 1, repo.rows[0], 0); err != nil {
+	if err := svc.loop().openAskUser(context.Background(), &messenger.FakeChat{}, 1, repo.rows[0], 0); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
@@ -198,7 +198,7 @@ func TestResume_DeleteOpensTheExistingGate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := resumeAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1, action); err != nil {
+	if err := svc.loop().resumeAgentAction(context.Background(), &messenger.FakeChat{}, 1, action); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := repo.CountForUser(1); n != 0 {
@@ -219,7 +219,7 @@ func TestResume_RefusesACandidateOutOfRange(t *testing.T) {
 	if err := repo.Insert(action); err != nil {
 		t.Fatal(err)
 	}
-	if err := resumeAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1, action); err == nil {
+	if err := svc.loop().resumeAgentAction(context.Background(), &messenger.FakeChat{}, 1, action); err == nil {
 		t.Fatal("un índice fuera de rango tiene que fallar, no elegir cualquiera")
 	}
 	if n, _ := repo.CountForUser(1); n != 1 {
@@ -230,11 +230,11 @@ func TestResume_RefusesACandidateOutOfRange(t *testing.T) {
 func TestOpenAction_RefusesAMismatchedID(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), conversation.KeyActionID: "999"}
-	if _, err := openAction(svc, 1, data); err == nil {
+	if _, err := svc.loop().openAction(1, data); err == nil {
 		t.Fatal("un id que no coincide con la cabeza de la cola no puede resolverse")
 	}
 }
@@ -242,14 +242,14 @@ func TestOpenAction_RefusesAMismatchedID(t *testing.T) {
 func TestOpenAction_MatchesTheQueueHead(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	data := conversation.Data{
 		conversation.UserIDKey:   uint64(1),
 		conversation.KeyActionID: strconv.FormatUint(repo.rows[0].ID, 10),
 	}
-	got, err := openAction(svc, 1, data)
+	got, err := svc.loop().openAction(1, data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func TestOpenAction_MatchesTheQueueHead(t *testing.T) {
 func TestNextForUser_IsPerUser(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := repo.NextForUser(2); !errors.Is(err, pendingaction.ErrNoPendingAction) {
@@ -272,7 +272,7 @@ func TestNextForUser_IsPerUser(t *testing.T) {
 func TestFinishAskUser_CancelResuelveLaMetrica(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newDispatchServices(t, repo)
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{twoCandidateAction(t)}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{twoCandidateAction(t)}); err != nil {
 		t.Fatal(err)
 	}
 	data := conversation.Data{
@@ -281,7 +281,7 @@ func TestFinishAskUser_CancelResuelveLaMetrica(t *testing.T) {
 	}
 	conversation.SetFlag(data, conversation.KeyCancelled)
 
-	finishAskUserFlow(context.Background(), svc, &messenger.FakeChat{}, data)
+	svc.loop().FinishAskUser(context.Background(), &messenger.FakeChat{}, data)
 
 	if len(svc.metrics.resolved) != 1 || svc.metrics.resolved[0] != flow.OutcomeUpdateCancelled {
 		t.Fatalf("want %q, got %v", flow.OutcomeUpdateCancelled, svc.metrics.resolved)
@@ -299,7 +299,7 @@ func TestFinishAskUser_TextoLibreVuelveABuscar(t *testing.T) {
 
 	action := twoCandidateAction(t)
 	action.Payload.SearchText = "eran 2000"
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{action}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{action}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -315,7 +315,7 @@ func TestFinishAskUser_TextoLibreVuelveABuscar(t *testing.T) {
 		conversation.KeyAskBudget: "2",
 	}
 
-	finishAskUserFlow(context.Background(), svc, &messenger.FakeChat{}, data)
+	svc.loop().FinishAskUser(context.Background(), &messenger.FakeChat{}, data)
 
 	var payload agentPayload
 	if err := json.Unmarshal(repo.rows[0].Payload, &payload); err != nil {
@@ -340,7 +340,7 @@ func TestFinishAskUser_ReBusquedaSinMatchAvisaFallback(t *testing.T) {
 
 	action := twoCandidateAction(t)
 	action.Payload.SearchText = "eran 2000"
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{action}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{action}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -356,7 +356,7 @@ func TestFinishAskUser_ReBusquedaSinMatchAvisaFallback(t *testing.T) {
 		conversation.KeyAskBudget: "2",
 	}
 
-	finishAskUserFlow(context.Background(), svc, &messenger.FakeChat{}, data)
+	svc.loop().FinishAskUser(context.Background(), &messenger.FakeChat{}, data)
 
 	var questions []pendingaction.OpenQuestion
 	if err := json.Unmarshal(repo.rows[0].Questions, &questions); err != nil {
@@ -379,7 +379,7 @@ func TestFinishAskUser_LaReBusquedaRespetaLaVentana(t *testing.T) {
 	action := twoCandidateAction(t)
 	action.Payload.SearchText = "el débito del 4 de agosto"
 	action.Payload.DateFrom = "2026-08-04"
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{action}); err != nil {
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{action}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -395,7 +395,7 @@ func TestFinishAskUser_LaReBusquedaRespetaLaVentana(t *testing.T) {
 		conversation.KeyAskBudget: "2",
 	}
 
-	finishAskUserFlow(context.Background(), svc, &messenger.FakeChat{}, data)
+	svc.loop().FinishAskUser(context.Background(), &messenger.FakeChat{}, data)
 
 	if fake.recencyCalled {
 		t.Fatal("la re-búsqueda cayó en la ventana por created_at: perdió el localizador de fecha")

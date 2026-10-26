@@ -19,18 +19,13 @@ built **per call on purpose** — most tests here build `&controller{…}` liter
 pointer would be nil in every one of them. Why: `docs/decisions.md`, § Package layout. Starting a flow and sending a
 prompt are `flow.StartFlow`/`flow.SendPrompt`; `c.startFlow`/`c.sendPrompt` only delegate to them.
 
-The remaining clusters still use bridges (`agent`'s `agentServices`, `pendingjob.Services`):
-`*controller` implements them
-structurally through one-line bridge files (`*_services.go`). A new dependency for one of those
-goes to its constructor once that cluster is migrated; until then, reuse an existing bridge rather
-than adding a renamed one.
+`agent` too: `c.loop()` calls `agent.New` with the repositories, `c.finisher()` as the movement
+writer, and the controller's own behaviour (`c.finishAnswerQuery`, `c.finishManageSettings`,
+`c.HandleGroqError`, …) as funcs.
 
-The methods are **exported** even though most interfaces are not: an interface with unexported
-methods can only be satisfied from inside its own package, and the implementation is here.
-
-A bridge is shared the moment two clusters want it — `SendText` lives in `controller.go` and both
-`agentServices` and `pendingjob.Services` use it. Adding a duplicate is a compile error, which is
-the cheapest possible reminder.
+The one bridge left is `pendingjob.Services`: `*controller` implements it in
+`pendingjob_services.go`. `HandleGroqError` and `EnqueueUpdatePickIfRateLimited` stay on the
+controller only because they hand `c` itself to `pendingjob` as that `Services`.
 
 ## One update per user at a time
 
@@ -91,10 +86,10 @@ pair. edgeChat and newEdgeChat, the temporary wrapper that used to stand in for 
 gone as of Task 6: the webhook edge now arrives with `in.Chat` already resolved by the adapter
 (`internal/messenger/telegram`), so there is nothing left to wrap.
 
-Every bridge reachable from more than one entry point (the webhook edge AND `pendingjob`'s drain —
-`SendText`, `SendPrompt`, `StartFlow`, `HandleFreeText`, `FinishAnswerQuery`,
-`FinishManageSettings`) must go straight through `messenger.SendText`/`chat.Send`/`agent.StartLoop`
-on the `messenger.Chat` it receives — never unwrap it back to `(bot, chatID)` first. A chat that
+Everything reachable from more than one entry point (the webhook edge AND `pendingjob`'s drain —
+`SendText`, `HandleFreeText`, `ProceedToUpdateConfirm`, and the funcs `c.loop()` hands the agent)
+must go straight through `flow.SendText`/`chat.Send`/`StartLoop` on the `messenger.Chat` it
+receives — never unwrap it back to `(bot, chatID)` first. A chat that
 `chatResolver.ChatFor` resolves (the sweeper, the 429 drain) is a different concrete type than one
 the webhook edge hands in, so any unwrap that only recognizes one concrete type fails silently for
 the other — and "silently" here means a replayed message that needs to ask the user something (a

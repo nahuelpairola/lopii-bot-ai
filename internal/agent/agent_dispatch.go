@@ -19,7 +19,7 @@ import (
 
 const budgetSlack = 2
 
-func parkAgentActions(ctx context.Context, svc agentServices, userID uint64, actions []parkedAction) error {
+func (l *Loop) parkAgentActions(ctx context.Context, userID uint64, actions []parkedAction) error {
 	for i, a := range actions {
 		payload, err := json.Marshal(a.Payload)
 		if err != nil {
@@ -38,18 +38,18 @@ func parkAgentActions(ctx context.Context, svc agentServices, userID uint64, act
 			Position:  i,
 			TraceID:   trace.ID(ctx),
 		}
-		if err := svc.ActionsInsert(row); err != nil {
+		if err := l.insertAction(row); err != nil {
 			return fmt.Errorf("park %s: %w", a.Tool, err)
 		}
 	}
 	return nil
 }
 
-func drainNextAgentAction(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64) error {
-	if !svc.ActionsEnabled() {
+func (l *Loop) DrainNextAction(ctx context.Context, chat messenger.Chat, userID uint64) error {
+	if l.actions == nil {
 		return nil
 	}
-	action, err := svc.ActionsNextForUser(userID)
+	action, err := l.actions.NextForUser(userID)
 	if errors.Is(err, pendingaction.ErrNoPendingAction) {
 		return nil
 	}
@@ -62,34 +62,34 @@ func drainNextAgentAction(ctx context.Context, svc agentServices, chat messenger
 		return fmt.Errorf("drain: questions: %w", err)
 	}
 	if flow.HasOpenQuestion(questions) {
-		return openAskUser(ctx, svc, chat, userID, action, action.Budget)
+		return l.openAskUser(ctx, chat, userID, action, action.Budget)
 	}
-	return resumeAgentAction(ctx, svc, chat, userID, action)
+	return l.resumeAgentAction(ctx, chat, userID, action)
 }
 
-func openAskUser(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction, budget int) error {
+func (l *Loop) openAskUser(ctx context.Context, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction, budget int) error {
 	if budget <= 0 {
-		return discardAgentAction(ctx, svc, chat, userID, action)
+		return l.discardAgentAction(ctx, chat, userID, action)
 	}
 	seed := conversation.Data{
 		conversation.KeyActionID:      strconv.FormatUint(action.ID, 10),
 		conversation.KeyOpenQuestions: string(action.Questions),
 		conversation.KeyAskBudget:     strconv.Itoa(budget),
 	}
-	prompt, err := svc.EngineStartWithData(userID, flow.AskUserFlowName, seed)
+	prompt, err := l.engine.StartWithData(userID, flow.AskUserFlowName, seed)
 	if err != nil {
 		return fmt.Errorf("drain: start ask_user: %w", err)
 	}
-	svc.SendPrompt(ctx, chat, prompt)
+	flow.SendPrompt(ctx, chat, prompt)
 	return nil
 }
 
-func finishAskUserFlow(ctx context.Context, svc agentServices, chat messenger.Chat, data conversation.Data) {
+func (l *Loop) FinishAskUser(ctx context.Context, chat messenger.Chat, data conversation.Data) {
 	userID := data.UserID()
-	action, err := openAction(svc, userID, data)
+	action, err := l.openAction(userID, data)
 	if err != nil {
 		slog.ErrorContext(ctx, "ask_user finished with no matching action", "err", err, "user_id", userID)
-		svc.SendText(ctx, chat, flow.MsgSomethingBroke)
+		flow.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return
 	}
 
@@ -98,12 +98,12 @@ func finishAskUserFlow(ctx context.Context, svc agentServices, chat messenger.Ch
 		if action.Tool == orchestrator.ToolDeleteMovements {
 			outcome, msg = flow.OutcomeDeleteCancelled, flow.MsgDeleteCancelled
 		}
-		resolveMetric(ctx, svc, userID, outcome)
-		dropAgentAction(ctx, svc, chat, userID, action, msg)
+		l.resolveMetric(ctx, userID, outcome)
+		l.dropAgentAction(ctx, chat, userID, action, msg)
 		return
 	}
 	if conversation.Flag(data, conversation.KeyAskDiscarded) {
-		if err := discardAgentAction(ctx, svc, chat, userID, action); err != nil {
+		if err := l.discardAgentAction(ctx, chat, userID, action); err != nil {
 			slog.ErrorContext(ctx, "discard parked action failed", "err", err)
 		}
 		return
@@ -112,12 +112,12 @@ func finishAskUserFlow(ctx context.Context, svc agentServices, chat messenger.Ch
 	answers := flow.DecodeOpenQuestions(data)
 	payload, resolved := applyAnswers(action, answers)
 	if !resolved {
-		if err := researchCandidates(svc, userID, action, answers); err != nil {
+		if err := l.researchCandidates(userID, action, answers); err != nil {
 			slog.ErrorContext(ctx, "re-search candidates failed", "err", err, "user_id", userID)
 		}
-		if err := openAskUser(ctx, svc, chat, userID, action, flow.AskBudget(data)); err != nil {
+		if err := l.openAskUser(ctx, chat, userID, action, flow.AskBudget(data)); err != nil {
 			slog.ErrorContext(ctx, "reopen ask_user failed", "err", err)
-			svc.SendText(ctx, chat, flow.MsgSomethingBroke)
+			flow.SendText(ctx, chat, flow.MsgSomethingBroke)
 		}
 		return
 	}
@@ -125,21 +125,21 @@ func finishAskUserFlow(ctx context.Context, svc agentServices, chat messenger.Ch
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		slog.ErrorContext(ctx, "marshal resolved payload failed", "err", err)
-		svc.SendText(ctx, chat, flow.MsgSomethingBroke)
+		flow.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return
 	}
 	action.Payload = raw
-	if err := resumeAgentAction(ctx, svc, chat, userID, action); err != nil {
+	if err := l.resumeAgentAction(ctx, chat, userID, action); err != nil {
 		slog.ErrorContext(ctx, "resume parked action failed", "err", err, "tool", action.Tool)
-		svc.SendText(ctx, chat, flow.MsgSomethingBroke)
+		flow.SendText(ctx, chat, flow.MsgSomethingBroke)
 	}
 }
 
-func openAction(svc agentServices, userID uint64, data conversation.Data) (*pendingaction.PendingAction, error) {
-	if !svc.ActionsEnabled() {
+func (l *Loop) openAction(userID uint64, data conversation.Data) (*pendingaction.PendingAction, error) {
+	if l.actions == nil {
 		return nil, errors.New("no pending action repository")
 	}
-	action, err := svc.ActionsNextForUser(userID)
+	action, err := l.actions.NextForUser(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func applyAnswers(action *pendingaction.PendingAction, answers []pendingaction.O
 	return payload, payload.Chosen >= 0
 }
 
-func researchCandidates(svc agentServices, userID uint64, action *pendingaction.PendingAction, answers []pendingaction.OpenQuestion) error {
+func (l *Loop) researchCandidates(userID uint64, action *pendingaction.PendingAction, answers []pendingaction.OpenQuestion) error {
 	var payload agentPayload
 	if err := json.Unmarshal(action.Payload, &payload); err != nil {
 		return fmt.Errorf("research: payload: %w", err)
@@ -197,7 +197,7 @@ func researchCandidates(svc agentServices, userID uint64, action *pendingaction.
 	}
 
 	searchText := payload.SearchText + " " + answer
-	groups, err := resolveCandidates(svc, userID, searchText, payload.DateFrom, payload.DateTo)
+	groups, err := l.resolveCandidates(userID, searchText, payload.DateFrom, payload.DateTo)
 	if err != nil {
 		return fmt.Errorf("research: resolve: %w", err)
 	}
@@ -235,7 +235,7 @@ func researchCandidates(svc agentServices, userID uint64, action *pendingaction.
 
 	action.Payload = rawPayload
 	action.Questions = rawQuestions
-	return svc.ActionsUpdate(action)
+	return l.actions.Update(action)
 }
 
 func indexOf(options []string, want string) int {
@@ -247,7 +247,7 @@ func indexOf(options []string, want string) int {
 	return -1
 }
 
-func resumeAgentAction(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction) error {
+func (l *Loop) resumeAgentAction(ctx context.Context, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction) error {
 	var payload agentPayload
 	if err := json.Unmarshal(action.Payload, &payload); err != nil {
 		return fmt.Errorf("resume: payload: %w", err)
@@ -261,7 +261,7 @@ func resumeAgentAction(ctx context.Context, svc agentServices, chat messenger.Ch
 		}
 	}
 
-	if err := svc.ActionsDelete(action.ID); err != nil {
+	if err := l.actions.Delete(action.ID); err != nil {
 		return fmt.Errorf("resume: delete action: %w", err)
 	}
 
@@ -275,26 +275,26 @@ func resumeAgentAction(ctx context.Context, svc agentServices, chat messenger.Ch
 		if _, gated := payload.Seed[conversation.KeyGatePrompt]; gated {
 			flowName = flow.MovementNegativeConfirmFlowName
 		}
-		return svc.StartFlow(ctx, chat, userID, flowName, seed, "drain: start "+flowName)
+		return flow.StartFlow(ctx, l.engine, chat, userID, flowName, seed, "drain: start "+flowName)
 	case orchestrator.ToolCorrectMovement:
 		if len(payload.Changes) > 0 {
 			groups := []flow.CandidateGroup{chosen}
 			if isBatchCorrection(payload) {
 				groups = payload.Candidates
 			}
-			return applyStructuredCorrection(ctx, svc, chat, userID, payload, groups)
+			return l.applyStructuredCorrection(ctx, chat, userID, payload, groups)
 		}
 		if len(payload.Changes) == 0 && !payload.GaveChangeValue {
-			return parkChangeQuestion(ctx, svc, chat, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows,
+			return l.parkChangeQuestion(ctx, chat, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows,
 				ChangeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
 		}
-		return proceedToUpdateConfirm(ctx, svc, chat, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, ChangeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
+		return l.ProceedToUpdateConfirm(ctx, chat, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, ChangeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
 	case orchestrator.ToolDeleteMovements:
 		seed := conversation.Data{
 			conversation.KeyCandidateGroups: encodeCandidateGroupList([]flow.CandidateGroup{chosen}),
 			conversation.KeyResolvedIndex:   "0",
 		}
-		return svc.StartFlow(ctx, chat, userID, flow.MovementDeleteFlowName, seed, "drain: start movement_delete flow")
+		return flow.StartFlow(ctx, l.engine, chat, userID, flow.MovementDeleteFlowName, seed, "drain: start movement_delete flow")
 	default:
 		return fmt.Errorf("resume: tool %q has no resume path", action.Tool)
 	}
@@ -307,20 +307,20 @@ func chosenCandidate(payload agentPayload) (flow.CandidateGroup, error) {
 	return payload.Candidates[payload.Chosen], nil
 }
 
-func discardAgentAction(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction) error {
+func (l *Loop) discardAgentAction(ctx context.Context, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction) error {
 	slog.InfoContext(ctx, "parked action discarded: budget exhausted",
 		"tool", action.Tool, "user_id", userID, "budget", action.Budget)
-	resolveMetric(ctx, svc, userID, flow.OutcomeCreateFailed)
-	dropAgentAction(ctx, svc, chat, userID, action, msgAgentActionDiscarded(describeAction(action)))
+	l.resolveMetric(ctx, userID, flow.OutcomeCreateFailed)
+	l.dropAgentAction(ctx, chat, userID, action, msgAgentActionDiscarded(describeAction(action)))
 	return nil
 }
 
-func dropAgentAction(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction, message string) {
-	if err := svc.ActionsDelete(action.ID); err != nil {
+func (l *Loop) dropAgentAction(ctx context.Context, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction, message string) {
+	if err := l.actions.Delete(action.ID); err != nil {
 		slog.ErrorContext(ctx, "delete parked action failed", "err", err)
 	}
-	svc.SendText(ctx, chat, message)
-	if err := drainNextAgentAction(ctx, svc, chat, userID); err != nil {
+	flow.SendText(ctx, chat, message)
+	if err := l.DrainNextAction(ctx, chat, userID); err != nil {
 		slog.ErrorContext(ctx, "drain after drop failed", "err", err)
 	}
 }

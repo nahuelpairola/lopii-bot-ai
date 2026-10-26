@@ -1,6 +1,7 @@
 package messaging
 
 import (
+	"lopiibot.com/internal/agent"
 	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/settings"
 )
@@ -12,4 +13,9 @@ func (c *controller) wizards() *settings.Wizards {
 func (c *controller) finisher() *flow.Finisher {
 	w := c.wizards()
 	return flow.New(c.accounts, c.movements, c.subcategories, c.reminders, c.nudges, c.engine, c.resolveMetric, w.StartAccountCreate, w.SuggestMergeTarget)
+}
+
+func (c *controller) loop() *agent.Loop {
+	return agent.New(c.accounts, c.movements, c.subcategories, c.chatHistory, c.actions, c.metrics, c.orchestrator, c.engine, c.finisher(),
+		c.resolveMetric, c.HandleGroqError, c.EnqueueUpdatePickIfRateLimited, c.finishAnswerQuery, c.finishManageSettings)
 }

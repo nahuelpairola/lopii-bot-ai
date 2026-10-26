@@ -42,8 +42,11 @@ const (
 	outcomeReminderSetRouted = "reminder_set_routed"
 )
 
-func logIntent(ctx context.Context, svc agentServices, userID uint64, rawMessage string, intent orchestrator.Intent, runErr error) {
-	if err := svc.MetricsLog(userID, trace.ID(ctx), rawMessage, string(intent), false, initialOutcome(intent, runErr)); err != nil {
+func (l *Loop) logIntent(ctx context.Context, userID uint64, rawMessage string, intent orchestrator.Intent, runErr error) {
+	if l.metrics == nil {
+		return
+	}
+	if err := l.metrics.Log(userID, trace.ID(ctx), rawMessage, string(intent), false, initialOutcome(intent, runErr)); err != nil {
 		slog.ErrorContext(ctx, "metric log intent failed", "err", err)
 	}
 }
@@ -92,16 +95,15 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 	}
 }
 
-func resolveMetric(ctx context.Context, svc agentServices, userID uint64, outcome string, movementIDs ...uint) {
-	svc.ResolveMetric(ctx, userID, outcome, movementIDs...)
-}
-
 func collectMovementIDs(ms []movement.Movement) []uint {
 	return flow.CollectMovementIDs(ms)
 }
 
-func setQueuedIntent(ctx context.Context, svc agentServices, userID uint64, intent orchestrator.Intent) {
-	if err := svc.MetricsSetIntentIfQueued(userID, string(intent)); err != nil {
+func (l *Loop) setQueuedIntent(ctx context.Context, userID uint64, intent orchestrator.Intent) {
+	if l.metrics == nil {
+		return
+	}
+	if err := l.metrics.SetIntentIfQueued(userID, string(intent)); err != nil {
 		slog.ErrorContext(ctx, "metric set queued intent failed", "err", err)
 	}
 }

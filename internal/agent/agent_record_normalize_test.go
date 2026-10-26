@@ -28,7 +28,7 @@ func TestAgentRecord_NormalizesTheCategoryPair(t *testing.T) {
 
 	e := &agentExecutor{
 		ctx:      context.Background(),
-		svc:      svc,
+		loop:     svc.loop(),
 		userID:   1,
 		userText: "pagué 12000 de luz",
 		taxonomy: []orchestrator.TaxonomyEntry{{Category: "Vivienda", Subcategory: "Luz"}},

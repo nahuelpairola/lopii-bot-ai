@@ -35,10 +35,11 @@ func candidateMovement(id uint, txID *uuid.UUID, description string, amount int6
 
 func newExecutorWith(t *testing.T, userText string, movements ...movement.Movement) *agentExecutor {
 	t.Helper()
-	return newAgentExecutor(context.Background(), &fakeServices{
+	svc := &fakeServices{
 		movements:   &fakeMovementRepoFull{similar: movements},
 		chatHistory: &stubChatHistory{},
-	}, 1, userText, nil)
+	}
+	return svc.loop().newAgentExecutor(context.Background(), 1, userText, nil)
 }
 
 func taxonomyForTest() []orchestrator.TaxonomyEntry {
@@ -78,7 +79,7 @@ func newCreateExecutor(t *testing.T, balance, userText string, pairs ...orchestr
 		orch:          &fakeOrchestrator{classifyPairs: pairs},
 		chatHistory:   &stubChatHistory{},
 	}
-	return newAgentExecutor(context.Background(), svc, 1, userText, taxonomyForTest())
+	return svc.loop().newAgentExecutor(context.Background(), 1, userText, taxonomyForTest())
 }
 
 func TestAgentExecutor_CleanCreateInsertsAndOwnsTheTurn(t *testing.T) {
@@ -311,12 +312,12 @@ func executorWithPairs(t *testing.T, userText string, pairs []orchestrator.Pair)
 		orch:          &fakeOrchestrator{classifyPairs: pairs},
 		chatHistory:   &stubChatHistory{},
 	}
-	return newAgentExecutor(context.Background(), svc, 1, userText, taxonomyForTest())
+	return svc.loop().newAgentExecutor(context.Background(), 1, userText, taxonomyForTest())
 }
 
 func TestAgentExecutor_CorrectPassesTheDateLocatorToTheSearch(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
-	e := newAgentExecutor(context.Background(), &fakeServices{movements: fake}, 3,
+	e := (&fakeServices{movements: fake}).loop().newAgentExecutor(context.Background(), 3,
 		"el débito de tarjeta del 04 de agosto eran 131306,49", nil)
 
 	executeDone(t, e, orchestrator.ToolCorrectMovement,
@@ -335,7 +336,7 @@ func TestAgentExecutor_CorrectPassesTheDateLocatorToTheSearch(t *testing.T) {
 
 func TestAgentExecutor_DeletePassesTheDateLocatorToTheSearch(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
-	e := newAgentExecutor(context.Background(), &fakeServices{movements: fake}, 2,
+	e := (&fakeServices{movements: fake}).loop().newAgentExecutor(context.Background(), 2,
 		"Elimina hbo max del 3 de octubre", nil)
 
 	executeDone(t, e, orchestrator.ToolDeleteMovements, `{"date_from":"2026-10-03"}`)
@@ -353,7 +354,7 @@ func TestAgentExecutor_DeletePassesTheDateLocatorToTheSearch(t *testing.T) {
 
 func TestAgentExecutor_DeleteIgnoresADateTheMessageDoesNotSay(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
-	e := newAgentExecutor(context.Background(), &fakeServices{movements: fake}, 2,
+	e := (&fakeServices{movements: fake}).loop().newAgentExecutor(context.Background(), 2,
 		"Eliminá el helado del sábado pasado", nil)
 
 	executeDone(t, e, orchestrator.ToolDeleteMovements, `{"date_from":"2026-08-12"}`)
@@ -365,7 +366,7 @@ func TestAgentExecutor_DeleteIgnoresADateTheMessageDoesNotSay(t *testing.T) {
 
 func TestAgentExecutor_CorrectIgnoresADateTheMessageDoesNotSay(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
-	e := newAgentExecutor(context.Background(), &fakeServices{movements: fake}, 2,
+	e := (&fakeServices{movements: fake}).loop().newAgentExecutor(context.Background(), 2,
 		"La compra de locro del lunes ponela en salidas restaurante", nil)
 
 	executeDone(t, e, orchestrator.ToolCorrectMovement, `{"change":"ponela en salidas","date_from":"2026-08-14"}`)

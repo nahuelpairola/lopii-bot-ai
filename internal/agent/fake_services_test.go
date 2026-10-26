@@ -32,10 +32,13 @@ type fakeServices struct {
 	orch          *fakeOrchestrator
 	metrics       *fakeMetricRepo
 
-	replaying   bool
-	sendTexts   []string
 	enqueued    int
 	handledGroq bool
+}
+
+func (f *fakeServices) loop() *Loop {
+	return New(f.accounts, f.movements, f.subcategories, f.chatHistory, f.actions, f.metrics, f.orch, f.engine, f,
+		f.ResolveMetric, f.HandleGroqError, f.EnqueueUpdatePickIfRateLimited, f.FinishAnswerQuery, f.FinishManageSettings)
 }
 
 type fakeMovements interface {
@@ -56,100 +59,8 @@ type fakeMovements interface {
 	TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error)
 }
 
-func (f *fakeServices) FindUserAccounts(userID uint64) ([]account.Account, error) {
-	return f.accounts.FindByUserID(userID)
-}
-
-func (f *fakeServices) AccountsHasDefaultForCurrency(userID uint64, cur currency.Currency) bool {
-	return f.accounts.HasDefaultForCurrency(userID, cur)
-}
-
-func (f *fakeServices) FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error) {
-	return f.movements.FindRecentlyCreatedForUser(userID, since, limit)
-}
-
-func (f *fakeServices) MovementsFindSimilarForUser(userID uint64, message string, since time.Time, until *time.Time) ([]movement.Movement, error) {
-	return f.movements.FindSimilarForUser(userID, message, since, until)
-}
-
-func (f *fakeServices) SubcategoriesFindAllForUser(userID uint64) ([]subcategory.Subcategory, error) {
-	return f.subcategories.FindAllForUser(userID)
-}
-
-func (f *fakeServices) FindSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error) {
-	return f.subcategories.FindByCategoryAndSubcategory(userID, category, subcategory)
-}
-
-func (f *fakeServices) ChatHistoryRecent(userID uint64) ([]chathistory.Turn, error) {
-	return f.chatHistory.Recent(userID)
-}
-
-func (f *fakeServices) ChatHistoryAppend(userID uint64, question, answer string) error {
-	return f.chatHistory.Append(userID, question, answer)
-}
-
-func (f *fakeServices) ActionsInsert(a *pendingaction.PendingAction) error {
-	return f.actions.Insert(a)
-}
-
-func (f *fakeServices) ActionsNextForUser(userID uint64) (*pendingaction.PendingAction, error) {
-	return f.actions.NextForUser(userID)
-}
-
-func (f *fakeServices) ActionsUpdate(a *pendingaction.PendingAction) error {
-	return f.actions.Update(a)
-}
-
-func (f *fakeServices) ActionsDelete(id uint64) error {
-	return f.actions.Delete(id)
-}
-
-func (f *fakeServices) ActionsEnabled() bool {
-	return true
-}
-
-func (f *fakeServices) MetricsLog(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error {
-	return f.metrics.Log(userID, traceID, rawMessage, intent, needsConfirmation, outcome)
-}
-
 func (f *fakeServices) ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint) {
 	f.metrics.Resolve(userID, outcome, movementIDs)
-}
-
-func (f *fakeServices) MetricsSetIntentIfQueued(userID uint64, intent string) error {
-	return f.metrics.SetIntentIfQueued(userID, intent)
-}
-
-func (f *fakeServices) Run(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
-	return f.orch.Run(ctx, systemPrompt, userText, history, tools, execute)
-}
-
-func (f *fakeServices) ClassifyCategories(ctx context.Context, message string, rows []orchestrator.ClassifyRow, taxonomy []orchestrator.TaxonomyEntry) []orchestrator.Pair {
-	return f.orch.ClassifyCategories(ctx, message, rows, taxonomy)
-}
-
-func (f *fakeServices) ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error) {
-	return f.orch.ResolveUpdate(ctx, text, candidate, accounts)
-}
-
-func (f *fakeServices) SendText(ctx context.Context, chat messenger.Chat, text string) {
-	f.sendTexts = append(f.sendTexts, text)
-}
-
-func (f *fakeServices) SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
-}
-
-func (f *fakeServices) StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
-	_, _ = f.engine.StartWithData(userID, flowName, seed)
-	return nil
-}
-
-func (f *fakeServices) EngineStartWithData(userID uint64, flowName string, seed conversation.Data) (conversation.Prompt, error) {
-	return f.engine.StartWithData(userID, flowName, seed)
-}
-
-func (f *fakeServices) IsReplaying(ctx context.Context) bool {
-	return f.replaying
 }
 
 func (f *fakeServices) MaybeNearDuplicate(userID uint64, inserted []movement.Movement) []conversation.Button {
