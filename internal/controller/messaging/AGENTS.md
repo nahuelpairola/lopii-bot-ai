@@ -11,21 +11,16 @@ It used to be ~10k lines and hold the whole app. What lived here now lives in `f
 traps that moved with them moved too — `flow/AGENTS.md` carries flow registration and the
 `callback_data` limit, `conversation/AGENTS.md` the `Data` contract.
 
-## The bridge pattern is being removed — do not add a bridge
+## Consumers get the repositories, not the controller — do not add a bridge
 
-`query`, `settings` and `nudges` no longer go through the controller: `c.queries()`, `c.wizards()`
-and `c.tips()` call their package's `New(c.accounts, …)` with the repositories themselves. Each is
-built **per call on purpose** — most tests here build `&controller{…}` literals, and a stored
-pointer would be nil in every one of them. Why: `docs/decisions.md`, § Package layout. Starting a flow and sending a
-prompt are `flow.StartFlow`/`flow.SendPrompt`; `c.startFlow`/`c.sendPrompt` only delegate to them.
+`c.queries()`, `c.wizards()`, `c.tips()`, `c.finisher()` and `c.loop()` call each package's
+`New(…)` with the repositories themselves; callbacks into the controller (`c.finishAnswerQuery`,
+`c.handleGroqError`, `c.resolveMetric`, …) go in as funcs. Each is built **per call on purpose** —
+most tests here build `&controller{…}` literals, and a stored pointer would be nil in every one of
+them. Why: `docs/decisions.md`, § Package layout.
 
-`agent` too: `c.loop()` calls `agent.New` with the repositories, `c.finisher()` as the movement
-writer, and the controller's own behaviour (`c.finishAnswerQuery`, `c.finishManageSettings`,
-`c.HandleGroqError`, …) as funcs.
-
-The one bridge left is `pendingjob.Services`: `*controller` implements it in
-`pendingjob_services.go`. `HandleGroqError` and `EnqueueUpdatePickIfRateLimited` stay on the
-controller only because they hand `c` itself to `pendingjob` as that `Services`.
+The controller implements one interface: `pendingjob.Replayer` (`HandleFreeText`,
+`ProceedToUpdateConfirm`, `Traced`), because the drain replays through the real handler.
 
 ## One update per user at a time
 
@@ -58,14 +53,14 @@ callback inherits that; one that wants a separate message must send twice or run
 text — it is what keeps "no, 600" from being processed before "gasté 500" when the user still has
 jobs waiting.
 
-It is called from `dispatch` only, never from `handleFreeText`: called from there, a drained replay
+It is called from `dispatch` only, never from `HandleFreeText`: called from there, a drained replay
 would re-enqueue itself forever. `pendingjob`'s replay ctx flag is what tells a real webhook call
 from a replay, and the drain deliberately replays through the *real* handler rather than a copy, so
 the two paths cannot drift.
 
 ## There is no router
 
-`handleFreeText` is one line: every message without an open flow goes to `agent.StartLoop`, and the
+`HandleFreeText` is one line: every message without an open flow goes to the agent's `StartLoop`, and the
 loop picks one of its tools. The ten-branch switch that used to live here is gone, and so are
 orchestrator.ClassifyIntent, ClassifyCreate and ResolveDelete — the last two survive only as
 methods on test fakes, which nothing in production calls.
@@ -80,7 +75,7 @@ it. The wizards did not go away; the loop **parks** into one when it needs an an
 Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
 model) **before** editing. The anti-pattern list is in `docs/ARCHITECTURE.md`.
 
-In tests, `c.sendText`/`c.sendPrompt`/`c.startFlow`/`c.handleFreeText` and every `finish*` bridge
+In tests, `c.HandleFreeText` and every `c.finisher().Finish*`
 take a `messenger.Chat` directly — pass `&messenger.FakeChat{}`, not a Telegram `(bot, chatID)`
 pair. edgeChat and newEdgeChat, the temporary wrapper that used to stand in for that pair, are
 gone as of Task 6: the webhook edge now arrives with `in.Chat` already resolved by the adapter

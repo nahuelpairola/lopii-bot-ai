@@ -40,7 +40,7 @@ func TestRouting_EverythingGoesThroughTheLoop(t *testing.T) {
 			}
 			c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
 
-			if err := c.handleFreeText(context.Background(), &messenger.FakeChat{}, 1, msg); err != nil {
+			if err := c.HandleFreeText(context.Background(), &messenger.FakeChat{}, 1, msg); err != nil {
 				t.Fatal(err)
 			}
 			if !called {

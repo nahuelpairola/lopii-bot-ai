@@ -213,7 +213,7 @@ func deleteMovementsCall(args string) scriptedCall {
 
 func (h *convHarness) SendText(text string) {
 	h.t.Helper()
-	if err := h.c.handleFreeText(context.Background(), h.chat, h.userID, text); err != nil {
+	if err := h.c.HandleFreeText(context.Background(), h.chat, h.userID, text); err != nil {
 		h.t.Fatalf("SendText(%q): %v", text, err)
 	}
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func (c *controller) wizards() *settings.Wizards {
-	return settings.New(c.accounts, c.subcategories, c.movements, c.reminders, c.orchestrator, c.engine, c.resolveMetric, c.HandleGroqError)
+	return settings.New(c.accounts, c.subcategories, c.movements, c.reminders, c.orchestrator, c.engine, c.resolveMetric, c.handleGroqError)
 }
 
 func (c *controller) finisher() *flow.Finisher {
@@ -17,5 +17,5 @@ func (c *controller) finisher() *flow.Finisher {
 
 func (c *controller) loop() *agent.Loop {
 	return agent.New(c.accounts, c.movements, c.subcategories, c.chatHistory, c.actions, c.metrics, c.orchestrator, c.engine, c.finisher(),
-		c.resolveMetric, c.HandleGroqError, c.EnqueueUpdatePickIfRateLimited, c.finishAnswerQuery, c.finishManageSettings)
+		c.resolveMetric, c.handleGroqError, c.enqueueUpdatePick, c.finishAnswerQuery, c.wizards().Dispatch)
 }

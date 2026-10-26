@@ -123,7 +123,7 @@ func TestQueueDrain_ReplayInsertsTheMovement(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c, c.users, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -244,7 +244,7 @@ func TestQueueDrain_ReplayAskUserGapSendsThePrompt(t *testing.T) {
 	chat := &messenger.FakeChat{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: chat}, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c, c.users, jobsRepo, fakeChats{chat: chat}, 50*time.Millisecond)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -303,7 +303,7 @@ func TestQueueDrain_GiveUp_DoesNotCallOrchestrator(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go pendingjob.Run(ctx, c, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
+	go pendingjob.Run(ctx, c, c.users, jobsRepo, fakeChats{chat: &messenger.FakeChat{}}, 50*time.Millisecond)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {

@@ -58,7 +58,7 @@ func TestInsertNewSubcategory_NewCategory_SetsIsGlobalFalseAndIcon(t *testing.T)
 		"subcategory_description": "Consultas y controles de mascotas",
 	}
 
-	if err := c.insertNewSubcategory(data); err != nil {
+	if err := c.finisher().InsertNewSubcategory(data); err != nil {
 		t.Fatalf("insertNewSubcategory: %v", err)
 	}
 	if len(repo.inserted) != 1 {
@@ -80,7 +80,7 @@ func TestFinishSubcategorySetupFlow_Cancelled_SkipsInsert(t *testing.T) {
 	repo := &fakeSubcatFinishRepo{}
 	c := &controller{subcategories: repo}
 
-	c.finishSubcategorySetupFlow(nil, &messenger.FakeChat{}, conversation.Data{"cancelled": "true"})
+	c.finisher().FinishSubcategorySetup(nil, &messenger.FakeChat{}, conversation.Data{"cancelled": "true"})
 
 	if len(repo.inserted) != 0 {
 		t.Error("expected no insert when cancelled=true")

@@ -357,7 +357,7 @@ func TestProceedToCategoryTarget_ZeroCountSkipsOrchestrator(t *testing.T) {
 		conversation.KeySourceCategory:      "Comida",
 		conversation.KeySourceSubcategory:   "Delivery",
 	}
-	if err := c.proceedToCategoryTarget(context.Background(), &messenger.FakeChat{}, data); err != nil {
+	if err := c.finisher().ProceedToCategoryTarget(context.Background(), &messenger.FakeChat{}, data); err != nil {
 		t.Fatalf("proceedToCategoryTarget: %v", err)
 	}
 	if orch.calls != 0 {
@@ -393,7 +393,7 @@ func TestProceedToCategoryTarget_PositiveCountSeedsSuggestion(t *testing.T) {
 		conversation.KeySourceCategory:      "Comida",
 		conversation.KeySourceSubcategory:   "Delivery",
 	}
-	if err := c.proceedToCategoryTarget(context.Background(), &messenger.FakeChat{}, data); err != nil {
+	if err := c.finisher().ProceedToCategoryTarget(context.Background(), &messenger.FakeChat{}, data); err != nil {
 		t.Fatalf("proceedToCategoryTarget: %v", err)
 	}
 	if orch.calls != 1 {
@@ -425,7 +425,7 @@ func TestProceedToCategoryTarget_OrchestratorErrorStillStartsFlow(t *testing.T) 
 		conversation.KeySourceCategory:      "Comida",
 		conversation.KeySourceSubcategory:   "Delivery",
 	}
-	if err := c.proceedToCategoryTarget(context.Background(), &messenger.FakeChat{}, data); err != nil {
+	if err := c.finisher().ProceedToCategoryTarget(context.Background(), &messenger.FakeChat{}, data); err != nil {
 		t.Fatalf("un fallo del LLM no debería romper el flujo: %v", err)
 	}
 	if store.stepName != flow.StepPickTargetCategory {
@@ -446,7 +446,7 @@ func TestProceedToCategoryTarget_CountErrorReturnsError(t *testing.T) {
 		conversation.UserIDKey:              uint64(1),
 		conversation.KeySourceSubcategoryID: "7",
 	}
-	if err := c.proceedToCategoryTarget(context.Background(), &messenger.FakeChat{}, data); err == nil {
+	if err := c.finisher().ProceedToCategoryTarget(context.Background(), &messenger.FakeChat{}, data); err == nil {
 		t.Error("un error al contar debería propagarse")
 	}
 	if store.stepName != "" {

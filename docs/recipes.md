@@ -84,7 +84,7 @@ differently — one of the three fails *silently*. What each one breaks:
 | `controller.go` → `handleFlowFinished` | a `case accountSetupFlowName:` |
 | `messages.go` → `FlowResumeLabel` | a `case accountSetupFlowName:` |
 
-**4. Start it** with `c.startFlow(...)`, or `engine.StartWithData(userID, name, seed)` when you
+**4. Start it** with `flow.StartFlow(ctx, c.engine, ...)`, or `engine.StartWithData(userID, name, seed)` when you
 have pre-resolved data and want the `SkipIf` walk to land on the first real gap.
 
 **5. Read the result** in your `handleFlowFinished` case — always through the helpers, because
@@ -172,7 +172,7 @@ if err != nil {
     if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
         return oerr
     }
-    c.sendText(ctx, b, chatID, msgSomethingBroke) // unchanged fallback for non-429 errors
+    flow.SendText(ctx, chat, msgSomethingBroke) // unchanged fallback for non-429 errors
     return fmt.Errorf("...: %w", err)
 }
 ```

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
@@ -46,8 +47,8 @@ func bumpNextDrainAt(t time.Time) {
 	}
 }
 
-func HandleGroqError(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
-	if EnqueueFreeText(ctx, s, repo, chat, userID, text, err) {
+func HandleGroqError(ctx context.Context, repo Repository, chat messenger.Chat, userID uint64, text string, err error) (bool, error) {
+	if EnqueueFreeText(ctx, repo, chat, userID, text, err) {
 		return true, nil
 	}
 	var rl *orchestrator.RateLimitedError
@@ -57,7 +58,7 @@ func HandleGroqError(ctx context.Context, s Services, repo Repository, chat mess
 	return false, nil
 }
 
-func EnqueueFreeText(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string, err error) bool {
+func EnqueueFreeText(ctx context.Context, repo Repository, chat messenger.Chat, userID uint64, text string, err error) bool {
 	var rl *orchestrator.RateLimitedError
 	if !errors.As(err, &rl) || IsReplaying(ctx) {
 		return false
@@ -65,15 +66,15 @@ func EnqueueFreeText(ctx context.Context, s Services, repo Repository, chat mess
 	payload, _ := json.Marshal(FreeTextPayload{Text: text})
 	if ierr := repo.Insert(&PendingJob{UserID: userID, Kind: KindFreeText, Payload: payload}); ierr != nil {
 		slog.ErrorContext(ctx, "enqueue free_text failed", "user_id", userID, "err", ierr)
-		s.SendText(ctx, chat, msgCouldNotSave("tu mensaje"))
+		flow.SendText(ctx, chat, msgCouldNotSave("tu mensaje"))
 		return true
 	}
 	bumpNextDrainAt(time.Now().Add(rl.RetryAfter))
-	s.SendText(ctx, chat, AckForWait(rl.RetryAfter))
+	flow.SendText(ctx, chat, AckForWait(rl.RetryAfter))
 	return true
 }
 
-func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, message, txID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
+func EnqueueUpdatePick(ctx context.Context, repo Repository, chat messenger.Chat, userID uint64, message, txID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool {
 	var rl *orchestrator.RateLimitedError
 	if !errors.As(err, &rl) {
 		return false
@@ -81,15 +82,15 @@ func EnqueueUpdatePick(ctx context.Context, s Services, repo Repository, chat me
 	payload, _ := json.Marshal(UpdatePickPayload{Message: message, TransactionID: txID, OldIDs: oldIDs, BeforeRows: beforeRows})
 	if ierr := repo.Insert(&PendingJob{UserID: userID, Kind: KindUpdatePick, Payload: payload}); ierr != nil {
 		slog.ErrorContext(ctx, "enqueue update_pick failed", "user_id", userID, "err", ierr)
-		s.SendText(ctx, chat, msgCouldNotSave("el cambio"))
+		flow.SendText(ctx, chat, msgCouldNotSave("el cambio"))
 		return true
 	}
 	bumpNextDrainAt(time.Now().Add(rl.RetryAfter))
-	s.SendText(ctx, chat, AckForWait(rl.RetryAfter))
+	flow.SendText(ctx, chat, AckForWait(rl.RetryAfter))
 	return true
 }
 
-func EnqueueBehindPending(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, text string) bool {
+func EnqueueBehindPending(ctx context.Context, repo Repository, chat messenger.Chat, userID uint64, text string) bool {
 	n, err := repo.CountByUser(userID)
 	if err != nil {
 		slog.ErrorContext(ctx, "enqueue behind pending: count failed, processing live", "user_id", userID, "err", err)
@@ -103,6 +104,6 @@ func EnqueueBehindPending(ctx context.Context, s Services, repo Repository, chat
 		slog.ErrorContext(ctx, "enqueue behind pending failed", "user_id", userID, "err", ierr)
 		return false
 	}
-	s.SendText(ctx, chat, msgQueuedBehindPending)
+	flow.SendText(ctx, chat, msgQueuedBehindPending)
 	return true
 }

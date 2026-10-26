@@ -27,13 +27,13 @@ Moving the delete either side reopens a hole: money twice after, silent loss bef
 ## `EnqueueBehindPending` belongs to the webhook edge only
 
 It runs from the controller's `dispatch` (in `controller/messaging`) after the engine reports no
-open flow, never from `handleFreeText` (a drained replay would queue itself again). Its job is
+open flow, never from `HandleFreeText` (a drained replay would queue itself again). Its job is
 ordering: while a user still has jobs waiting, a new message goes behind them so "no, 600" cannot
 be processed before "gasté 500".
 
 ## A replayed job is its own unit of work, in the traces too
 
-`drainUser` stamps a **fresh `trace_id`** on each replay (`traced()`): the drain's ctx carries none,
+`drainUser` stamps a **fresh `trace_id`** on each replay (`Traced`): the drain's ctx carries none,
 so without it every Groq call writes an empty `trace_id` and vanishes from all three observability
 layers. It writes `update_type = replay`, distinct from text/callback/command, or it reads as the
 user typing again. A payload that no longer parses is a decode **error**, logged and deleted.

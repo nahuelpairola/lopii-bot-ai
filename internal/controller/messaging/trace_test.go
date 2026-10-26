@@ -24,7 +24,7 @@ func TestWithTraceRecordsSpine(t *testing.T) {
 	c := &controller{traces: tr}
 	uid := uint64(7)
 
-	c.traced(context.Background(), "callback", "", func(ctx context.Context) (*uint64, error) {
+	c.Traced(context.Background(), "callback", "", func(ctx context.Context) (*uint64, error) {
 		return &uid, nil
 	})
 

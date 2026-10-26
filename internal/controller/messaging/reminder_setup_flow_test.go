@@ -62,7 +62,7 @@ func TestFinishReminderSetup_Preset(t *testing.T) {
 		flow.ReminderStartKey:  "1200",
 		flow.ReminderEndKey:    "1320",
 	}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, data)
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, data)
 	if repo.upserted == nil || repo.upserted.WindowStartMin != 1200 || repo.upserted.WindowEndMin != 1320 || !repo.upserted.Enabled || repo.upserted.UserID != 42 {
 		t.Fatalf("unexpected upsert: %+v", repo.upserted)
 	}
@@ -76,7 +76,7 @@ func TestFinishReminderSetup_Custom(t *testing.T) {
 		flow.ReminderActionKey: flow.ReminderActionSet,
 		flow.ReminderCustomKey: "9 a 13",
 	}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, data)
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, data)
 	if repo.upserted == nil || repo.upserted.WindowStartMin != 540 || repo.upserted.WindowEndMin != 780 {
 		t.Fatalf("unexpected upsert: %+v", repo.upserted)
 	}
@@ -89,7 +89,7 @@ func TestFinishReminderSetup_Disable(t *testing.T) {
 		conversation.UserIDKey: uint64(99),
 		flow.ReminderActionKey: flow.ReminderActionOff,
 	}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, data)
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, data)
 	if repo.disabled != 99 {
 		t.Fatalf("expected Disable(99), got %d", repo.disabled)
 	}
@@ -98,7 +98,7 @@ func TestFinishReminderSetup_Disable(t *testing.T) {
 func TestFinishReminderSetup_Cancelled(t *testing.T) {
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
 		conversation.UserIDKey: uint64(1),
 		"cancelled":            "true",
 	})
@@ -117,7 +117,7 @@ func TestReminderSetup_PresetThenWeeklyYes(t *testing.T) {
 
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, data)
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, data)
 
 	if repo.upserted == nil || !repo.upserted.WeeklySummaryEnabled {
 		t.Fatalf("expected upsert with WeeklySummaryEnabled=true, got %+v", repo.upserted)
@@ -130,7 +130,7 @@ func TestReminderSetup_PresetThenWeeklyYes(t *testing.T) {
 func TestReminderSetup_WeeklyOnlyOff(t *testing.T) {
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
 		conversation.UserIDKey: uint64(7),
 		flow.ReminderActionKey: flow.ReminderActionWeeklyOnly,
 		flow.KeyHubHasRow:      "true",
@@ -146,7 +146,7 @@ func TestReminderSetup_WeeklyOnlyOff(t *testing.T) {
 func TestFinishReminderSetup_OffAll(t *testing.T) {
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
 		conversation.UserIDKey: uint64(42),
 		flow.ReminderActionKey: flow.ReminderActionOffAll,
 	})
@@ -161,7 +161,7 @@ func TestFinishReminderSetup_OffAll(t *testing.T) {
 func TestFinishReminderSetup_SoftExit(t *testing.T) {
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
 		conversation.UserIDKey: uint64(1),
 		flow.ReminderActionKey: flow.ReminderActionSoftExit,
 	})
@@ -173,7 +173,7 @@ func TestFinishReminderSetup_SoftExit(t *testing.T) {
 func TestFinishReminderSetup_WeeklyActivateNoRow(t *testing.T) {
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
 		conversation.UserIDKey:        uint64(8),
 		flow.ReminderActionKey:        flow.ReminderActionWeeklyOnly,
 		conversation.KeyWeeklySummary: "true",
@@ -189,7 +189,7 @@ func TestFinishReminderSetup_WeeklyActivateNoRow(t *testing.T) {
 func TestFinishReminderSetup_WeeklyActivateHasRow(t *testing.T) {
 	repo := &fakeReminderRepo{}
 	c := &controller{reminders: repo}
-	c.finishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
+	c.finisher().FinishReminderSetup(context.Background(), &messenger.FakeChat{}, conversation.Data{
 		conversation.UserIDKey:        uint64(9),
 		flow.ReminderActionKey:        flow.ReminderActionWeeklyOnly,
 		conversation.KeyWeeklySummary: "true",

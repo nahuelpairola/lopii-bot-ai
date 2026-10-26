@@ -177,7 +177,7 @@ func NewController(
 }
 
 func (c *controller) Handle(ctx context.Context, in messenger.Incoming) {
-	c.traced(ctx, kindOf(in), rawOf(in), func(ctx context.Context) (*uint64, error) {
+	c.Traced(ctx, kindOf(in), rawOf(in), func(ctx context.Context) (*uint64, error) {
 		u, err := c.users.FindByChannel(in.Channel, in.ChannelUserID)
 		if err != nil {
 			return nil, err
@@ -207,15 +207,15 @@ func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *use
 
 	result, found, err := c.engine.Handle(u.ID, input)
 	if err != nil {
-		c.sendText(ctx, chat, msgSomethingBroke)
+		flow.SendText(ctx, chat, msgSomethingBroke)
 		return &uid, err
 	}
 	if !found {
 		if input.Text != "" {
-			if pendingjob.EnqueueBehindPending(ctx, c, c.jobs, chat, u.ID, input.Text) {
+			if pendingjob.EnqueueBehindPending(ctx, c.jobs, chat, u.ID, input.Text) {
 				return &uid, nil
 			}
-			err := c.handleFreeText(ctx, chat, u.ID, input.Text)
+			err := c.HandleFreeText(ctx, chat, u.ID, input.Text)
 			c.tips().Maybe(ctx, chat, u.ID)
 			return &uid, err
 		}
@@ -226,14 +226,14 @@ func (c *controller) dispatch(ctx context.Context, in messenger.Incoming, u *use
 		c.tips().Maybe(ctx, chat, u.ID)
 		return &uid, nil
 	}
-	c.sendPrompt(ctx, chat, result.Prompt)
+	flow.SendPrompt(ctx, chat, result.Prompt)
 	return &uid, nil
 }
 
 func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat, result conversation.Result) {
 	slog.InfoContext(ctx, "flow finished", "flow", result.FlowName)
 	if conversation.StringOrEmpty(result.Data[conversation.ResumeCancelledKey]) == "true" {
-		c.sendText(ctx, chat, msgResumeCancelled)
+		flow.SendText(ctx, chat, msgResumeCancelled)
 		return
 	}
 	if result.FlowName == flow.AskUserFlowName {
@@ -252,46 +252,30 @@ func (c *controller) handleFlowFinished(ctx context.Context, chat messenger.Chat
 	case flow.MovementUpdatePickFlowName:
 		c.loop().FinishMovementUpdatePick(ctx, chat, result.Data)
 	case flow.MovementUpdateConfirmFlowName:
-		c.finishMovementUpdateConfirmFlow(ctx, chat, result.Data)
+		c.finisher().FinishMovementUpdateConfirm(ctx, chat, result.Data)
 	case flow.MovementDeleteFlowName:
 		c.finisher().FinishMovementDelete(ctx, chat, result.Data)
 	case flow.AccountCreateFlowName:
-		c.finishAccountCreateFlow(ctx, chat, result.Data)
+		c.finisher().FinishAccountCreate(ctx, chat, result.Data)
 	case flow.AccountManageFlowName:
-		c.finishAccountManageFlow(ctx, chat, result.Data)
+		c.finisher().FinishAccountManage(ctx, chat, result.Data)
 	case flow.AccountMoveOfferFlowName:
-		c.finishAccountMoveOffer(ctx, chat, result.Data)
+		c.finisher().FinishAccountMoveOffer(ctx, chat, result.Data)
 	case flow.SubcategorySetupFlowName:
-		c.finishSubcategorySetupFlow(ctx, chat, result.Data)
+		c.finisher().FinishSubcategorySetup(ctx, chat, result.Data)
 	case flow.CategoryMatchOfferFlowName:
-		c.finishCategoryMatchOffer(ctx, chat, result.Data)
+		c.finisher().FinishCategoryMatchOffer(ctx, chat, result.Data)
 	case flow.CategoryProposalConfirmFlowName:
-		c.finishCategoryProposalConfirm(ctx, chat, result.Data)
+		c.finisher().FinishCategoryProposalConfirm(ctx, chat, result.Data)
 	case flow.CategoryManagePickFlowName:
-		c.finishCategoryManagePickFlow(ctx, chat, result.Data)
+		c.finisher().FinishCategoryManagePickFlow(ctx, chat, result.Data)
 	case flow.CategoryManageTargetFlowName:
-		c.finishCategoryManageTargetFlow(ctx, chat, result.Data)
+		c.finisher().FinishCategoryManageTargetFlow(ctx, chat, result.Data)
 	case flow.MovementNegativeConfirmFlowName:
 		c.finisher().FinishMovementNegativeConfirm(ctx, chat, result.Data)
 	case flow.ReminderSetupFlowName:
-		c.finishReminderSetup(ctx, chat, result.Data)
+		c.finisher().FinishReminderSetup(ctx, chat, result.Data)
 	default:
-		c.sendText(ctx, chat, msgSomethingBroke)
+		flow.SendText(ctx, chat, msgSomethingBroke)
 	}
-}
-
-func (c *controller) finishMovementUpdateConfirmFlow(ctx context.Context, chat messenger.Chat, data conversation.Data) {
-	c.finisher().FinishMovementUpdateConfirm(ctx, chat, data)
-}
-
-func (c *controller) sendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
-	flow.SendPrompt(ctx, chat, prompt)
-}
-
-func (c *controller) startFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error {
-	return flow.StartFlow(ctx, c.engine, chat, userID, flowName, seed, errCtx)
-}
-
-func (c *controller) SendText(ctx context.Context, chat messenger.Chat, text string) {
-	flow.SendText(ctx, chat, text)
 }
