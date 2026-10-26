@@ -66,7 +66,7 @@ func EnqueueFreeText(ctx context.Context, repo Repository, chat messenger.Chat, 
 	payload, _ := json.Marshal(FreeTextPayload{Text: text})
 	if ierr := repo.Insert(&PendingJob{UserID: userID, Kind: KindFreeText, Payload: payload}); ierr != nil {
 		slog.ErrorContext(ctx, "enqueue free_text failed", "user_id", userID, "err", ierr)
-		flow.SendText(ctx, chat, msgCouldNotSave("tu mensaje"))
+		flow.SendText(ctx, chat, flow.MsgCouldNotSave("tu mensaje"))
 		return true
 	}
 	bumpNextDrainAt(time.Now().Add(rl.RetryAfter))
@@ -82,7 +82,7 @@ func EnqueueUpdatePick(ctx context.Context, repo Repository, chat messenger.Chat
 	payload, _ := json.Marshal(UpdatePickPayload{Message: message, TransactionID: txID, OldIDs: oldIDs, BeforeRows: beforeRows})
 	if ierr := repo.Insert(&PendingJob{UserID: userID, Kind: KindUpdatePick, Payload: payload}); ierr != nil {
 		slog.ErrorContext(ctx, "enqueue update_pick failed", "user_id", userID, "err", ierr)
-		flow.SendText(ctx, chat, msgCouldNotSave("el cambio"))
+		flow.SendText(ctx, chat, flow.MsgCouldNotSave("el cambio"))
 		return true
 	}
 	bumpNextDrainAt(time.Now().Add(rl.RetryAfter))

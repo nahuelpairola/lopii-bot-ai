@@ -3,8 +3,6 @@ package pendingjob
 import (
 	"fmt"
 	"time"
-
-	"lopiibot.com/internal/flow"
 )
 
 const (
@@ -15,10 +13,6 @@ const (
 const ackShortWaitThreshold = 60 * time.Second
 
 const msgQueuedBehindPending = "Ese también, ya te los cargo 🙌"
-
-func msgCouldNotSave(cosa string) string {
-	return flow.MsgCouldNotSave(cosa)
-}
 
 func AckForWait(d time.Duration) string {
 	if d <= ackShortWaitThreshold {

@@ -94,11 +94,7 @@ func EncodeCandidateGroups(groups []transactionGroup) []interface{} {
 	for _, g := range groups {
 		converted = append(converted, toCandidateGroup(g))
 	}
-	return encodeCandidateGroupList(converted)
-}
-
-func encodeCandidateGroupList(groups []flow.CandidateGroup) []interface{} {
-	return flow.EncodeCandidateGroups(groups)
+	return flow.EncodeCandidateGroups(converted)
 }
 
 type ChangeAsk struct {

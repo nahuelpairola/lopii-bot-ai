@@ -56,7 +56,7 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 			return conversation.Prompt{}, err
 		}
 		if !v.IsZero() {
-			fmt.Fprintf(&sb, msgMonthlyVariation, money(v.Abs(), currency.ARS))
+			fmt.Fprintf(&sb, msgMonthlyVariation, currency.FormatMoney(v.Abs(), currency.ARS))
 		}
 	}
 	_, closingUSD, err := b.accountsCloseBlock(userID, currency.USD, to)
@@ -71,11 +71,11 @@ func (b *Builder) BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Ti
 		diff := closingUSD.Sub(prevClosingUSD)
 		switch {
 		case diff.IsZero():
-			fmt.Fprintf(&sb, msgMonthlyUSDFlat, money(closingUSD, currency.USD))
+			fmt.Fprintf(&sb, msgMonthlyUSDFlat, currency.FormatMoney(closingUSD, currency.USD))
 		case diff.IsPositive():
-			fmt.Fprintf(&sb, msgMonthlyUSDHeld, money(closingUSD, currency.USD), money(diff, currency.USD))
+			fmt.Fprintf(&sb, msgMonthlyUSDHeld, currency.FormatMoney(closingUSD, currency.USD), currency.FormatMoney(diff, currency.USD))
 		default:
-			fmt.Fprintf(&sb, msgMonthlyUSDHeldDn, money(closingUSD, currency.USD), money(diff.Abs(), currency.USD))
+			fmt.Fprintf(&sb, msgMonthlyUSDHeldDn, currency.FormatMoney(closingUSD, currency.USD), currency.FormatMoney(diff.Abs(), currency.USD))
 		}
 	}
 
@@ -117,15 +117,15 @@ func monthQuery(userID uint64, from, to time.Time, typ string) movement.Movement
 
 func openingLines(spent, earned decimal.Decimal) string {
 	if earned.IsZero() {
-		return fmt.Sprintf(msgMonthlyOnlySpent, money(spent, currency.ARS))
+		return fmt.Sprintf(msgMonthlyOnlySpent, currency.FormatMoney(spent, currency.ARS))
 	}
 	left := earned.Sub(spent)
 	if left.IsNegative() {
 		return fmt.Sprintf(msgMonthlyOverspent,
-			money(earned, currency.ARS), money(spent, currency.ARS), money(left.Abs(), currency.ARS))
+			currency.FormatMoney(earned, currency.ARS), currency.FormatMoney(spent, currency.ARS), currency.FormatMoney(left.Abs(), currency.ARS))
 	}
 	return fmt.Sprintf(msgMonthlyInAndOut,
-		money(earned, currency.ARS), money(spent, currency.ARS), money(left, currency.ARS))
+		currency.FormatMoney(earned, currency.ARS), currency.FormatMoney(spent, currency.ARS), currency.FormatMoney(left, currency.ARS))
 }
 
 func perDayLine(spent decimal.Decimal, to time.Time) string {
@@ -133,7 +133,7 @@ func perDayLine(spent decimal.Decimal, to time.Time) string {
 		return ""
 	}
 	perDay := spent.Div(decimal.NewFromInt(int64(daysInMonth(to)))).Round(0)
-	return fmt.Sprintf(msgMonthlyPerDay, money(perDay, currency.ARS))
+	return fmt.Sprintf(msgMonthlyPerDay, currency.FormatMoney(perDay, currency.ARS))
 }
 
 func spendComparison(spent, prevSpent decimal.Decimal, prevTo time.Time) string {
@@ -148,7 +148,7 @@ func spendComparison(spent, prevSpent decimal.Decimal, prevTo time.Time) string 
 	if spent.LessThan(prevSpent) {
 		tpl = msgMonthlySpentLess
 	}
-	return fmt.Sprintf(tpl, money(diff, currency.ARS), constants.MonthLongEs[prevTo.Month()-1])
+	return fmt.Sprintf(tpl, currency.FormatMoney(diff, currency.ARS), constants.MonthLongEs[prevTo.Month()-1])
 }
 
 func balanceAt(deltas []movement.MonthlyDelta, month string) (decimal.Decimal, decimal.Decimal) {
@@ -193,7 +193,7 @@ func (b *Builder) accountsCloseBlock(userID uint64, cur currency.Currency, to ti
 		if delta.IsNegative() {
 			tpl = msgMonthlyAccountDown
 		}
-		lines = append(lines, fmt.Sprintf(tpl, name, money(closing, cur), money(delta.Abs(), cur)))
+		lines = append(lines, fmt.Sprintf(tpl, name, currency.FormatMoney(closing, cur), currency.FormatMoney(delta.Abs(), cur)))
 	}
 	if len(lines) == 0 {
 		return "", totalClosing, nil
@@ -218,7 +218,7 @@ func (b *Builder) dollarLine(spent decimal.Decimal, to time.Time) (string, error
 	usd := spent.Div(q.Ask).Round(0)
 	return fmt.Sprintf(msgMonthlyInDollars,
 		q.Date.Day(), constants.MonthLongEs[q.Date.Month()-1],
-		money(q.Ask, currency.ARS), roundedUSD(usd)), nil
+		currency.FormatMoney(q.Ask, currency.ARS), roundedUSD(usd)), nil
 }
 
 func roundedUSD(d decimal.Decimal) string {
@@ -351,7 +351,7 @@ func monthlyJumpLine(cats, prevCats []movement.CategorySum, prevTo time.Time) st
 
 	c := cats[jumped]
 	name := html.EscapeString(c.Label)
-	amount := money(c.Total, currency.ARS)
+	amount := currency.FormatMoney(c.Total, currency.ARS)
 	prevMonth := constants.MonthLongEs[prevTo.Month()-1]
 	p, seen := prev[c.Label]
 	if !seen || p.IsZero() {
@@ -381,10 +381,10 @@ func (b *Builder) monthlyFold(userID uint64, cats []movement.CategorySum, spent 
 			share = shareWords(frac)
 		}
 		if share != "" {
-			fmt.Fprintf(&sb, msgMonthlyFoldShare, name, money(c.Total, currency.ARS), share)
+			fmt.Fprintf(&sb, msgMonthlyFoldShare, name, currency.FormatMoney(c.Total, currency.ARS), share)
 			continue
 		}
-		fmt.Fprintf(&sb, msgMonthlyFoldRow, name, money(c.Total, currency.ARS))
+		fmt.Fprintf(&sb, msgMonthlyFoldRow, name, currency.FormatMoney(c.Total, currency.ARS))
 	}
 
 	top, err := b.movements.TopExpenseForUser(movement.MovementQuery{
@@ -398,7 +398,7 @@ func (b *Builder) monthlyFold(userID uint64, cats []movement.CategorySum, spent 
 		if top.Description != nil && *top.Description != "" {
 			desc = html.EscapeString(*top.Description)
 		}
-		fmt.Fprintf(&sb, msgMonthlyFoldTop, money(top.Amount.Abs(), currency.ARS), desc)
+		fmt.Fprintf(&sb, msgMonthlyFoldTop, currency.FormatMoney(top.Amount.Abs(), currency.ARS), desc)
 		sb.WriteString("\n")
 	}
 	sb.WriteString(msgMonthlyFoldClose)

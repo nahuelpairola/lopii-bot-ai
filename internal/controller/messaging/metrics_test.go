@@ -43,16 +43,16 @@ func TestResolveMetric_PassesMovementIDs(t *testing.T) {
 const modeUpdate = flow.ModeUpdate
 
 func TestWriteOutcomeFor(t *testing.T) {
-	if got := writeOutcomeFor(conversation.Data{conversation.KeyMode: modeUpdate}); got != outcomeUpdateConfirmed {
+	if got := flow.WriteOutcomeFor(conversation.Data{conversation.KeyMode: modeUpdate}); got != outcomeUpdateConfirmed {
 		t.Errorf("modo update escribió %q, want %q", got, outcomeUpdateConfirmed)
 	}
-	if got := writeOutcomeFor(conversation.Data{}); got != outcomeCreateInserted {
+	if got := flow.WriteOutcomeFor(conversation.Data{}); got != outcomeCreateInserted {
 		t.Errorf("sin modo escribió %q, want %q", got, outcomeCreateInserted)
 	}
-	if got := failureOutcomeFor(conversation.Data{conversation.KeyMode: modeUpdate}); got != outcomeWriteFailed {
+	if got := flow.FailureOutcomeFor(conversation.Data{conversation.KeyMode: modeUpdate}); got != outcomeWriteFailed {
 		t.Errorf("falla en modo update escribió %q, want %q", got, outcomeWriteFailed)
 	}
-	if got := failureOutcomeFor(conversation.Data{}); got != outcomeCreateFailed {
+	if got := flow.FailureOutcomeFor(conversation.Data{}); got != outcomeCreateFailed {
 		t.Errorf("falla sin modo escribió %q, want %q", got, outcomeCreateFailed)
 	}
 }

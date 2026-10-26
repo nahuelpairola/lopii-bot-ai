@@ -5,8 +5,6 @@ import (
 	"errors"
 	"log/slog"
 
-	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
 	"lopiibot.com/internal/trace"
 )
@@ -93,10 +91,6 @@ func intentForExecutor(ex *agentExecutor, runErr error) orchestrator.Intent {
 	default:
 		return orchestrator.IntentUnclear
 	}
-}
-
-func collectMovementIDs(ms []movement.Movement) []uint {
-	return flow.CollectMovementIDs(ms)
 }
 
 func (l *Loop) setQueuedIntent(ctx context.Context, userID uint64, intent orchestrator.Intent) {

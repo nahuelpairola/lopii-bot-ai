@@ -777,7 +777,7 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	for i, p := range chat.Sent {
 		texts[i] = p.Text
 	}
-	want := msgFirstAccountDefault("Galicia", []string{"ARS"})
+	want := flow.MsgFirstAccountDefault("Galicia", []string{"ARS"})
 	if texts[1] != want {
 		t.Errorf("R1 = %q, want %q", texts[1], want)
 	}
@@ -793,12 +793,12 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 }
 
 func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
-	one := msgFirstAccountDefault("Galicia", []string{"USD"})
+	one := flow.MsgFirstAccountDefault("Galicia", []string{"USD"})
 	if !strings.Contains(one, "dólares") {
 		t.Errorf("una moneda: no la nombra: %q", one)
 	}
 
-	two := msgFirstAccountDefault("Galicia", []string{"ARS", "USD"})
+	two := flow.MsgFirstAccountDefault("Galicia", []string{"ARS", "USD"})
 	for _, label := range []string{"pesos", "dólares"} {
 		if !strings.Contains(two, label) {
 			t.Errorf("dos monedas: falta %s: %q", label, two)
@@ -810,7 +810,7 @@ func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
 		}
 	}
 
-	none := msgFirstAccountDefault("Galicia", nil)
+	none := flow.MsgFirstAccountDefault("Galicia", nil)
 	if strings.Contains(none, "  ") || none == "" {
 		t.Errorf("sin monedas quedó un mensaje roto: %q", none)
 	}

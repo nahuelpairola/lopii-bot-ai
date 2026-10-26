@@ -12,10 +12,6 @@ import (
 	"lopiibot.com/internal/orchestrator"
 )
 
-func guessNamesOwnAccount(guess, description string) bool {
-	return flow.GuessNamesOwnAccount(guess, description)
-}
-
 const (
 	modeCreate = flow.ModeCreate
 	modeUpdate = flow.ModeUpdate
@@ -117,7 +113,7 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 			case named != 0:
 				row.AccountID = strconv.FormatUint(named, 10)
 			case guessBackedByMessage(draft.AccountNameGuess, userText) &&
-				guessNamesOwnAccount(draft.AccountNameGuess, draft.Description):
+				flow.GuessNamesOwnAccount(draft.AccountNameGuess, draft.Description):
 				accountGaps = append(accountGaps, idx)
 			}
 		}

@@ -52,7 +52,7 @@ func (l *Loop) StartLoop(ctx context.Context, chat messenger.Chat, userID uint64
 
 	if err != nil {
 		if executor.wrote {
-			l.resolveMetric(ctx, userID, flow.OutcomeCreateInserted, collectMovementIDs(executor.inserted)...)
+			l.resolveMetric(ctx, userID, flow.OutcomeCreateInserted, flow.CollectMovementIDs(executor.inserted)...)
 			flow.SendText(ctx, chat, "Registré lo que me pediste, pero me quedé sin margen para el resto. Mandame de nuevo lo que falte.")
 			slog.WarnContext(ctx, "agent loop failed after a write: not queued", "user_id", userID, "err", err)
 			return nil
@@ -117,7 +117,7 @@ func (l *Loop) resolveAgentLoopMetric(ctx context.Context, userID uint64, ex *ag
 	}
 	switch {
 	case len(ex.inserted) > 0:
-		l.resolveMetric(ctx, userID, flow.OutcomeCreateInserted, collectMovementIDs(ex.inserted)...)
+		l.resolveMetric(ctx, userID, flow.OutcomeCreateInserted, flow.CollectMovementIDs(ex.inserted)...)
 	case ex.reply == msgHelp:
 		l.resolveMetric(ctx, userID, outcomeHelpShown)
 	case ex.reply == MsgAskRewrite:

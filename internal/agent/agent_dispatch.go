@@ -291,7 +291,7 @@ func (l *Loop) resumeAgentAction(ctx context.Context, chat messenger.Chat, userI
 		return l.ProceedToUpdateConfirm(ctx, chat, userID, payload.Change, chosen.TransactionID, chosen.OldIDs, chosen.Rows, ChangeAsk{pickedField: payload.PickedChangeField, gaveValue: payload.GaveChangeValue, answer: payload.ChangeAnswer, field: payload.PickedField})
 	case orchestrator.ToolDeleteMovements:
 		seed := conversation.Data{
-			conversation.KeyCandidateGroups: encodeCandidateGroupList([]flow.CandidateGroup{chosen}),
+			conversation.KeyCandidateGroups: flow.EncodeCandidateGroups([]flow.CandidateGroup{chosen}),
 			conversation.KeyResolvedIndex:   "0",
 		}
 		return flow.StartFlow(ctx, l.engine, chat, userID, flow.MovementDeleteFlowName, seed, "drain: start movement_delete flow")

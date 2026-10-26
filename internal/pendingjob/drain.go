@@ -214,7 +214,7 @@ func replayJob(ctx context.Context, rp Replayer, chat messenger.Chat, userID uin
 
 func msgJobGaveUp(job PendingJob) string {
 	if job.Kind != KindFreeText {
-		return msgCouldNotSave("el cambio")
+		return flow.MsgCouldNotSave("el cambio")
 	}
 	var p FreeTextPayload
 	_ = json.Unmarshal(job.Payload, &p)
@@ -222,5 +222,5 @@ func msgJobGaveUp(job PendingJob) string {
 	if len([]rune(txt)) > 40 {
 		txt = string([]rune(txt)[:40]) + "…"
 	}
-	return msgCouldNotSave("«" + txt + "»")
+	return flow.MsgCouldNotSave("«" + txt + "»")
 }
