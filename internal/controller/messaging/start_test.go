@@ -110,7 +110,7 @@ func TestHandleStart_ValueFirst_NoOnboardingFlow(t *testing.T) {
 	}
 	accountRepo := &fakeAccountRepoFull{}
 
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 
 	c := &controller{
@@ -177,7 +177,7 @@ func TestHandleStart_ExistingUser_DoesNotRestart(t *testing.T) {
 	}
 	accountRepo := &fakeAccountRepoFull{}
 
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 
 	c := &controller{

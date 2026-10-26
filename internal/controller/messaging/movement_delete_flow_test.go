@@ -10,7 +10,7 @@ import (
 )
 
 func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementDeleteFlow())
 
@@ -32,7 +32,7 @@ func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 }
 
 func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementDeleteFlow())
 

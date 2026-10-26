@@ -76,8 +76,8 @@ func (o *fakeFullOrchestrator) ResolveAccountManage(ctx context.Context, text st
 	return o.accountManageResult, o.accountManageErr
 }
 
-func newCreateCategoryController(orch *fakeFullOrchestrator, subs *fakeSubcategoryRepoFull) (*controller, *fakeStoreForController) {
-	store := &fakeStoreForController{}
+func newCreateCategoryController(orch *fakeFullOrchestrator, subs *fakeSubcategoryRepoFull) (*controller, *fakeStateStore) {
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewSubcategorySetupFlow(subs))
 	engine.Register(flow.NewCategoryMatchOfferFlow())
@@ -172,8 +172,8 @@ func TestCreateCategory_LLMErrorFallsToWizard(t *testing.T) {
 	}
 }
 
-func newManageDispatchEngine() (*conversation.Engine, *fakeStoreForController) {
-	store := &fakeStoreForController{}
+func newManageDispatchEngine() (*conversation.Engine, *fakeStateStore) {
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAccountCreateFlow())
 	engine.Register(flow.NewAccountManageFlow(fakeBalanceSummer{}))
@@ -268,7 +268,7 @@ func TestHandleFreeText_CreateCategory_FallsBackToWizard(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{}
 	orch := &fakeFullOrchestrator{runFn: manageSettingsRun(agent.SettingsAreaCategory)}
 
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewSubcategorySetupFlow(subs))
 	engine.Register(flow.NewCategoryMatchOfferFlow())
@@ -318,7 +318,7 @@ func TestStartAccountManage_RepoFailure_IsReported(t *testing.T) {
 
 func TestStartSubcategorySetup_RepoAndWizardFailure_IsReported(t *testing.T) {
 	subs := &fakeSubcategoryRepoFull{allErr: context.DeadlineExceeded}
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{subcategories: subs, orchestrator: &fakeFullOrchestrator{}, engine: engine}
 
@@ -330,7 +330,7 @@ func TestStartSubcategorySetup_RepoAndWizardFailure_IsReported(t *testing.T) {
 }
 
 func TestStartAccountCreate_FlowNotRegistered_IsReported(t *testing.T) {
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{orchestrator: &fakeFullOrchestrator{}, engine: engine}
 
@@ -342,7 +342,7 @@ func TestStartAccountCreate_FlowNotRegistered_IsReported(t *testing.T) {
 }
 
 func TestStartReminderSetup_FlowNotRegistered_IsReported(t *testing.T) {
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	c := &controller{engine: engine, reminders: &fakeReminderRepo{}}
 
@@ -430,7 +430,7 @@ func TestStartAccountCreate_OneAccount_SeedsNameAndBalance(t *testing.T) {
 	orch := &fakeFullOrchestrator{onboardingResult: orchestrator.OnboardingResult{
 		Accounts: []orchestrator.OnboardingAccountDraft{{Name: "Cedears", Currency: "USD", Balance: "1041265"}},
 	}}
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
@@ -453,7 +453,7 @@ func TestStartAccountCreate_OneAccount_SeedsNameAndBalance(t *testing.T) {
 
 func TestStartAccountCreate_NoAccounts_NoSeed(t *testing.T) {
 	orch := &fakeFullOrchestrator{onboardingResult: orchestrator.OnboardingResult{}}
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
@@ -478,7 +478,7 @@ func TestStartAccountCreate_MultipleAccounts_NoSeed(t *testing.T) {
 			{Name: "Efectivo", Currency: "ARS", Balance: "2000"},
 		},
 	}}
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}
@@ -494,7 +494,7 @@ func TestStartAccountCreate_GarbageBalance_SeedsNameOnly(t *testing.T) {
 	orch := &fakeFullOrchestrator{onboardingResult: orchestrator.OnboardingResult{
 		Accounts: []orchestrator.OnboardingAccountDraft{{Name: "Cripto", Currency: "USD", Balance: "no-es-numero"}},
 	}}
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine}

@@ -27,14 +27,14 @@ func prevAccount(id uint64, name string) *account.Account {
 	return &a
 }
 
-func newDefaultController(prev *account.Account, prevBalance string) (*controller, *fakeAccountRepoFull, *fakeMovementRepoFull, *fakeStoreForController) {
+func newDefaultController(prev *account.Account, prevBalance string) (*controller, *fakeAccountRepoFull, *fakeMovementRepoFull, *fakeStateStore) {
 	accRepo := &fakeAccountRepoFull{byCurrency: map[currency.Currency]*account.Account{}}
 	movRepo := &fakeMovementRepoFull{balances: map[uint64]string{}}
 	if prev != nil {
 		accRepo.byCurrency[currency.ARS] = prev
 		movRepo.balances[uint64(prev.ID)] = prevBalance
 	}
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAccountMoveOfferFlow())
 	c := &controller{accounts: accRepo, movements: movRepo, engine: engine, metrics: &fakeMetricRepo{}}

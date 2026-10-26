@@ -80,7 +80,7 @@ func TestFinishAccountManage_Cancelled_NoWrite(t *testing.T) {
 
 func TestFinishAccountManage_CreateNew_StartsCreate(t *testing.T) {
 	orch := &fakeFullOrchestrator{}
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewAccountCreateFlow())
 	c := &controller{orchestrator: orch, engine: engine, metrics: &fakeMetricRepo{}}

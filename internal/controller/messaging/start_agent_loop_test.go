@@ -12,7 +12,7 @@ import (
 
 func newLoopController(t *testing.T, orch *fakeFullOrchestrator, repo *fakeActionsRepo, movements *fakeMovementRepoFull) *controller {
 	t.Helper()
-	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine := conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" })
 	engine.Register(flow.NewAskUserFlow())
 	engine.Register(flow.NewMovementDeleteFlow())
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
