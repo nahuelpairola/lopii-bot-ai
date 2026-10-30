@@ -44,7 +44,7 @@ func TestResolveAndInsertMovements_Compound_SharesTransactionID(t *testing.T) {
 	subRepo := &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{
 		"Inversiones|Compra USD": newSubForTest(2, "Inversiones", "Compra USD"),
 	}}
-	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(7, currency.USD, false)}}
+	accRepo := &fakeAccountRepoFull{byUserID: []account.Account{acct(1, currency.ARS, true), acct(7, currency.USD, true)}}
 	movRepo := &fakeMovementRepoFull{}
 	svc := &fakeServices{subcategories: subRepo, accounts: accRepo, movements: movRepo}
 
@@ -52,7 +52,7 @@ func TestResolveAndInsertMovements_Compound_SharesTransactionID(t *testing.T) {
 		{Type: "transfer", Amount: "140000", Currency: "ARS", Category: "Inversiones", Subcategory: "Compra USD", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(1), Group: "g1"},
 		{Type: "transfer", Amount: "100", Currency: "USD", Category: "Inversiones", Subcategory: "Compra USD", Description: "Compra USD", Date: "2026-07-02", AccountID: uint64Ptr(7), Group: "g1"},
 	}}
-	data := buildCreateSeed(result, nil, nil, "")
+	data := buildCreateSeed(result, nil, accRepo.byUserID, "")
 	data[conversation.UserIDKey] = uint64(1)
 
 	if _, err := svc.ResolveAndInsertMovements(data); err != nil {

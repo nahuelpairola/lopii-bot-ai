@@ -180,3 +180,20 @@ func TestCheckBalances_StaysNonNegativeDoesNotFire(t *testing.T) {
 		t.Fatalf("outflow staying >= 0 must not fire; got %+v", s)
 	}
 }
+
+func TestNormalize_TransferLegWithoutAccountTakesItsCurrencyDefault(t *testing.T) {
+	byID, def := accountsMap(acct(43, currency.ARS, true), acct(44, currency.USD, true), acct(46, currency.USD, false))
+	tx := uuid.New()
+	ars := uint64(43)
+	movs := []Movement{
+		{TransactionID: &tx, Type: Transfer, Amount: decimal.NewFromInt(-1791355), Currency: currency.ARS, AccountID: &ars},
+		{TransactionID: &tx, Type: Transfer, Amount: decimal.NewFromInt(1129), Currency: currency.USD},
+	}
+	out, err := Normalize(movs, byID, def)
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	if out[1].AccountID == nil || *out[1].AccountID != 44 {
+		t.Errorf("USD leg account = %v, want the USD default 44", out[1].AccountID)
+	}
+}
