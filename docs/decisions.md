@@ -162,7 +162,36 @@ both directions with one rule.
 
 **Rejected:** lowering `TokenCoverage`'s 4-rune floor so an account named `FCI` resolves from the
 message. The helper is shared with `GuessNamesOwnAccount` and reference resolution; all 8 measured
-`FCI` rows are transfers, which are exempt. The limitation is documented instead.
+`FCI` rows are transfers. Those resolve through a whole-word match instead (2026-10-30, below).
+
+### Why a transfer leg's `account_id` needs backing too (2026-10-30)
+
+User 2 sent "Compra de 1129,48 usd por 1586 pesos cada dólar". No account was named, and the USD
+landed in `FCI` USD instead of the USD default. Two minutes earlier the same message (rate 1568)
+had gone to the default: gpt-oss-120b sent `44`, while the retry on gpt-oss-20b sent `46` with
+`account_name_guess: "FCI (USD)"`. "Transferencia a FCI" was in that morning's history. The
+2026-08-22 exemption trusted every transfer id, so nothing stopped it.
+
+Replaying all 82 transfer legs `llm_calls` holds (since 2026-08-13) through the new rule:
+78 unchanged, 2 to the default (both the invented `FCI` USD on a dollar purchase), and 2 asked
+(`jubilación`, which is not an account and which the model mapped to `Inversión`; and the typo `dci`).
+
+**Rejected:** "always the default unless named". Case: user 3, "El 05/10 compré 200 USD por
+$1545" → `Banco Galicia` ARS → `Banco Galicia` USD. The ARS leg is not the default and is not
+named, but it is right: the purchase happens inside the bank that holds the dollars, and the
+user never corrected it. Hence the third backing: same name as the other leg's account in the
+other currency.
+
+**Rejected:** coverage alone as "named in the message". "de fci a mercadopago" (8 real legs)
+would drop `FCI`, since it is under the 4-rune floor, and both legs would collide on the
+default. Exact whole-word equality covers it without touching the floor.
+
+**Measured live afterwards** (`TestTransferAccountEval`, tag `llm_eval`, 3 runs per case on
+gpt-oss-20b and 120b): neither model reproduced the invented `FCI` (0 of 17 runs that answered; one 20b run died on a 429). Both did the reverse:
+for "compré 100 usd en efectivo a 1500" they sent the USD **default** (`44`) in 6/6 runs, and the
+backing rule accepted it because it is the default. That is why a leg alone in its currency now
+takes the account the message names before looking at the model's id. A name that exists in both
+currencies (`fci`) decides nothing, because the message cannot say which leg it meant.
 
 - **An eval can be impossible by construction, and look merely red (2026-08-12).** Nine cases of
   the agent-loop eval expected `find_movements_to_correct`, which is *only a constant* — it was
