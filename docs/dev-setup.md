@@ -96,7 +96,7 @@ vulnerability in code the bot reaches turns CI red on an unrelated PR; the fix i
 |---|---|---|
 | `integration` | local Postgres (`docker compose up -d`) | 11 files. Drains and writes real rows |
 | `conv_test` | local Postgres (`docker compose up -d`) | 4 files. Skips itself when Postgres is down |
-| `llm_eval` | `GROQ_APIKEY` | 3 files, `internal/orchestrator` |
+| `llm_eval` | `GROQ_APIKEY` | 4 files: 3 in `internal/orchestrator`, 1 in `internal/agent` (transfer-leg account) |
 | `query_eval` | `GROQ_APIKEY` **and** Postgres | 1 file |
 
 Both eval suites **fail loudly when `GROQ_APIKEY` is unset** rather than skipping in silence: the

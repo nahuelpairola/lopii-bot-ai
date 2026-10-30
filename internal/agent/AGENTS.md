@@ -21,24 +21,24 @@ two-leg transfer from splitting. When the turn can't finish it *parks* instead:
 `conversation.KeyGatePrompt` in the seed is what tells the two apart when the action is picked back
 up. Same park, different meaning — read it before adding a third case.
 
-## The account of an expense is resolved from the MESSAGE, never from the model
+## The account is resolved from the MESSAGE, never from the model
 
-`account_id` in a `record_movements` draft is honored **only on `transfer` legs**
-(`seed.go`, `buildCreateSeed`). On `expense`/`income` it is dropped and the account is
-resolved by `accountNamedInMessage` against the user's raw text.
+`account_id` in a `record_movements` draft is dropped on `expense`/`income` (`seed.go`,
+`buildCreateSeed`); the account comes from `accountNamedInMessage` on the raw text. The model
+fills it unasked, by position in the prompt's account block (ordered by id, no default marked).
 
-This looks like distrust of a field that works. It is not: the model fills `account_id` on most
-expenses whether or not the user named one, picking by position in the prompt's account block —
-ordered by id, with no default marked. A user whose first ARS row is their default sees no bug;
-a user whose first row is some other account gets their expenses written to it.
+A `transfer` leg alone in its currency (a dollar purchase) takes the account the message names,
+over the model's id: the model sends the default even after "en efectivo". A name that exists in
+both currencies (`fci`) decides nothing. Otherwise the model's id stays only if backed: the
+default, named (`accountBackedByMessage`, whose **whole-word** match resolves `fci` without
+lowering `TokenCoverage`'s 4-rune floor), or same name as the other leg's account in the other
+currency. Unbacked → empty, `Normalize` writes the default; no default, or the default is already
+the other leg → gap. Never let a collision reach `validateTransferGroups`.
 
-**Two rules hang off this and both are load-bearing:**
-
-- The match requires coverage of **1.0** — every token of the account name present in the message.
-  "Some token" matches `Mercado Pago` against `pago de monotributo`, the most common message shape.
-- `matchNamedAccount` is called **only** from the `transfer` branch. In the other branch it is
-  unreachable by construction: it requires an exact name match, so anything it could resolve
-  `accountNamedInMessage` already found. Calling it there is dead code that reads as live.
+- Coverage must be **1.0**: "some token" matches `Mercado Pago` against `pago de monotributo`,
+  the most common message shape.
+- `matchNamedAccount` is called **only** from the `transfer` branch; elsewhere it is dead code
+  that reads as live (`accountNamedInMessage` already finds anything it could resolve).
 
 `account_name_guess` survives for one job only — naming an account that does **not exist yet**
 ("pagué el curso con Brubank") so the gap can offer to create it; ignored unless the message backs

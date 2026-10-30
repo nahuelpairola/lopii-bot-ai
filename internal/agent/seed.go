@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"lopiibot.com/internal/account"
 	"lopiibot.com/internal/constants"
@@ -67,9 +69,143 @@ func guessBackedByMessage(guess, msg string) bool {
 
 const fullCoverage = 1.0
 
+func transferAccountTrusted(id uint64, cur string, accounts []account.Account, msg string) bool {
+	for _, a := range accounts {
+		if uint64(a.ID) != id {
+			continue
+		}
+		return a.Currency.String() == cur && (a.IsDefault || accountBackedByMessage(a, msg))
+	}
+	return false
+}
+
+func accountBackedByMessage(a account.Account, msg string) bool {
+	haystack := foldAccents(strings.ToLower(msg))
+	if haystack == "" {
+		return false
+	}
+	if flow.TokenCoverage(a.Name, haystack) >= fullCoverage {
+		return true
+	}
+	nameWords := strings.FieldsFunc(foldAccents(strings.ToLower(a.Name)), notWordRune)
+	if len(nameWords) == 0 {
+		return false
+	}
+	msgWords := make(map[string]bool)
+	for _, w := range strings.FieldsFunc(haystack, notWordRune) {
+		msgWords[w] = true
+	}
+	for _, w := range nameWords {
+		if !msgWords[w] {
+			return false
+		}
+	}
+	return true
+}
+
+func defaultAccountID(accounts []account.Account, cur string) string {
+	for _, a := range accounts {
+		if a.IsDefault && a.Currency.String() == cur {
+			return strconv.FormatUint(uint64(a.ID), 10)
+		}
+	}
+	return ""
+}
+
+func soleAccountNamedInMessage(msg string, accounts []account.Account, cur string) uint64 {
+	var found uint64
+	for _, a := range accounts {
+		if a.Currency.String() != cur || !accountBackedByMessage(a, msg) {
+			continue
+		}
+		if found != 0 || nameExistsInOtherCurrency(a, accounts) {
+			return 0
+		}
+		found = uint64(a.ID)
+	}
+	return found
+}
+
+func nameExistsInOtherCurrency(a account.Account, accounts []account.Account) bool {
+	name := foldAccents(strings.ToLower(a.Name))
+	for _, other := range accounts {
+		if other.Currency != a.Currency && foldAccents(strings.ToLower(other.Name)) == name {
+			return true
+		}
+	}
+	return false
+}
+
+func groupCurrencyKey(group, cur string) string { return group + "|" + cur }
+
+func legsPerGroupCurrency(drafts []orchestrator.MovementDraft) map[string]int {
+	counts := make(map[string]int)
+	for _, d := range drafts {
+		if d.Type == constants.Transfer {
+			counts[groupCurrencyKey(d.Group, d.Currency)]++
+		}
+	}
+	return counts
+}
+
+func findAccount(accounts []account.Account, id uint64) (account.Account, bool) {
+	for _, a := range accounts {
+		if uint64(a.ID) == id {
+			return a, true
+		}
+	}
+	return account.Account{}, false
+}
+
+func sameInstitutionAsOtherLeg(rows []movement.MovementRow, i int, modelID uint64, defaulted map[int]uint64, accounts []account.Account) bool {
+	mine, ok := findAccount(accounts, modelID)
+	if !ok || mine.Currency.String() != rows[i].Currency {
+		return false
+	}
+	for j, other := range rows {
+		if _, pending := defaulted[j]; pending || j == i || other.Type != constants.Transfer || other.Group != rows[i].Group || other.AccountID == "" {
+			continue
+		}
+		id, err := strconv.ParseUint(other.AccountID, 10, 64)
+		if err != nil {
+			continue
+		}
+		sibling, ok := findAccount(accounts, id)
+		if ok && sibling.Currency != mine.Currency &&
+			foldAccents(strings.ToLower(sibling.Name)) == foldAccents(strings.ToLower(mine.Name)) {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultFitsTransferLeg(rows []movement.MovementRow, i int, defaulted map[int]uint64, accounts []account.Account) bool {
+	def := defaultAccountID(accounts, rows[i].Currency)
+	if def == "" {
+		return false
+	}
+	for j, other := range rows {
+		if j == i || other.Type != constants.Transfer || other.Group != rows[i].Group {
+			continue
+		}
+		otherID := other.AccountID
+		if _, pending := defaulted[j]; pending {
+			otherID = defaultAccountID(accounts, other.Currency)
+		}
+		if otherID == def {
+			return false
+		}
+	}
+	return true
+}
+
+func notWordRune(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }
+
 func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.TaxonomyEntry, accounts []account.Account, userText string) conversation.Data {
 	rows := make([]movement.MovementRow, 0, len(result.Movements))
 	var categoryGaps, accountGaps []string
+	defaulted := make(map[int]uint64)
+	legCounts := legsPerGroupCurrency(result.Movements)
 
 	known := make(map[string]bool, len(taxonomy))
 	for _, t := range taxonomy {
@@ -88,22 +224,29 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 			Date:             draft.Date,
 			Group:            draft.Group,
 		}
-		if draft.AccountID != nil && draft.Type == constants.Transfer {
-			row.AccountID = strconv.FormatUint(*draft.AccountID, 10)
-		}
-
 		idx := strconv.Itoa(i)
 		if draft.Category == constants.PendingReview || (len(known) > 0 && !known[draft.Category+"\x00"+draft.Subcategory]) {
 			categoryGaps = append(categoryGaps, idx)
 		}
 
 		if draft.Type == constants.Transfer {
-			if draft.AccountID == nil {
+			named := uint64(0)
+			if legCounts[groupCurrencyKey(draft.Group, draft.Currency)] == 1 {
+				named = soleAccountNamedInMessage(userText, accounts, draft.Currency)
+			}
+			switch {
+			case named != 0:
+				row.AccountID = strconv.FormatUint(named, 10)
+			case draft.AccountID == nil:
 				if id := matchNamedAccount(draft.AccountNameGuess, accounts, draft.Currency); id != 0 {
 					row.AccountID = strconv.FormatUint(id, 10)
 				} else {
 					accountGaps = append(accountGaps, idx)
 				}
+			case transferAccountTrusted(*draft.AccountID, draft.Currency, accounts, userText):
+				row.AccountID = strconv.FormatUint(*draft.AccountID, 10)
+			default:
+				defaulted[i] = *draft.AccountID
 			}
 		} else {
 			named, ambiguous := accountNamedInMessage(userText, accounts, draft.Currency)
@@ -120,6 +263,23 @@ func buildCreateSeed(result orchestrator.CreateResult, taxonomy []orchestrator.T
 
 		rows = append(rows, row)
 	}
+
+	for i := range rows {
+		if modelID, pending := defaulted[i]; pending && sameInstitutionAsOtherLeg(rows, i, modelID, defaulted, accounts) {
+			rows[i].AccountID = strconv.FormatUint(modelID, 10)
+			delete(defaulted, i)
+		}
+	}
+	for i := range rows {
+		if _, pending := defaulted[i]; pending && !defaultFitsTransferLeg(rows, i, defaulted, accounts) {
+			accountGaps = append(accountGaps, strconv.Itoa(i))
+		}
+	}
+	slices.SortFunc(accountGaps, func(a, b string) int {
+		x, _ := strconv.Atoi(a)
+		y, _ := strconv.Atoi(b)
+		return x - y
+	})
 
 	return conversation.Data{
 		conversation.KeyMode:                modeCreate,

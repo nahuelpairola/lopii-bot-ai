@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -222,7 +223,179 @@ func TestBuildCreateSeed_OneNamedAccountAppliesToEveryRowOfTheTurn(t *testing.T)
 	}
 }
 
-func TestBuildCreateSeed_TransferStillUsesModelAccountID(t *testing.T) {
+func accountsUser2() []account.Account {
+	return []account.Account{
+		{Model: gorm.Model{ID: 43}, Name: "Mercado Pago", Currency: currency.ARS, IsDefault: true},
+		{Model: gorm.Model{ID: 44}, Name: "Mercado Pago", Currency: currency.USD, IsDefault: true},
+		{Model: gorm.Model{ID: 45}, Name: "FCI", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 46}, Name: "FCI", Currency: currency.USD},
+		{Model: gorm.Model{ID: 47}, Name: "Inversión", Currency: currency.ARS},
+		{Model: gorm.Model{ID: 48}, Name: "Efectivo", Currency: currency.USD},
+	}
+}
+
+func transferDrafts(outID, inID *uint64, outCur, inCur, inGuess string) orchestrator.CreateResult {
+	return orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
+		{Type: "transfer", Amount: "-1000", Currency: outCur, AccountID: outID,
+			Description: "transferencia", Date: "2026-10-29", Group: "t1"},
+		{Type: "transfer", Amount: "1000", Currency: inCur, AccountID: inID, AccountNameGuess: inGuess,
+			Description: "transferencia", Date: "2026-10-29", Group: "t1"},
+	}}
+}
+
+func TestBuildCreateSeed_TransferLegAccountComesFromTheMessageOrTheDefault(t *testing.T) {
+	tests := []struct {
+		name     string
+		userText string
+		result   orchestrator.CreateResult
+		accounts []account.Account
+		wantOut  string
+		wantIn   string
+		wantGaps []string
+	}{
+		{
+			name:     "compra de dólares sin cuenta nombrada: el modelo inventa FCI USD y cae en la default",
+			userText: "Compra de 1129,48 usd por 1586 pesos cada dólar",
+			result:   transferDrafts(acctID(43), acctID(46), "ARS", "USD", "FCI (USD)"),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "",
+		},
+		{
+			name:     "otra compra de dólares real con FCI USD inventado",
+			userText: "Hoy compré 20usd por 30900.",
+			result:   transferDrafts(acctID(43), acctID(46), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "",
+		},
+		{
+			name:     "compra de dólares en el mismo banco: la pierna ARS hermana de la USD default se respeta",
+			userText: "El 05/10 compré 200 USD por $1545",
+			result:   transferDrafts(acctID(25), acctID(26), "ARS", "USD", ""),
+			accounts: accountsUser3(),
+			wantOut:  "25", wantIn: "26",
+		},
+		{
+			name:     "compra de dólares a las dos default: se respetan",
+			userText: "Compra de 1129,48 usd por 1568 pesos cada dólar",
+			result:   transferDrafts(acctID(43), acctID(44), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "44",
+		},
+		{
+			name:     "FCI nombrado como palabra corta + default",
+			userText: "Transferencia de 1129,48 usd a fci",
+			result:   transferDrafts(acctID(44), acctID(46), "USD", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "44", wantIn: "46",
+		},
+		{
+			name:     "las dos nombradas, con acento plegado",
+			userText: "pasé 1000 de mercado pago a inversion",
+			result:   transferDrafts(acctID(43), acctID(47), "ARS", "ARS", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "47",
+		},
+		{
+			name:     "cuenta no default nombrada: se respeta",
+			userText: "compré 100 usd en efectivo a 1500",
+			result:   transferDrafts(acctID(43), acctID(48), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "48",
+		},
+		{
+			name:     "cuenta no default sin nombrar: cae en la default",
+			userText: "compré 100 usd a 1500",
+			result:   transferDrafts(acctID(43), acctID(48), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "",
+		},
+		{
+			name:     "id de otra moneda en la pierna USD: cae en la default",
+			userText: "compré 100 usd a 1500",
+			result:   transferDrafts(acctID(43), acctID(45), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "",
+		},
+		{
+			name:     "id que no está entre las cuentas vivas: cae en la default",
+			userText: "compré 100 usd a 1500",
+			result:   transferDrafts(acctID(43), acctID(999), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "",
+		},
+		{
+			name:     "la default de la pierna sin respaldo ya es la otra pierna: pregunta",
+			userText: "pasé 1000 a mercado pago",
+			result:   transferDrafts(acctID(47), acctID(43), "ARS", "ARS", ""),
+			accounts: accountsUser2(),
+			wantOut:  "", wantIn: "43", wantGaps: []string{"0"},
+		},
+		{
+			name:     "sin default en la moneda: pregunta",
+			userText: "compré 100 usd a 1500",
+			result:   transferDrafts(acctID(43), acctID(46), "ARS", "USD", ""),
+			accounts: withoutDefault(accountsUser2(), currency.USD),
+			wantOut:  "43", wantIn: "", wantGaps: []string{"1"},
+		},
+		{
+			name:     "palabra que contiene el nombre corto no lo respalda",
+			userText: "pasé 1000 al fcil",
+			result:   transferDrafts(acctID(43), acctID(45), "ARS", "ARS", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "", wantGaps: []string{"1"},
+		},
+		{
+			name:     "compra de dólares nombrando la cuenta USD: le gana a la default que mandó el modelo",
+			userText: "compré 100 usd en efectivo a 1500",
+			result:   transferDrafts(acctID(43), acctID(44), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "48",
+		},
+		{
+			name:     "un nombre que existe en las dos monedas no decide ninguna pierna",
+			userText: "compré 100 usd y los dejo en el fci",
+			result:   transferDrafts(acctID(43), acctID(44), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "44",
+		},
+		{
+			name:     "compra de dólares nombrando la cuenta ARS de origen",
+			userText: "compré 100 usd con plata de inversion",
+			result:   transferDrafts(acctID(43), acctID(44), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "47", wantIn: "44",
+		},
+		{
+			name:     "la cuenta nombrada sin id del modelo también gana",
+			userText: "compré 100 usd en efectivo a 1500",
+			result:   transferDrafts(acctID(43), nil, "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "48",
+		},
+		{
+			name:     "dos cuentas de la misma moneda nombradas: no se elige ninguna por el mensaje",
+			userText: "compré 100 usd con fci e inversion",
+			result:   transferDrafts(acctID(43), acctID(44), "ARS", "USD", ""),
+			accounts: accountsUser2(),
+			wantOut:  "43", wantIn: "44",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := buildCreateSeed(tt.result, nil, tt.accounts, tt.userText)
+			rows := movement.DecodeMovementRows(data)
+			if rows[0].AccountID != tt.wantOut || rows[1].AccountID != tt.wantIn {
+				t.Errorf("piernas = %q / %q, want %q / %q", rows[0].AccountID, rows[1].AccountID, tt.wantOut, tt.wantIn)
+			}
+			gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps)
+			if strings.Join(gaps, ",") != strings.Join(tt.wantGaps, ",") {
+				t.Errorf("gaps = %v, want %v", gaps, tt.wantGaps)
+			}
+		})
+	}
+}
+
+func TestBuildCreateSeed_TransferKeepsModelAccountWhenMessageNamesIt(t *testing.T) {
 	result := orchestrator.CreateResult{Movements: []orchestrator.MovementDraft{
 		{Type: "transfer", Amount: "-90000", Currency: "ARS", AccountID: acctID(28),
 			Description: "transferencia", Date: "2026-08-22", Group: "t1"},
@@ -238,5 +411,51 @@ func TestBuildCreateSeed_TransferStillUsesModelAccountID(t *testing.T) {
 	}
 	if gaps := conversation.DecodeStringSlice(data, conversation.KeyPendingAccountGaps); len(gaps) != 0 {
 		t.Errorf("un transfer con las dos cuentas resueltas no pregunta, gaps = %v", gaps)
+	}
+}
+
+func TestAccountBackedByMessage(t *testing.T) {
+	fci := account.Account{Name: "FCI", Currency: currency.ARS}
+	mp := account.Account{Name: "Mercado Pago", Currency: currency.ARS}
+	inv := account.Account{Name: "Inversión", Currency: currency.ARS}
+	tests := []struct {
+		name string
+		acc  account.Account
+		msg  string
+		want bool
+	}{
+		{"nombre corto como palabra entera", fci, "Transferencia de 1129,48 usd a fci", true},
+		{"nombre corto pegado a puntuación", fci, "pasé 1000 al FCI.", true},
+		{"nombre corto dentro de otra palabra no cuenta", fci, "pasé 1000 al fcil", false},
+		{"nombre de dos palabras escrito junto", mp, "de fci a mercadopago", true},
+		{"mayúsculas se pliegan", mp, "PASÉ 1000 A MERCADO PAGO", true},
+		{"pago de monotributo NO es Mercado Pago", mp, "pago de monotributo 5000", false},
+		{"acentos se pliegan", inv, "pasé 1000 a inversion", true},
+		{"el mensaje no la nombra", fci, "Compra de 1129,48 usd por 1586 pesos cada dólar", false},
+		{"mensaje vacío", fci, "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := accountBackedByMessage(tt.acc, tt.msg); got != tt.want {
+				t.Errorf("accountBackedByMessage(%q, %q) = %v, want %v", tt.acc.Name, tt.msg, got, tt.want)
+			}
+		})
+	}
+}
+
+func withoutDefault(accounts []account.Account, cur currency.Currency) []account.Account {
+	for i := range accounts {
+		if accounts[i].Currency == cur {
+			accounts[i].IsDefault = false
+		}
+	}
+	return accounts
+}
+
+func TestBuildCreateSeed_SameInstitutionPairNeedsOneTrustedLeg(t *testing.T) {
+	data := buildCreateSeed(transferDrafts(acctID(45), acctID(46), "ARS", "USD", ""), nil, accountsUser2(), "Compra de 100 usd por 1500 pesos cada dólar")
+	rows := movement.DecodeMovementRows(data)
+	if rows[0].AccountID != "" || rows[1].AccountID != "" {
+		t.Errorf("piernas = %q / %q, want las dos a la default: un par FCI ARS → FCI USD sin ancla es justo el inventado", rows[0].AccountID, rows[1].AccountID)
 	}
 }
