@@ -155,6 +155,20 @@ func (r *repository) SoftDeleteByIDs(ids []uint) error {
 	return r.db.DB.Where("id IN ?", ids).Delete(&Movement{}).Error
 }
 
+type PurgedMovement struct {
+	ID     uint
+	UserID uint64
+}
+
+func (r *repository) PurgeSoftDeletedBefore(cutoff time.Time) ([]PurgedMovement, error) {
+	var purged []PurgedMovement
+	err := r.db.DB.Raw(
+		"DELETE FROM movements WHERE deleted_at IS NOT NULL AND deleted_at < ? RETURNING id, user_id",
+		cutoff,
+	).Scan(&purged).Error
+	return purged, err
+}
+
 func (r *repository) SoftDeleteByUserID(userID uint64) error {
 	return r.db.DB.Where("user_id = ?", userID).Delete(&Movement{}).Error
 }

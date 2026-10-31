@@ -97,7 +97,7 @@ this file is not. Implementing something includes updating the harness in the sa
 
 ## Where to look when something breaks in production
 
-Three trace tables, joined by `trace_id`, kept 90 days by the sweeper (`retentionDays`):
+Three trace tables, joined by `trace_id`, kept 60 days by the sweeper (`retentionDays`):
 
 | Question | Table | Columns that answer it |
 |---|---|---|
@@ -110,7 +110,7 @@ Three trace tables, joined by `trace_id`, kept 90 days by the sweeper (`retentio
 `update_type = replay` marks a job the 429 drain replayed, not a message the user typed again —
 the queue's latency does not mix into real traffic.
 
-**Never read these three tables for feature logic.** They are telemetry: rows vanish after 90
+**Never read these three tables for feature logic.** They are telemetry: rows vanish after 60
 days, so a product question asked of them returns an incomplete answer *without failing*. Domain
 tables are what answer questions about a user's money.
 
