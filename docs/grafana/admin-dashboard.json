@@ -108,7 +108,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -281,10 +281,11 @@
               },
               "options": {
                 "cellHeight": "sm",
-                "showHeader": true
+                "showHeader": true,
+                "zebraStriping": false
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -366,7 +367,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -448,7 +449,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -522,10 +523,11 @@
               },
               "options": {
                 "cellHeight": "sm",
-                "showHeader": true
+                "showHeader": true,
+                "zebraStriping": false
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -614,7 +616,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -696,7 +698,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -785,7 +787,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -908,10 +910,11 @@
               },
               "options": {
                 "cellHeight": "sm",
-                "showHeader": true
+                "showHeader": true,
+                "zebraStriping": false
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -1025,10 +1028,11 @@
               },
               "options": {
                 "cellHeight": "sm",
-                "showHeader": true
+                "showHeader": true,
+                "zebraStriping": false
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -1191,7 +1195,7 @@
                 }
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -1280,7 +1284,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -1369,7 +1373,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -1577,7 +1581,7 @@
               "transformations": []
             }
           },
-          "description": "Lee del catálogo en O(1) en vez de tres count(*) full-scan cada 5 minutos. La retención la corre el Sweeper en Go (90 días, internal/notifier/sweeper.go), no pg_cron.",
+          "description": "Lee del catálogo en O(1) en vez de tres count(*) full-scan cada 5 minutos. La retención la corre el Sweeper en Go (60 días, internal/notifier/sweeper.go), no pg_cron.",
           "id": 303,
           "links": [],
           "title": "Tamaño tablas de métricas",
@@ -1707,7 +1711,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -2330,7 +2334,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -2419,7 +2423,7 @@
                 "wideLayout": true
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -2588,10 +2592,11 @@
               },
               "options": {
                 "cellHeight": "sm",
-                "showHeader": true
+                "showHeader": true,
+                "zebraStriping": false
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -2796,7 +2801,7 @@
                 }
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       },
@@ -2965,7 +2970,7 @@
                 }
               }
             },
-            "version": "13.2.0-31775358088"
+            "version": "13.3.0-40609721817"
           }
         }
       }
@@ -3435,7 +3440,7 @@
         "1d"
       ],
       "fiscalYearStartMonth": 0,
-      "from": "now-12h",
+      "from": "now-2d",
       "hideTimepicker": false,
       "timezone": "browser",
       "to": "now"
