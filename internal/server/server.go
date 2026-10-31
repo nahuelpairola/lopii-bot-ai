@@ -99,7 +99,7 @@ func InitServer(ctx context.Context, conf *config.Config) error {
 	quoteRepo := quote.NewRepository(conn)
 	summaryBuilder := summary.NewBuilder(movementRepo, accountRepo, subcategoryCache, quoteRepo)
 	quoteClient := quote.NewClient(quote.Config{TimeoutSeconds: quoteTimeoutSeconds})
-	sweeper := notifier.NewSweeper(tgTransport, reminderRepo, movementRepo, userRepo, metricRepo, summaryBuilder, quoteRepo, quoteClient)
+	sweeper := notifier.NewSweeper(tgTransport, reminderRepo, movementRepo, userRepo, metricRepo, movementRepo, summaryBuilder, quoteRepo, quoteClient)
 	go sweeper.Run(context.Background(), time.Duration(conf.Reminders.SweepIntervalMinutes)*time.Minute)
 
 	drainDone := make(chan struct{})

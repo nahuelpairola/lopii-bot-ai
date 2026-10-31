@@ -50,6 +50,10 @@ type retentionStore interface {
 	DeleteOlderThan(cutoff time.Time) error
 }
 
+type movementPurger interface {
+	PurgeSoftDeletedBefore(cutoff time.Time) ([]movement.PurgedMovement, error)
+}
+
 type summaryReader interface {
 	Build(userID uint64, from, to, prevFrom, prevTo time.Time) (string, error)
 	BuildMonthly(userID uint64, from, to, prevFrom, prevTo time.Time) (conversation.Prompt, error)
@@ -68,13 +72,18 @@ type quoteClient interface {
 	FetchCPI() ([]quote.CPI, error)
 }
 
-const retentionDays = 90
+const (
+	retentionDays            = 60
+	softDeletedRetentionDays = 90
+)
 
 type Sweeper struct {
 	reminders        reminderStore
 	movements        movementReader
 	users            userReader
 	retention        retentionStore
+	purger           movementPurger
+	purgeRanOn       time.Time
 	summaries        summaryReader
 	quotes           quoteStore
 	quoteAPI         quoteClient
@@ -88,12 +97,13 @@ type Sweeper struct {
 	now              func() time.Time
 }
 
-func NewSweeper(chats chatResolver, r reminderStore, m movementReader, u userReader, ret retentionStore, sum summaryReader, q quoteStore, qa quoteClient) *Sweeper {
+func NewSweeper(chats chatResolver, r reminderStore, m movementReader, u userReader, ret retentionStore, p movementPurger, sum summaryReader, q quoteStore, qa quoteClient) *Sweeper {
 	return &Sweeper{
 		reminders: r,
 		movements: m,
 		users:     u,
 		retention: ret,
+		purger:    p,
 		summaries: sum,
 		quotes:    q,
 		quoteAPI:  qa,
@@ -118,6 +128,7 @@ func (s *Sweeper) Run(ctx context.Context, interval time.Duration) {
 func (s *Sweeper) tick(ctx context.Context, now time.Time) {
 	s.sweepReminders(ctx, now)
 	s.sweepRetention(now)
+	s.sweepSoftDeletedMovements(now)
 	sentMonthly := s.sweepMonthlySummary(ctx, now)
 	s.sweepWeeklySummary(ctx, now, sentMonthly)
 	s.sweepQuotes(ctx, now)
@@ -131,6 +142,32 @@ func (s *Sweeper) sweepRetention(now time.Time) {
 	if err := s.retention.DeleteOlderThan(now.AddDate(0, 0, -retentionDays)); err != nil {
 		slog.Error("notifier retention purge failed", "err", err)
 	}
+}
+
+func (s *Sweeper) sweepSoftDeletedMovements(now time.Time) {
+	if s.purger == nil {
+		return
+	}
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	if s.purgeRanOn.Equal(today) {
+		return
+	}
+	cutoff := now.AddDate(0, 0, -softDeletedRetentionDays)
+	purged, err := s.purger.PurgeSoftDeletedBefore(cutoff)
+	if err != nil {
+		slog.Error("notifier soft-deleted movements purge failed", "err", err)
+		return
+	}
+	s.purgeRanOn = today
+	if len(purged) == 0 {
+		return
+	}
+	ids := make([]uint, len(purged))
+	userIDs := make([]uint64, len(purged))
+	for i, m := range purged {
+		ids[i], userIDs[i] = m.ID, m.UserID
+	}
+	slog.Info("notifier purged soft-deleted movements", "count", len(purged), "cutoff", cutoff, "ids", ids, "user_ids", userIDs)
 }
 
 func (s *Sweeper) sweepReminders(ctx context.Context, now time.Time) {
