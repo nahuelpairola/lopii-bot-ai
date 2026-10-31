@@ -50,11 +50,11 @@ func TestCreateFirstAccount_SkipsCurrenciesThatAlreadyHaveADefault(t *testing.T)
 		t.Fatalf("la pregunta fue por %q, want USD", got)
 	}
 
-	idx, err := flow.LoadAccountIndex(c, 1)
+	idx, err := c.finisher().LoadAccountIndex(1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skip, err := flow.CreateFirstAccount(c, data, rows, idx)
+	skip, err := c.finisher().CreateFirstAccount(data, rows, idx)
 	if err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
@@ -98,11 +98,11 @@ func TestCreateFirstAccount_SameCurrencyTwiceCreatesOneAccount(t *testing.T) {
 	}
 	data := firstAccountData(rows, "Galicia", "1.000")
 
-	idx, err := flow.LoadAccountIndex(c, 1)
+	idx, err := c.finisher().LoadAccountIndex(1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := flow.CreateFirstAccount(c, data, rows, idx); err != nil {
+	if _, err := c.finisher().CreateFirstAccount(data, rows, idx); err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
 
@@ -133,11 +133,11 @@ func TestCreateFirstAccount_ZeroAccountsMixed_BalanceOnlyToTheAskedCurrency(t *t
 		t.Fatalf("la pregunta fue por %q, want ARS (la primera fila sin default)", got)
 	}
 
-	idx, err := flow.LoadAccountIndex(c, 1)
+	idx, err := c.finisher().LoadAccountIndex(1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	skip, err := flow.CreateFirstAccount(c, data, rows, idx)
+	skip, err := c.finisher().CreateFirstAccount(data, rows, idx)
 	if err != nil {
 		t.Fatalf("createFirstAccount: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 		conversation.KeyFirstAccountBalance: "10.000",
 	}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("primera pasada: %v", err)
 	}
 	if len(accRepo.inserted) != 1 {
@@ -193,7 +193,7 @@ func TestResolveAndInsertMovements_RetryDoesNotRecreateTheFirstAccount(t *testin
 	openings := len(movRepo.batches)
 
 	conversation.SetFlag(data, conversation.KeySkipBalanceCheck)
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("reintento: %v", err)
 	}
 

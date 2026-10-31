@@ -11,19 +11,16 @@ It used to be ~10k lines and hold the whole app. What lived here now lives in `f
 traps that moved with them moved too — `flow/AGENTS.md` carries flow registration and the
 `callback_data` limit, `conversation/AGENTS.md` the `Data` contract.
 
-## The bridge pattern, and why the methods are exported
+## Consumers get the repositories, not the controller — do not add a bridge
 
-Every cluster defines a narrow interface of what it needs from the world (`flow.runner`,
-`agent`'s `agentServices`, `query`'s `services`, `settings.Services`, `nudges.Services`,
-`pendingjob.Services`) and `*controller` implements all of them structurally, through one-line
-bridge files (`*_services.go`). The clusters never import the repos.
+`c.queries()`, `c.wizards()`, `c.tips()`, `c.finisher()` and `c.loop()` call each package's
+`New(…)` with the repositories themselves; callbacks into the controller (`c.finishAnswerQuery`,
+`c.handleGroqError`, `c.resolveMetric`, …) go in as funcs. Each is built **per call on purpose** —
+most tests here build `&controller{…}` literals, and a stored pointer would be nil in every one of
+them. Why: `docs/decisions.md`, § Package layout.
 
-The methods are **exported** even though most interfaces are not: an interface with unexported
-methods can only be satisfied from inside its own package, and the implementation is here.
-
-A bridge is shared the moment two clusters want it — `RemindersFindByUserID` lives in
-`nudges_services.go` and `settings` reuses it. Adding a duplicate is a compile error, which is the
-cheapest possible reminder.
+The controller implements one interface: `pendingjob.Replayer` (`HandleFreeText`,
+`ProceedToUpdateConfirm`, `Traced`), because the drain replays through the real handler.
 
 ## One update per user at a time
 
@@ -56,14 +53,21 @@ callback inherits that; one that wants a separate message must send twice or run
 text — it is what keeps "no, 600" from being processed before "gasté 500" when the user still has
 jobs waiting.
 
-It is called from `dispatch` only, never from `handleFreeText`: called from there, a drained replay
+It is called from `dispatch` only, never from `HandleFreeText`: called from there, a drained replay
 would re-enqueue itself forever. `pendingjob`'s replay ctx flag is what tells a real webhook call
 from a replay, and the drain deliberately replays through the *real* handler rather than a copy, so
 the two paths cannot drift.
 
+**A drain test waits for the replay, never for the queue to empty.** The agent claims the job at its
+first write, which deletes the row while the turn is still running — so `CountByUser == 0` arrives
+before the movement is inserted or the picker is sent. Two tests did exactly that and failed about
+one run in five (measured 2026-10-26). Hand the drain `replayDone{c, done}` and `waitReplay(t,
+done)` (`queue_drain_integration_test.go`); the closed channel is also what makes reading the
+chat and the fakes afterwards race-free.
+
 ## There is no router
 
-`handleFreeText` is one line: every message without an open flow goes to `agent.StartLoop`, and the
+`HandleFreeText` is one line: every message without an open flow goes to the agent's `StartLoop`, and the
 loop picks one of its tools. The ten-branch switch that used to live here is gone, and so are
 orchestrator.ClassifyIntent, ClassifyCreate and ResolveDelete — the last two survive only as
 methods on test fakes, which nothing in production calls.
@@ -78,16 +82,16 @@ it. The wizards did not go away; the loop **parks** into one when it needs an an
 Anything touching amounts, signs or `account_id`: read `AGENTS.md` (§ The accounting
 model) **before** editing. The anti-pattern list is in `docs/ARCHITECTURE.md`.
 
-In tests, `c.sendText`/`c.sendPrompt`/`c.startFlow`/`c.handleFreeText` and every `finish*` bridge
+In tests, `c.HandleFreeText` and every `c.finisher().Finish*`
 take a `messenger.Chat` directly — pass `&messenger.FakeChat{}`, not a Telegram `(bot, chatID)`
 pair. edgeChat and newEdgeChat, the temporary wrapper that used to stand in for that pair, are
 gone as of Task 6: the webhook edge now arrives with `in.Chat` already resolved by the adapter
 (`internal/messenger/telegram`), so there is nothing left to wrap.
 
-Every bridge reachable from more than one entry point (the webhook edge AND `pendingjob`'s drain —
-`SendText`, `SendPrompt`, `StartFlow`, `HandleFreeText`, `FinishAnswerQuery`,
-`FinishManageSettings`) must go straight through `messenger.SendText`/`chat.Send`/`agent.StartLoop`
-on the `messenger.Chat` it receives — never unwrap it back to `(bot, chatID)` first. A chat that
+Everything reachable from more than one entry point (the webhook edge AND `pendingjob`'s drain —
+`SendText`, `HandleFreeText`, `ProceedToUpdateConfirm`, and the funcs `c.loop()` hands the agent)
+must go straight through `flow.SendText`/`chat.Send`/`StartLoop` on the `messenger.Chat` it
+receives — never unwrap it back to `(bot, chatID)` first. A chat that
 `chatResolver.ChatFor` resolves (the sweeper, the 429 drain) is a different concrete type than one
 the webhook edge hands in, so any unwrap that only recognizes one concrete type fails silently for
 the other — and "silently" here means a replayed message that needs to ask the user something (a

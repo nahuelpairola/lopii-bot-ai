@@ -14,7 +14,7 @@ import (
 )
 
 func (c *controller) HandleStart(ctx context.Context, b *bot.Bot, update *models.Update) {
-	c.traced(ctx, "command", update.Message.Text, func(ctx context.Context) (*uint64, error) {
+	c.Traced(ctx, "command", update.Message.Text, func(ctx context.Context) (*uint64, error) {
 		telegramID := fmt.Sprint(update.Message.From.ID)
 		code := extractStartCode(update.Message.Text)
 

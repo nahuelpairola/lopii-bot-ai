@@ -10,7 +10,7 @@ import (
 )
 
 func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementDeleteFlow())
 
@@ -32,7 +32,7 @@ func TestMovementDeleteFlow_SingleCandidate_SkipsPicker(t *testing.T) {
 }
 
 func TestMovementDeleteFlow_Ambiguous_ShowsPicker(t *testing.T) {
-	store := &fakeStoreForController{}
+	store := &fakeStateStore{}
 	engine := conversation.NewEngine(store, func(string) string { return "algo" })
 	engine.Register(flow.NewMovementDeleteFlow())
 
@@ -68,7 +68,7 @@ func TestFinishMovementDeleteFlow_Confirmed_Deletes(t *testing.T) {
 		),
 	}
 
-	flow.FinishMovementDelete(nil, c, &messenger.FakeChat{}, data)
+	c.finisher().FinishMovementDelete(nil, &messenger.FakeChat{}, data)
 
 	if len(movRepo.deletedIDs) != 1 || movRepo.deletedIDs[0] != 42 {
 		t.Errorf("deletedIDs = %v, want [42]", movRepo.deletedIDs)
@@ -84,7 +84,7 @@ func TestFinishMovementDeleteFlow_Cancelled_NoDelete(t *testing.T) {
 		"confirmed":            "false",
 	}
 
-	flow.FinishMovementDelete(nil, c, &messenger.FakeChat{}, data)
+	c.finisher().FinishMovementDelete(nil, &messenger.FakeChat{}, data)
 
 	if len(movRepo.deletedIDs) != 0 {
 		t.Error("cancelling should never delete anything")

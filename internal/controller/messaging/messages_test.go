@@ -82,12 +82,12 @@ func TestMovementReceiptLine_ShowsAccountWhenLoaded(t *testing.T) {
 		Date:        mustDate(t, "2026-07-14"),
 		Account:     &account.Account{Name: "Efectivo"},
 	}
-	if line := movementReceiptLine(m); !strings.Contains(line, "Efectivo") {
+	if line := flow.MovementReceiptLine(m); !strings.Contains(line, "Efectivo") {
 		t.Errorf("receipt line %q should show the account name", line)
 	}
 
 	m.Account = nil
-	if line := movementReceiptLine(m); strings.Contains(line, "· ·") {
+	if line := flow.MovementReceiptLine(m); strings.Contains(line, "· ·") {
 		t.Errorf("receipt line %q added an empty account segment", line)
 	}
 }
@@ -102,7 +102,7 @@ func TestMovementReceiptLine_IncludesCategorySubcategoryDescriptionDate(t *testi
 		Date:        mustDate(t, "2026-07-04"),
 	}
 
-	line := movementReceiptLine(m)
+	line := flow.MovementReceiptLine(m)
 	for _, want := range []string{"Alimentación", "Café", "Café con Juan", "04/07", "$3.000"} {
 		if !strings.Contains(line, want) {
 			t.Errorf("receipt line %q missing %q", line, want)

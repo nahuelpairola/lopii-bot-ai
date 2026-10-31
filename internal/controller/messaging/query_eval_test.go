@@ -129,7 +129,7 @@ func TestQueryEval(t *testing.T) {
 	asked := 0
 	ask := func(t *testing.T, q string) string {
 		prompt := query.SystemPrompt()
-		exec := query.NewExecutor(c, uid)
+		exec := c.queries().Executor(uid)
 		if asked > 0 {
 			time.Sleep(12 * time.Second)
 		}

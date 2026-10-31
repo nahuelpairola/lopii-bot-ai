@@ -99,9 +99,9 @@ reachable from `manage_settings` live in `internal/settings`, every flow in `int
 
 ## A replayed turn claims its job before any effect
 
-Claim mechanics: `pendingjob/AGENTS.md`. Three claim sites: `startAgentLoop`, right after `Run`
+Claim mechanics: `pendingjob/AGENTS.md`. Three claim sites: `StartLoop`, right after `Run`
 returns; `record`, before `ResolveAndInsertMovements` (that write happens *inside* `Run`); and
-`proceedToUpdateConfirm`, before each branch's first effect.
+`ProceedToUpdateConfirm`, before each branch's first effect.
 
 A lost claim writes nothing and **says nothing**. `record` cannot return the claim error to the
 model — `Run` feeds tool errors back as text and the model would narrate it — so it parks the

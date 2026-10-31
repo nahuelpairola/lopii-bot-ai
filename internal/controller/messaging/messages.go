@@ -3,7 +3,6 @@ package messaging
 import (
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/flow"
-	"lopiibot.com/internal/movement"
 )
 
 const (
@@ -30,15 +29,7 @@ const (
 	msgResumeCancelled = "Cancelado ✅ — arrancá de nuevo cuando quieras."
 )
 
-func msgFirstAccountDefault(name string, currencies []string) string {
-	return flow.MsgFirstAccountDefault(name, currencies)
-}
-
 const msgInviteMoreAccounts = flow.MsgInviteMoreAccounts
-
-func movementReceiptLine(m movement.Movement) string {
-	return flow.MovementReceiptLine(m)
-}
 
 func FlowResumeLabel(flowName string) string {
 	switch flowName {

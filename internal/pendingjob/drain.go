@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/orchestrator"
 )
@@ -35,7 +36,7 @@ var (
 
 var errReplayPanicked = errors.New("pendingjob: replay panicked")
 
-func Run(ctx context.Context, s Services, repo Repository, chats chatResolver, interval time.Duration) {
+func Run(ctx context.Context, rp Replayer, users userFinder, repo Repository, chats chatResolver, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
@@ -43,12 +44,12 @@ func Run(ctx context.Context, s Services, repo Repository, chats chatResolver, i
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			drainTick(ctx, s, repo, chats, time.Now())
+			drainTick(ctx, rp, users, repo, chats, time.Now())
 		}
 	}
 }
 
-func drainTick(ctx context.Context, s Services, repo Repository, chats chatResolver, now time.Time) {
+func drainTick(ctx context.Context, rp Replayer, users userFinder, repo Repository, chats chatResolver, now time.Time) {
 	drainMu.Lock()
 	gated := now.Before(nextDrainAt)
 	drainMu.Unlock()
@@ -61,17 +62,17 @@ func drainTick(ctx context.Context, s Services, repo Repository, chats chatResol
 		return
 	}
 	for _, userID := range userIDs {
-		drainUser(ctx, s, repo, chats, userID, now)
+		drainUser(ctx, rp, users, repo, chats, userID, now)
 	}
 }
 
-func drainUser(ctx context.Context, s Services, repo Repository, chats chatResolver, userID uint64, now time.Time) {
+func drainUser(ctx context.Context, rp Replayer, users userFinder, repo Repository, chats chatResolver, userID uint64, now time.Time) {
 	jobs, err := repo.ListByUserOrdered(userID)
 	if err != nil {
 		slog.ErrorContext(ctx, "drain: list jobs failed", "user_id", userID, "err", err)
 		return
 	}
-	chat, err := chatForUser(s, chats, userID)
+	chat, err := chatForUser(users, chats, userID)
 	if err != nil {
 		slog.ErrorContext(ctx, "drain: user or chat lookup failed", "user_id", userID, "err", err)
 		dropExpired(ctx, repo, userID, jobs, now)
@@ -82,17 +83,17 @@ func drainUser(ctx context.Context, s Services, repo Repository, chats chatResol
 			return
 		}
 		if now.Sub(job.CreatedAt) > MaxJobAge {
-			giveUp(ctx, s, repo, chat, userID, job, now)
+			giveUp(ctx, repo, chat, userID, job, now)
 			continue
 		}
-		if !drainJob(ctx, s, repo, chat, userID, job) {
+		if !drainJob(ctx, rp, repo, chat, userID, job) {
 			return
 		}
 	}
 }
 
-func chatForUser(s Services, chats chatResolver, userID uint64) (messenger.Chat, error) {
-	u, err := s.UsersFindByID(userID)
+func chatForUser(users userFinder, chats chatResolver, userID uint64) (messenger.Chat, error) {
+	u, err := users.FindByID(userID)
 	if err != nil {
 		return nil, fmt.Errorf("user: %w", err)
 	}
@@ -112,7 +113,7 @@ func dropExpired(ctx context.Context, repo Repository, userID uint64, jobs []Pen
 	}
 }
 
-func giveUp(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, job PendingJob, now time.Time) {
+func giveUp(ctx context.Context, repo Repository, chat messenger.Chat, userID uint64, job PendingJob, now time.Time) {
 	deleted, err := repo.Delete(job.ID)
 	if err != nil {
 		slog.ErrorContext(ctx, "drain: give up delete failed", "user_id", userID, "job_id", job.ID, "err", err)
@@ -122,14 +123,14 @@ func giveUp(ctx context.Context, s Services, repo Repository, chat messenger.Cha
 		return
 	}
 	slog.WarnContext(ctx, "drain: job gave up", "event", eventJobGaveUp, "reason", "max_age", "user_id", userID, "kind", job.Kind, "age", now.Sub(job.CreatedAt).String())
-	s.SendText(ctx, chat, msgJobGaveUp(job))
+	flow.SendText(ctx, chat, msgJobGaveUp(job))
 }
 
-func drainJob(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, job PendingJob) bool {
+func drainJob(ctx context.Context, rp Replayer, repo Repository, chat messenger.Chat, userID uint64, job PendingJob) bool {
 	claim := newReplayClaim(func() (bool, error) { return repo.Delete(job.ID) })
 	var err error
-	s.Traced(withClaim(context.WithoutCancel(ctx), claim), updateTypeReplay, "", func(tctx context.Context) (*uint64, error) {
-		err = replaySafely(WithReplaying(tctx), s, chat, userID, job)
+	rp.Traced(withClaim(context.WithoutCancel(ctx), claim), updateTypeReplay, "", func(tctx context.Context) (*uint64, error) {
+		err = replaySafely(WithReplaying(tctx), rp, chat, userID, job)
 		return &userID, err
 	})
 
@@ -143,7 +144,7 @@ func drainJob(ctx context.Context, s Services, repo Repository, chat messenger.C
 		return true
 	case errors.Is(err, errReplayPanicked):
 		if claimed {
-			s.SendText(ctx, chat, msgJobGaveUp(job))
+			flow.SendText(ctx, chat, msgJobGaveUp(job))
 		}
 		return false
 	}
@@ -151,7 +152,7 @@ func drainJob(ctx context.Context, s Services, repo Repository, chat messenger.C
 	var rl *orchestrator.RateLimitedError
 	if errors.As(err, &rl) {
 		if claimed {
-			requeue(ctx, s, repo, chat, userID, job)
+			requeue(ctx, repo, chat, userID, job)
 		}
 		bumpNextDrainAt(time.Now().Add(rl.RetryAfter))
 		slog.InfoContext(ctx, "drain: deferred (429)", "event", "job_deferred", "user_id", userID, "kind", job.Kind)
@@ -171,40 +172,40 @@ func drainJob(ctx context.Context, s Services, repo Repository, chat messenger.C
 	return true
 }
 
-func requeue(ctx context.Context, s Services, repo Repository, chat messenger.Chat, userID uint64, job PendingJob) {
+func requeue(ctx context.Context, repo Repository, chat messenger.Chat, userID uint64, job PendingJob) {
 	back := PendingJob{UserID: job.UserID, Kind: job.Kind, Payload: job.Payload, CreatedAt: job.CreatedAt}
 	if err := repo.Insert(&back); err != nil {
 		slog.ErrorContext(ctx, "drain: requeue after 429 failed", "user_id", userID, "job_id", job.ID, "err", err)
-		s.SendText(ctx, chat, msgJobGaveUp(job))
+		flow.SendText(ctx, chat, msgJobGaveUp(job))
 	}
 }
 
-func replaySafely(ctx context.Context, s Services, chat messenger.Chat, userID uint64, job PendingJob) (err error) {
+func replaySafely(ctx context.Context, rp Replayer, chat messenger.Chat, userID uint64, job PendingJob) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.ErrorContext(ctx, "drain: replay panicked", "event", "job_panicked", "user_id", userID, "kind", job.Kind, "panic", r, "stack", string(debug.Stack()))
 			err = errReplayPanicked
 		}
 	}()
-	return replayJob(ctx, s, chat, userID, job)
+	return replayJob(ctx, rp, chat, userID, job)
 }
 
 const updateTypeReplay = "replay"
 
-func replayJob(ctx context.Context, s Services, chat messenger.Chat, userID uint64, job PendingJob) error {
+func replayJob(ctx context.Context, rp Replayer, chat messenger.Chat, userID uint64, job PendingJob) error {
 	switch job.Kind {
 	case KindFreeText:
 		var p FreeTextPayload
 		if err := json.Unmarshal(job.Payload, &p); err != nil {
 			return fmt.Errorf("decode %s payload: %w", job.Kind, err)
 		}
-		return s.HandleFreeText(ctx, chat, userID, p.Text)
+		return rp.HandleFreeText(ctx, chat, userID, p.Text)
 	case KindUpdatePick:
 		var p UpdatePickPayload
 		if err := json.Unmarshal(job.Payload, &p); err != nil {
 			return fmt.Errorf("decode %s payload: %w", job.Kind, err)
 		}
-		return s.ProceedToUpdateConfirm(ctx, chat, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows)
+		return rp.ProceedToUpdateConfirm(ctx, chat, userID, p.Message, p.TransactionID, p.OldIDs, p.BeforeRows)
 	default:
 		slog.WarnContext(ctx, "drain: unknown kind", "kind", job.Kind)
 		return nil
@@ -213,7 +214,7 @@ func replayJob(ctx context.Context, s Services, chat messenger.Chat, userID uint
 
 func msgJobGaveUp(job PendingJob) string {
 	if job.Kind != KindFreeText {
-		return msgCouldNotSave("el cambio")
+		return flow.MsgCouldNotSave("el cambio")
 	}
 	var p FreeTextPayload
 	_ = json.Unmarshal(job.Payload, &p)
@@ -221,5 +222,5 @@ func msgJobGaveUp(job PendingJob) string {
 	if len([]rune(txt)) > 40 {
 		txt = string([]rune(txt)[:40]) + "…"
 	}
-	return msgCouldNotSave("«" + txt + "»")
+	return flow.MsgCouldNotSave("«" + txt + "»")
 }

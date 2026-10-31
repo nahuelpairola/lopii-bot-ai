@@ -16,63 +16,119 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-type agentServices interface {
-	FindUserAccounts(userID uint64) ([]account.Account, error)
-	AccountsHasDefaultForCurrency(userID uint64, cur currency.Currency) bool
+type accountFinder interface {
+	FindByUserID(userID uint64) ([]account.Account, error)
+	HasDefaultForCurrency(userID uint64, cur currency.Currency) bool
+}
+
+type movementFinder interface {
 	FindRecentlyCreatedForUser(userID uint64, since time.Time, limit int) ([]movement.Movement, error)
-	MovementsFindSimilarForUser(userID uint64, message string, since time.Time, until *time.Time) ([]movement.Movement, error)
-	SubcategoriesFindAllForUser(userID uint64) ([]subcategory.Subcategory, error)
-	FindSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error)
-	ChatHistoryRecent(userID uint64) ([]chathistory.Turn, error)
-	ChatHistoryAppend(userID uint64, question, answer string) error
+	FindSimilarForUser(userID uint64, query string, since time.Time, until *time.Time) ([]movement.Movement, error)
+}
 
-	ActionsInsert(a *pendingaction.PendingAction) error
-	ActionsNextForUser(userID uint64) (*pendingaction.PendingAction, error)
-	ActionsUpdate(a *pendingaction.PendingAction) error
-	ActionsDelete(id uint64) error
-	ActionsEnabled() bool
+type subcategoryFinder interface {
+	FindAllForUser(userID uint64) ([]subcategory.Subcategory, error)
+	FindByCategoryAndSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error)
+}
 
-	MetricsLog(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error
-	ResolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint)
-	MetricsSetIntentIfQueued(userID uint64, intent string) error
+type chatHistory interface {
+	Recent(userID uint64) ([]chathistory.Turn, error)
+	Append(userID uint64, question, answer string) error
+}
 
+type actionQueue interface {
+	Insert(action *pendingaction.PendingAction) error
+	NextForUser(userID uint64) (*pendingaction.PendingAction, error)
+	Update(action *pendingaction.PendingAction) error
+	Delete(id uint64) error
+}
+
+type metricLog interface {
+	Log(userID uint64, traceID, rawMessage, intent string, needsConfirmation bool, outcome string) error
+	SetIntentIfQueued(userID uint64, intent string) error
+}
+
+type loopModel interface {
 	Run(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
 	ClassifyCategories(ctx context.Context, message string, rows []orchestrator.ClassifyRow, taxonomy []orchestrator.TaxonomyEntry) []orchestrator.Pair
 	ResolveUpdate(ctx context.Context, text string, candidate orchestrator.MovementCandidate, accounts []orchestrator.AccountOption) (orchestrator.UpdateResult, error)
+}
 
-	SendText(ctx context.Context, chat messenger.Chat, text string)
-	SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt)
-	StartFlow(ctx context.Context, chat messenger.Chat, userID uint64, flowName string, seed conversation.Data, errCtx string) error
-	EngineStartWithData(userID uint64, flowName string, seed conversation.Data) (conversation.Prompt, error)
-	IsReplaying(ctx context.Context) bool
-
-	MaybeNearDuplicate(userID uint64, inserted []movement.Movement) []conversation.Button
+type movementWriter interface {
 	ResolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error)
-
-	HandleGroqError(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error)
-	EnqueueUpdatePickIfRateLimited(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool
-	FinishAnswerQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) error
-	FinishManageSettings(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error
+	MaybeNearDuplicate(userID uint64, inserted []movement.Movement) []conversation.Button
 }
 
-func StartLoop(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, text string) error {
-	return startAgentLoop(ctx, svc, chat, userID, text)
+type Loop struct {
+	accounts          accountFinder
+	movements         movementFinder
+	subcategories     subcategoryFinder
+	chatHistory       chatHistory
+	actions           actionQueue
+	metrics           metricLog
+	model             loopModel
+	engine            *conversation.Engine
+	writer            movementWriter
+	resolveMetric     func(ctx context.Context, userID uint64, outcome string, movementIDs ...uint)
+	handleGroqError   func(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error)
+	enqueueUpdatePick func(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool
+	answerQuery       func(ctx context.Context, chat messenger.Chat, userID uint64, text string) error
+	manageSettings    func(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error
 }
 
-func FinishAskUser(ctx context.Context, svc agentServices, chat messenger.Chat, data conversation.Data) {
-	finishAskUserFlow(ctx, svc, chat, data)
+func New(
+	accounts accountFinder,
+	movements movementFinder,
+	subcategories subcategoryFinder,
+	chatHistory chatHistory,
+	actions actionQueue,
+	metrics metricLog,
+	model loopModel,
+	engine *conversation.Engine,
+	writer movementWriter,
+	resolveMetric func(ctx context.Context, userID uint64, outcome string, movementIDs ...uint),
+	handleGroqError func(ctx context.Context, chat messenger.Chat, userID uint64, text string, err error) (bool, error),
+	enqueueUpdatePick func(ctx context.Context, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, err error) bool,
+	answerQuery func(ctx context.Context, chat messenger.Chat, userID uint64, text string) error,
+	manageSettings func(ctx context.Context, chat messenger.Chat, userID uint64, text, area string) error,
+) *Loop {
+	return &Loop{
+		accounts:          accounts,
+		movements:         movements,
+		subcategories:     subcategories,
+		chatHistory:       chatHistory,
+		actions:           actions,
+		metrics:           metrics,
+		model:             model,
+		engine:            engine,
+		writer:            writer,
+		resolveMetric:     resolveMetric,
+		handleGroqError:   handleGroqError,
+		enqueueUpdatePick: enqueueUpdatePick,
+		answerQuery:       answerQuery,
+		manageSettings:    manageSettings,
+	}
 }
 
-func FinishMovementUpdatePick(ctx context.Context, svc agentServices, chat messenger.Chat, data conversation.Data) {
-	finishMovementUpdatePickFlow(ctx, svc, chat, data)
+func (l *Loop) insertAction(action *pendingaction.PendingAction) error {
+	if l.actions == nil {
+		return nil
+	}
+	return l.actions.Insert(action)
 }
 
-func ProceedToUpdateConfirm(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64, message, transactionID string, oldIDs []string, beforeRows []movement.MovementRow, ask ChangeAsk) error {
-	return proceedToUpdateConfirm(ctx, svc, chat, userID, message, transactionID, oldIDs, beforeRows, ask)
+func (l *Loop) updateAction(action *pendingaction.PendingAction) error {
+	if l.actions == nil {
+		return nil
+	}
+	return l.actions.Update(action)
 }
 
-func DrainNextAction(ctx context.Context, svc agentServices, chat messenger.Chat, userID uint64) error {
-	return drainNextAgentAction(ctx, svc, chat, userID)
+func (l *Loop) deleteAction(id uint64) error {
+	if l.actions == nil {
+		return nil
+	}
+	return l.actions.Delete(id)
 }
 
 const (

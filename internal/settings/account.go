@@ -13,33 +13,33 @@ import (
 	"lopiibot.com/internal/orchestrator"
 )
 
-func StartAccountManage(ctx context.Context, s Services, chat messenger.Chat, userID uint64, text string) error {
+func (w *Wizards) StartAccountManage(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.AccountManageFlowName, "user_id", userID)
-	accs, err := s.FindUserAccounts(userID)
+	accs, err := w.accounts.FindByUserID(userID)
 	if err != nil {
-		s.SendText(ctx, chat, flow.MsgCouldNotLoad)
+		flow.SendText(ctx, chat, flow.MsgCouldNotLoad)
 		return fmt.Errorf("account manage: find accounts: %w", err)
 	}
 	if len(accs) == 0 {
-		s.ResolveMetric(ctx, userID, flow.OutcomeAccountCreateRouted)
-		return StartAccountCreate(ctx, s, chat, userID, text)
+		w.resolveMetric(ctx, userID, flow.OutcomeAccountCreateRouted)
+		return w.StartAccountCreate(ctx, chat, userID, text)
 	}
 
 	opts := make([]orchestrator.AccountOption, 0, len(accs))
 	for _, a := range accs {
 		opts = append(opts, orchestrator.AccountOption{ID: uint64(a.ID), Name: a.Name, Currency: a.Currency.String()})
 	}
-	res, err := s.ResolveAccountManage(ctx, text, opts)
+	res, err := w.model.ResolveAccountManage(ctx, text, opts)
 	if err != nil {
-		if handled, oerr := s.HandleGroqError(ctx, chat, userID, text, err); handled {
+		if handled, oerr := w.handleGroqError(ctx, chat, userID, text, err); handled {
 			return oerr
 		}
-		s.SendText(ctx, chat, flow.MsgSomethingBroke)
+		flow.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return fmt.Errorf("account manage: resolve: %w", err)
 	}
 	if res.WantsNewAccount {
-		s.ResolveMetric(ctx, userID, flow.OutcomeAccountCreateRouted)
-		return StartAccountCreate(ctx, s, chat, userID, text)
+		w.resolveMetric(ctx, userID, flow.OutcomeAccountCreateRouted)
+		return w.StartAccountCreate(ctx, chat, userID, text)
 	}
 
 	ids := make([]string, 0, len(accs))
@@ -81,18 +81,18 @@ func StartAccountManage(ctx context.Context, s Services, chat messenger.Chat, us
 		}
 	}
 
-	return s.StartFlow(ctx, chat, userID, flow.AccountManageFlowName, seed, "account manage: start account_manage flow")
+	return flow.StartFlow(ctx, w.engine, chat, userID, flow.AccountManageFlowName, seed, "account manage: start account_manage flow")
 }
 
-func StartAccountCreate(ctx context.Context, s Services, chat messenger.Chat, userID uint64, text string) error {
+func (w *Wizards) StartAccountCreate(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.AccountCreateFlowName, "user_id", userID)
-	seed := accountCreateSeed(ctx, s, text)
-	return s.StartFlow(ctx, chat, userID, flow.AccountCreateFlowName, seed, "start account_create flow")
+	seed := w.accountCreateSeed(ctx, text)
+	return flow.StartFlow(ctx, w.engine, chat, userID, flow.AccountCreateFlowName, seed, "start account_create flow")
 }
 
-func accountCreateSeed(ctx context.Context, s Services, text string) conversation.Data {
+func (w *Wizards) accountCreateSeed(ctx context.Context, text string) conversation.Data {
 	seed := conversation.Data{}
-	res, err := s.ClassifyOnboarding(ctx, text)
+	res, err := w.model.ClassifyOnboarding(ctx, text)
 	if err != nil || len(res.Accounts) != 1 {
 		return seed
 	}

@@ -3,7 +3,6 @@ package flow
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/subcategory"
@@ -43,28 +42,8 @@ func (r *fakeSubcatSetupRepo) FindOwnedByUser(userID uint64) ([]subcategory.Subc
 	return r.owned, nil
 }
 
-type fakeConvStore struct {
-	flowName, stepName string
-	data               conversation.Data
-	updatedAt          time.Time
-	found              bool
-}
-
-func (s *fakeConvStore) Get(userID uint64) (string, string, conversation.Data, time.Time, bool, error) {
-	return s.flowName, s.stepName, s.data, s.updatedAt, s.found, nil
-}
-func (s *fakeConvStore) Set(userID uint64, flowName, stepName string, data conversation.Data) error {
-	s.flowName, s.stepName, s.data, s.found = flowName, stepName, data, true
-	s.updatedAt = time.Now()
-	return nil
-}
-func (s *fakeConvStore) Clear(userID uint64) error {
-	s.found = false
-	return nil
-}
-
 func newSubcategorySetupTestEngine(repo subcategoryRepository) *conversation.Engine {
-	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine := conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" })
 	engine.Register(NewSubcategorySetupFlow(repo))
 	return engine
 }

@@ -6,7 +6,6 @@ import (
 
 	"github.com/shopspring/decimal"
 	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
@@ -14,27 +13,71 @@ import (
 	"lopiibot.com/internal/user"
 )
 
-type Services interface {
-	EngineInProgress(userID uint64) (bool, error)
+type flowState interface {
+	InProgress(userID uint64) (bool, error)
+}
 
-	RemindersFindByUserID(userID uint64) (*reminder.Reminder, error)
-	UsersFindByID(userID uint64) (*user.User, error)
-	AccountsFindByUserID(userID uint64) ([]account.Account, error)
-	SubcategoriesFindByCategoryAndSubcategory(userID uint64, category, name string) (*subcategory.Subcategory, error)
-	MovementsCountBySubcategory(userID uint64, subcategoryID uint64) (int64, error)
-	MovementsCountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error)
-	MovementsCountForUser(userID uint64) (int64, error)
-	MovementsSumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
-	MovementsSumAmountForAccount(accountID uint64) (decimal.Decimal, error)
+type reminderFinder interface {
+	FindByUserID(userID uint64) (*reminder.Reminder, error)
+}
 
-	NudgesAvailable() bool
-	NudgesSentKeys(userID uint64) ([]string, error)
-	NudgesLastSentAt(userID uint64) (*time.Time, error)
-	NudgesMarkSent(userID uint64, key string) error
-	NudgesMarkSentAgain(userID uint64, key string) error
-	NudgesMarkTapped(userID uint64, key string) error
+type userFinder interface {
+	FindByID(id uint64) (*user.User, error)
+}
 
-	SendText(ctx context.Context, chat messenger.Chat, text string)
-	SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt)
-	HandleQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error)
+type accountLister interface {
+	FindByUserID(userID uint64) ([]account.Account, error)
+}
+
+type subcategoryFinder interface {
+	FindByCategoryAndSubcategory(userID uint64, category, subcategory string) (*subcategory.Subcategory, error)
+}
+
+type movementStats interface {
+	CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error)
+	CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error)
+	CountForUser(userID uint64) (int64, error)
+	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
+	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
+}
+
+type sentHistory interface {
+	SentKeys(userID uint64) ([]string, error)
+	LastSentAt(userID uint64) (*time.Time, error)
+	MarkSent(userID uint64, key string) error
+	MarkSentAgain(userID uint64, key string) error
+	MarkTapped(userID uint64, key string) error
+}
+
+type Tips struct {
+	engine        flowState
+	reminders     reminderFinder
+	users         userFinder
+	accounts      accountLister
+	subcategories subcategoryFinder
+	movements     movementStats
+	history       sentHistory
+	handleQuery   func(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error)
+}
+
+func New(
+	engine flowState,
+	reminders reminderFinder,
+	users userFinder,
+	accounts accountLister,
+	subcategories subcategoryFinder,
+	movements movementStats,
+	history sentHistory,
+	handleQuery func(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error),
+) *Tips {
+	return &Tips{
+		engine:        engine,
+		reminders:     reminders,
+		users:         users,
+		accounts:      accounts,
+		subcategories: subcategories,
+		movements:     movements,
+		history:       history,
+		handleQuery:   handleQuery,
+	}
 }

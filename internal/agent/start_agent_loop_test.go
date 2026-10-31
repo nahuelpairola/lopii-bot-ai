@@ -45,7 +45,7 @@ func TestLoop_EmptyChangesAsksWhatToChange(t *testing.T) {
 	svc.actions = repo
 	svc.movements = movements
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "editá la panaderia"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "editá la panaderia"); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.rows) != 1 {
@@ -67,7 +67,7 @@ func TestLoop_AmbiguousCorrectionParksAndAsks(t *testing.T) {
 	svc.actions = repo
 	svc.movements = movements
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.rows) != 1 {
@@ -96,7 +96,7 @@ func TestLoop_SingleCandidateGoesStraightToTheGate(t *testing.T) {
 	svc.actions = repo
 	svc.movements = movements
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
 		t.Fatal(err)
 	}
 	if len(repo.rows) != 0 {
@@ -119,7 +119,7 @@ func TestLoop_OurCopyBeatsTheModelNarration(t *testing.T) {
 	svc := newLoopServices(t)
 	svc.orch = orch
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "¿qué podés hacer?"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "¿qué podés hacer?"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -137,7 +137,7 @@ func TestLoop_PromptCarriesTheUsersAccountsAndTools(t *testing.T) {
 		metrics: &fakeMetricRepo{},
 	}
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "corregí el asado"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "corregí el asado"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(orch.gotRunPrompt, "CUENTAS DEL USUARIO") {
@@ -212,7 +212,7 @@ func TestLoop_AlwaysResolvesTheMetric(t *testing.T) {
 			svc.orch = orch
 			svc.metrics = metrics
 
-			if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "algo"); err != nil {
+			if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "algo"); err != nil {
 				t.Fatal(err)
 			}
 			if len(metrics.resolved) != 1 || metrics.resolved[0] != tc.want {
@@ -233,7 +233,7 @@ func TestLoop_LeavesTheMetricPendingWhenSomethingIsOpen(t *testing.T) {
 	svc.metrics = metrics
 	svc.movements = movements
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "la panaderia estaba mal"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "la panaderia estaba mal"); err != nil {
 		t.Fatal(err)
 	}
 	if len(metrics.resolved) != 0 {
@@ -259,7 +259,7 @@ func TestLoop_InsertedResolvesCreateInserted(t *testing.T) {
 	svc.subcategories = subcategoriesForTest()
 	svc.movements = movementsWithBalance("100000")
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
 		t.Fatal(err)
 	}
 	if len(metrics.resolved) != 1 || metrics.resolved[0] != flow.OutcomeCreateInserted {
@@ -283,7 +283,7 @@ func TestLoop_NoQueueAfterAWrite(t *testing.T) {
 	svc.subcategories = subcategoriesForTest()
 	svc.movements = movementsWithBalance("100000")
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
 		t.Fatal(err)
 	}
 	if svc.enqueued != 0 {
@@ -295,7 +295,7 @@ func TestDrainAfterLoop_OpensTheQuestion(t *testing.T) {
 	repo := &fakeActionsRepo{}
 	svc := newLoopServices(t)
 	svc.actions = repo
-	if err := parkAgentActions(context.Background(), svc, 1, []parkedAction{{
+	if err := svc.loop().parkAgentActions(context.Background(), 1, []parkedAction{{
 		Tool:    orchestrator.ToolCorrectMovement,
 		Payload: agentPayload{Change: "eran 2000", Candidates: []flow.CandidateGroup{{OldIDs: []string{"10"}}, {OldIDs: []string{"11"}}}, Chosen: -1},
 		Questions: []pendingaction.OpenQuestion{{
@@ -304,7 +304,7 @@ func TestDrainAfterLoop_OpensTheQuestion(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := drainNextAgentAction(context.Background(), svc, &messenger.FakeChat{}, 1); err != nil {
+	if err := svc.loop().DrainNextAction(context.Background(), &messenger.FakeChat{}, 1); err != nil {
 		t.Fatal(err)
 	}
 	if inProgress, _ := svc.engine.InProgress(1); !inProgress {
@@ -322,13 +322,12 @@ func TestLoop_ReplayDoesNotOpenANewIntentEvent(t *testing.T) {
 	svc.orch = orch
 	svc.metrics = metrics
 
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "que podés hacer"); err != nil {
+	if err := svc.loop().StartLoop(context.Background(), &messenger.FakeChat{}, 1, "que podés hacer"); err != nil {
 		t.Fatal(err)
 	}
 	afterWebhook := len(metrics.logged)
 
-	svc.replaying = true
-	if err := startAgentLoop(context.Background(), svc, &messenger.FakeChat{}, 1, "que podés hacer"); err != nil {
+	if err := svc.loop().StartLoop(pendingjob.WithReplaying(context.Background()), &messenger.FakeChat{}, 1, "que podés hacer"); err != nil {
 		t.Fatal(err)
 	}
 	if len(metrics.logged) != afterWebhook {
@@ -362,7 +361,7 @@ func TestRecord_DuringReplay_ClaimsBeforeInsert(t *testing.T) {
 	svc.subcategories = subcategoriesForTest()
 	svc.movements = movs
 
-	if err := startAgentLoop(ctx, svc, &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
+	if err := svc.loop().StartLoop(ctx, &messenger.FakeChat{}, 1, "gasté 5000 en el super"); err != nil {
 		t.Fatal(err)
 	}
 	if !claimedBeforeInsert {
@@ -386,7 +385,7 @@ func TestRecord_ClaimedElsewhere_InsertsNothing(t *testing.T) {
 	svc.movements = movs
 	chat := &messenger.FakeChat{}
 
-	err := startAgentLoop(ctx, svc, chat, 1, "gasté 5000 en el super")
+	err := svc.loop().StartLoop(ctx, chat, 1, "gasté 5000 en el super")
 
 	if !errors.Is(err, pendingjob.ErrClaimedElsewhere) {
 		t.Fatalf("want ErrClaimedElsewhere, got %v", err)
@@ -394,8 +393,8 @@ func TestRecord_ClaimedElsewhere_InsertsNothing(t *testing.T) {
 	if len(movs.batches) != 0 {
 		t.Fatal("inserted after losing the claim: the money is recorded twice")
 	}
-	if len(chat.Sent) != 0 || len(svc.sendTexts) != 0 {
-		t.Fatalf("the losing instance must stay silent, sent %v %v", chat.Sent, svc.sendTexts)
+	if len(chat.Sent) != 0 {
+		t.Fatalf("the losing instance must stay silent, sent %v", chat.Sent)
 	}
 }
 
@@ -414,7 +413,7 @@ func TestPark_DuringReplay_ClaimsBeforeActionsInsert(t *testing.T) {
 		candidateMovement(11, nil, "panadería del barrio", 5000),
 	}}
 
-	if err := startAgentLoop(ctx, svc, &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
+	if err := svc.loop().StartLoop(ctx, &messenger.FakeChat{}, 1, "la panaderia era 2000"); err != nil {
 		t.Fatal(err)
 	}
 	if !claimedBeforePark {
@@ -428,13 +427,13 @@ func TestPark_DuringReplay_ClaimsBeforeActionsInsert(t *testing.T) {
 func TestLoop_RateLimitedReplay_DoesNotClaim(t *testing.T) {
 	claimed := false
 	ctx := pendingjob.WithClaim(context.Background(), func() (bool, error) { claimed = true; return true, nil })
+	ctx = pendingjob.WithReplaying(ctx)
 	svc := newLoopServices(t)
-	svc.replaying = true
 	svc.orch = &fakeOrchestrator{runFn: func(func(string, json.RawMessage) (string, error)) (string, error) {
 		return "", &orchestrator.RateLimitedError{RetryAfter: time.Second}
 	}}
 
-	_ = startAgentLoop(ctx, svc, &messenger.FakeChat{}, 1, "gasté 5000")
+	_ = svc.loop().StartLoop(ctx, &messenger.FakeChat{}, 1, "gasté 5000")
 
 	if claimed {
 		t.Fatal("a 429 with no effects claimed the job: it would leave the queue for no reason")

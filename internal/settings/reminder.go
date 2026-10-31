@@ -11,10 +11,10 @@ import (
 	"lopiibot.com/internal/messenger"
 )
 
-func StartReminderSetup(ctx context.Context, s Services, chat messenger.Chat, userID uint64) error {
+func (w *Wizards) StartReminderSetup(ctx context.Context, chat messenger.Chat, userID uint64) error {
 	slog.InfoContext(ctx, "flow started", "flow", flow.ReminderSetupFlowName, "user_id", userID)
 	seed := conversation.Data{}
-	if rem, err := s.RemindersFindByUserID(userID); err == nil && rem != nil {
+	if rem, err := w.reminders.FindByUserID(userID); err == nil && rem != nil {
 		conversation.SetFlag(seed, flow.KeyHubHasRow)
 		if rem.Enabled {
 			conversation.SetFlag(seed, flow.KeyHubDailyOn)
@@ -25,11 +25,11 @@ func StartReminderSetup(ctx context.Context, s Services, chat messenger.Chat, us
 			conversation.SetFlag(seed, conversation.KeyWeeklySummary)
 		}
 	}
-	prompt, err := s.EngineStartWithData(userID, flow.ReminderSetupFlowName, seed)
+	prompt, err := w.engine.StartWithData(userID, flow.ReminderSetupFlowName, seed)
 	if err != nil {
-		s.SendText(ctx, chat, flow.MsgSomethingBroke)
+		flow.SendText(ctx, chat, flow.MsgSomethingBroke)
 		return fmt.Errorf("start reminder_setup flow: %w", err)
 	}
-	s.SendPrompt(ctx, chat, prompt)
+	flow.SendPrompt(ctx, chat, prompt)
 	return nil
 }

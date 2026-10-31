@@ -84,7 +84,7 @@ differently — one of the three fails *silently*. What each one breaks:
 | `controller.go` → `handleFlowFinished` | a `case accountSetupFlowName:` |
 | `messages.go` → `FlowResumeLabel` | a `case accountSetupFlowName:` |
 
-**4. Start it** with `c.startFlow(...)`, or `engine.StartWithData(userID, name, seed)` when you
+**4. Start it** with `flow.StartFlow(ctx, c.engine, ...)`, or `engine.StartWithData(userID, name, seed)` when you
 have pre-resolved data and want the `SkipIf` walk to land on the first real gap.
 
 **5. Read the result** in your `handleFlowFinished` case — always through the helpers, because
@@ -108,7 +108,7 @@ ACCOUNT_MANAGE | CREATE_CATEGORY | CATEGORY_MANAGE | REMINDER_SET | HELP | UNCLE
 - `UPDATE` = atomic `DELETE + INSERT` in a single SQL transaction
 - Implicit references ("actually it was 1200") resolve via `resolveCandidates`, not an in-memory store — window and scoring rules in [business-rules.md](business-rules.md)
 - **Migration in progress:** `UPDATE`, `DELETE` and `CREATE` no longer open a flow from the
-  router — they go through the unified agent loop (`orchestrator.Run` → `startAgentLoop`),
+  router — they go through the unified agent loop (`orchestrator.Run` → `StartLoop`),
   stages 2 and 3 of 5. The router still gates what reaches the loop, which is what keeps each
   stage bisectable. The other seven intents are unchanged.
 - `CREATE` through the loop is behind **`config.Agent.RouteCreateToLoop`** (`[agent]
@@ -169,17 +169,17 @@ Any `internal/controller/messaging` site that calls the orchestrator (a Call 1 o
 ```go
 res, err := c.orchestrator.SomeCall(ctx, text, ...)
 if err != nil {
-    if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+    if handled, oerr := c.handleGroqError(ctx, chat, userID, text, err); handled {
         return oerr
     }
-    c.sendText(ctx, b, chatID, msgSomethingBroke) // unchanged fallback for non-429 errors
+    flow.SendText(ctx, chat, msgSomethingBroke) // unchanged fallback for non-429 errors
     return fmt.Errorf("...: %w", err)
 }
 ```
 
 `pendingjob.HandleGroqError` (`internal/pendingjob/enqueue.go`) is context-aware: on the live webhook path it enqueues a `KindFreeText` job + acks (`AckForWait`, never silent); under drain replay (`pendingjob.IsReplaying(ctx)`) it propagates the error so the drain re-gates `nextDrainAt` and leaves the job in place, instead of re-enqueuing it.
 
-**For a site that must preserve more than raw text** (today: `finishMovementUpdatePickFlow`'s `update_pick`, which needs the chosen candidate's IDs/rows, not just the message) — add a dedicated payload struct + a dedicated `enqueueXIfRateLimited` helper (see `pendingjob.UpdatePickPayload`/`EnqueueUpdatePick`), and a `case KindX:` branch in `pendingjob/drain.go`'s `replayJob` that unmarshals the payload and calls the same function the webhook would have called.
+**For a site that must preserve more than raw text** (today: `FinishMovementUpdatePick`'s `update_pick`, which needs the chosen candidate's IDs/rows, not just the message) — add a dedicated payload struct + a dedicated `enqueueXIfRateLimited` helper (see `pendingjob.UpdatePickPayload`/`EnqueueUpdatePick`), and a `case KindX:` branch in `pendingjob/drain.go`'s `replayJob` that unmarshals the payload and calls the same function the webhook would have called.
 
 **Never:**
 - Skip `pendingjob.HandleGroqError`/the dedicated helper and fall straight to `msgSomethingBroke` on a Groq call — that's the anti-pattern this recipe exists to prevent (see [ARCHITECTURE.md](ARCHITECTURE.md#anti-patterns--what-not-to-do)).

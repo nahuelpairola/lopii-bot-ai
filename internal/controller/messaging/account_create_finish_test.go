@@ -29,7 +29,7 @@ func TestFinishAccountCreateFlow_Cancelled_NoDBWrite(t *testing.T) {
 	data := accountCreateTestData("Jubilación", "ARS", "0")
 	data["cancelled"] = "true"
 
-	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, data)
+	c.finisher().FinishAccountCreate(context.Background(), &messenger.FakeChat{}, data)
 
 	if len(accRepo.inserted) != 0 {
 		t.Error("a cancelled flow should never insert an account")
@@ -50,7 +50,7 @@ func TestFinishAccountCreateFlow_Success_InsertsAccountAndOpeningMovement(t *tes
 		subcategories: &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Sistema|Saldo inicial": sub}},
 	}
 
-	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Jubilación", "ARS", "50000"))
+	c.finisher().FinishAccountCreate(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Jubilación", "ARS", "50000"))
 
 	if len(accRepo.inserted) != 1 {
 		t.Fatalf("expected 1 account inserted, got %d", len(accRepo.inserted))
@@ -80,7 +80,7 @@ func TestFinishAccountCreateFlow_DuplicateName_NoMovementInserted(t *testing.T) 
 	movRepo := &fakeMovementRepoFull{}
 	c := &controller{accounts: accRepo, movements: movRepo, subcategories: &fakeSubcategoryRepoFull{}}
 
-	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Wallet", "ARS", "0"))
+	c.finisher().FinishAccountCreate(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Wallet", "ARS", "0"))
 
 	if len(movRepo.inserted) != 0 {
 		t.Error("a duplicate-name failure should never insert a movement")
@@ -97,7 +97,7 @@ func TestFinishAccountCreateFlow_MovementInsertFails_Propagates(t *testing.T) {
 		subcategories: &fakeSubcategoryRepoFull{byCategoryAndSub: map[string]*subcategory.Subcategory{"Sistema|Saldo inicial": sub}},
 	}
 
-	c.finishAccountCreateFlow(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Jubilación", "ARS", "0"))
+	c.finisher().FinishAccountCreate(context.Background(), &messenger.FakeChat{}, accountCreateTestData("Jubilación", "ARS", "0"))
 
 	if len(accRepo.inserted) != 1 {
 		t.Error("the account should still have been created before the movement insert failed")

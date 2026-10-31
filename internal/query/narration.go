@@ -30,7 +30,7 @@ var (
 	searchProbeTo   = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
 )
 
-func describeEmptyResult(svc services, q movement.MovementQuery, args queryToolArgs) (string, error) {
+func (a *Answerer) describeEmptyResult(q movement.MovementQuery, args queryToolArgs) (string, error) {
 	if q.Search == nil {
 		return msgQueryNoRowsInRange, nil
 	}
@@ -38,19 +38,19 @@ func describeEmptyResult(svc services, q movement.MovementQuery, args queryToolA
 
 	wide := q
 	wide.From, wide.To = searchProbeFrom, searchProbeTo
-	if rows, err := svc.QueryListMovements(wide, 1); err == nil && len(rows) > 0 {
+	if rows, err := a.movements.ListForUser(wide, 1, 0); err == nil && len(rows) > 0 {
 		return fmt.Sprintf(msgSearchOutOfRangeFmt, term, args.From, args.To), nil
 	}
 
 	wide.OnlyReserved = true
-	if rows, err := svc.QueryListMovements(wide, 1); err == nil && len(rows) > 0 {
+	if rows, err := a.movements.ListForUser(wide, 1, 0); err == nil && len(rows) > 0 {
 		return fmt.Sprintf(msgSearchOnlyInternalFmt, term), nil
 	}
 
 	if wide.Type == nil {
 		t := constants.Transfer
 		wide.Type = &t
-		if rows, err := svc.QueryListMovements(wide, 1); err == nil && len(rows) > 0 {
+		if rows, err := a.movements.ListForUser(wide, 1, 0); err == nil && len(rows) > 0 {
 			return fmt.Sprintf(msgSearchOnlyInternalFmt, term), nil
 		}
 	}

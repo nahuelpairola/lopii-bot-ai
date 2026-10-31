@@ -81,7 +81,7 @@ Three more things that are not obvious from the code:
 
 ## `spending_report` reuses the sum executor, and its exclusions live in the ENUM
 
-It is a thin wrapper: `buildMovementQuery`, `QuerySumMovements`, `describeEmptyResult` and
+It is a thin wrapper: `buildMovementQuery`, `movements.SumForUser`, `describeEmptyResult` and
 `groupLabels` are the same ones `sum_movements` runs. Only the render and the division are its
 own. Changing how `sum_movements` renders a grouped row changes both — which is the point.
 

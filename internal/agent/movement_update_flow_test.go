@@ -91,8 +91,8 @@ func TestProceedToUpdateConfirm_SeedsConfirmFlowOnResolved(t *testing.T) {
 	svc := &fakeServices{orch: orch, engine: engine, subcategories: &fakeSubcategoryRepoFull{}, accounts: accRepo}
 
 	beforeRows := []movement.MovementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
-	if err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, ChangeAsk{}); err != nil {
-		t.Fatalf("proceedToUpdateConfirm: %v", err)
+	if err := svc.loop().ProceedToUpdateConfirm(context.Background(), &messenger.FakeChat{}, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, ChangeAsk{}); err != nil {
+		t.Fatalf("ProceedToUpdateConfirm: %v", err)
 	}
 	if store.flowName != flow.MovementUpdateConfirmFlowName {
 		t.Errorf("started flow = %q, want %q", store.flowName, flow.MovementUpdateConfirmFlowName)
@@ -110,8 +110,8 @@ func TestProceedToUpdateConfirm_UnresolvedSendsNoDBCall(t *testing.T) {
 	engine.Register(flow.NewAskUserFlow())
 	svc := &fakeServices{orch: orch, engine: engine, actions: actions, accounts: &fakeAccountRepoFull{}}
 
-	if err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1, "che no sé", "", nil, nil, ChangeAsk{}); err != nil {
-		t.Fatalf("proceedToUpdateConfirm: %v", err)
+	if err := svc.loop().ProceedToUpdateConfirm(context.Background(), &messenger.FakeChat{}, 1, "che no sé", "", nil, nil, ChangeAsk{}); err != nil {
+		t.Fatalf("ProceedToUpdateConfirm: %v", err)
 	}
 	if store.flowName == flow.MovementUpdateConfirmFlowName {
 		t.Error("an unresolved result should never start the confirm flow")
@@ -129,7 +129,7 @@ func TestUpdate_UnresolvedChangeAsksWhatToChange(t *testing.T) {
 		accounts:  &fakeAccountRepoFull{},
 	}
 
-	err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1,
+	err := svc.loop().ProceedToUpdateConfirm(context.Background(), &messenger.FakeChat{}, 1,
 		"estaba mal", "", []string{"10"}, []movement.MovementRow{{Amount: "3000", Currency: "ARS", Description: "café"}}, ChangeAsk{})
 	if err != nil {
 		t.Fatal(err)
@@ -196,7 +196,7 @@ func TestUpdate_NoOpCorrectionAsksInsteadOfConfirming(t *testing.T) {
 		}},
 	}
 
-	if err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1,
+	if err := svc.loop().ProceedToUpdateConfirm(context.Background(), &messenger.FakeChat{}, 1,
 		"El café estaba mal", "", []string{"127"}, before, ChangeAsk{}); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +222,7 @@ func TestUpdate_PickedFieldAsksForTheValueWithoutCallingTheModel(t *testing.T) {
 	engine.Register(flow.NewAskUserFlow())
 	svc := &fakeServices{engine: engine, actions: actions, accounts: &fakeAccountRepoFull{}}
 
-	err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1,
+	err := svc.loop().ProceedToUpdateConfirm(context.Background(), &messenger.FakeChat{}, 1,
 		"El café estaba mal La categoría", "", []string{"127"},
 		[]movement.MovementRow{{Amount: "1800", Description: "Cafe"}},
 		ChangeAsk{pickedField: true})
@@ -253,7 +253,7 @@ func TestUpdate_AmountAnswerSkipsTheModel(t *testing.T) {
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
 	svc := &fakeServices{engine: engine, accounts: &fakeAccountRepoFull{}, subcategories: &fakeSubcategoryRepoFull{}}
 
-	err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1,
+	err := svc.loop().ProceedToUpdateConfirm(context.Background(), &messenger.FakeChat{}, 1,
 		"el café estaba mal 2000", "", []string{"127"}, before,
 		ChangeAsk{gaveValue: true, answer: "2000"})
 	if err != nil {
@@ -306,7 +306,7 @@ func TestUpdate_NoOpAfterAskingGivesUp(t *testing.T) {
 		}},
 	}
 
-	if err := proceedToUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1,
+	if err := svc.loop().ProceedToUpdateConfirm(context.Background(), &messenger.FakeChat{}, 1,
 		"El café estaba mal no sé", "", []string{"127"}, before, ChangeAsk{gaveValue: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +367,7 @@ func TestSeedAndStartUpdateConfirm_NeverCallsOrchestrator(t *testing.T) {
 	result := orchestrator.UpdateResult{Resolved: true, Movements: []orchestrator.MovementDraft{
 		{Type: "expense", Amount: "3500", Currency: "ARS", Category: "Alimentación", Subcategory: "Café", Date: "2026-07-02"},
 	}}
-	if err := seedAndStartUpdateConfirm(context.Background(), svc, &messenger.FakeChat{}, 1, "eran 3500", []string{"7"}, nil, result); err != nil {
+	if err := svc.loop().seedAndStartUpdateConfirm(context.Background(), &messenger.FakeChat{}, 1, "eran 3500", []string{"7"}, nil, result); err != nil {
 		t.Fatalf("seedAndStartUpdateConfirm: %v", err)
 	}
 	if store.flowName != flow.MovementUpdateConfirmFlowName {
@@ -464,7 +464,7 @@ func TestProceedToUpdateConfirm_ClaimedElsewhere_StartsNothing(t *testing.T) {
 	ctx := pendingjob.WithClaim(context.Background(), func() (bool, error) { return false, nil })
 
 	beforeRows := []movement.MovementRow{{Type: "expense", Amount: "3000", Currency: "ARS", Category: "Alimentación", Subcategory: "Café"}}
-	err := proceedToUpdateConfirm(ctx, svc, &messenger.FakeChat{}, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, ChangeAsk{})
+	err := svc.loop().ProceedToUpdateConfirm(ctx, &messenger.FakeChat{}, 1, "en realidad fue 3500", "", []string{"42"}, beforeRows, ChangeAsk{})
 
 	if !errors.Is(err, pendingjob.ErrClaimedElsewhere) {
 		t.Fatalf("want ErrClaimedElsewhere, got %v", err)

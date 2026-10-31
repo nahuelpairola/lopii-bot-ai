@@ -11,8 +11,8 @@ import (
 
 const recentEntitiesCap = 8
 
-func BuildRecentEntities(svc agentServices, userID uint64) string {
-	movs, err := svc.FindRecentlyCreatedForUser(
+func (l *Loop) BuildRecentEntities(userID uint64) string {
+	movs, err := l.movements.FindRecentlyCreatedForUser(
 		userID, StartOfTodayArgentina(), recentEntitiesCap)
 	if err != nil {
 		return ""

@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/reminder"
@@ -33,64 +32,90 @@ type testServices struct {
 	tapped       []string
 	asked        string
 	queryAnswer  string
-	texts        []string
-	markups      []string
 }
 
-func (t *testServices) EngineInProgress(userID uint64) (bool, error) {
-	return t.engineActive, nil
+func (t *testServices) tips() *Tips {
+	var history sentHistory = t
+	if t.available != nil && !*t.available {
+		history = nil
+	}
+	return New(t, testReminders{t}, t, testAccounts{t}, t, t, history, t.HandleQuery)
 }
 
-func (t *testServices) RemindersFindByUserID(userID uint64) (*reminder.Reminder, error) {
-	if r, ok := t.remindersBy[userID]; ok {
-		return r, nil
+type testReminders struct{ t *testServices }
+
+func (r testReminders) FindByUserID(userID uint64) (*reminder.Reminder, error) {
+	if rem, ok := r.t.remindersBy[userID]; ok {
+		return rem, nil
 	}
 	return nil, nil
 }
 
-func (t *testServices) UsersFindByID(userID uint64) (*user.User, error) {
+type testAccounts struct{ t *testServices }
+
+func (a testAccounts) FindByUserID(uint64) ([]account.Account, error) {
+	return a.t.accountsBy, nil
+}
+
+func sentTexts(c *messenger.FakeChat) []string {
+	texts := make([]string, 0, len(c.Sent))
+	for _, p := range c.Sent {
+		texts = append(texts, p.Text)
+	}
+	return texts
+}
+
+func sentMarkups(c *messenger.FakeChat) []string {
+	markups := make([]string, 0, len(c.Sent))
+	for _, p := range c.Sent {
+		rows := make([]string, 0, len(p.Buttons))
+		for _, btn := range p.Buttons {
+			rows = append(rows, btn.Label+" "+btn.Data)
+		}
+		markups = append(markups, strings.Join(rows, "\n"))
+	}
+	return markups
+}
+
+func (t *testServices) InProgress(userID uint64) (bool, error) {
+	return t.engineActive, nil
+}
+
+func (t *testServices) FindByID(userID uint64) (*user.User, error) {
 	if u, ok := t.usersBy[userID]; ok {
 		return u, nil
 	}
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (t *testServices) AccountsFindByUserID(userID uint64) ([]account.Account, error) {
-	return t.accountsBy, nil
-}
-
-func (t *testServices) SubcategoriesFindByCategoryAndSubcategory(userID uint64, category, name string) (*subcategory.Subcategory, error) {
+func (t *testServices) FindByCategoryAndSubcategory(userID uint64, category, name string) (*subcategory.Subcategory, error) {
 	return nil, subcategory.ErrSubcategoryNotFound
 }
 
-func (t *testServices) MovementsCountBySubcategory(userID uint64, subcategoryID uint64) (int64, error) {
+func (t *testServices) CountBySubcategory(userID uint64, subcategoryID uint64) (int64, error) {
 	return 0, nil
 }
 
-func (t *testServices) MovementsCountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error) {
+func (t *testServices) CountByDayForUser(userID uint64, from, to time.Time) ([]movement.DayCount, error) {
 	return t.dayCounts, nil
 }
 
-func (t *testServices) MovementsCountForUser(userID uint64) (int64, error) {
+func (t *testServices) CountForUser(userID uint64) (int64, error) {
 	return t.counts, nil
 }
 
-func (t *testServices) MovementsSumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
+func (t *testServices) SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
 	if t.sumRows != nil {
 		return t.sumRows(q, groupBy)
 	}
 	return nil, nil
 }
 
-func (t *testServices) MovementsSumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
+func (t *testServices) SumAmountForAccount(accountID uint64) (decimal.Decimal, error) {
 	return decimal.Zero, nil
 }
 
-func (t *testServices) NudgesAvailable() bool {
-	return t.available == nil || *t.available
-}
-
-func (t *testServices) NudgesSentKeys(userID uint64) ([]string, error) {
+func (t *testServices) SentKeys(userID uint64) ([]string, error) {
 	var keys []string
 	for k, ok := range t.sentKeys {
 		if ok {
@@ -100,7 +125,7 @@ func (t *testServices) NudgesSentKeys(userID uint64) ([]string, error) {
 	return keys, nil
 }
 
-func (t *testServices) NudgesLastSentAt(userID uint64) (*time.Time, error) {
+func (t *testServices) LastSentAt(userID uint64) (*time.Time, error) {
 	ts, ok := t.lastSentAt[userID]
 	if !ok {
 		return nil, nil
@@ -108,7 +133,7 @@ func (t *testServices) NudgesLastSentAt(userID uint64) (*time.Time, error) {
 	return &ts, nil
 }
 
-func (t *testServices) NudgesMarkSent(userID uint64, key string) error {
+func (t *testServices) MarkSent(userID uint64, key string) error {
 	t.marked = append(t.marked, key)
 	if t.sentKeys == nil {
 		t.sentKeys = map[string]bool{}
@@ -117,26 +142,13 @@ func (t *testServices) NudgesMarkSent(userID uint64, key string) error {
 	return nil
 }
 
-func (t *testServices) NudgesMarkSentAgain(userID uint64, key string) error {
-	return t.NudgesMarkSent(userID, key)
+func (t *testServices) MarkSentAgain(userID uint64, key string) error {
+	return t.MarkSent(userID, key)
 }
 
-func (t *testServices) NudgesMarkTapped(userID uint64, key string) error {
+func (t *testServices) MarkTapped(userID uint64, key string) error {
 	t.tapped = append(t.tapped, key)
 	return nil
-}
-
-func (t *testServices) SendText(ctx context.Context, chat messenger.Chat, text string) {
-	t.texts = append(t.texts, text)
-}
-
-func (t *testServices) SendPrompt(ctx context.Context, chat messenger.Chat, prompt conversation.Prompt) {
-	t.texts = append(t.texts, prompt.Text)
-	rows := make([]string, 0, len(prompt.Buttons))
-	for _, btn := range prompt.Buttons {
-		rows = append(rows, btn.Label+" "+btn.Data)
-	}
-	t.markups = append(t.markups, strings.Join(rows, "\n"))
 }
 
 func (t *testServices) HandleQuery(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error) {
@@ -148,10 +160,10 @@ func TestMaybeNudge_FiresCorrectTipAfterFirstMovement(t *testing.T) {
 	svc := &testServices{counts: 1}
 
 	chat := &messenger.FakeChat{}
-	Maybe(context.Background(), svc, chat, 1)
+	svc.tips().Maybe(context.Background(), chat, 1)
 
-	if len(svc.texts) != 1 {
-		t.Fatalf("expected 1 nudge sent, got %d: %+v", len(svc.texts), svc.texts)
+	if len(sentTexts(chat)) != 1 {
+		t.Fatalf("expected 1 nudge sent, got %d: %+v", len(sentTexts(chat)), sentTexts(chat))
 	}
 	if !svc.sentKeys[correctTip] {
 		t.Error("expected correct_tip marked sent")
@@ -162,10 +174,10 @@ func TestMaybeNudge_SkipsWhenFlowInProgress(t *testing.T) {
 	svc := &testServices{counts: 1, engineActive: true}
 
 	chat := &messenger.FakeChat{}
-	Maybe(context.Background(), svc, chat, 1)
+	svc.tips().Maybe(context.Background(), chat, 1)
 
-	if len(svc.texts) != 0 {
-		t.Fatalf("expected no nudge while a flow is in progress, got %+v", svc.texts)
+	if len(sentTexts(chat)) != 0 {
+		t.Fatalf("expected no nudge while a flow is in progress, got %+v", sentTexts(chat))
 	}
 }
 
@@ -173,10 +185,10 @@ func TestMaybeNudge_OnceEver(t *testing.T) {
 	svc := &testServices{counts: 1, sentKeys: map[string]bool{correctTip: true}}
 
 	chat := &messenger.FakeChat{}
-	Maybe(context.Background(), svc, chat, 1)
+	svc.tips().Maybe(context.Background(), chat, 1)
 
-	if len(svc.texts) != 0 {
-		t.Fatalf("expected no nudge (correct_tip already sent once-ever, nothing else eligible), got %+v", svc.texts)
+	if len(sentTexts(chat)) != 0 {
+		t.Fatalf("expected no nudge (correct_tip already sent once-ever, nothing else eligible), got %+v", sentTexts(chat))
 	}
 }
 
@@ -187,22 +199,22 @@ func TestMaybeNudge_QuestionTipCarriesButton(t *testing.T) {
 	t.Cleanup(func() { nudges = original })
 	nudges = []nudgeDef{{
 		key:      "test_question_tip",
-		when:     func(s Services, userID uint64, stats *nudgeStats) bool { return true },
+		when:     func(_ *Tips, userID uint64, stats *nudgeStats) bool { return true },
 		text:     "💡 Probando.",
 		question: "¿Cuánto gasté esta semana?",
 	}}
 
 	chat := &messenger.FakeChat{}
-	Maybe(context.Background(), svc, chat, 1)
+	svc.tips().Maybe(context.Background(), chat, 1)
 
-	if len(svc.texts) != 1 {
-		t.Fatalf("expected 1 nudge sent, got %d: %+v", len(svc.texts), svc.texts)
+	if len(sentTexts(chat)) != 1 {
+		t.Fatalf("expected 1 nudge sent, got %d: %+v", len(sentTexts(chat)), sentTexts(chat))
 	}
-	if !strings.Contains(svc.markups[0], "nudge_q:test_question_tip") {
-		t.Errorf("expected the button callback_data, got markup: %s", svc.markups[0])
+	if !strings.Contains(sentMarkups(chat)[0], "nudge_q:test_question_tip") {
+		t.Errorf("expected the button callback_data, got markup: %s", sentMarkups(chat)[0])
 	}
-	if !strings.Contains(svc.markups[0], "gasté esta semana") {
-		t.Errorf("expected the question as the button label, got markup: %s", svc.markups[0])
+	if !strings.Contains(sentMarkups(chat)[0], "gasté esta semana") {
+		t.Errorf("expected the question as the button label, got markup: %s", sentMarkups(chat)[0])
 	}
 }
 
@@ -220,7 +232,7 @@ func TestNudgeCallbackDataFitsTelegramLimit(t *testing.T) {
 func TestHandleNudgeQuery_RunsTheQuestionAndSealsTheTap(t *testing.T) {
 	svc := &testServices{queryAnswer: "Gastaste $5.000."}
 
-	handled := HandleCallback(context.Background(), svc, &messenger.FakeChat{}, 1, nudgeQueryPrefix+nudgeQueryTip)
+	handled := svc.tips().HandleCallback(context.Background(), &messenger.FakeChat{}, 1, nudgeQueryPrefix+nudgeQueryTip)
 
 	if !handled {
 		t.Fatal("expected the nudge callback to be handled")
@@ -236,10 +248,10 @@ func TestHandleNudgeQuery_RunsTheQuestionAndSealsTheTap(t *testing.T) {
 func TestHandleNudgeQuery_IgnoresOtherCallbacks(t *testing.T) {
 	svc := &testServices{}
 
-	if HandleCallback(context.Background(), svc, &messenger.FakeChat{}, 1, "edit_proposal") {
+	if svc.tips().HandleCallback(context.Background(), &messenger.FakeChat{}, 1, "edit_proposal") {
 		t.Error("a non-nudge callback must not be handled here — the engine owns it")
 	}
-	if HandleCallback(context.Background(), svc, &messenger.FakeChat{}, 1, nudgeQueryPrefix+"key_que_no_existe") {
+	if svc.tips().HandleCallback(context.Background(), &messenger.FakeChat{}, 1, nudgeQueryPrefix+"key_que_no_existe") {
 		t.Error("an unknown nudge key must not fire a query")
 	}
 	if svc.asked != "" {
@@ -251,9 +263,9 @@ func TestMaybeNudge_DailyCooldown(t *testing.T) {
 	svc := &testServices{counts: 1, lastSentAt: map[uint64]time.Time{1: time.Now()}}
 
 	chat := &messenger.FakeChat{}
-	Maybe(context.Background(), svc, chat, 1)
+	svc.tips().Maybe(context.Background(), chat, 1)
 
-	if len(svc.texts) != 0 {
-		t.Fatalf("expected no nudge inside the daily cooldown, got %+v", svc.texts)
+	if len(sentTexts(chat)) != 0 {
+		t.Fatalf("expected no nudge inside the daily cooldown, got %+v", sentTexts(chat))
 	}
 }

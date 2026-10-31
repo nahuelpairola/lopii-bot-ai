@@ -54,7 +54,7 @@ func TestSuggestMergeTarget_ExcludesSourceFromTaxonomy(t *testing.T) {
 	}
 
 	data := conversation.Data{conversation.KeySourceCategory: "Comida", conversation.KeySourceSubcategory: "Delivery"}
-	SuggestMergeTarget(context.Background(), s, 1, 7, data)
+	s.w().SuggestMergeTarget(context.Background(), 1, 7, data)
 
 	for _, e := range s.gotTaxonomy {
 		if e.Category == "Comida" && e.Subcategory == "Delivery" {
@@ -80,7 +80,7 @@ func TestSuggestMergeTarget_ValidMatchReturnsRow(t *testing.T) {
 		byCatSub: map[string]*subcategory.Subcategory{"Alimentos|Delivery": &all[1]},
 	}
 
-	got := SuggestMergeTarget(context.Background(), s, 1, 7, conversation.Data{})
+	got := s.w().SuggestMergeTarget(context.Background(), 1, 7, conversation.Data{})
 	if got == nil || got.ID != 3 {
 		t.Fatalf("got = %+v, want la fila 3", got)
 	}
@@ -94,7 +94,7 @@ func TestSuggestMergeTarget_MatchResolvingToSourceIsDiscarded(t *testing.T) {
 		byCatSub: map[string]*subcategory.Subcategory{"Comida|Delivery": &all[0]},
 	}
 
-	if got := SuggestMergeTarget(context.Background(), s, 1, 7, conversation.Data{}); got != nil {
+	if got := s.w().SuggestMergeTarget(context.Background(), 1, 7, conversation.Data{}); got != nil {
 		t.Errorf("got = %+v, want nil (se sugirió a sí misma)", got)
 	}
 }
@@ -105,7 +105,7 @@ func TestSuggestMergeTarget_ProposalInsteadOfMatchIsNoSuggestion(t *testing.T) {
 		proposal: &orchestrator.CategoryProposal{Category: "Nueva", Subcategory: "Cosa"},
 	}
 
-	if got := SuggestMergeTarget(context.Background(), s, 1, 7, conversation.Data{}); got != nil {
+	if got := s.w().SuggestMergeTarget(context.Background(), 1, 7, conversation.Data{}); got != nil {
 		t.Errorf("got = %+v, want nil (Proposal no es destino de fusión)", got)
 	}
 }
@@ -116,7 +116,7 @@ func TestSuggestMergeTarget_OrchestratorErrorIsNoSuggestion(t *testing.T) {
 		classifyErr: errFake,
 	}
 
-	if got := SuggestMergeTarget(context.Background(), s, 1, 7, conversation.Data{}); got != nil {
+	if got := s.w().SuggestMergeTarget(context.Background(), 1, 7, conversation.Data{}); got != nil {
 		t.Errorf("got = %+v, want nil", got)
 	}
 }
@@ -127,7 +127,7 @@ func TestSuggestMergeTarget_HallucinatedMatchIsDiscarded(t *testing.T) {
 		match: &orchestrator.CategoryMatch{Category: "Inventada", Subcategory: "Nada"},
 	}
 
-	if got := SuggestMergeTarget(context.Background(), s, 1, 7, conversation.Data{}); got != nil {
+	if got := s.w().SuggestMergeTarget(context.Background(), 1, 7, conversation.Data{}); got != nil {
 		t.Errorf("got = %+v, want nil", got)
 	}
 }

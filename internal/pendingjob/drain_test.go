@@ -77,7 +77,7 @@ type testServices struct {
 	tracedFn       func(ctx context.Context, kind string, traceID string, fn func(context.Context) (*uint64, error))
 }
 
-func (s *testServices) UsersFindByID(userID uint64) (*user.User, error) {
+func (s *testServices) FindByID(userID uint64) (*user.User, error) {
 	if s.usersErr != nil {
 		return nil, s.usersErr
 	}
@@ -92,9 +92,6 @@ func (s *testServices) HandleFreeText(ctx context.Context, _ messenger.Chat, _ u
 }
 func (s *testServices) ProceedToUpdateConfirm(_ context.Context, _ messenger.Chat, _ uint64, _ string, _ string, _ []string, _ []movement.MovementRow) error {
 	return nil
-}
-func (s *testServices) SendText(ctx context.Context, chat messenger.Chat, text string) {
-	_ = messenger.SendText(ctx, chat, text)
 }
 func (s *testServices) Traced(ctx context.Context, kind string, traceID string, fn func(context.Context) (*uint64, error)) {
 	if s.tracedFn != nil {
@@ -142,7 +139,7 @@ func TestDrain_GiveUp_OldJob(t *testing.T) {
 	svc := &testServices{}
 	chats := fakeChats{chat: &messenger.FakeChat{}}
 
-	drainTick(context.Background(), svc, jobs, chats, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, chats, time.Now())
 
 	if len(jobs.deleted) != 1 || jobs.deleted[0] != 42 {
 		t.Fatalf("want job 42 deleted, got %v", jobs.deleted)
@@ -160,7 +157,7 @@ func TestDrain_NonWritingReplay_DeletesJobAfterwards(t *testing.T) {
 	svc := &testServices{}
 	chats := fakeChats{chat: &messenger.FakeChat{}}
 
-	drainTick(context.Background(), svc, jobs, chats, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, chats, time.Now())
 
 	if len(jobs.deleted) != 1 || jobs.deleted[0] != 9 {
 		t.Fatalf("want job 9 deleted, got %v", jobs.deleted)
@@ -188,7 +185,7 @@ func TestDrain_ReplayCarriesItsOwnTrace(t *testing.T) {
 	}
 	chats := fakeChats{chat: &messenger.FakeChat{}}
 
-	drainTick(context.Background(), svc, jobs, chats, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, chats, time.Now())
 
 	if seenTraceID == "" {
 		t.Error("el replay corrió sin trace_id: llm_calls e intent_events quedan huérfanos")
@@ -213,7 +210,7 @@ func TestDrain_ReplayThatWrites_ClaimsBeforeWriting(t *testing.T) {
 		return nil
 	}}
 
-	drainTick(context.Background(), svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
 
 	if len(deletedAtWrite) != 1 || deletedAtWrite[0] != 9 {
 		t.Fatalf("the job must be gone before the write, deleted at write time: %v", deletedAtWrite)
@@ -236,7 +233,7 @@ func TestDrain_ClaimedElsewhere_WritesNothingAndSendsNothing(t *testing.T) {
 	}}
 	chat := &messenger.FakeChat{}
 
-	drainTick(context.Background(), svc, jobs, fakeChats{chat: chat}, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, fakeChats{chat: chat}, time.Now())
 
 	if wrote {
 		t.Fatal("wrote after losing the claim: two instances would record the money twice")
@@ -255,7 +252,7 @@ func TestDrain_ClaimFails_JobStaysForNextTick(t *testing.T) {
 	svc := &testServices{onFreeText: func(ctx context.Context, _ string) error { return ClaimReplay(ctx) }}
 	chat := &messenger.FakeChat{}
 
-	drainTick(context.Background(), svc, jobs, fakeChats{chat: chat}, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, fakeChats{chat: chat}, time.Now())
 
 	if len(svc.texts) != 1 {
 		t.Fatalf("a failed claim must stop this user's drain so \"no, 600\" never overtakes \"gasté 500\", replayed %v", svc.texts)
@@ -272,7 +269,7 @@ func TestDrain_RateLimitedBeforeClaim_LeavesJobUntouched(t *testing.T) {
 		return &orchestrator.RateLimitedError{RetryAfter: time.Millisecond}
 	}}
 
-	drainTick(context.Background(), svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
 
 	if len(jobs.deleted) != 0 || len(jobs.inserted) != 0 {
 		t.Fatalf("a 429 before the claim must leave the row alone, deleted=%v inserted=%v", jobs.deleted, jobs.inserted)
@@ -291,7 +288,7 @@ func TestDrain_RateLimitedAfterClaim_ReinsertsWithOriginalCreatedAt(t *testing.T
 		return &orchestrator.RateLimitedError{RetryAfter: time.Millisecond}
 	}}
 
-	drainTick(context.Background(), svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
 
 	if len(jobs.inserted) != 1 {
 		t.Fatalf("a claimed job that hit a 429 must go back to the queue, inserted %v", jobs.inserted)
@@ -313,7 +310,7 @@ func TestDrain_ReinsertFails_UserIsTold(t *testing.T) {
 	}}
 	chat := &messenger.FakeChat{}
 
-	drainTick(context.Background(), svc, jobs, fakeChats{chat: chat}, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, fakeChats{chat: chat}, time.Now())
 
 	sent := sentTexts(chat)
 	if len(sent) != 1 || !strings.Contains(sent[0], "gasté 5000") {
@@ -326,7 +323,7 @@ func TestDrain_UserLookupFails_OldJobStillGivesUp(t *testing.T) {
 	jobs := &drainJobs{jobs: []PendingJob{{ID: 42, UserID: 7, Kind: KindFreeText, Payload: freeTextPayload(t, "gasté 5000"), CreatedAt: time.Now().Add(-3 * time.Hour)}}}
 	svc := &testServices{usersErr: errors.New("user not found")}
 
-	drainTick(context.Background(), svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
 
 	if len(jobs.deleted) != 1 || jobs.deleted[0] != 42 {
 		t.Fatalf("a job past MaxJobAge must be dropped even when the lookup fails, deleted %v", jobs.deleted)
@@ -338,7 +335,7 @@ func TestDrain_GiveUp_AlreadyGoneSendsNothing(t *testing.T) {
 	jobs := &drainJobs{notClaimed: true, jobs: []PendingJob{{ID: 42, UserID: 7, Kind: KindFreeText, Payload: freeTextPayload(t, "gasté 5000"), CreatedAt: time.Now().Add(-3 * time.Hour)}}}
 	chat := &messenger.FakeChat{}
 
-	drainTick(context.Background(), &testServices{}, jobs, fakeChats{chat: chat}, time.Now())
+	drainTick(context.Background(), &testServices{}, &testServices{}, jobs, fakeChats{chat: chat}, time.Now())
 
 	if len(chat.Sent) != 0 {
 		t.Fatalf("another instance already gave up on this job and told the user, sent again %v", sentTexts(chat))
@@ -359,7 +356,7 @@ func TestDrain_ShutdownSignal_StopsStartingNewJobs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	drainTick(ctx, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
+	drainTick(ctx, svc, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
 
 	if len(svc.texts) != 0 || len(jobs.deleted) != 0 {
 		t.Fatalf("after the shutdown signal no job may start, replayed %v deleted %v", svc.texts, jobs.deleted)
@@ -379,7 +376,7 @@ func TestDrain_ReplayContextSurvivesShutdown(t *testing.T) {
 		return nil
 	}}
 
-	drainTick(ctx, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
+	drainTick(ctx, svc, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
 }
 
 func TestDrain_ReplayPanics_JobStaysAndOtherUsersDrain(t *testing.T) {
@@ -395,7 +392,7 @@ func TestDrain_ReplayPanics_JobStaysAndOtherUsersDrain(t *testing.T) {
 		return nil
 	}}
 
-	drainTick(context.Background(), svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
+	drainTick(context.Background(), svc, svc, jobs, fakeChats{chat: &messenger.FakeChat{}}, time.Now())
 
 	if len(jobs.deleted) != 1 || jobs.deleted[0] != 10 {
 		t.Fatalf("the panicking job must stay for a retry and the other user must drain, deleted %v", jobs.deleted)

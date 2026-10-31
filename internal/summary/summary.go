@@ -123,11 +123,11 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 
 	switch {
 	case !spent.IsZero() && !earned.IsZero():
-		fmt.Fprintf(&sb, "Gastaste <b>%s</b> · entró %s\n", money(spent, cur), money(earned, cur))
+		fmt.Fprintf(&sb, "Gastaste <b>%s</b> · entró %s\n", currency.FormatMoney(spent, cur), currency.FormatMoney(earned, cur))
 	case !spent.IsZero():
-		fmt.Fprintf(&sb, "Gastaste <b>%s</b>\n", money(spent, cur))
+		fmt.Fprintf(&sb, "Gastaste <b>%s</b>\n", currency.FormatMoney(spent, cur))
 	case !earned.IsZero():
-		fmt.Fprintf(&sb, "Entró <b>%s</b> y no gastaste nada\n", money(earned, cur))
+		fmt.Fprintf(&sb, "Entró <b>%s</b> y no gastaste nada\n", currency.FormatMoney(earned, cur))
 	}
 
 	prev := decimal.Zero
@@ -152,7 +152,7 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 		if top.Description != nil && *top.Description != "" {
 			desc = html.EscapeString(*top.Description)
 		}
-		fmt.Fprintf(&sb, "Lo más caro: <b>%s</b> · %s\n", money(top.Amount.Abs(), cur), desc)
+		fmt.Fprintf(&sb, "Lo más caro: <b>%s</b> · %s\n", currency.FormatMoney(top.Amount.Abs(), cur), desc)
 	}
 
 	if !variation.IsZero() {
@@ -160,7 +160,7 @@ func (b *Builder) currencyBlock(userID uint64, cur currency.Currency, from, to, 
 		if variation.IsNegative() {
 			verb = "bajaron"
 		}
-		fmt.Fprintf(&sb, "Tus saldos %s <b>%s</b> <i>por rendimientos y ajustes</i>\n", verb, money(variation.Abs(), cur))
+		fmt.Fprintf(&sb, "Tus saldos %s <b>%s</b> <i>por rendimientos y ajustes</i>\n", verb, currency.FormatMoney(variation.Abs(), cur))
 	}
 
 	proj, err := b.projectionLine(userID, cur, to)
@@ -197,7 +197,7 @@ func comparisonLine(spent, prev decimal.Decimal, cur currency.Currency) string {
 	if delta.IsNegative() {
 		arrow, word = "↘", "menos"
 	}
-	return fmt.Sprintf("<i>%s %s %s que la semana pasada</i>\n", arrow, money(roundNice(delta.Abs(), cur), cur), word)
+	return fmt.Sprintf("<i>%s %s %s que la semana pasada</i>\n", arrow, currency.FormatMoney(roundNice(delta.Abs(), cur), cur), word)
 }
 
 func (b *Builder) categoryLines(userID uint64, cur currency.Currency, spent decimal.Decimal, from, to, prevFrom, prevTo time.Time) (string, error) {
@@ -247,12 +247,12 @@ func (b *Builder) categoryLines(userID uint64, cur currency.Currency, spent deci
 
 	var sb strings.Builder
 	for i, c := range cats {
-		fmt.Fprintf(&sb, "  %s %s %s", b.icons.IconForCategory(userID, c.Label), html.EscapeString(c.Label), money(c.Total, cur))
+		fmt.Fprintf(&sb, "  %s %s %s", b.icons.IconForCategory(userID, c.Label), html.EscapeString(c.Label), currency.FormatMoney(c.Total, cur))
 		if i == jumped {
 			if p, seen := prev[c.Label]; !seen || p.IsZero() {
 				sb.WriteString(" · <i>no gastaste acá la semana pasada</i>")
 			} else {
-				fmt.Fprintf(&sb, " · <i>%s más que la semana pasada</i>", money(roundNice(best, cur), cur))
+				fmt.Fprintf(&sb, " · <i>%s más que la semana pasada</i>", currency.FormatMoney(roundNice(best, cur), cur))
 			}
 		}
 		sb.WriteString("\n")
@@ -398,15 +398,15 @@ func (b *Builder) accountsBlock(userID uint64) (string, error) {
 		}
 		name := html.EscapeString(a.Name)
 		if a.Currency == currency.ARS {
-			lines = append(lines, fmt.Sprintf("  %s <b>%s</b>", name, money(bal, a.Currency)))
+			lines = append(lines, fmt.Sprintf("  %s <b>%s</b>", name, currency.FormatMoney(bal, a.Currency)))
 			continue
 		}
-		foreign = append(foreign, fmt.Sprintf("%s %s", name, money(bal, a.Currency)))
+		foreign = append(foreign, fmt.Sprintf("%s %s", name, currency.FormatMoney(bal, a.Currency)))
 	}
 	if len(lines) == 0 {
 		for _, a := range accts {
 			bal, _ := b.movements.SumAmountForAccount(uint64(a.ID))
-			lines = append(lines, fmt.Sprintf("  %s <b>%s</b>", html.EscapeString(a.Name), money(bal, a.Currency)))
+			lines = append(lines, fmt.Sprintf("  %s <b>%s</b>", html.EscapeString(a.Name), currency.FormatMoney(bal, a.Currency)))
 		}
 		foreign = nil
 	}
@@ -414,10 +414,6 @@ func (b *Builder) accountsBlock(userID uint64) (string, error) {
 		lines = append(lines, "  En dólares: "+strings.Join(foreign, " · "))
 	}
 	return "\n🏦 <b>Hoy tenés</b>\n" + strings.Join(lines, "\n") + "\n", nil
-}
-
-func money(d decimal.Decimal, cur currency.Currency) string {
-	return currency.FormatMoney(d, cur)
 }
 
 func weekRange(from, to time.Time) string {

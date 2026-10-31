@@ -227,7 +227,7 @@ func TestResolveCandidates_NoDate_UsesCreatedAtRecencyWindow(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("Nafta YPF")}}}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 42, "che, lo de la nafta ypf era otro monto", "", "")
+	candidates, err := svc.loop().resolveCandidates(42, "che, lo de la nafta ypf era otro monto", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestResolveCandidates_PastDatedButRecentlyCreated_Resolves(t *testing.T) {
 	}}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 2, "Perdon, el asado eran 15 mil", "", "")
+	candidates, err := svc.loop().resolveCandidates(2, "Perdon, el asado eran 15 mil", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestResolveCandidates_NoTextMatch_FallsBackToRecentWindow(t *testing.T) {
 	}}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 42, "era 700", "", "")
+	candidates, err := svc.loop().resolveCandidates(42, "era 700", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestResolveCandidates_EmptyWindow_ReturnsNoCandidates(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: nil}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 42, "era 700", "", "")
+	candidates, err := svc.loop().resolveCandidates(42, "era 700", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestResolveCandidates_NoTextMatch_JustCreated_ResolvesToThatOne(t *testing.
 	}}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 2, "Eran 1500", "", "")
+	candidates, err := svc.loop().resolveCandidates(2, "Eran 1500", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestResolveCandidates_Fallback_SkipsSystemMovements(t *testing.T) {
 	}}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 2, "era 700", "", "")
+	candidates, err := svc.loop().resolveCandidates(2, "era 700", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestResolveCandidates_ManyTextMatches_IsCapped(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: many}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 2, "el super era 8 mil", "", "")
+	candidates, err := svc.loop().resolveCandidates(2, "el super era 8 mil", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -422,7 +422,7 @@ func TestResolveCandidates_ElCorteEsPorParecidoNoPorRecencia(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{result: window}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 3, "Del débito tarjeta Mercado Pago se me reintegraron $70.000", "", "")
+	candidates, err := svc.loop().resolveCandidates(3, "Del débito tarjeta Mercado Pago se me reintegraron $70.000", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestResolveCandidates_NoDate_WindowIsDynamic(t *testing.T) {
 	}}
 	svc := &fakeServices{movements: fake}
 
-	if _, err := resolveCandidates(svc, 42, "era 700", "", ""); err != nil {
+	if _, err := svc.loop().resolveCandidates(42, "era 700", "", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -480,7 +480,7 @@ func TestResolveCandidates_LoneDateFromAnchorsASingleDay(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
 	svc := &fakeServices{movements: fake}
 
-	if _, err := resolveCandidates(svc, 3, "el débito de tarjeta del 04 de agosto", "2026-08-04", ""); err != nil {
+	if _, err := svc.loop().resolveCandidates(3, "el débito de tarjeta del 04 de agosto", "2026-08-04", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if fake.recencyCalled {
@@ -501,7 +501,7 @@ func TestResolveCandidates_DateRangeCoversTheWholeSpan(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
 	svc := &fakeServices{movements: fake}
 
-	if _, err := resolveCandidates(svc, 3, "la compra de la semana pasada ponela en otra categoría", "2026-08-10", "2026-08-16"); err != nil {
+	if _, err := svc.loop().resolveCandidates(3, "la compra de la semana pasada ponela en otra categoría", "2026-08-10", "2026-08-16"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if fake.recencyCalled {
@@ -522,7 +522,7 @@ func TestResolveCandidates_LoneDateToAnchorsSymmetrically(t *testing.T) {
 	fake := &fakeMovementRepoForResolve{}
 	svc := &fakeServices{movements: fake}
 
-	if _, err := resolveCandidates(svc, 3, "lo de hasta el 4 de agosto", "", "2026-08-04"); err != nil {
+	if _, err := svc.loop().resolveCandidates(3, "lo de hasta el 4 de agosto", "", "2026-08-04"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if want := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC); !fake.capturedSince.Equal(want) {
@@ -561,7 +561,7 @@ func TestResolveCandidates_HboMaxFromProd_IsOffered(t *testing.T) {
 	}}
 	svc := &fakeServices{movements: fake}
 
-	candidates, err := resolveCandidates(svc, 2, "Elimina hbo max del 3 de octubre", "", "")
+	candidates, err := svc.loop().resolveCandidates(2, "Elimina hbo max del 3 de octubre", "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -579,7 +579,7 @@ func TestResolveCandidates_NoDate_SearchesTheWholeWindowNotTheLatestRows(t *test
 	fake := &fakeMovementRepoForResolve{result: []movement.Movement{{Model: gorm.Model{ID: 1}, Description: strPtr("hbo max")}}}
 	svc := &fakeServices{movements: fake}
 
-	if _, err := resolveCandidates(svc, 2, "borrá hbo max", "", ""); err != nil {
+	if _, err := svc.loop().resolveCandidates(2, "borrá hbo max", "", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if fake.capturedLimit != 0 {

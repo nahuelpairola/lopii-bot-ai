@@ -1,7 +1,6 @@
 package query
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,13 +10,10 @@ import (
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"lopiibot.com/internal/account"
-	"lopiibot.com/internal/chathistory"
 	"lopiibot.com/internal/constants"
 	"lopiibot.com/internal/currency"
-	"lopiibot.com/internal/messenger"
 	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/reminder"
 	"lopiibot.com/internal/subcategory"
 )
 
@@ -36,7 +32,7 @@ func (r *fakeQueryMovements) SumForUser(q movement.MovementQuery, groupBy string
 	r.lastQuery, r.lastGroupBy = q, groupBy
 	return r.sumRows, nil
 }
-func (r *fakeQueryMovements) ListForUser(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
+func (r *fakeQueryMovements) ListForUser(q movement.MovementQuery, limit, _ int) ([]movement.Movement, error) {
 	r.lastQuery, r.lastLimit = q, limit
 	r.listCalls++
 	if r.listByCall != nil {
@@ -50,104 +46,22 @@ func (r *fakeQueryMovements) ListForUser(q movement.MovementQuery, limit int) ([
 func (r *fakeQueryMovements) SumAmountForAccount(id uint64) (decimal.Decimal, error) {
 	return r.balances[id], nil
 }
-func (r *fakeQueryMovements) InsertBatch([]movement.Movement) error              { return nil }
-func (r *fakeQueryMovements) ReplaceMovements([]uint, []movement.Movement) error { return nil }
-func (r *fakeQueryMovements) FindSimilarForUser(uint64, string, time.Time, *time.Time) ([]movement.Movement, error) {
-	return nil, nil
-}
-func (r *fakeQueryMovements) FindRecentlyCreatedForUser(uint64, time.Time, int) ([]movement.Movement, error) {
-	return nil, nil
-}
-func (r *fakeQueryMovements) SoftDeleteByIDs([]uint) error                               { return nil }
-func (r *fakeQueryMovements) InsertAccountsWithOpenings([]movement.AccountOpening) error { return nil }
-func (r *fakeQueryMovements) ReassignAccount(uint64, uint64) error                       { return nil }
-func (r *fakeQueryMovements) CountForUser(uint64) (int64, error)                         { return 0, nil }
-func (r *fakeQueryMovements) CountBySubcategory(uint64, uint64) (int64, error)           { return 0, nil }
-func (r *fakeQueryMovements) ReassignSubcategory(uint64, uint64, uint64) error           { return nil }
-func (r *fakeQueryMovements) TopDescriptionsBySubcategory(uint64, uint64, int) ([]string, error) {
-	return nil, nil
-}
 
 type fakeQueryAccounts struct{ accts []account.Account }
 
 func (r *fakeQueryAccounts) FindByUserID(uint64) ([]account.Account, error) { return r.accts, nil }
-func (r *fakeQueryAccounts) Insert(*account.Account) error                  { return nil }
-func (r *fakeQueryAccounts) FindDefaultByCurrency(uint64, currency.Currency) (*account.Account, error) {
-	return nil, nil
-}
-func (r *fakeQueryAccounts) GetAccount(uint64) (*account.Account, error)          { return nil, nil }
-func (r *fakeQueryAccounts) Rename(uint64, string) error                          { return nil }
-func (r *fakeQueryAccounts) UnsetDefault(uint64, currency.Currency) error         { return nil }
-func (r *fakeQueryAccounts) SetDefault(uint64) error                              { return nil }
-func (r *fakeQueryAccounts) HasDefaultForCurrency(uint64, currency.Currency) bool { return false }
 
 type fakeQuerySubcats struct {
-	subs          []subcategory.Subcategory
-	owned         []subcategory.Subcategory
-	deletedUserID uint64
-	deletedID     uint64
-	deleteCalls   int
-	deleteErr     error
+	subs []subcategory.Subcategory
 }
 
 func (r *fakeQuerySubcats) FindAllForUser(uint64) ([]subcategory.Subcategory, error) {
 	return r.subs, nil
 }
-func (r *fakeQuerySubcats) FindByCategoryAndSubcategory(uint64, string, string) (*subcategory.Subcategory, error) {
-	return nil, nil
-}
-func (r *fakeQuerySubcats) DistinctCategoriesForUser(uint64) ([]string, error) { return nil, nil }
-func (r *fakeQuerySubcats) IconForCategory(uint64, string) string              { return "📂" }
-func (r *fakeQuerySubcats) Insert(*subcategory.Subcategory) error              { return nil }
-func (r *fakeQuerySubcats) Reload() error                                      { return nil }
-func (r *fakeQuerySubcats) Delete(userID uint64, id uint64) error {
-	r.deletedUserID, r.deletedID = userID, id
-	r.deleteCalls++
-	return r.deleteErr
-}
-func (r *fakeQuerySubcats) FindOwnedByUser(userID uint64) ([]subcategory.Subcategory, error) {
-	return r.owned, nil
-}
-
-type queryTestServices struct {
-	movements *fakeQueryMovements
-	accounts  *fakeQueryAccounts
-	subcats   *fakeQuerySubcats
-}
-
-func (s *queryTestServices) QueryAccountsByUserID(userID uint64) ([]account.Account, error) {
-	return s.accounts.FindByUserID(userID)
-}
-func (s *queryTestServices) QueryCategoriesByUser(userID uint64) ([]subcategory.Subcategory, error) {
-	return s.subcats.FindAllForUser(userID)
-}
-func (s *queryTestServices) QueryIconForCategory(userID uint64, category string) string {
-	return s.subcats.IconForCategory(userID, category)
-}
-func (s *queryTestServices) QueryListMovements(q movement.MovementQuery, limit int) ([]movement.Movement, error) {
-	return s.movements.ListForUser(q, limit)
-}
-func (s *queryTestServices) QuerySumMovements(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error) {
-	return s.movements.SumForUser(q, groupBy)
-}
-func (s *queryTestServices) QueryBalanceForAccount(accountID uint64) (decimal.Decimal, error) {
-	return s.movements.SumAmountForAccount(accountID)
-}
-func (s *queryTestServices) QueryReminderByUser(userID uint64) (*reminder.Reminder, error) {
-	return nil, nil
-}
-func (s *queryTestServices) QueryChatRecent(userID uint64) ([]chathistory.Turn, error) {
-	return nil, nil
-}
-func (s *queryTestServices) QueryChatAppend(userID uint64, question, answer string) error { return nil }
-func (s *queryTestServices) QuerySendText(ctx context.Context, chat messenger.Chat, text string) {
-}
-func (s *queryTestServices) AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error) {
-	return "", nil
-}
+func (r *fakeQuerySubcats) IconForCategory(uint64, string) string { return "📂" }
 
 func newQueryExecutor(m *fakeQueryMovements, a *fakeQueryAccounts, s *fakeQuerySubcats) func(string, json.RawMessage) (string, error) {
-	return NewExecutor(&queryTestServices{movements: m, accounts: a, subcats: s}, 1)
+	return New(a, m, s, nil, nil, nil).Executor(1)
 }
 
 func dec(s string) decimal.Decimal { return decimal.RequireFromString(s) }

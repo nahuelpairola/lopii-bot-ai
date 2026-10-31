@@ -9,7 +9,7 @@ import (
 	"lopiibot.com/internal/trace"
 )
 
-func (c *controller) traced(ctx context.Context, kind, raw string, fn func(ctx context.Context) (*uint64, error)) {
+func (c *controller) Traced(ctx context.Context, kind, raw string, fn func(ctx context.Context) (*uint64, error)) {
 	traceID := trace.NewID()
 	ctx = trace.WithID(ctx, traceID)
 	start := time.Now()

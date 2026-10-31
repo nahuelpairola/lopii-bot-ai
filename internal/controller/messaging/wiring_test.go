@@ -34,7 +34,7 @@ func TestNewController_WiresEveryDependency(t *testing.T) {
 		&fakeAccountRepoFull{},
 		&fakeMovementRepoFull{},
 		&fakeSubcategoryRepoFull{},
-		conversation.NewEngine(&fakeConvStore{}, FlowResumeLabel),
+		conversation.NewEngine(&fakeStateStore{}, FlowResumeLabel),
 		&fakeFullOrchestrator{},
 		&fakeMetricRepo{},
 		&stubChatHistory{},
