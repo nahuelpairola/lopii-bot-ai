@@ -107,11 +107,11 @@ func parseDateAnchor(s string) *time.Time {
 	return &t
 }
 
-func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, dateTo string) ([]transactionGroup, error) {
+func (l *Loop) resolveCandidates(userID uint64, message, dateFrom, dateTo string) ([]transactionGroup, error) {
 	var matches []movement.Movement
 	var err error
 	if dateFrom == "" && dateTo == "" {
-		matches, err = svc.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow), noRowLimit)
+		matches, err = l.movements.FindRecentlyCreatedForUser(userID, time.Now().Add(-recencyWindow), noRowLimit)
 	} else {
 		from, to := parseDateAnchor(dateFrom), parseDateAnchor(dateTo)
 		if from == nil {
@@ -127,7 +127,7 @@ func resolveCandidates(svc agentServices, userID uint64, message, dateFrom, date
 			u := to.Add(dateAnchorMargin)
 			until = &u
 		}
-		matches, err = svc.MovementsFindSimilarForUser(userID, message, since, until)
+		matches, err = l.movements.FindSimilarForUser(userID, message, since, until)
 	}
 	if err != nil {
 		return nil, err

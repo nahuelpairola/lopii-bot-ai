@@ -16,11 +16,11 @@ type nudgeStats struct {
 	sent  map[string]bool
 }
 
-func buildNudgeStats(s Services, userID uint64) *nudgeStats {
+func (t *Tips) buildNudgeStats(userID uint64) *nudgeStats {
 	st := &nudgeStats{}
 	today := agent.StartOfTodayArgentina()
-	st.days, _ = s.MovementsCountByDayForUser(userID, today.AddDate(0, 0, -nudgeStatsWindow), today)
-	st.total, _ = s.MovementsCountForUser(userID)
+	st.days, _ = t.movements.CountByDayForUser(userID, today.AddDate(0, 0, -nudgeStatsWindow), today)
+	st.total, _ = t.movements.CountForUser(userID)
 	return st
 }
 
@@ -87,8 +87,8 @@ func hasActivityFloor(s *nudgeStats) bool {
 	return s.movsSince(activityFloorDays) >= activityFloorMovs
 }
 
-func distinctCategoriesThisMonth(s Services, userID uint64) int {
-	rows, err := s.MovementsSumForUser(movement.MovementQuery{
+func (t *Tips) distinctCategoriesThisMonth(userID uint64) int {
+	rows, err := t.movements.SumForUser(movement.MovementQuery{
 		UserID:   userID,
 		From:     startOfMonth(),
 		To:       agent.StartOfTodayArgentina(),
@@ -100,9 +100,9 @@ func distinctCategoriesThisMonth(s Services, userID uint64) int {
 	return len(rows)
 }
 
-func hasIncomeThisMonth(s Services, userID uint64) bool {
+func (t *Tips) hasIncomeThisMonth(userID uint64) bool {
 	income := string(movement.Income)
-	rows, err := s.MovementsSumForUser(movement.MovementQuery{
+	rows, err := t.movements.SumForUser(movement.MovementQuery{
 		UserID:   userID,
 		From:     startOfMonth(),
 		To:       agent.StartOfTodayArgentina(),
@@ -112,12 +112,12 @@ func hasIncomeThisMonth(s Services, userID uint64) bool {
 	return err == nil && len(rows) > 0 && !rows[0].Total.IsZero()
 }
 
-func hasEnoughDataForMonthVerdict(s Services, userID uint64, stats *nudgeStats) bool {
-	return stats.movsInMonth(0) >= topCategoryTipMovs && hasIncomeThisMonth(s, userID)
+func (t *Tips) hasEnoughDataForMonthVerdict(userID uint64, stats *nudgeStats) bool {
+	return stats.movsInMonth(0) >= topCategoryTipMovs && t.hasIncomeThisMonth(userID)
 }
 
-func hasUsdHoldings(s Services, userID uint64) bool {
-	accs, err := s.AccountsFindByUserID(userID)
+func (t *Tips) hasUsdHoldings(userID uint64) bool {
+	accs, err := t.accounts.FindByUserID(userID)
 	if err != nil {
 		return false
 	}
@@ -125,7 +125,7 @@ func hasUsdHoldings(s Services, userID uint64) bool {
 		if a.Currency != currency.USD {
 			continue
 		}
-		bal, err := s.MovementsSumAmountForAccount(uint64(a.ID))
+		bal, err := t.movements.SumAmountForAccount(uint64(a.ID))
 		if err == nil && !bal.IsZero() {
 			return true
 		}
@@ -133,8 +133,8 @@ func hasUsdHoldings(s Services, userID uint64) bool {
 	return false
 }
 
-func countAccounts(s Services, userID uint64) int {
-	accs, err := s.AccountsFindByUserID(userID)
+func (t *Tips) countAccounts(userID uint64) int {
+	accs, err := t.accounts.FindByUserID(userID)
 	if err != nil {
 		return 0
 	}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 
-	"lopiibot.com/internal/conversation"
 	"lopiibot.com/internal/flow"
 )
 
@@ -39,14 +38,6 @@ const (
 	outcomeDeleteConfirmed = flow.OutcomeDeleteConfirmed
 	outcomeDeleteCancelled = flow.OutcomeDeleteCancelled
 )
-
-func writeOutcomeFor(data conversation.Data) string {
-	return flow.WriteOutcomeFor(data)
-}
-
-func failureOutcomeFor(data conversation.Data) string {
-	return flow.FailureOutcomeFor(data)
-}
 
 func (c *controller) resolveMetric(ctx context.Context, userID uint64, outcome string, movementIDs ...uint) {
 	if c.metrics == nil {

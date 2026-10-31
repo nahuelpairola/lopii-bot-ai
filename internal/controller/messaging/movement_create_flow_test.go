@@ -261,7 +261,7 @@ func TestResolveAndInsertMovements_PendingAccountCreation(t *testing.T) {
 		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v", err)
 	}
 	if len(accRepo.inserted) != 1 {
@@ -298,7 +298,7 @@ func TestResolveAndInsertMovements_FirstAccount_WithBalance(t *testing.T) {
 		conversation.KeyFirstAccountBalance: "99.500,00",
 	}
 
-	inserted, err := flow.ResolveAndInsertMovements(c, data)
+	inserted, err := c.finisher().ResolveAndInsertMovements(data)
 	if err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestResolveAndInsertMovements_FirstAccount_SkipBalance(t *testing.T) {
 		conversation.KeyFirstAccountName: "Galicia",
 	}
 
-	inserted, err := flow.ResolveAndInsertMovements(c, data)
+	inserted, err := c.finisher().ResolveAndInsertMovements(data)
 	if err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v (the insufficient-funds gate must be skipped)", err)
 	}
@@ -376,7 +376,7 @@ func TestResolveAndInsertMovements_FCIRedemption_GainAboveBalance(t *testing.T) 
 		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
-	inserted, err := flow.ResolveAndInsertMovements(c, data)
+	inserted, err := c.finisher().ResolveAndInsertMovements(data)
 	if err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestResolveAndInsertMovements_FCISubscription_DefaultAccount_NoGain(t *test
 		"_skip_balance_check":   "true",
 	}
 
-	inserted, err := flow.ResolveAndInsertMovements(c, data)
+	inserted, err := c.finisher().ResolveAndInsertMovements(data)
 	if err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v", err)
 	}
@@ -456,7 +456,7 @@ func TestResolveAndInsertMovements_FCIRedemption_PartialNoGain(t *testing.T) {
 		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
-	inserted, err := flow.ResolveAndInsertMovements(c, data)
+	inserted, err := c.finisher().ResolveAndInsertMovements(data)
 	if err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v", err)
 	}
@@ -485,7 +485,7 @@ func TestResolveAndInsertMovements_InvalidDate_ReturnsError(t *testing.T) {
 		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err == nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err == nil {
 		t.Fatal("expected an error for a malformed date, not a silent fallback to time.Now()")
 	}
 	if movRepo.inserted != nil {
@@ -516,7 +516,7 @@ func TestResolveAndInsertMovements_FCIRedemption_MissingGainSubcategory_ReturnsE
 		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err == nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err == nil {
 		t.Fatal("a missing 'Sistema|Rendimiento inversión' subcategory is a config problem and must surface as an error, not be silently swallowed")
 	}
 }
@@ -541,7 +541,7 @@ func TestResolveAndInsertMovements_UpdateMode_CallsReplaceMovements(t *testing.T
 		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v", err)
 	}
 	if movRepo.inserted != nil {
@@ -582,7 +582,7 @@ func TestResolveAndInsertMovements_FCIRedemption_GainLegHasSubcategory(t *testin
 		"pending_account_gaps":  conversation.EncodeStringSlice(nil),
 	}
 
-	inserted, err := flow.ResolveAndInsertMovements(c, data)
+	inserted, err := c.finisher().ResolveAndInsertMovements(data)
 	if err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v", err)
 	}
@@ -614,7 +614,7 @@ func TestResolveAndInsertMovements_CreatesBothPendingAccounts(t *testing.T) {
 		"_skip_balance_check":   "true",
 	}
 
-	inserted, err := flow.ResolveAndInsertMovements(c, data)
+	inserted, err := c.finisher().ResolveAndInsertMovements(data)
 	if err != nil {
 		t.Fatalf("resolveAndInsertMovements: %v", err)
 	}
@@ -656,7 +656,7 @@ func TestFciRedemptionGain_AttributedToFciAccount(t *testing.T) {
 		Currency:      currency.ARS,
 		UserID:        1,
 	}}
-	gain, ok, err := flow.FciRedemptionGain(c, redemption)
+	gain, ok, err := c.finisher().FciRedemptionGain(redemption)
 	if err != nil || !ok {
 		t.Fatalf("expected a gain, got ok=%v err=%v", ok, err)
 	}
@@ -682,7 +682,7 @@ func TestResolveAndInsert_IndependentExpensesNotGrouped(t *testing.T) {
 	}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("resolveAndInsert: %v", err)
 	}
 	if len(movs.inserted) != 2 {
@@ -710,7 +710,7 @@ func TestResolveAndInsert_ExpenseNeverCreatesCounterpartyAccount(t *testing.T) {
 		AccountNameGuess: "Pablo", AccountID: flow.AccountPendingCreate, Date: "2026-07-07"}}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("resolveAndInsert: %v", err)
 	}
 	if len(accts.inserted) != 0 {
@@ -735,7 +735,7 @@ func TestResolveAndInsert_NonTransferCreatesNamedOwnAccount(t *testing.T) {
 		AccountNameGuess: "Brubank", AccountID: flow.AccountPendingCreate, Date: "2026-07-07"}}
 	data := conversation.Data{conversation.UserIDKey: uint64(1), "mode": "create", "movements": movement.EncodeMovementRows(rows), "old_movement_ids": conversation.EncodeStringSlice(nil)}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("resolveAndInsert: %v", err)
 	}
 	if len(accts.inserted) != 1 || accts.inserted[0].Name != "Brubank" {
@@ -768,7 +768,7 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	}
 
 	chat := &messenger.FakeChat{}
-	flow.FinishMovementCreate(context.Background(), c, chat, data)
+	c.finisher().FinishMovementCreate(context.Background(), chat, data)
 
 	if len(chat.Sent) != 3 {
 		t.Fatalf("expected 3 messages (recibo + R1 + R2), got %d: %+v", len(chat.Sent), chat.Sent)
@@ -777,7 +777,7 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 	for i, p := range chat.Sent {
 		texts[i] = p.Text
 	}
-	want := msgFirstAccountDefault("Galicia", []string{"ARS"})
+	want := flow.MsgFirstAccountDefault("Galicia", []string{"ARS"})
 	if texts[1] != want {
 		t.Errorf("R1 = %q, want %q", texts[1], want)
 	}
@@ -793,12 +793,12 @@ func TestMovementCreate_FirstAccount_SendsDefaultAndInvite(t *testing.T) {
 }
 
 func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
-	one := msgFirstAccountDefault("Galicia", []string{"USD"})
+	one := flow.MsgFirstAccountDefault("Galicia", []string{"USD"})
 	if !strings.Contains(one, "dólares") {
 		t.Errorf("una moneda: no la nombra: %q", one)
 	}
 
-	two := msgFirstAccountDefault("Galicia", []string{"ARS", "USD"})
+	two := flow.MsgFirstAccountDefault("Galicia", []string{"ARS", "USD"})
 	for _, label := range []string{"pesos", "dólares"} {
 		if !strings.Contains(two, label) {
 			t.Errorf("dos monedas: falta %s: %q", label, two)
@@ -810,7 +810,7 @@ func TestMsgFirstAccountDefault_NamesEveryCurrency(t *testing.T) {
 		}
 	}
 
-	none := msgFirstAccountDefault("Galicia", nil)
+	none := flow.MsgFirstAccountDefault("Galicia", nil)
 	if strings.Contains(none, "  ") || none == "" {
 		t.Errorf("sin monedas quedó un mensaje roto: %q", none)
 	}
@@ -900,7 +900,7 @@ func TestResolveAndInsertMovements_CreatesTheSubcategoryTheUserNamedInTheGap(t *
 		conversation.KeyPendingNewSubcats:   conversation.EncodeStringSlice([]string{"0"}),
 	}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("ResolveAndInsertMovements: %v", err)
 	}
 	if len(subRepo.insertedSubs) != 1 {
@@ -939,7 +939,7 @@ func TestResolveAndInsertMovements_DoesNotDuplicateAnExistingSubcategory(t *test
 		conversation.KeyPendingNewSubcats:   conversation.EncodeStringSlice([]string{"0"}),
 	}
 
-	if _, err := flow.ResolveAndInsertMovements(c, data); err != nil {
+	if _, err := c.finisher().ResolveAndInsertMovements(data); err != nil {
 		t.Fatalf("ResolveAndInsertMovements: %v", err)
 	}
 	if len(subRepo.insertedSubs) != 0 {

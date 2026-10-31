@@ -328,7 +328,7 @@ func TestRecentEntities_ReachTheWholeDayNotTenMinutes(t *testing.T) {
 		"UPDATE movements SET created_at = now() - interval '30 minutes' WHERE user_id = ? AND description = 'Peaje'",
 		h.userID)
 
-	bloque := agent.BuildRecentEntities(h.c, h.userID)
+	bloque := h.c.loop().BuildRecentEntities(h.userID)
 
 	if !strings.Contains(bloque, "Peaje") {
 		t.Errorf("el peaje de hace 30 min tiene que estar en el bloque:\n%q", bloque)

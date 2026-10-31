@@ -12,7 +12,7 @@ import (
 
 func newLoopController(t *testing.T, orch *fakeFullOrchestrator, repo *fakeActionsRepo, movements *fakeMovementRepoFull) *controller {
 	t.Helper()
-	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine := conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" })
 	engine.Register(flow.NewAskUserFlow())
 	engine.Register(flow.NewMovementDeleteFlow())
 	engine.Register(flow.NewMovementUpdateConfirmFlow())
@@ -40,7 +40,7 @@ func TestRouting_EverythingGoesThroughTheLoop(t *testing.T) {
 			}
 			c := newLoopController(t, orch, &fakeActionsRepo{}, &fakeMovementRepoFull{})
 
-			if err := c.handleFreeText(context.Background(), &messenger.FakeChat{}, 1, msg); err != nil {
+			if err := c.HandleFreeText(context.Background(), &messenger.FakeChat{}, 1, msg); err != nil {
 				t.Fatal(err)
 			}
 			if !called {

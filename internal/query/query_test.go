@@ -13,9 +13,7 @@ func TestExecListCategories_OmitsEmptyDescription(t *testing.T) {
 		{Category: "Alimentación", Subcategory: "Supermercado", Description: "Compra grande. NO incluye almacén.", Icon: "🍔"},
 		{Category: "Alimentación", Subcategory: "Sueldo", Icon: "💵"},
 	}}
-	svc := &queryTestServices{subcats: subs}
-
-	out, err := execListCategories(svc, 1, queryToolArgs{Category: "Alimentación"})
+	out, err := New(nil, nil, subs, nil, nil, nil).execListCategories(1, queryToolArgs{Category: "Alimentación"})
 	if err != nil {
 		t.Fatalf("execListCategories: %v", err)
 	}

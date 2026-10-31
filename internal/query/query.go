@@ -21,18 +21,59 @@ import (
 	"lopiibot.com/internal/subcategory"
 )
 
-type services interface {
-	QueryAccountsByUserID(userID uint64) ([]account.Account, error)
-	QueryCategoriesByUser(userID uint64) ([]subcategory.Subcategory, error)
-	QueryIconForCategory(userID uint64, category string) string
-	QueryListMovements(q movement.MovementQuery, limit int) ([]movement.Movement, error)
-	QuerySumMovements(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
-	QueryBalanceForAccount(accountID uint64) (decimal.Decimal, error)
-	QueryReminderByUser(userID uint64) (*reminder.Reminder, error)
-	QueryChatRecent(userID uint64) ([]chathistory.Turn, error)
-	QueryChatAppend(userID uint64, question, answer string) error
-	QuerySendText(ctx context.Context, chat messenger.Chat, text string)
+type accountLister interface {
+	FindByUserID(userID uint64) ([]account.Account, error)
+}
+
+type movementReader interface {
+	ListForUser(q movement.MovementQuery, limit, offset int) ([]movement.Movement, error)
+	SumForUser(q movement.MovementQuery, groupBy string) ([]movement.CategorySum, error)
+	SumAmountForAccount(accountID uint64) (decimal.Decimal, error)
+}
+
+type subcategoryReader interface {
+	FindAllForUser(userID uint64) ([]subcategory.Subcategory, error)
+	IconForCategory(userID uint64, category string) string
+}
+
+type reminderFinder interface {
+	FindByUserID(userID uint64) (*reminder.Reminder, error)
+}
+
+type chatHistory interface {
+	Recent(userID uint64) ([]chathistory.Turn, error)
+	Append(userID uint64, question, answer string) error
+}
+
+type queryModel interface {
 	AnswerQuery(ctx context.Context, systemPrompt, userText string, history []orchestrator.QueryTurn, tools []orchestrator.AgentTool, execute func(name string, args json.RawMessage) (string, error)) (string, error)
+}
+
+type Answerer struct {
+	accounts      accountLister
+	movements     movementReader
+	subcategories subcategoryReader
+	reminders     reminderFinder
+	chatHistory   chatHistory
+	model         queryModel
+}
+
+func New(
+	accounts accountLister,
+	movements movementReader,
+	subcategories subcategoryReader,
+	reminders reminderFinder,
+	chatHistory chatHistory,
+	model queryModel,
+) *Answerer {
+	return &Answerer{
+		accounts:      accounts,
+		movements:     movements,
+		subcategories: subcategories,
+		reminders:     reminders,
+		chatHistory:   chatHistory,
+		model:         model,
+	}
 }
 
 var Tools = []orchestrator.AgentTool{
@@ -126,11 +167,11 @@ type queryToolArgs struct {
 	Category string `json:"category"`
 }
 
-func Run(ctx context.Context, svc services, chat messenger.Chat, userID uint64, text string) (bool, error) {
+func (a *Answerer) Run(ctx context.Context, chat messenger.Chat, userID uint64, text string) (bool, error) {
 	prompt := SystemPrompt()
 
 	var appVerdict, rangeFrom, rangeTo string
-	inner := NewExecutor(svc, userID)
+	inner := a.Executor(userID)
 	execute := func(name string, raw json.RawMessage) (string, error) {
 		out, err := inner(name, raw)
 		if strings.Contains(out, msgOnlyInternalMark) {
@@ -145,20 +186,20 @@ func Run(ctx context.Context, svc services, chat messenger.Chat, userID uint64, 
 		return out, err
 	}
 
-	turns, _ := svc.QueryChatRecent(userID)
+	turns, _ := a.chatHistory.Recent(userID)
 	history := make([]orchestrator.QueryTurn, len(turns))
 	for i, t := range turns {
 		history[i] = orchestrator.QueryTurn{Question: t.Question, Answer: t.Answer}
 	}
 
-	answer, err := svc.AnswerQuery(ctx, prompt, text, history, Tools, execute)
+	answer, err := a.model.AnswerQuery(ctx, prompt, text, history, Tools, execute)
 	if err != nil || strings.TrimSpace(answer) == "" {
 		return false, err
 	}
 	answer = reinstateAppVerdict(answer, appVerdict)
 	answer = appendConsultedRange(answer, rangeFrom, rangeTo)
-	svc.QuerySendText(ctx, chat, answer)
-	_ = svc.QueryChatAppend(userID, text, answer)
+	_ = messenger.SendText(ctx, chat, answer)
+	_ = a.chatHistory.Append(userID, text, answer)
 	return true, nil
 }
 
@@ -182,7 +223,7 @@ Para preguntas sobre el recordatorio de carga de gastos (si está activo, a qué
 Si la pregunta no se puede responder con estas herramientas, decilo con amabilidad en una línea.`, today)
 }
 
-func NewExecutor(svc services, userID uint64) func(string, json.RawMessage) (string, error) {
+func (a *Answerer) Executor(userID uint64) func(string, json.RawMessage) (string, error) {
 	return func(name string, raw json.RawMessage) (string, error) {
 		var args queryToolArgs
 		if err := json.Unmarshal(raw, &args); err != nil {
@@ -190,29 +231,29 @@ func NewExecutor(svc services, userID uint64) func(string, json.RawMessage) (str
 		}
 		switch name {
 		case "list_categories":
-			return execListCategories(svc, userID, args)
+			return a.execListCategories(userID, args)
 		case "sum_movements":
-			return execSumMovements(svc, userID, args)
+			return a.execSumMovements(userID, args)
 		case "list_movements":
-			return execListMovements(svc, userID, args)
+			return a.execListMovements(userID, args)
 		case "account_balance":
-			return execAccountBalance(svc, userID, args)
+			return a.execAccountBalance(userID, args)
 		case "get_reminder":
-			rem, err := svc.QueryReminderByUser(userID)
+			rem, err := a.reminders.FindByUserID(userID)
 			if err != nil {
 				rem = nil
 			}
 			return describeReminder(rem), nil
 		case "spending_report":
-			return execSpendingReport(svc, userID, args)
+			return a.execSpendingReport(userID, args)
 		default:
 			return "", fmt.Errorf("herramienta desconocida: %s", name)
 		}
 	}
 }
 
-func execListCategories(svc services, userID uint64, args queryToolArgs) (string, error) {
-	subs, err := svc.QueryCategoriesByUser(userID)
+func (a *Answerer) execListCategories(userID uint64, args queryToolArgs) (string, error) {
+	subs, err := a.subcategories.FindAllForUser(userID)
 	if err != nil {
 		return "", err
 	}
@@ -241,8 +282,8 @@ func execListCategories(svc services, userID uint64, args queryToolArgs) (string
 	return header + strings.Join(lines, "\n"), nil
 }
 
-func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, error) {
-	q, err := buildMovementQuery(svc, userID, args)
+func (a *Answerer) execSumMovements(userID uint64, args queryToolArgs) (string, error) {
+	q, err := a.buildMovementQuery(userID, args)
 	if err != nil {
 		return "", err
 	}
@@ -254,20 +295,20 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 			groupBy = movement.GroupByDirectionCounterpart
 		}
 	}
-	rows, err := svc.QuerySumMovements(q, groupBy)
+	rows, err := a.movements.SumForUser(q, groupBy)
 	if err != nil {
 		return "", err
 	}
 	if len(rows) == 0 || (ungroupedSum(groupBy) && rows[0].Total.IsZero()) || (transferSplit && allZero(rows)) {
-		return describeEmptyResult(svc, q, args)
+		return a.describeEmptyResult(q, args)
 	}
 	cur := q.Currency.String()
 	if transferSplit {
-		name, err := accountName(svc, userID, args.Account)
+		name, err := a.accountName(userID, args.Account)
 		if err != nil {
 			return "", err
 		}
-		counterparts, err := counterpartNames(svc, userID, q.Currency)
+		counterparts, err := a.counterpartNames(userID, q.Currency)
 		if err != nil {
 			return "", err
 		}
@@ -276,7 +317,7 @@ func execSumMovements(svc services, userID uint64, args queryToolArgs) (string, 
 	if ungroupedSum(groupBy) {
 		return fmt.Sprintf("total: %s %s", rows[0].Total.Abs().StringFixed(2), cur), nil
 	}
-	labels := groupLabels(svc, userID, groupBy, rows)
+	labels := a.groupLabels(userID, groupBy, rows)
 	lines := make([]string, 0, len(rows)+1)
 	for i, r := range rows {
 		lines = append(lines, fmt.Sprintf("%s: %s %s", labels[i], r.Total.Abs().StringFixed(2), cur))
@@ -326,8 +367,8 @@ func renderTransferDirections(rows []movement.CategorySum, account, cur string, 
 	return strings.Join(append(lines, details[dirIn]...), "\n")
 }
 
-func counterpartNames(svc services, userID uint64, cur currency.Currency) (map[string]string, error) {
-	accts, err := svc.QueryAccountsByUserID(userID)
+func (a *Answerer) counterpartNames(userID uint64, cur currency.Currency) (map[string]string, error) {
+	accts, err := a.accounts.FindByUserID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -373,10 +414,10 @@ func daysInRange(from, to, today time.Time) int {
 	return int(end.Sub(start).Hours()/24) + 1
 }
 
-func groupLabels(svc services, userID uint64, groupBy string, rows []movement.CategorySum) []string {
+func (a *Answerer) groupLabels(userID uint64, groupBy string, rows []movement.CategorySum) []string {
 	nameByID := map[string]string{}
 	if groupBy == movement.GroupByAccount {
-		accts, _ := svc.QueryAccountsByUserID(userID)
+		accts, _ := a.accounts.FindByUserID(userID)
 		for _, a := range accts {
 			nameByID[fmt.Sprintf("%d", a.ID)] = a.Name
 		}
@@ -390,7 +431,7 @@ func groupLabels(svc services, userID uint64, groupBy string, rows []movement.Ca
 			}
 		}
 		if groupBy == movement.GroupByCategory && label != "" {
-			label = svc.QueryIconForCategory(userID, label) + " " + label
+			label = a.subcategories.IconForCategory(userID, label) + " " + label
 		}
 		labels[i] = label
 	}
@@ -416,17 +457,17 @@ func groupedTotalLine(rows []movement.CategorySum, groupBy, cur, movType string)
 	return fmt.Sprintf("total (suma de las %d filas): %s %s", len(rows), sumRows(rows).StringFixed(2), cur), true
 }
 
-func execListMovements(svc services, userID uint64, args queryToolArgs) (string, error) {
-	q, err := buildMovementQuery(svc, userID, args)
+func (a *Answerer) execListMovements(userID uint64, args queryToolArgs) (string, error) {
+	q, err := a.buildMovementQuery(userID, args)
 	if err != nil {
 		return "", err
 	}
-	ms, err := svc.QueryListMovements(q, args.Limit)
+	ms, err := a.movements.ListForUser(q, args.Limit, 0)
 	if err != nil {
 		return "", err
 	}
 	if len(ms) == 0 {
-		return describeEmptyResult(svc, q, args)
+		return a.describeEmptyResult(q, args)
 	}
 	var lines []string
 	for _, m := range ms {
@@ -450,21 +491,21 @@ func queryMovementLine(m movement.Movement) string {
 		m.Date.Format("2006-01-02"))
 }
 
-func execAccountBalance(svc services, userID uint64, args queryToolArgs) (string, error) {
-	accts, err := svc.QueryAccountsByUserID(userID)
+func (a *Answerer) execAccountBalance(userID uint64, args queryToolArgs) (string, error) {
+	accts, err := a.accounts.FindByUserID(userID)
 	if err != nil {
 		return "", err
 	}
 	var lines []string
-	for _, a := range accts {
-		if args.Account != "" && !strings.EqualFold(a.Name, args.Account) {
+	for _, acct := range accts {
+		if args.Account != "" && !strings.EqualFold(acct.Name, args.Account) {
 			continue
 		}
-		bal, err := svc.QueryBalanceForAccount(uint64(a.ID))
+		bal, err := a.movements.SumAmountForAccount(uint64(acct.ID))
 		if err != nil {
 			return "", err
 		}
-		lines = append(lines, fmt.Sprintf("%s (%s): %s", a.Name, a.Currency.String(), bal.StringFixed(2)))
+		lines = append(lines, fmt.Sprintf("%s (%s): %s", acct.Name, acct.Currency.String(), bal.StringFixed(2)))
 	}
 	if len(lines) == 0 {
 		return "No encontré esa cuenta.", nil
@@ -472,7 +513,7 @@ func execAccountBalance(svc services, userID uint64, args queryToolArgs) (string
 	return strings.Join(lines, "\n"), nil
 }
 
-func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (movement.MovementQuery, error) {
+func (a *Answerer) buildMovementQuery(userID uint64, args queryToolArgs) (movement.MovementQuery, error) {
 	cur := currency.Currency(args.Currency)
 	if cur != currency.ARS && cur != currency.USD {
 		cur = currency.ARS
@@ -499,7 +540,7 @@ func buildMovementQuery(svc services, userID uint64, args queryToolArgs) (moveme
 		q.Search = &s
 	}
 	if args.Account != "" {
-		accts, err := svc.QueryAccountsByUserID(userID)
+		accts, err := a.accounts.FindByUserID(userID)
 		if err != nil {
 			return movement.MovementQuery{}, err
 		}
@@ -527,11 +568,11 @@ func matchAccount(accts []account.Account, name string) (*account.Account, []str
 	return nil, names
 }
 
-func accountName(svc services, userID uint64, asked string) (string, error) {
+func (a *Answerer) accountName(userID uint64, asked string) (string, error) {
 	if asked == "" {
 		return "", nil
 	}
-	accts, err := svc.QueryAccountsByUserID(userID)
+	accts, err := a.accounts.FindByUserID(userID)
 	if err != nil {
 		return "", err
 	}
@@ -568,20 +609,20 @@ func rejectsDailyRate(groupBy, movType string) bool {
 		groupBy == movement.GroupByType || movType == constants.Transfer
 }
 
-func execSpendingReport(svc services, userID uint64, args queryToolArgs) (string, error) {
+func (a *Answerer) execSpendingReport(userID uint64, args queryToolArgs) (string, error) {
 	if rejectsDailyRate(args.GroupBy, args.Type) {
 		return "", fmt.Errorf("no hay promedio diario para eso: agrupá por categoría, subcategoría o cuenta, o pedí el total sin agrupar")
 	}
-	q, err := buildMovementQuery(svc, userID, args)
+	q, err := a.buildMovementQuery(userID, args)
 	if err != nil {
 		return "", err
 	}
-	rows, err := svc.QuerySumMovements(q, args.GroupBy)
+	rows, err := a.movements.SumForUser(q, args.GroupBy)
 	if err != nil {
 		return "", err
 	}
 	if len(rows) == 0 || (ungroupedSum(args.GroupBy) && rows[0].Total.IsZero()) {
-		return describeEmptyResult(svc, q, args)
+		return a.describeEmptyResult(q, args)
 	}
 	cur := q.Currency.String()
 	days := daysInRange(q.From, q.To, agent.StartOfTodayArgentina())
@@ -590,7 +631,7 @@ func execSpendingReport(svc services, userID uint64, args queryToolArgs) (string
 	if ungroupedSum(args.GroupBy) {
 		lines = append(lines, "total: "+withDailyRate(rows[0].Total, days, cur))
 	} else {
-		labels := groupLabels(svc, userID, args.GroupBy, rows)
+		labels := a.groupLabels(userID, args.GroupBy, rows)
 		for i, r := range rows {
 			lines = append(lines, labels[i]+": "+withDailyRate(r.Total, days, cur))
 		}

@@ -105,7 +105,7 @@ func InitServer(ctx context.Context, conf *config.Config) error {
 	drainDone := make(chan struct{})
 	go func() {
 		defer close(drainDone)
-		pendingjob.Run(ctx, messagingController, jobsRepo, tgTransport, pendingjob.JobDrainInterval)
+		pendingjob.Run(ctx, messagingController, userRepo, jobsRepo, tgTransport, pendingjob.JobDrainInterval)
 	}()
 
 	srv := &http.Server{Addr: ":" + conf.Server.Port, Handler: ginEngine}

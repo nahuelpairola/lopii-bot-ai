@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"lopiibot.com/internal/messenger"
-	"lopiibot.com/internal/movement"
 	"lopiibot.com/internal/orchestrator"
-	"lopiibot.com/internal/user"
 )
 
 type fakeJobs struct {
@@ -25,34 +23,12 @@ func (f *fakeJobs) ListPendingUserIDs() ([]uint64, error)          { return nil,
 func (f *fakeJobs) Delete(uint64) (bool, error)                    { return true, nil }
 func (f *fakeJobs) CountByUser(uint64) (int64, error)              { return f.count, nil }
 
-type enqueueTestServices struct {
-	texts []string
-}
-
-func (s *enqueueTestServices) UsersFindByID(uint64) (*user.User, error) { return nil, nil }
-func (s *enqueueTestServices) HandleFreeText(_ context.Context, _ messenger.Chat, _ uint64, text string) error {
-	s.texts = append(s.texts, text)
-	return nil
-}
-func (s *enqueueTestServices) ProceedToUpdateConfirm(_ context.Context, _ messenger.Chat, _ uint64, _ string, _ string, _ []string, _ []movement.MovementRow) error {
-	return nil
-}
-func (s *enqueueTestServices) SendText(ctx context.Context, chat messenger.Chat, text string) {
-	s.texts = append(s.texts, text)
-	_ = messenger.SendText(ctx, chat, text)
-}
-func (s *enqueueTestServices) Traced(_ context.Context, _ string, _ string, fn func(context.Context) (*uint64, error)) {
-	ctx := context.Background()
-	fn(ctx)
-}
-
 func TestEnqueueFreeText_RateLimited_Enqueues(t *testing.T) {
 	jobs := &fakeJobs{}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 	err := &orchestrator.RateLimitedError{RetryAfter: 8 * time.Second}
 
-	ok := EnqueueFreeText(context.Background(), svc, jobs, chat, 7, "gasté 5000 en el super", err)
+	ok := EnqueueFreeText(context.Background(), jobs, chat, 7, "gasté 5000 en el super", err)
 	if !ok {
 		t.Fatal("want enqueued (true)")
 	}
@@ -66,10 +42,9 @@ func TestEnqueueFreeText_RateLimited_Enqueues(t *testing.T) {
 
 func TestEnqueueFreeText_NotRateLimited_NoEnqueue(t *testing.T) {
 	jobs := &fakeJobs{}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 
-	ok := EnqueueFreeText(context.Background(), svc, jobs, chat, 7, "gasté 500", context.Canceled)
+	ok := EnqueueFreeText(context.Background(), jobs, chat, 7, "gasté 500", context.Canceled)
 	if ok {
 		t.Fatal("want false (not a 429)")
 	}
@@ -80,10 +55,9 @@ func TestEnqueueFreeText_NotRateLimited_NoEnqueue(t *testing.T) {
 
 func TestEnqueueBehindPending_WithPending_Enqueues(t *testing.T) {
 	jobs := &fakeJobs{count: 1}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 
-	if !EnqueueBehindPending(context.Background(), svc, jobs, chat, 7, "uh no, eran 600") {
+	if !EnqueueBehindPending(context.Background(), jobs, chat, 7, "uh no, eran 600") {
 		t.Fatal("want enqueued (true)")
 	}
 	if len(jobs.inserted) != 1 || jobs.inserted[0].Kind != KindFreeText {
@@ -93,21 +67,19 @@ func TestEnqueueBehindPending_WithPending_Enqueues(t *testing.T) {
 
 func TestEnqueueBehindPending_NoPending_PassesThrough(t *testing.T) {
 	jobs := &fakeJobs{count: 0}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 
-	if EnqueueBehindPending(context.Background(), svc, jobs, chat, 7, "gasté 500") {
+	if EnqueueBehindPending(context.Background(), jobs, chat, 7, "gasté 500") {
 		t.Fatal("want false (nothing pending → process live)")
 	}
 }
 
 func TestEnqueueUpdatePick_RateLimited_Enqueues(t *testing.T) {
 	jobs := &fakeJobs{}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 	err := &orchestrator.RateLimitedError{RetryAfter: 10 * time.Second}
 
-	ok := EnqueueUpdatePick(context.Background(), svc, jobs, chat, 7, "msg", "tx1", []string{"a"}, nil, err)
+	ok := EnqueueUpdatePick(context.Background(), jobs, chat, 7, "msg", "tx1", []string{"a"}, nil, err)
 	if !ok {
 		t.Fatal("want enqueued (true)")
 	}
@@ -118,10 +90,9 @@ func TestEnqueueUpdatePick_RateLimited_Enqueues(t *testing.T) {
 
 func TestEnqueueUpdatePick_NotRateLimited_NoEnqueue(t *testing.T) {
 	jobs := &fakeJobs{}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 
-	ok := EnqueueUpdatePick(context.Background(), svc, jobs, chat, 7, "msg", "tx1", nil, nil, context.Canceled)
+	ok := EnqueueUpdatePick(context.Background(), jobs, chat, 7, "msg", "tx1", nil, nil, context.Canceled)
 	if ok {
 		t.Fatal("want false (not a 429)")
 	}
@@ -132,11 +103,10 @@ func TestEnqueueUpdatePick_NotRateLimited_NoEnqueue(t *testing.T) {
 
 func TestHandleGroqError_RateLimited_Enqueues(t *testing.T) {
 	jobs := &fakeJobs{}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 	err := &orchestrator.RateLimitedError{RetryAfter: 5 * time.Second}
 
-	handled, outErr := HandleGroqError(context.Background(), svc, jobs, chat, 7, "gasté 5000", err)
+	handled, outErr := HandleGroqError(context.Background(), jobs, chat, 7, "gasté 5000", err)
 	if !handled {
 		t.Fatal("want handled=true")
 	}
@@ -150,12 +120,11 @@ func TestHandleGroqError_RateLimited_Enqueues(t *testing.T) {
 
 func TestHandleGroqError_ReplayRateLimited_Propagates(t *testing.T) {
 	jobs := &fakeJobs{}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 	err := &orchestrator.RateLimitedError{RetryAfter: 5 * time.Second}
 	ctx := WithReplaying(context.Background())
 
-	handled, outErr := HandleGroqError(ctx, svc, jobs, chat, 7, "text", err)
+	handled, outErr := HandleGroqError(ctx, jobs, chat, 7, "text", err)
 	if !handled {
 		t.Fatal("want handled=true")
 	}
@@ -169,10 +138,9 @@ func TestHandleGroqError_ReplayRateLimited_Propagates(t *testing.T) {
 
 func TestHandleGroqError_NonRateLimited_NotHandled(t *testing.T) {
 	jobs := &fakeJobs{}
-	svc := &enqueueTestServices{}
 	chat := &messenger.FakeChat{}
 
-	handled, _ := HandleGroqError(context.Background(), svc, jobs, chat, 7, "text", context.Canceled)
+	handled, _ := HandleGroqError(context.Background(), jobs, chat, 7, "text", context.Canceled)
 	if handled {
 		t.Fatal("want handled=false for non-429")
 	}

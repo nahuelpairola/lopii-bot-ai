@@ -77,21 +77,36 @@ type testServices struct {
 	gotText      string
 	gotTaxonomy  []orchestrator.TaxonomyEntry
 
-	texts       []string
 	resolved    []string
 	groqHandled bool
-	startedFlow string
 }
 
-func (s *testServices) FindUserAccounts(uint64) ([]account.Account, error) {
-	return s.accounts, s.accountsErr
+func (s *testServices) w() *Wizards {
+	return New(testAccounts{s}, s, s, testReminders{s}, s, s.engine, s.ResolveMetric, s.HandleGroqError)
 }
 
-func (s *testServices) SubcategoriesFindAllForUser(uint64) ([]subcategory.Subcategory, error) {
+type testAccounts struct{ s *testServices }
+
+func (a testAccounts) FindByUserID(uint64) ([]account.Account, error) {
+	return a.s.accounts, a.s.accountsErr
+}
+
+type testReminders struct{ s *testServices }
+
+func (r testReminders) FindByUserID(uint64) (*reminder.Reminder, error) {
+	if r.s.rem == nil {
+		return nil, errFake
+	}
+	return r.s.rem, nil
+}
+
+func (s *testServices) FindAllForUser(uint64) ([]subcategory.Subcategory, error) {
 	return s.all, s.allErr
 }
 
-func (s *testServices) FindSubcategory(_ uint64, category, sub string) (*subcategory.Subcategory, error) {
+func (s *testServices) IconForCategory(uint64, string) string { return "" }
+
+func (s *testServices) FindByCategoryAndSubcategory(_ uint64, category, sub string) (*subcategory.Subcategory, error) {
 	if found, ok := s.byCatSub[category+"|"+sub]; ok {
 		return found, nil
 	}
@@ -102,19 +117,12 @@ func (s *testServices) DistinctCategoriesForUser(uint64) ([]string, error) {
 	return s.categories, nil
 }
 
-func (s *testServices) FindOwnedSubcategories(uint64) ([]subcategory.Subcategory, error) {
+func (s *testServices) FindOwnedByUser(uint64) ([]subcategory.Subcategory, error) {
 	return s.owned, s.ownedErr
 }
 
 func (s *testServices) TopDescriptionsBySubcategory(uint64, uint64, int) ([]string, error) {
 	return s.descriptions, nil
-}
-
-func (s *testServices) RemindersFindByUserID(uint64) (*reminder.Reminder, error) {
-	if s.rem == nil {
-		return nil, errFake
-	}
-	return s.rem, nil
 }
 
 func (s *testServices) ResolveAccountManage(_ context.Context, _ string, _ []orchestrator.AccountOption) (orchestrator.AccountManageResult, error) {
@@ -132,22 +140,6 @@ func (s *testServices) ClassifyCategoryCreate(_ context.Context, text string, ta
 		return orchestrator.CategoryCreateResult{}, s.classifyErr
 	}
 	return orchestrator.CategoryCreateResult{Match: s.match, Proposal: s.proposal}, nil
-}
-
-func (s *testServices) SendText(_ context.Context, _ messenger.Chat, text string) {
-	s.texts = append(s.texts, text)
-}
-
-func (s *testServices) SendPrompt(context.Context, messenger.Chat, conversation.Prompt) {}
-
-func (s *testServices) StartFlow(_ context.Context, _ messenger.Chat, userID uint64, flowName string, seed conversation.Data, _ string) error {
-	s.startedFlow = flowName
-	_, err := s.engine.StartWithData(userID, flowName, seed)
-	return err
-}
-
-func (s *testServices) EngineStartWithData(userID uint64, flowName string, seed conversation.Data) (conversation.Prompt, error) {
-	return s.engine.StartWithData(userID, flowName, seed)
 }
 
 func (s *testServices) ResolveMetric(_ context.Context, _ uint64, outcome string, _ ...uint) {

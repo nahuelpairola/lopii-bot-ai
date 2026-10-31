@@ -9,16 +9,12 @@ import (
 	"lopiibot.com/internal/pendingjob"
 )
 
-var _ pendingjob.Services = (*controller)(nil)
+var _ pendingjob.Replayer = (*controller)(nil)
 
 func (c *controller) HandleFreeText(ctx context.Context, chat messenger.Chat, userID uint64, text string) error {
-	return agent.StartLoop(ctx, c, chat, userID, text)
+	return c.loop().StartLoop(ctx, chat, userID, text)
 }
 
 func (c *controller) ProceedToUpdateConfirm(ctx context.Context, chat messenger.Chat, userID uint64, message string, transactionID string, oldIDs []string, beforeRows []movement.MovementRow) error {
-	return agent.ProceedToUpdateConfirm(ctx, c, chat, userID, message, transactionID, oldIDs, beforeRows, agent.ChangeAsk{})
-}
-
-func (c *controller) Traced(ctx context.Context, updateType string, raw string, fn func(tctx context.Context) (*uint64, error)) {
-	c.traced(ctx, updateType, raw, fn)
+	return c.loop().ProceedToUpdateConfirm(ctx, chat, userID, message, transactionID, oldIDs, beforeRows, agent.ChangeAsk{})
 }

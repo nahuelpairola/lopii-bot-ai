@@ -41,7 +41,7 @@ const (
 
 type nudgeDef struct {
 	key       string
-	when      func(s Services, userID uint64, stats *nudgeStats) bool
+	when      func(t *Tips, userID uint64, stats *nudgeStats) bool
 	text      string
 	question  string
 	recurring bool
@@ -72,51 +72,51 @@ func init() {
 	nudges = []nudgeDef{
 		{
 			key:  correctTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool { return stats.total >= 1 },
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool { return stats.total >= 1 },
 			text: "💡 Tip: si te equivocaste, decime «el súper eran 600» y lo corrijo.",
 		},
 		{
 			key: nudgeReminderOffer,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
-				if rem, _ := s.RemindersFindByUserID(userID); rem != nil {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
+				if rem, _ := t.reminders.FindByUserID(userID); rem != nil {
 					return false
 				}
-				u, err := s.UsersFindByID(userID)
+				u, err := t.users.FindByID(userID)
 				return err == nil && time.Since(u.CreatedAt) >= reminderDays*24*time.Hour
 			},
 			text: "⏰ ¿Querés que te recuerde cargar los gastos? Escribí «recordame cargar gastos».",
 		},
 		{
 			key: nudgeTransferTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
-				return hasMultipleAccountsNoTransfer(s, userID)
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
+				return t.hasMultipleAccountsNoTransfer(userID)
 			},
 			text: "🔄 Tip: movés plata entre tus cuentas así: «pasé 50 mil del banco a MP».",
 		},
 
 		{
 			key: nudgeBalanceTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
 				return hasActivityFloor(stats) &&
 					stats.total >= balanceTipMovs &&
-					countAccounts(s, userID) >= balanceTipAccounts
+					t.countAccounts(userID) >= balanceTipAccounts
 			},
 			text:     "💡 Llevo el saldo de cada cuenta al día, sin que hagas nada.",
 			question: "¿Cuánto tengo en cada cuenta?",
 		},
 		{
 			key: nudgeTopCategoryTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
 				return hasActivityFloor(stats) &&
 					stats.movsInMonth(0) >= topCategoryTipMovs &&
-					distinctCategoriesThisMonth(s, userID) >= topCategoryTipCats
+					t.distinctCategoriesThisMonth(userID) >= topCategoryTipCats
 			},
 			text:     "💡 ¿Sabías? Puedo decirte en qué se te va la plata.",
 			question: "¿En qué gasté más este mes?",
 		},
 		{
 			key: nudgeQueryTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
 				return hasActivityFloor(stats) && stats.movsSince(activityFloorDays) >= queryTipMin
 			},
 			text:     "💡 ¿Sabías? No hace falta que saques la cuenta vos. Tocá y te digo:",
@@ -124,7 +124,7 @@ func init() {
 		},
 		{
 			key: nudgeRecentTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
 				return hasActivityFloor(stats) && stats.movsSince(activityFloorDays) >= recentTipMovs
 			},
 			text:     "💡 Che, ¿querés repasar lo último que cargaste?",
@@ -132,17 +132,17 @@ func init() {
 		},
 		{
 			key: nudgeEnoughTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
 				return hasActivityFloor(stats) &&
 					dayOfMonth() >= enoughTipMinDay &&
-					hasEnoughDataForMonthVerdict(s, userID, stats)
+					t.hasEnoughDataForMonthVerdict(userID, stats)
 			},
 			text:     "💡 Ya estamos cerca de fin de mes. ¿Sacamos la cuenta?",
 			question: "¿Me alcanzó lo que entró este mes?",
 		},
 		{
 			key: nudgePaceTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
 				d := dayOfMonth()
 				return hasActivityFloor(stats) &&
 					d >= paceTipMinDay && d <= paceTipMaxDay &&
@@ -154,7 +154,7 @@ func init() {
 		},
 		{
 			key: nudgeCompareTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
 				return hasActivityFloor(stats) &&
 					dayOfMonth() >= compareTipMinDay &&
 					stats.movsInMonth(0) >= compareTipMonthMovs &&
@@ -165,8 +165,8 @@ func init() {
 		},
 		{
 			key: nudgeUsdHoldingsTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
-				return hasActivityFloor(stats) && hasUsdHoldings(s, userID)
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
+				return hasActivityFloor(stats) && t.hasUsdHoldings(userID)
 			},
 			text:     "💡 Tus dólares van por separado de los pesos, siempre.",
 			question: "¿Cuántos dólares tengo?",
@@ -174,11 +174,11 @@ func init() {
 
 		{
 			key: nudgeMenuTip,
-			when: func(s Services, userID uint64, stats *nudgeStats) bool {
+			when: func(t *Tips, userID uint64, stats *nudgeStats) bool {
 				if !hasActivityFloor(stats) {
 					return false
 				}
-				elig := eligibleQuestions(s, userID, stats)
+				elig := t.eligibleQuestions(userID, stats)
 				if len(elig) == 0 {
 					return false
 				}
@@ -195,23 +195,23 @@ func init() {
 	}
 }
 
-func hasMultipleAccountsNoTransfer(s Services, userID uint64) bool {
-	accs, err := s.AccountsFindByUserID(userID)
+func (t *Tips) hasMultipleAccountsNoTransfer(userID uint64) bool {
+	accs, err := t.accounts.FindByUserID(userID)
 	if err != nil || len(accs) < transferTipMin {
 		return false
 	}
-	sub, err := s.SubcategoriesFindByCategoryAndSubcategory(userID, subcategory.CategorySystem, subcategory.SubTransfer)
+	sub, err := t.subcategories.FindByCategoryAndSubcategory(userID, subcategory.CategorySystem, subcategory.SubTransfer)
 	if err != nil {
 		return false
 	}
-	n, err := s.MovementsCountBySubcategory(userID, uint64(sub.ID))
+	n, err := t.movements.CountBySubcategory(userID, uint64(sub.ID))
 	exists := n > 0
 	return err == nil && !exists
 }
 
-func HandleCallback(ctx context.Context, s Services, chat messenger.Chat, userID uint64, data string) bool {
+func (t *Tips) HandleCallback(ctx context.Context, chat messenger.Chat, userID uint64, data string) bool {
 	if data == nudgeMenuData {
-		sendQuestionMenu(ctx, s, chat, userID)
+		t.sendQuestionMenu(ctx, chat, userID)
 		return true
 	}
 	if !strings.HasPrefix(data, nudgeQueryPrefix) {
@@ -222,28 +222,28 @@ func HandleCallback(ctx context.Context, s Services, chat messenger.Chat, userID
 	if question == "" {
 		return false
 	}
-	if s.NudgesAvailable() {
-		if err := s.NudgesMarkTapped(userID, key); err != nil {
+	if t.history != nil {
+		if err := t.history.MarkTapped(userID, key); err != nil {
 			slog.ErrorContext(ctx, "nudge tap mark failed", "key", key, "err", err)
 		}
 	}
-	if answered, err := s.HandleQuery(ctx, chat, userID, question); !answered {
+	if answered, err := t.handleQuery(ctx, chat, userID, question); !answered {
 		if err != nil {
 			slog.ErrorContext(ctx, "nudge query failed", "key", key, "err", err)
 		}
-		s.SendText(ctx, chat, msgQueryFailed)
+		flow.SendText(ctx, chat, msgQueryFailed)
 	}
 	return true
 }
 
-func Maybe(ctx context.Context, s Services, chat messenger.Chat, userID uint64) {
-	if !s.NudgesAvailable() {
+func (t *Tips) Maybe(ctx context.Context, chat messenger.Chat, userID uint64) {
+	if t.history == nil {
 		return
 	}
-	if inProgress, err := s.EngineInProgress(userID); err != nil || inProgress {
+	if inProgress, err := t.engine.InProgress(userID); err != nil || inProgress {
 		return
 	}
-	keys, err := s.NudgesSentKeys(userID)
+	keys, err := t.history.SentKeys(userID)
 	if err != nil {
 		return
 	}
@@ -251,7 +251,7 @@ func Maybe(ctx context.Context, s Services, chat messenger.Chat, userID uint64) 
 	for _, k := range keys {
 		sent[k] = true
 	}
-	last, err := s.NudgesLastSentAt(userID)
+	last, err := t.history.LastSentAt(userID)
 	if err != nil {
 		return
 	}
@@ -259,7 +259,7 @@ func Maybe(ctx context.Context, s Services, chat messenger.Chat, userID uint64) 
 		return
 	}
 
-	stats := buildNudgeStats(s, userID)
+	stats := t.buildNudgeStats(userID)
 	stats.sent = sent
 
 	for _, n := range nudges {
@@ -269,12 +269,12 @@ func Maybe(ctx context.Context, s Services, chat messenger.Chat, userID uint64) 
 		if last != nil && time.Since(*last) < n.cooldown() {
 			continue
 		}
-		if !n.when(s, userID, stats) {
+		if !n.when(t, userID, stats) {
 			continue
 		}
-		mark := s.NudgesMarkSent
+		mark := t.history.MarkSent
 		if n.recurring {
-			mark = s.NudgesMarkSentAgain
+			mark = t.history.MarkSentAgain
 		}
 		if err := mark(userID, n.key); err != nil {
 			slog.ErrorContext(ctx, "nudge mark failed", "key", n.key, "err", err)
@@ -282,17 +282,17 @@ func Maybe(ctx context.Context, s Services, chat messenger.Chat, userID uint64) 
 		}
 		switch {
 		case n.recurring:
-			s.SendPrompt(ctx, chat, conversation.Prompt{
+			flow.SendPrompt(ctx, chat, conversation.Prompt{
 				Text:    n.text,
 				Buttons: []conversation.Button{{Label: msgMenuButton, Data: nudgeMenuData}},
 			})
 		case n.question != "":
-			s.SendPrompt(ctx, chat, conversation.Prompt{
+			flow.SendPrompt(ctx, chat, conversation.Prompt{
 				Text:    n.text,
 				Buttons: []conversation.Button{{Label: n.question, Data: nudgeQueryPrefix + n.key}},
 			})
 		default:
-			s.SendText(ctx, chat, n.text)
+			flow.SendText(ctx, chat, n.text)
 		}
 		return
 	}

@@ -34,28 +34,6 @@ func (s *fakeStateStore) Clear(userID uint64) error {
 	return nil
 }
 
-type fakeConvStore struct {
-	flowName, stepName string
-	data               conversation.Data
-	updatedAt          time.Time
-	found              bool
-}
-
-func (s *fakeConvStore) Get(userID uint64) (string, string, conversation.Data, time.Time, bool, error) {
-	return s.flowName, s.stepName, s.data, s.updatedAt, s.found, nil
-}
-
-func (s *fakeConvStore) Set(userID uint64, flowName, stepName string, data conversation.Data) error {
-	s.flowName, s.stepName, s.data, s.found = flowName, stepName, data, true
-	s.updatedAt = time.Now()
-	return nil
-}
-
-func (s *fakeConvStore) Clear(userID uint64) error {
-	s.found = false
-	return nil
-}
-
 type fakeOwnedLister struct {
 	owned []subcategory.Subcategory
 	err   error

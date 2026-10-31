@@ -14,8 +14,8 @@ This is the **only** caller of `ResolveAccountManage`, `ClassifyOnboarding` and
 `ClassifyCategoryCreate`. If a second one appears, that is the moment to ask whether it really
 belongs here.
 
-`flow` reaches back for exactly two things, through the runner: `StartAccountCreate` and
-`SuggestMergeTarget`. Both need the LLM; nothing else crosses.
+`flow` reaches back for exactly two things, as func arguments of `flow.New`: `StartAccountCreate`
+and `SuggestMergeTarget`. Both need the LLM; nothing else crosses.
 
 ## A 429 is answered before the fallback, never after
 

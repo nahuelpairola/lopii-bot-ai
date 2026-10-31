@@ -1,35 +1,21 @@
 package messaging
 
 import (
-	"context"
-
-	"lopiibot.com/internal/orchestrator"
+	"lopiibot.com/internal/agent"
+	"lopiibot.com/internal/flow"
 	"lopiibot.com/internal/settings"
-	"lopiibot.com/internal/subcategory"
 )
 
-var _ settings.Services = (*controller)(nil)
-
-func (c *controller) DistinctCategoriesForUser(userID uint64) ([]string, error) {
-	return c.subcategories.DistinctCategoriesForUser(userID)
+func (c *controller) wizards() *settings.Wizards {
+	return settings.New(c.accounts, c.subcategories, c.movements, c.reminders, c.orchestrator, c.engine, c.resolveMetric, c.handleGroqError)
 }
 
-func (c *controller) FindOwnedSubcategories(userID uint64) ([]subcategory.Subcategory, error) {
-	return c.subcategories.FindOwnedByUser(userID)
+func (c *controller) finisher() *flow.Finisher {
+	w := c.wizards()
+	return flow.New(c.accounts, c.movements, c.subcategories, c.reminders, c.nudges, c.engine, c.resolveMetric, w.StartAccountCreate, w.SuggestMergeTarget)
 }
 
-func (c *controller) TopDescriptionsBySubcategory(userID uint64, subcategoryID uint64, limit int) ([]string, error) {
-	return c.movements.TopDescriptionsBySubcategory(userID, subcategoryID, limit)
-}
-
-func (c *controller) ResolveAccountManage(ctx context.Context, text string, accounts []orchestrator.AccountOption) (orchestrator.AccountManageResult, error) {
-	return c.orchestrator.ResolveAccountManage(ctx, text, accounts)
-}
-
-func (c *controller) ClassifyOnboarding(ctx context.Context, text string) (orchestrator.OnboardingResult, error) {
-	return c.orchestrator.ClassifyOnboarding(ctx, text)
-}
-
-func (c *controller) ClassifyCategoryCreate(ctx context.Context, text string, taxonomy []orchestrator.TaxonomyEntry) (orchestrator.CategoryCreateResult, error) {
-	return c.orchestrator.ClassifyCategoryCreate(ctx, text, taxonomy)
+func (c *controller) loop() *agent.Loop {
+	return agent.New(c.accounts, c.movements, c.subcategories, c.chatHistory, c.actions, c.metrics, c.orchestrator, c.engine, c.finisher(),
+		c.resolveMetric, c.handleGroqError, c.enqueueUpdatePick, c.finishAnswerQuery, c.wizards().Dispatch)
 }

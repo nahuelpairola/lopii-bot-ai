@@ -21,7 +21,7 @@ func TestStartCategoryManage_NoOwnCategories_DoesNotStartFlow(t *testing.T) {
 	engine, store := newPickEngine(nil)
 	s := &testServices{engine: engine}
 
-	if err := StartCategoryManage(context.Background(), s, &messenger.FakeChat{}, 1); err != nil {
+	if err := s.w().StartCategoryManage(context.Background(), &messenger.FakeChat{}, 1); err != nil {
 		t.Fatalf("StartCategoryManage: %v", err)
 	}
 	if store.stepName != "" {
@@ -34,7 +34,7 @@ func TestStartCategoryManage_WithOwnCategories_StartsPickFlow(t *testing.T) {
 	engine, store := newPickEngine(owned)
 	s := &testServices{engine: engine, owned: owned}
 
-	if err := StartCategoryManage(context.Background(), s, &messenger.FakeChat{}, 1); err != nil {
+	if err := s.w().StartCategoryManage(context.Background(), &messenger.FakeChat{}, 1); err != nil {
 		t.Fatalf("StartCategoryManage: %v", err)
 	}
 	if store.stepName != flow.StepPickSource {
@@ -46,7 +46,7 @@ func TestStartCategoryManage_RepoError_DoesNotStartFlow(t *testing.T) {
 	engine, store := newPickEngine(nil)
 	s := &testServices{engine: engine, ownedErr: errFake}
 
-	if err := StartCategoryManage(context.Background(), s, &messenger.FakeChat{}, 1); err == nil {
+	if err := s.w().StartCategoryManage(context.Background(), &messenger.FakeChat{}, 1); err == nil {
 		t.Error("un error del repo debería propagarse")
 	}
 	if store.stepName != "" {
@@ -58,7 +58,7 @@ func TestStartCategoryManage_NoOwnCategories_ResolvesMetric(t *testing.T) {
 	engine, _ := newPickEngine(nil)
 	s := &testServices{engine: engine}
 
-	if err := StartCategoryManage(context.Background(), s, &messenger.FakeChat{}, 1); err != nil {
+	if err := s.w().StartCategoryManage(context.Background(), &messenger.FakeChat{}, 1); err != nil {
 		t.Fatalf("StartCategoryManage: %v", err)
 	}
 	if len(s.resolved) != 1 || s.resolved[0] != OutcomeCategoryManageNoOwn {
@@ -67,17 +67,24 @@ func TestStartCategoryManage_NoOwnCategories_ResolvesMetric(t *testing.T) {
 	}
 }
 
-func TestStartSubcategorySetup_RateLimited_SkipsWizard(t *testing.T) {
+func newSetupServices(groqHandled bool) (*testServices, *fakeStateStore) {
+	store := &fakeStateStore{}
 	s := &testServices{
-		engine:      conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" }),
+		engine:      conversation.NewEngine(store, func(string) string { return "algo" }),
 		classifyErr: errFake,
-		groqHandled: true,
+		groqHandled: groqHandled,
 	}
+	s.engine.Register(flow.NewSubcategorySetupFlow(s))
+	return s, store
+}
 
-	err := StartSubcategorySetup(context.Background(), s, &messenger.FakeChat{}, 1, "creá gastos de regalos")
+func TestStartSubcategorySetup_RateLimited_SkipsWizard(t *testing.T) {
+	s, store := newSetupServices(true)
 
-	if s.startedFlow != "" {
-		t.Fatalf("arrancó %q con el 429 ya encolado; el wizard no tiene que correr", s.startedFlow)
+	err := s.w().StartSubcategorySetup(context.Background(), &messenger.FakeChat{}, 1, "creá gastos de regalos")
+
+	if store.found {
+		t.Fatalf("arrancó %q con el 429 ya encolado; el wizard no tiene que correr", store.flowName)
 	}
 	if err != nil {
 		t.Fatalf("StartSubcategorySetup: %v", err)
@@ -85,15 +92,11 @@ func TestStartSubcategorySetup_RateLimited_SkipsWizard(t *testing.T) {
 }
 
 func TestStartSubcategorySetup_OtherError_FallsBackToWizard(t *testing.T) {
-	s := &testServices{
-		engine:      conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" }),
-		classifyErr: errFake,
-		groqHandled: false,
-	}
+	s, store := newSetupServices(false)
 
-	_ = StartSubcategorySetup(context.Background(), s, &messenger.FakeChat{}, 1, "creá gastos de regalos")
-	if s.startedFlow != flow.SubcategorySetupFlowName {
-		t.Errorf("startedFlow = %q, want %q: un error común no puede dejar al usuario sin camino",
-			s.startedFlow, flow.SubcategorySetupFlowName)
+	_ = s.w().StartSubcategorySetup(context.Background(), &messenger.FakeChat{}, 1, "creá gastos de regalos")
+	if store.flowName != flow.SubcategorySetupFlowName {
+		t.Errorf("started flow = %q, want %q: un error común no puede dejar al usuario sin camino",
+			store.flowName, flow.SubcategorySetupFlowName)
 	}
 }

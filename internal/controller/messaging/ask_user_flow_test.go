@@ -12,7 +12,7 @@ import (
 
 func newAskUserTestEngine(t *testing.T) *conversation.Engine {
 	t.Helper()
-	engine := conversation.NewEngine(&fakeConvStore{}, func(string) string { return "algo" })
+	engine := conversation.NewEngine(&fakeStateStore{}, func(string) string { return "algo" })
 	engine.Register(flow.NewAskUserFlow())
 	return engine
 }

@@ -52,7 +52,7 @@ type agentPayload struct {
 
 type agentExecutor struct {
 	ctx      context.Context
-	svc      agentServices
+	loop     *Loop
 	userID   uint64
 	userText string
 
@@ -69,8 +69,8 @@ type agentExecutor struct {
 	claimErr     error
 }
 
-func newAgentExecutor(ctx context.Context, svc agentServices, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
-	return &agentExecutor{ctx: ctx, svc: svc, userID: userID, userText: userText, taxonomy: taxonomy}
+func (l *Loop) newAgentExecutor(ctx context.Context, userID uint64, userText string, taxonomy []orchestrator.TaxonomyEntry) *agentExecutor {
+	return &agentExecutor{ctx: ctx, loop: l, userID: userID, userText: userText, taxonomy: taxonomy}
 }
 
 func wiredAgentTools() []orchestrator.AgentTool {
@@ -159,14 +159,14 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 
 	result.Normalize()
 
-	accounts, _ := e.svc.FindUserAccounts(e.userID)
+	accounts, _ := e.loop.accounts.FindByUserID(e.userID)
 	seed := buildCreateSeed(result, e.taxonomy, accounts, e.userText)
 	seed[conversation.UserIDKey] = e.userID
 
 	hasGaps := len(conversation.DecodeStringSlice(seed, conversation.KeyPendingCategoryGaps)) > 0 ||
 		len(conversation.DecodeStringSlice(seed, conversation.KeyPendingAccountGaps)) > 0
 	hasFirst := flow.NeedsFirstAccount(seed, func(cur currency.Currency) bool {
-		return e.svc.AccountsHasDefaultForCurrency(e.userID, cur)
+		return e.loop.accounts.HasDefaultForCurrency(e.userID, cur)
 	})
 	if hasGaps || hasFirst {
 		return e.parkCreate(seed)
@@ -177,7 +177,7 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 		return resultClaimLost, orchestrator.ErrAgentTurnDone
 	}
 
-	inserted, err := e.svc.ResolveAndInsertMovements(seed)
+	inserted, err := e.loop.writer.ResolveAndInsertMovements(seed)
 	if err != nil {
 		var short *flow.InsufficientFunds
 		if errors.As(err, &short) {
@@ -188,7 +188,7 @@ func (e *agentExecutor) record(args json.RawMessage) (string, error) {
 	e.wrote = true
 	e.inserted = inserted
 	e.reply = flow.MsgConfirmMovements(inserted)
-	e.replyButtons = e.svc.MaybeNearDuplicate(e.userID, inserted)
+	e.replyButtons = e.loop.writer.MaybeNearDuplicate(e.userID, inserted)
 	return resultRecorded(len(inserted)), orchestrator.ErrAgentTurnDone
 }
 
@@ -207,7 +207,7 @@ func (e *agentExecutor) classify(movements []orchestrator.MovementDraft) {
 			AccountName: m.AccountNameGuess,
 		})
 	}
-	pairs := e.svc.ClassifyCategories(e.ctx, e.userText, rows, e.taxonomy)
+	pairs := e.loop.model.ClassifyCategories(e.ctx, e.userText, rows, e.taxonomy)
 	for i := range movements {
 		cat, sub := "", ""
 		if i < len(pairs) {
@@ -233,7 +233,7 @@ type parkRequest struct {
 func (e *agentExecutor) park(req parkRequest) (string, error) {
 	tool, change, question := req.tool, req.change, req.question
 	req.dateFrom, req.dateTo = messageBackedDate(e.userText, req.dateFrom), messageBackedDate(e.userText, req.dateTo)
-	groups, err := resolveCandidates(e.svc, e.userID, e.userText, req.dateFrom, req.dateTo)
+	groups, err := e.loop.resolveCandidates(e.userID, e.userText, req.dateFrom, req.dateTo)
 	if err != nil {
 		return "", fmt.Errorf("%s: resolve candidates: %w", tool, err)
 	}

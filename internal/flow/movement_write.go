@@ -24,39 +24,39 @@ type InsufficientFunds struct {
 
 func (e *InsufficientFunds) Error() string { return "insufficient funds" }
 
-func ResolveAndInsertMovements(r runner, data conversation.Data) ([]movement.Movement, error) {
+func (f *Finisher) ResolveAndInsertMovements(data conversation.Data) ([]movement.Movement, error) {
 	userID, rows := data.UserID(), movement.DecodeMovementRows(data)
 
-	idx, err := LoadAccountIndex(r, userID)
+	idx, err := f.LoadAccountIndex(userID)
 	if err != nil {
 		return nil, fmt.Errorf("load accounts: %w", err)
 	}
 
 	skipBalanceCheck := conversation.Flag(data, conversation.KeySkipBalanceCheck)
 
-	openedWithoutBalance, err := CreateFirstAccount(r, data, rows, idx)
+	openedWithoutBalance, err := f.CreateFirstAccount(data, rows, idx)
 	if err != nil {
 		return nil, fmt.Errorf("create first account: %w", err)
 	}
 	skipBalanceCheck = skipBalanceCheck || openedWithoutBalance
 
-	if err := createCounterpartyAccounts(r, userID, rows, idx); err != nil {
+	if err := f.createCounterpartyAccounts(userID, rows, idx); err != nil {
 		return nil, fmt.Errorf("create counterparty account: %w", err)
 	}
 
-	if err := createPendingSubcategories(r, userID, rows, data); err != nil {
+	if err := f.createPendingSubcategories(userID, rows, data); err != nil {
 		return nil, fmt.Errorf("create pending subcategory: %w", err)
 	}
 
 	data[conversation.KeyMovements] = movement.EncodeMovementRows(rows)
 
-	movements, groups, err := buildMovements(r, userID, rows)
+	movements, groups, err := f.buildMovements(userID, rows)
 	if err != nil {
 		return nil, fmt.Errorf("build movements: %w", err)
 	}
 
 	movement.AssignTransactionIDs(movements, groups)
-	gain, ok, err := FciRedemptionGain(r, movements)
+	gain, ok, err := f.FciRedemptionGain(movements)
 	if err != nil {
 		return nil, fmt.Errorf("fci redemption gain: %w", err)
 	}
@@ -69,7 +69,7 @@ func ResolveAndInsertMovements(r runner, data conversation.Data) ([]movement.Mov
 	}
 	idx.attachAccounts(movements)
 
-	return persistMovements(r, data, movements, idx, skipBalanceCheck)
+	return f.persistMovements(data, movements, idx, skipBalanceCheck)
 }
 
 type AccountIndex struct {
@@ -102,8 +102,8 @@ func (idx *AccountIndex) attachAccounts(movs []movement.Movement) {
 	}
 }
 
-func LoadAccountIndex(r runner, userID uint64) (*AccountIndex, error) {
-	accs, err := r.FindUserAccounts(userID)
+func (f *Finisher) LoadAccountIndex(userID uint64) (*AccountIndex, error) {
+	accs, err := f.accounts.FindByUserID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func LoadAccountIndex(r runner, userID uint64) (*AccountIndex, error) {
 	return idx, nil
 }
 
-func CreateFirstAccount(r runner, data conversation.Data, rows []movement.MovementRow, idx *AccountIndex) (skipBalanceCheck bool, err error) {
+func (f *Finisher) CreateFirstAccount(data conversation.Data, rows []movement.MovementRow, idx *AccountIndex) (skipBalanceCheck bool, err error) {
 	name := conversation.StringOrEmpty(data[conversation.KeyFirstAccountName])
 	if name == "" {
 		return false, nil
@@ -139,7 +139,7 @@ func CreateFirstAccount(r runner, data conversation.Data, rows []movement.Moveme
 				continue
 			}
 			acc = &account.Account{UserID: userID, Name: name, Currency: cur, IsDefault: true}
-			if err := r.InsertAccount(acc); err != nil {
+			if err := f.accounts.Insert(acc); err != nil {
 				return false, err
 			}
 			idx.add(*acc)
@@ -150,14 +150,14 @@ func CreateFirstAccount(r runner, data conversation.Data, rows []movement.Moveme
 		rows[i].AccountID = strconv.FormatUint(uint64(acc.ID), 10)
 	}
 
-	opened, err := openFirstAccountBalance(r, data, byCurrency[asked], netDelta)
+	opened, err := f.openFirstAccountBalance(data, byCurrency[asked], netDelta)
 	if err != nil {
 		return false, err
 	}
 	return len(created) > 0 && (!opened || len(created) > 1), nil
 }
 
-func openFirstAccountBalance(r runner, data conversation.Data, acc *account.Account, netDelta decimal.Decimal) (bool, error) {
+func (f *Finisher) openFirstAccountBalance(data conversation.Data, acc *account.Account, netDelta decimal.Decimal) (bool, error) {
 	if acc == nil {
 		return false, nil
 	}
@@ -169,7 +169,7 @@ func openFirstAccountBalance(r runner, data conversation.Data, acc *account.Acco
 	if err != nil || amt.IsNegative() {
 		return false, nil
 	}
-	if err := insertOpeningMovement(r, acc, amt.Sub(netDelta)); err != nil {
+	if err := f.insertOpeningMovement(acc, amt.Sub(netDelta)); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -195,13 +195,13 @@ func FirstAccountNetDelta(rows []movement.MovementRow, cur string) decimal.Decim
 	return netDelta
 }
 
-func insertOpeningMovement(r runner, acc *account.Account, amount decimal.Decimal) error {
-	sub, err := r.FindSubcategory(acc.UserID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
+func (f *Finisher) insertOpeningMovement(acc *account.Account, amount decimal.Decimal) error {
+	sub, err := f.subcategories.FindByCategoryAndSubcategory(acc.UserID, subcategory.CategorySystem, subcategory.SubOpeningBalance)
 	if err != nil {
 		return err
 	}
 	accountID := uint64(acc.ID)
-	return r.InsertMovements([]movement.Movement{{
+	return f.movements.InsertBatch([]movement.Movement{{
 		UserID:        acc.UserID,
 		AccountID:     &accountID,
 		SubcategoryID: uint64(sub.ID),
@@ -212,7 +212,7 @@ func insertOpeningMovement(r runner, acc *account.Account, amount decimal.Decima
 	}})
 }
 
-func createCounterpartyAccounts(r runner, userID uint64, rows []movement.MovementRow, idx *AccountIndex) error {
+func (f *Finisher) createCounterpartyAccounts(userID uint64, rows []movement.MovementRow, idx *AccountIndex) error {
 	created := make(map[string]uint64)
 	for i, row := range rows {
 		if row.AccountID != AccountPendingCreate {
@@ -233,7 +233,7 @@ func createCounterpartyAccounts(r runner, userID uint64, rows []movement.Movemen
 			Name:     row.AccountNameGuess,
 			Currency: currency.Currency(row.Currency),
 		}
-		if err := r.InsertAccount(newAccount); err != nil {
+		if err := f.accounts.Insert(newAccount); err != nil {
 			return err
 		}
 		id := uint64(newAccount.ID)
@@ -244,7 +244,7 @@ func createCounterpartyAccounts(r runner, userID uint64, rows []movement.Movemen
 	return nil
 }
 
-func createPendingSubcategories(r runner, userID uint64, rows []movement.MovementRow, data conversation.Data) error {
+func (f *Finisher) createPendingSubcategories(userID uint64, rows []movement.MovementRow, data conversation.Data) error {
 	for _, raw := range conversation.DecodeStringSlice(data, conversation.KeyPendingNewSubcats) {
 		i, err := strconv.Atoi(raw)
 		if err != nil || i < 0 || i >= len(rows) {
@@ -254,21 +254,21 @@ func createPendingSubcategories(r runner, userID uint64, rows []movement.Movemen
 		if row.Category == "" || row.Subcategory == "" {
 			continue
 		}
-		if _, err := r.FindSubcategory(userID, row.Category, row.Subcategory); err == nil {
+		if _, err := f.subcategories.FindByCategoryAndSubcategory(userID, row.Category, row.Subcategory); err == nil {
 			continue
 		}
-		if err := insertSubcategory(r, userID, row.Category, row.Subcategory, "", r.SubcategoryIconForCategory(userID, row.Category)); err != nil {
+		if err := f.insertSubcategory(userID, row.Category, row.Subcategory, "", f.subcategories.IconForCategory(userID, row.Category)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func buildMovements(r runner, userID uint64, rows []movement.MovementRow) ([]movement.Movement, []string, error) {
+func (f *Finisher) buildMovements(userID uint64, rows []movement.MovementRow) ([]movement.Movement, []string, error) {
 	movements := make([]movement.Movement, 0, len(rows)+1)
 	groups := make([]string, 0, len(rows)+1)
 	for _, row := range rows {
-		sub, err := r.FindSubcategory(userID, row.Category, row.Subcategory)
+		sub, err := f.subcategories.FindByCategoryAndSubcategory(userID, row.Category, row.Subcategory)
 		if err != nil {
 			return nil, nil, fmt.Errorf("subcategoría %q/%q: %w", row.Category, row.Subcategory, err)
 		}
@@ -306,13 +306,13 @@ func buildMovements(r runner, userID uint64, rows []movement.MovementRow) ([]mov
 	return movements, groups, nil
 }
 
-func persistMovements(r runner, data conversation.Data, movs []movement.Movement, idx *AccountIndex, skipBalanceCheck bool) ([]movement.Movement, error) {
+func (f *Finisher) persistMovements(data conversation.Data, movs []movement.Movement, idx *AccountIndex, skipBalanceCheck bool) ([]movement.Movement, error) {
 	if conversation.StringOrEmpty(data[conversation.KeyMode]) == ModeUpdate {
 		oldIDs, err := ParseUintSlice(conversation.DecodeStringSlice(data, conversation.KeyOldMovementIDs))
 		if err != nil {
 			return nil, fmt.Errorf("parse old movement ids: %w", err)
 		}
-		if err := r.ReplaceMovements(oldIDs, movs); err != nil {
+		if err := f.movements.ReplaceMovements(oldIDs, movs); err != nil {
 			return nil, fmt.Errorf("replace movements: %w", err)
 		}
 		return movs, nil
@@ -321,7 +321,7 @@ func persistMovements(r runner, data conversation.Data, movs []movement.Movement
 	if !skipBalanceCheck {
 		balances := make(map[uint64]decimal.Decimal, len(idx.byID))
 		for id := range idx.byID {
-			bal, err := r.SumAmountForAccount(id)
+			bal, err := f.movements.SumAmountForAccount(id)
 			if err != nil {
 				return nil, fmt.Errorf("sum account %d: %w", id, err)
 			}
@@ -332,13 +332,13 @@ func persistMovements(r runner, data conversation.Data, movs []movement.Movement
 		}
 	}
 
-	if err := r.InsertMovements(movs); err != nil {
+	if err := f.movements.InsertBatch(movs); err != nil {
 		return nil, fmt.Errorf("insert movements: %w", err)
 	}
 	return movs, nil
 }
 
-func FciRedemptionGain(r runner, movements []movement.Movement) (movement.Movement, bool, error) {
+func (f *Finisher) FciRedemptionGain(movements []movement.Movement) (movement.Movement, bool, error) {
 	for _, m := range movements {
 		if m.Type != movement.Transfer || m.AccountID == nil {
 			continue
@@ -347,7 +347,7 @@ func FciRedemptionGain(r runner, movements []movement.Movement) (movement.Moveme
 			continue
 		}
 
-		fciSub, err := r.FindSubcategory(m.UserID, "Inversiones", "FCI")
+		fciSub, err := f.subcategories.FindByCategoryAndSubcategory(m.UserID, "Inversiones", "FCI")
 		if err != nil {
 			return movement.Movement{}, false, err
 		}
@@ -355,12 +355,12 @@ func FciRedemptionGain(r runner, movements []movement.Movement) (movement.Moveme
 			continue
 		}
 
-		acc, err := r.GetAccount(*m.AccountID)
+		acc, err := f.accounts.GetAccount(*m.AccountID)
 		if err != nil || acc.IsDefault {
 			continue
 		}
 
-		balanceBefore, err := r.SumAmountForAccount(*m.AccountID)
+		balanceBefore, err := f.movements.SumAmountForAccount(*m.AccountID)
 		if err != nil {
 			return movement.Movement{}, false, err
 		}
@@ -373,7 +373,7 @@ func FciRedemptionGain(r runner, movements []movement.Movement) (movement.Moveme
 			continue
 		}
 
-		gainSub, err := r.FindSubcategory(m.UserID, subcategory.CategorySystem, "Rendimiento inversión")
+		gainSub, err := f.subcategories.FindByCategoryAndSubcategory(m.UserID, subcategory.CategorySystem, "Rendimiento inversión")
 		if err != nil {
 			return movement.Movement{}, false, err
 		}

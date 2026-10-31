@@ -25,7 +25,7 @@ func activeUser() (*testServices, *nudgeStats) {
 func TestEligibleQuestions_SkipsWhatWouldAnswerEmpty(t *testing.T) {
 	svc, s := activeUser()
 
-	for _, n := range eligibleQuestions(svc, 1, s) {
+	for _, n := range svc.tips().eligibleQuestions(1, s) {
 		if n.key == nudgeUsdHoldingsTip {
 			t.Error("el menú no debería ofrecer los dólares sin cuenta USD")
 		}
@@ -41,31 +41,31 @@ func TestEligibleQuestions_SkipsWhatWouldAnswerEmpty(t *testing.T) {
 func TestMenuTipGate_WaitsWhileAnEligibleQuestionIsUnsent(t *testing.T) {
 	svc, s := activeUser()
 
-	if len(eligibleQuestions(svc, 1, s)) == 0 {
+	if len(svc.tips().eligibleQuestions(1, s)) == 0 {
 		t.Fatal("el fixture debería tener preguntas elegibles")
 	}
-	if gateFor(t, nudgeMenuTip)(svc, 1, s) {
+	if gateFor(t, nudgeMenuTip)(svc.tips(), 1, s) {
 		t.Error("el menú no debería salir con preguntas elegibles sin mandar")
 	}
 
-	for _, n := range eligibleQuestions(svc, 1, s) {
+	for _, n := range svc.tips().eligibleQuestions(1, s) {
 		s.sent[n.key] = true
 	}
-	if !gateFor(t, nudgeMenuTip)(svc, 1, s) {
+	if !gateFor(t, nudgeMenuTip)(svc.tips(), 1, s) {
 		t.Error("el menú debería salir una vez ofrecidas todas las elegibles")
 	}
 }
 
 func TestMenuTipGate_ReachableBySingleAccountUser(t *testing.T) {
 	svc, s := activeUser()
-	for _, n := range eligibleQuestions(svc, 1, s) {
+	for _, n := range svc.tips().eligibleQuestions(1, s) {
 		s.sent[n.key] = true
 	}
 
 	if s.sent[nudgeBalanceTip] {
 		t.Fatal("con una sola cuenta, query_balance_tip no debería ser elegible")
 	}
-	if !gateFor(t, nudgeMenuTip)(svc, 1, s) {
+	if !gateFor(t, nudgeMenuTip)(svc.tips(), 1, s) {
 		t.Error("el menú tiene que ser alcanzable aunque haya tips que este usuario nunca reciba")
 	}
 }
@@ -73,7 +73,7 @@ func TestMenuTipGate_ReachableBySingleAccountUser(t *testing.T) {
 func TestSendQuestionMenu_KeepsTheBestInDeclaredOrder(t *testing.T) {
 	svc, _ := activeUser()
 
-	want := eligibleQuestions(svc, 1, buildNudgeStats(svc, 1))
+	want := svc.tips().eligibleQuestions(1, svc.tips().buildNudgeStats(1))
 	if len(want) < 2 {
 		t.Fatalf("el fixture necesita al menos 2 preguntas elegibles, hay %d", len(want))
 	}
@@ -81,12 +81,13 @@ func TestSendQuestionMenu_KeepsTheBestInDeclaredOrder(t *testing.T) {
 		want = want[:menuMaxOptions]
 	}
 
-	sendQuestionMenu(context.Background(), svc, &messenger.FakeChat{}, 1)
-	if len(svc.markups) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(svc.markups))
+	chat := &messenger.FakeChat{}
+	svc.tips().sendQuestionMenu(context.Background(), chat, 1)
+	if len(sentMarkups(chat)) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(sentMarkups(chat)))
 	}
 
-	markup := svc.markups[0]
+	markup := sentMarkups(chat)[0]
 	at := -1
 	for _, n := range want {
 		i := strings.Index(markup, n.question)
@@ -103,19 +104,20 @@ func TestSendQuestionMenu_KeepsTheBestInDeclaredOrder(t *testing.T) {
 func TestHandleNudgeQuery_MenuCallbackSendsTheMenu(t *testing.T) {
 	svc, _ := activeUser()
 
-	if !HandleCallback(context.Background(), svc, &messenger.FakeChat{}, 1, nudgeMenuData) {
+	chat := &messenger.FakeChat{}
+	if !svc.tips().HandleCallback(context.Background(), chat, 1, nudgeMenuData) {
 		t.Fatal("el callback del menú tiene que estar manejado")
 	}
 	if svc.asked != "" {
 		t.Errorf("el menú no corre ninguna consulta, pero preguntó %q", svc.asked)
 	}
-	if len(svc.texts) != 1 {
-		t.Fatalf("expected 1 message, got %d: %+v", len(svc.texts), svc.texts)
+	if len(sentTexts(chat)) != 1 {
+		t.Fatalf("expected 1 message, got %d: %+v", len(sentTexts(chat)), sentTexts(chat))
 	}
-	if svc.texts[0] != msgMenuHeader {
-		t.Errorf("expected the menu header, got %q", svc.texts[0])
+	if sentTexts(chat)[0] != msgMenuHeader {
+		t.Errorf("expected the menu header, got %q", sentTexts(chat)[0])
 	}
-	if svc.markups[0] == "" {
+	if sentMarkups(chat)[0] == "" {
 		t.Error("el menú tiene que llevar botones")
 	}
 }
