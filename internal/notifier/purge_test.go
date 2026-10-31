@@ -48,9 +48,14 @@ func TestPurge_SoftDeletedMovementsOlderThan90DaysAreDeletedAndTheirIDsLogged(t 
 		t.Errorf("cutoff = %v, want %v", p.cutoffs[0], want)
 	}
 	out := logs.String()
-	for _, want := range []string{"count=2", "41", "42", "7"} {
+	for _, want := range []string{"count=2", "ids=\"[41 42]\"", "user_ids=\"[7 7]\""} {
 		if !strings.Contains(out, want) {
 			t.Errorf("log %q does not contain %q", out, want)
+		}
+	}
+	for _, leaked := range []string{"amount", "description"} {
+		if strings.Contains(out, leaked) {
+			t.Errorf("log %q must not carry %q", out, leaked)
 		}
 	}
 }

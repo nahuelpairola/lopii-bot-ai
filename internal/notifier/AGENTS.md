@@ -81,8 +81,8 @@ another filter.
 The order also means a **send that succeeds while its stamp fails re-sends on the next tick** —
 deliberate: the log line is there, and a duplicate reminder beats a silent gap.
 
-Why: `docs/decisions.md`, section **Notifications and reminders**.
-
 The soft-deleted movement purge (`sweepSoftDeletedMovements`, backed by
 `movement.PurgeSoftDeletedBefore`) adds no new traps: it only touches rows whose `deleted_at` is
 already set, so no balance moves.
+
+Why: `docs/decisions.md`, section **Notifications and reminders**.
