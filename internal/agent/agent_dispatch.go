@@ -235,7 +235,7 @@ func (l *Loop) researchCandidates(userID uint64, action *pendingaction.PendingAc
 
 	action.Payload = rawPayload
 	action.Questions = rawQuestions
-	return l.actions.Update(action)
+	return l.updateAction(action)
 }
 
 func indexOf(options []string, want string) int {
@@ -261,7 +261,7 @@ func (l *Loop) resumeAgentAction(ctx context.Context, chat messenger.Chat, userI
 		}
 	}
 
-	if err := l.actions.Delete(action.ID); err != nil {
+	if err := l.deleteAction(action.ID); err != nil {
 		return fmt.Errorf("resume: delete action: %w", err)
 	}
 
@@ -316,7 +316,7 @@ func (l *Loop) discardAgentAction(ctx context.Context, chat messenger.Chat, user
 }
 
 func (l *Loop) dropAgentAction(ctx context.Context, chat messenger.Chat, userID uint64, action *pendingaction.PendingAction, message string) {
-	if err := l.actions.Delete(action.ID); err != nil {
+	if err := l.deleteAction(action.ID); err != nil {
 		slog.ErrorContext(ctx, "delete parked action failed", "err", err)
 	}
 	flow.SendText(ctx, chat, message)

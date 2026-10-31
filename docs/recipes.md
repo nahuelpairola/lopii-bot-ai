@@ -169,7 +169,7 @@ Any `internal/controller/messaging` site that calls the orchestrator (a Call 1 o
 ```go
 res, err := c.orchestrator.SomeCall(ctx, text, ...)
 if err != nil {
-    if handled, oerr := c.handleGroqError(ctx, b, chatID, userID, text, err); handled {
+    if handled, oerr := c.handleGroqError(ctx, chat, userID, text, err); handled {
         return oerr
     }
     flow.SendText(ctx, chat, msgSomethingBroke) // unchanged fallback for non-429 errors

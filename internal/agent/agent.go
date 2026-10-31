@@ -117,6 +117,20 @@ func (l *Loop) insertAction(action *pendingaction.PendingAction) error {
 	return l.actions.Insert(action)
 }
 
+func (l *Loop) updateAction(action *pendingaction.PendingAction) error {
+	if l.actions == nil {
+		return nil
+	}
+	return l.actions.Update(action)
+}
+
+func (l *Loop) deleteAction(id uint64) error {
+	if l.actions == nil {
+		return nil
+	}
+	return l.actions.Delete(id)
+}
+
 const (
 	SettingsAreaAccount        = "cuenta"
 	SettingsAreaCategory       = "categoria"
